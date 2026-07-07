@@ -1,0 +1,24 @@
+{
+  "name": "agent-researcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deep-research API on GCP: pluggable AI models, web-search agent, structured markdown reports in Cloud Storage.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:api": "npm run dev --workspace @agent-researcher/api",
+    "run:worker": "npm run start --workspace @agent-researcher/worker",
+    "research:local": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/run-local.ts",
+    "templates:check": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/validate-templates.ts",
+    "apps": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/apps.ts"
+  },
+  "license": "MIT"
+}

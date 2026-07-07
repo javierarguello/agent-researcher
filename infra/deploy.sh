@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# Build + deploy ONE environment (dev | prod) of agent-researcher.
+#   API    -> Cloud Run Service (scale-to-0)
+#   Worker -> Cloud Run Job (long task timeout)
+# Run infra/setup-gcp.sh for the same ENV first.
+#
+#   ENV=dev  TAVILY_API_KEY=... bash infra/deploy.sh
+#   ENV=prod TAVILY_API_KEY=... bash infra/deploy.sh
+#
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+ENV="${ENV:-dev}"
+if [[ "${ENV}" != "dev" && "${ENV}" != "prod" ]]; then
+  echo "ENV must be 'dev' or 'prod' (got '${ENV}')." >&2
+  exit 1
+fi
+
+PROJECT_ID="${GCP_PROJECT_ID:-sinuous-canto-497518-h7}"
+REGION="${GCP_LOCATION:-us-central1}"
+PREFIX="agent-researcher-${ENV}"
+
+BUCKET="${RESEARCH_BUCKET:-${PREFIX}-reports}"
+DATABASE="${FIRESTORE_DATABASE:-${PREFIX}}"
+WORKER_JOB_NAME="${PREFIX}-worker"
+API_SERVICE="${PREFIX}-api"
+MAX_TURNS="${RESEARCH_MAX_TURNS:-16}"
+BRAVE_API_KEY="${BRAVE_API_KEY:-}"
+TAVILY_API_KEY="${TAVILY_API_KEY:-}"
+
+REPO="${REGION}-docker.pkg.dev/${PROJECT_ID}/agent-researcher"
+API_IMAGE="${REPO}/api:${ENV}"
+WORKER_IMAGE="${REPO}/worker:${ENV}"
+API_SA_EMAIL="${PREFIX}-api@${PROJECT_ID}.iam.gserviceaccount.com"
+WORKER_SA_EMAIL="${PREFIX}-worker@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# Env vars shared by API + worker (comma-delimited).
+COMMON_ENV="ENV=${ENV},GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},RESEARCH_BUCKET=${BUCKET},FIRESTORE_DATABASE=${DATABASE},RESEARCH_MAX_TURNS=${MAX_TURNS},BRAVE_API_KEY=${BRAVE_API_KEY},TAVILY_API_KEY=${TAVILY_API_KEY}"
+
+echo ">> [${ENV}] Building worker image..."
+gcloud builds submit --config infra/cloudbuild.worker.yaml \
+  --substitutions "_IMAGE=${WORKER_IMAGE}" .
+
+echo ">> [${ENV}] Deploying worker Cloud Run Job (${WORKER_JOB_NAME})..."
+gcloud run jobs deploy "${WORKER_JOB_NAME}" \
+  --image "${WORKER_IMAGE}" \
+  --region "${REGION}" \
+  --service-account "${WORKER_SA_EMAIL}" \
+  --task-timeout 3600 \
+  --max-retries 1 \
+  --memory 1Gi --cpu 1 \
+  --set-env-vars "${COMMON_ENV}"
+
+echo ">> [${ENV}] Building API image..."
+gcloud builds submit --config infra/cloudbuild.api.yaml \
+  --substitutions "_IMAGE=${API_IMAGE}" .
+
+echo ">> [${ENV}] Deploying API Cloud Run Service (${API_SERVICE}, scale-to-0)..."
+gcloud run deploy "${API_SERVICE}" \
+  --image "${API_IMAGE}" \
+  --region "${REGION}" \
+  --service-account "${API_SA_EMAIL}" \
+  --min-instances 0 --max-instances 4 \
+  --memory 512Mi --cpu 1 \
+  --allow-unauthenticated \
+  --set-env-vars "${COMMON_ENV},WORKER_JOB_NAME=${WORKER_JOB_NAME},WORKER_JOB_REGION=${REGION},APP_ENV=production"
+
+echo ">> [${ENV}] Done."
+gcloud run services describe "${API_SERVICE}" --region "${REGION}" --format='value(status.url)'

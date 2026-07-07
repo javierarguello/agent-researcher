@@ -1,0 +1,58 @@
+# Deploys agent-researcher to Cloud Run.
+#   push to main         -> dev  (agent-researcher-dev-*)
+#   push to deploy-prod  -> prod (agent-researcher-prod-*)
+#
+# Required GitHub secrets (per environment, suffixed _DEV / _PROD):
+#   WIF_PROVIDER_DEV / WIF_PROVIDER_PROD
+#       Workload Identity Federation provider resource, e.g.
+#       projects/NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
+#   DEPLOY_SA_DEV / DEPLOY_SA_PROD
+#       Deploy service account email the pipeline impersonates. It needs:
+#       roles/run.admin, roles/cloudbuild.builds.editor,
+#       roles/artifactregistry.writer, roles/iam.serviceAccountUser
+#       (to act as the runtime SAs), roles/storage.admin (Cloud Build staging).
+#   TAVILY_API_KEY_DEV / TAVILY_API_KEY_PROD   (optional web-search key)
+#
+# One-time infra per env (run locally by an owner, not in CI):
+#   ENV=dev  bash infra/setup-gcp.sh
+#   ENV=prod bash infra/setup-gcp.sh
+name: Deploy
+
+on:
+  push:
+    branches: [main, deploy-prod]
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve environment from branch
+        id: env
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/deploy-prod" ]; then
+            echo "name=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: sinuous-canto-497518-h7
+          workload_identity_provider: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.WIF_PROVIDER_PROD || secrets.WIF_PROVIDER_DEV }}
+          service_account: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.DEPLOY_SA_PROD || secrets.DEPLOY_SA_DEV }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build & deploy
+        env:
+          ENV: ${{ steps.env.outputs.name }}
+          TAVILY_API_KEY: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.TAVILY_API_KEY_PROD || secrets.TAVILY_API_KEY_DEV }}
+        run: bash infra/deploy.sh

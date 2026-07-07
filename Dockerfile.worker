@@ -1,0 +1,14 @@
+# Worker (Cloud Run Job). Build context = repo root.
+FROM node:22-slim
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json* tsconfig.base.json ./
+COPY packages/core/package.json packages/core/package.json
+COPY apps/worker/package.json apps/worker/package.json
+RUN npm install --omit=dev --workspaces --include-workspace-root
+
+COPY packages/core packages/core
+COPY apps/worker apps/worker
+
+CMD ["node", "--import", "tsx", "apps/worker/src/index.ts"]

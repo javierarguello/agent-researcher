@@ -1,0 +1,84 @@
+# Extending without breaking
+
+Everything is registry-driven and validated at load time
+(`npm run templates:check`, also run in CI). The rule of thumb: **add**, don't
+mutate existing keys under the same version.
+
+## Add a section to an existing model
+
+1. Add a `ReportSection` to the template's `sections` (new `key`, `title`,
+   `guidance`, `schema`). String fields = Markdown.
+2. Assign it to an agent: add the key to some agent's `produces` (or create a new
+   agent — below). A derived section instead sets `derived: true` + `derive()`.
+3. `npm run templates:check` — confirms every non-derived section has exactly one
+   producer and the schema still serializes.
+
+This is **additive** → same `version`. Consumers that ignore the new key keep
+working.
+
+## Add an agent to a model
+
+Add an `AgentSpec` to `agents`. Give it `produces` (and/or `enriches`),
+`dependsOn`, a `role`, and optionally `model` / `gatherModel` aliases and a
+`researchBudget`. The executor recomputes waves automatically. Validation
+rejects: unknown section/agent refs, two agents producing the same section,
+enriching a section nobody produces, self-enrichment, unknown model aliases, and
+dependency cycles.
+
+## Add a whole new research model
+
+1. Create `packages/core/src/templates/<id>.ts` exporting a `ResearchTemplate`
+   (`id`, `name`, `description`, `version: 1`, `basePrompt`, `paramsSchema`,
+   `sections`, `agents`, `buildBrief`).
+2. Register it in `templates/registry.ts` (`TEMPLATES` map).
+3. Add its doc `docs/models/<id>.md`.
+4. `npm run templates:check`.
+
+Nothing else changes — the engine, API, and worker are generic. Existing models
+are untouched.
+
+## Add the depth knob to a template
+
+`depth` (`light` | `standard` | `deep`) is a framework-level, optional param that
+scales how exhaustive the report is — it swaps the depth directive in every
+writing prompt and multiplies each agent's `researchBudget`. It does **not**
+change sections or the schema, so it is safe on any template. To expose it, add
+the shared field to the template's params:
+
+```ts
+import { depthParamSchema } from '../depth.js';
+// inside paramsSchema:
+depth: depthParamSchema,   // defaults to 'standard'
+```
+
+The engine reads it automatically (like `language`). Tune the profiles centrally
+in `src/depth.ts` (`DEPTH_PROFILES`: directive text + `budgetScale`).
+
+## Add an LLM model or provider
+
+- **New model, existing provider** — add an alias to `config.llm.models`, e.g.
+  `'gemini-2.0-flash': { provider: 'gemini-vertex', model: 'gemini-2.0-flash' }`.
+  Reference it per-agent via `model` / `gatherModel`. Nothing else changes.
+- **New provider (e.g. Claude)** —
+  1. Implement `LlmProvider` in `llm/<provider>.ts` (map tools + `responseSchema`
+     to that provider's dialect; for Anthropic, structured output is a forced
+     tool call with the JSON Schema as the tool `input_schema`).
+  2. Add a `case` in `llm/models.ts` `instantiate()`.
+  3. Add aliases in `config.llm.models` pointing at the new provider.
+  Agents opt in by alias; every existing agent (still on `gather`/`pro`) is
+  unaffected. One workflow can mix providers.
+
+## Making a breaking change
+
+If you must rename/remove a section key or change a field's type:
+
+- Bump the template `version` (→ new `schemaVersion` `"<id>@<version>"`), **or**
+- register a parallel model so apps pinned to the old schema keep working.
+
+Never silently change an existing key's meaning under the same version.
+
+## Safety net
+
+`validateTemplate()` (in `templates/validate.ts`) runs on registration and via
+`npm run templates:check`. Wire that script into CI so a malformed template,
+agent, or model reference fails the build instead of a live job.
