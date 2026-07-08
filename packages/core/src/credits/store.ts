@@ -15,7 +15,6 @@ import {
   type CreditBalance,
   type CreditLedgerEntry,
   type LedgerEntryType,
-  type Plan,
 } from './types.js';
 
 let db: Firestore | undefined;
@@ -25,7 +24,6 @@ function firestore(): Firestore {
 }
 const ledger = () => firestore().collection(config.credits.ledgerCollection);
 const balances = () => firestore().collection(config.credits.balancesCollection);
-const plansCol = () => firestore().collection(config.credits.plansCollection);
 
 const nowIso = () => new Date().toISOString();
 const balKey = (appId: string, userId: string) => `${appId}__${userId}`;
@@ -119,6 +117,9 @@ export function consumeCredits(appId: string, userId: string, credits: number, j
   return applyEntry({ id: `consume_${jobId}`, appId, userId, type: 'consumption', credits, jobId });
 }
 
+// Plans are NOT stored in Firestore — the catalog lives entirely in Stripe
+// (Products/Prices with lookup_key `<appId>_<planId>` + metadata { app, credits }).
+
 /** Refund the credits a job consumed (only if it was consumed and not already refunded). */
 export async function refundForJob(appId: string, userId: string, jobId: string, note?: string): Promise<boolean> {
   const consumeRef = ledger().doc(`consume_${jobId}`);
@@ -144,23 +145,4 @@ export async function refundForJob(appId: string, userId: string, jobId: string,
     tx.set(balRef, { appId, userId, balance: current + credits, updatedAt: nowIso() }, { merge: true });
     return true;
   });
-}
-
-// --- Plans catalog ----------------------------------------------------------
-
-const planKey = (appId: string, planId: string) => `${appId}__${planId}`;
-
-export async function getPlan(appId: string, planId: string): Promise<Plan | undefined> {
-  const snap = await plansCol().doc(planKey(appId, planId)).get();
-  return snap.exists ? (snap.data() as Plan) : undefined;
-}
-
-export async function listPlans(appId: string): Promise<Plan[]> {
-  const snap = await plansCol().where('appId', '==', appId).where('active', '==', true).get();
-  return snap.docs.map((d) => d.data() as Plan);
-}
-
-export async function upsertPlan(plan: Plan): Promise<Plan> {
-  await plansCol().doc(planKey(plan.appId, plan.planId)).set(plan, { merge: true });
-  return plan;
 }

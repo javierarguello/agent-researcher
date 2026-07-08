@@ -51,7 +51,7 @@ export const config = {
   credits: {
     ledgerCollection: str('CREDITS_LEDGER_COLLECTION', 'credit-ledger'),
     balancesCollection: str('CREDITS_BALANCES_COLLECTION', 'credit-balances'),
-    plansCollection: str('PLANS_COLLECTION', 'plans'),
+    // Plans/catalog are NOT in Firestore — they live entirely in Stripe.
   },
   stripe: {
     secretKey: str('STRIPE_SECRET_KEY'),

@@ -85,12 +85,9 @@ export {
   recordPurchase,
   consumeCredits,
   refundForJob,
-  getPlan,
-  listPlans,
-  upsertPlan,
 } from './credits/store.js';
 export { InsufficientCreditsError } from './credits/types.js';
-export type { CreditLedgerEntry, CreditBalance, Plan, LedgerEntryType } from './credits/types.js';
+export type { CreditLedgerEntry, CreditBalance, LedgerEntryType } from './credits/types.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';
 export type { Depth, DepthProfile } from './depth.js';
 
