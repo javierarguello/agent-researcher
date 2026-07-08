@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ModeConfig, ReportMode } from '../mode.js';
 
 /**
  * One section of the final structured report.
@@ -85,6 +86,12 @@ export interface ResearchTemplate<TParams = unknown> {
   sections: ReportSection[];
   /** The agent workflow that produces the sections. */
   agents: AgentSpec[];
+  /**
+   * Per-mode cost/scope config. The public API exposes only `mode`
+   * ('essential' | 'comprehensive'); each mode maps to internal budget scale,
+   * excluded sections, prose depth, and param overrides. Omit to use defaults.
+   */
+  modes?: Partial<Record<ReportMode, ModeConfig>>;
   /** Turn validated params into a concise research brief (the goal). */
   buildBrief: (params: TParams) => string;
   /** Optional params field carrying lower-authority client instructions. */

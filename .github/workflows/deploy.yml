@@ -1,6 +1,9 @@
-# Deploys agent-researcher to Cloud Run.
-#   push to main         -> dev  (agent-researcher-dev-*)
+# Deploys agent-researcher PROD to Cloud Run (push to deploy-prod).
+# DEV (push to main) is handled by deploy-dev.yml, which also creates resources.
 #   push to deploy-prod  -> prod (agent-researcher-prod-*)
+#
+# NOTE: this workflow only DEPLOYS; run `ENV=prod bash infra/setup-gcp.sh` once
+# to provision prod resources (deploy-dev.yml runs setup automatically for dev).
 #
 # Required GitHub secrets (per environment, suffixed _DEV / _PROD):
 #   WIF_PROVIDER_DEV / WIF_PROVIDER_PROD
@@ -20,7 +23,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main, deploy-prod]
+    branches: [deploy-prod]
 
 permissions:
   contents: read

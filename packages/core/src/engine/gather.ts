@@ -5,6 +5,8 @@
  * a shared `Evidence` store — so a page fetched by one agent is reused (never
  * re-fetched) by another, and the final `sources` list is unified.
  */
+import { config } from '../config.js';
+import { addCost, emptyCost, llmCost, searchCost, type Cost } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage, ToolSchema } from '../llm/provider.js';
 import { extractPages, searchWeb, type ExtractedPage, type SearchResult } from '../tools/web-search.js';
@@ -85,12 +87,18 @@ export interface GatherInput {
   onNote?: (note: string) => void | Promise<void>;
 }
 
-/** Run one budgeted research loop, appending to the shared evidence. Returns turns spent. */
-export async function gather(input: GatherInput): Promise<number> {
+export interface GatherResult {
+  turns: number;
+  cost: Cost;
+}
+
+/** Run one budgeted research loop, appending to the shared evidence. Returns turns + cost. */
+export async function gather(input: GatherInput): Promise<GatherResult> {
   const { model, system, messages, maxTurns, evidence, onNote } = input;
   let plan: PlanStep[] = [];
   let turnsUsed = 0;
   let nudges = 0;
+  let cost = emptyCost();
   const maxIterations = maxTurns * 2 + 6;
   const note = async (m: string) => onNote?.(m);
 
@@ -102,6 +110,7 @@ export async function gather(input: GatherInput): Promise<number> {
       forceTools: turnsUsed === 0, // force real research before it can stop
       model: model.model,
     });
+    if (res.usage) cost = addCost(cost, llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
 
     messages.push({ role: 'model', text: res.text, toolCalls: res.toolCalls });
 
@@ -203,5 +212,7 @@ export async function gather(input: GatherInput): Promise<number> {
     }
   }
 
-  return turnsUsed;
+  // Each spent turn = one real backend search/fetch. Only Tavily is billed here.
+  const perCall = config.search.tavilyApiKey ? config.search.costPerCallUsd : 0;
+  return { turns: turnsUsed, cost: addCost(cost, searchCost(turnsUsed, perCall)) };
 }

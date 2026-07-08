@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { depthParamSchema } from '../depth.js';
+import { modeParamSchema } from '../mode.js';
 import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
@@ -14,13 +14,11 @@ const paramsSchema = z.object({
   minCashFlow: z.number().int().nonnegative().optional(),
   sbaFriendly: z.boolean().default(false),
   includeRealEstate: z.boolean().optional(),
-  /** How many listings to profile in depth. Higher = longer report. */
-  targetCount: z.number().int().min(1).max(15).default(8),
   preferredSources: z.array(z.string()).default([]),
   instructions: z.string().optional(),
   language: z.enum(['en', 'es', 'fr', 'pt']).default('en'),
-  /** Analysis depth: 'light' (~6-10pg) | 'standard' (~15-20pg) | 'deep' (25+pg). */
-  depth: depthParamSchema,
+  /** Public cost/scope knob. 'essential' (~half cost, core sections) | 'comprehensive' (full report). */
+  mode: modeParamSchema,
 });
 
 export type FloridaBusinessParams = z.infer<typeof paramsSchema>;
@@ -466,6 +464,29 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
   paramsSchema,
   sections,
   agents,
+  // Public API exposes only `mode`; these map it to internal cost/scope.
+  modes: {
+    comprehensive: {
+      label: 'Comprehensive',
+      budgetScale: 1,
+      depth: 'standard',
+      params: { targetCount: 6 },
+    },
+    essential: {
+      label: 'Essential',
+      budgetScale: 0.5,
+      depth: 'light',
+      // Drop the heaviest analytical sections (~half the cost, core report kept).
+      exclude: [
+        'competitive_landscape',
+        'financial_analysis',
+        'comparable_transactions',
+        'due_diligence_checklist',
+        'growth_playbook',
+      ],
+      params: { targetCount: 3 },
+    },
+  },
   instructionsField: 'instructions',
   buildBrief: (p) => {
     const lines: string[] = [];
@@ -482,7 +503,9 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     if (p.includeRealEstate === true) lines.push('Prefer deals that include commercial real estate.');
     if (p.includeRealEstate === false) lines.push('Prefer asset/business-only deals (real estate not required).');
     if (p.preferredSources.length) lines.push(`Prioritize these marketplaces/brokers: ${p.preferredSources.join(', ')}.`);
-    lines.push(`Profile the top ${p.targetCount} matching listings in depth.`);
+    // targetCount is injected internally by the mode config (not a public param).
+    const targetCount = Number((p as Record<string, unknown>).targetCount ?? 5);
+    lines.push(`Profile the top ${targetCount} matching listings in depth.`);
     return lines.join('\n');
   },
 };

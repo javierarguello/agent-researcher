@@ -79,7 +79,17 @@ export class GeminiVertexProvider implements LlmProvider {
         });
       }
     }
-    return { text: text.trim(), toolCalls };
+
+    // Token usage for cost accounting. Thoughts (thinking) tokens are billed as output.
+    const u = response.usageMetadata;
+    const usage = u
+      ? {
+          inputTokens: u.promptTokenCount ?? 0,
+          outputTokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0),
+        }
+      : undefined;
+
+    return { text: text.trim(), toolCalls, usage };
   }
 }
 

@@ -39,6 +39,7 @@ gcloud services enable \
   aiplatform.googleapis.com \
   firestore.googleapis.com \
   storage.googleapis.com \
+  cloudtasks.googleapis.com \
   iamcredentials.googleapis.com
 
 echo ">> Artifact Registry repo (agent-researcher, shared across envs)..."
@@ -53,6 +54,15 @@ gcloud firestore databases create --database="${DATABASE}" \
 echo ">> Cloud Storage bucket gs://${BUCKET} ..."
 gcloud storage buckets create "gs://${BUCKET}" \
   --location="${REGION}" --uniform-bucket-level-access 2>/dev/null || echo "   (exists)"
+
+QUEUE="${PREFIX}-jobs"
+JOB_MAX_CONCURRENCY="${JOB_MAX_CONCURRENCY:-4}"
+echo ">> Cloud Tasks queue '${QUEUE}' (max ${JOB_MAX_CONCURRENCY} concurrent jobs)..."
+gcloud tasks queues create "${QUEUE}" --location="${REGION}" 2>/dev/null || echo "   (exists)"
+gcloud tasks queues update "${QUEUE}" --location="${REGION}" \
+  --max-concurrent-dispatches="${JOB_MAX_CONCURRENCY}" \
+  --max-dispatches-per-second=1 \
+  --max-attempts=3 --min-backoff=10s --max-backoff=300s >/dev/null
 
 echo ">> Service accounts..."
 gcloud iam service-accounts create "${API_SA}" \
@@ -80,6 +90,13 @@ gcloud iam service-accounts add-iam-policy-binding "${API_SA_EMAIL}" \
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${API_SA_EMAIL}" --role="roles/run.developer" --condition=None >/dev/null
 gcloud iam service-accounts add-iam-policy-binding "${WORKER_SA_EMAIL}" \
+  --member="serviceAccount:${API_SA_EMAIL}" --role="roles/iam.serviceAccountUser" >/dev/null
+
+echo ">> API SA — Cloud Tasks enqueue + OIDC self-impersonation..."
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${API_SA_EMAIL}" --role="roles/cloudtasks.enqueuer" --condition=None >/dev/null
+# The API SA mints an OIDC token as itself for the task → needs actAs on itself.
+gcloud iam service-accounts add-iam-policy-binding "${API_SA_EMAIL}" \
   --member="serviceAccount:${API_SA_EMAIL}" --role="roles/iam.serviceAccountUser" >/dev/null
 
 echo ">> Done (${ENV})."

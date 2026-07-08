@@ -47,10 +47,13 @@ async function main() {
   await writeFile(`${dir}/report.json`, JSON.stringify({ meta: out.meta, report: out.report }, null, 2), 'utf8');
   await writeFile(`${dir}/sources.json`, JSON.stringify(out.sources, null, 2), 'utf8');
   await writeFile(`${dir}/trace.json`, JSON.stringify(out.trace, null, 2), 'utf8');
+  const c = out.meta.cost;
   console.error(
-    `\nDone [lang=${out.language}, schema=${out.meta.schemaVersion}]. Report: ${dir}/report.json  ` +
+    `\nDone [lang=${out.language}, mode=${out.meta.mode}, schema=${out.meta.schemaVersion}]. Report: ${dir}/report.json  ` +
       `(${out.sources.length} sources, ${out.turnsUsed} searches` +
-      `${out.meta.degradedSections ? `, degraded: ${out.meta.degradedSections.join(', ')}` : ''})`,
+      `${out.meta.degradedSections ? `, degraded: ${out.meta.degradedSections.join(', ')}` : ''})\n` +
+      `Cost: $${c.usd.toFixed(4)} (llm $${c.llmUsd.toFixed(4)} + search $${c.searchUsd.toFixed(4)}; ` +
+      `${c.inputTokens.toLocaleString()} in / ${c.outputTokens.toLocaleString()} out tokens)`,
   );
 }
 

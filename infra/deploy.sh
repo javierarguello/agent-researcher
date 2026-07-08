@@ -23,7 +23,9 @@ PREFIX="agent-researcher-${ENV}"
 
 BUCKET="${RESEARCH_BUCKET:-${PREFIX}-reports}"
 DATABASE="${FIRESTORE_DATABASE:-${PREFIX}}"
-WORKER_JOB_NAME="${PREFIX}-worker"
+WORKER_SERVICE="${PREFIX}-worker"
+QUEUE="${PREFIX}-jobs"
+JOB_MAX_CONCURRENCY="${JOB_MAX_CONCURRENCY:-4}"
 API_SERVICE="${PREFIX}-api"
 MAX_TURNS="${RESEARCH_MAX_TURNS:-16}"
 BRAVE_API_KEY="${BRAVE_API_KEY:-}"
@@ -42,15 +44,24 @@ echo ">> [${ENV}] Building worker image..."
 gcloud builds submit --config infra/cloudbuild.worker.yaml \
   --substitutions "_IMAGE=${WORKER_IMAGE}" .
 
-echo ">> [${ENV}] Deploying worker Cloud Run Job (${WORKER_JOB_NAME})..."
-gcloud run jobs deploy "${WORKER_JOB_NAME}" \
+echo ">> [${ENV}] Deploying worker Cloud Run Service (${WORKER_SERVICE}, concurrency=1, private)..."
+gcloud run deploy "${WORKER_SERVICE}" \
   --image "${WORKER_IMAGE}" \
   --region "${REGION}" \
   --service-account "${WORKER_SA_EMAIL}" \
-  --task-timeout 3600 \
-  --max-retries 1 \
+  --no-allow-unauthenticated \
+  --concurrency 1 \
+  --timeout 1800 \
+  --min-instances 0 --max-instances "${JOB_MAX_CONCURRENCY}" \
   --memory 1Gi --cpu 1 \
   --set-env-vars "${COMMON_ENV}"
+
+WORKER_URL="$(gcloud run services describe "${WORKER_SERVICE}" --region "${REGION}" --format='value(status.url)')"
+echo ">> [${ENV}] Worker URL: ${WORKER_URL}"
+
+echo ">> [${ENV}] Granting API SA run.invoker on the worker service..."
+gcloud run services add-iam-policy-binding "${WORKER_SERVICE}" --region "${REGION}" \
+  --member="serviceAccount:${API_SA_EMAIL}" --role="roles/run.invoker" >/dev/null
 
 echo ">> [${ENV}] Building API image..."
 gcloud builds submit --config infra/cloudbuild.api.yaml \
@@ -64,7 +75,7 @@ gcloud run deploy "${API_SERVICE}" \
   --min-instances 0 --max-instances 4 \
   --memory 512Mi --cpu 1 \
   --allow-unauthenticated \
-  --set-env-vars "${COMMON_ENV},WORKER_JOB_NAME=${WORKER_JOB_NAME},WORKER_JOB_REGION=${REGION},APP_ENV=production"
+  --set-env-vars "${COMMON_ENV},WORKER_SERVICE_NAME=${WORKER_SERVICE},WORKER_REGION=${REGION},WORKER_SERVICE_URL=${WORKER_URL},TASKS_QUEUE=${QUEUE},TASKS_REGION=${REGION},TASKS_INVOKER_SA=${API_SA_EMAIL},JOB_MAX_CONCURRENCY=${JOB_MAX_CONCURRENCY},APP_ENV=production"
 
 echo ">> [${ENV}] Done."
 gcloud run services describe "${API_SERVICE}" --region "${REGION}" --format='value(status.url)'

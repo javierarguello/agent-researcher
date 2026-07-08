@@ -37,8 +37,8 @@ and `reportSchema` (JSON Schema of the `report` object your consumer receives).
   "userId": "…",         // UUID or email (rate-limit key)
   "template": "florida-business-for-sale",
   "params": { "industry": "laundromats", "location": "Miami-Dade County, FL",
-              "askingPriceMax": 500000, "targetCount": 5, "language": "es",
-              "depth": "standard" }   // optional: light | standard | deep
+              "askingPriceMax": 500000, "language": "es",
+              "mode": "essential" }   // essential (~half cost) | comprehensive (full); default essential
 }
 ```
 Returns immediately (the worker runs asynchronously):
@@ -49,12 +49,17 @@ Returns immediately (the worker runs asynchronously):
 (`{ scope, limit, used }` + `Retry-After`).
 
 ### `GET /research/:jobId` — poll a job
-While running, returns `status` + `progress` (updated per agent/wave):
+While running, returns an auto-generated `title` + `shortDescription` (for
+dashboards), plus `progress` and a running `cost` (updated per agent/wave):
 ```json
 { "jobId": "…", "status": "running",
-  "progress": { "phase": "deal-scout", "message": "Searched: …",
-                "turnsUsed": 20, "sourcesFound": 73, "updatedAt": "…" } }
+  "title": "Laundromats for Sale — Miami-Dade",
+  "shortDescription": "Buy-side research on laundromats for sale in Miami-Dade under $500k.",
+  "progress": { "phase": "deal-scout", "message": "Searched: …", "turnsUsed": 20, "sourcesFound": 73 },
+  "cost": { "usd": 1.42, "llmUsd": 1.10, "searchUsd": 0.32, "inputTokens": 1200000, "outputTokens": 40000 } }
 ```
+When `completed`/`failed` it also carries `summary` (metrics + `degradedSections`
++ `agentErrors`).
 When `completed`, includes short-lived **signed download URLs** for the job files:
 ```json
 { "status": "completed", "files": [

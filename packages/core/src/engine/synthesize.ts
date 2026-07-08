@@ -6,6 +6,7 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
+import { addCost, emptyCost, llmCost, type Cost } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage } from '../llm/provider.js';
 
@@ -18,11 +19,17 @@ export interface SynthesizeStructuredInput<T> {
   temperature?: number;
 }
 
-/** Generate + validate a typed object, with one repair retry. */
-export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T>): Promise<T> {
+export interface StructuredResult<T> {
+  value: T;
+  cost: Cost;
+}
+
+/** Generate + validate a typed object, with one repair retry. Returns value + cost. */
+export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T>): Promise<StructuredResult<T>> {
   const { model, system, schema, temperature = 0.3 } = input;
   const responseSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   const messages: LlmMessage[] = [...input.messages];
+  let cost = emptyCost();
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await model.provider.generate({
@@ -33,6 +40,7 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
       responseSchema,
       maxOutputTokens: config.llm.maxOutputTokens,
     });
+    if (res.usage) cost = addCost(cost, llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
 
     const raw = stripJsonFences(res.text);
     let parsed: unknown;
@@ -46,7 +54,7 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
     }
 
     const result = schema.safeParse(parsed);
-    if (result.success) return result.data;
+    if (result.success) return { value: result.data, cost };
 
     if (attempt === 1) {
       const issues = result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');

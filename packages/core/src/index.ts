@@ -21,9 +21,14 @@ export {
   markCompleted,
   markFailed,
   setProgress,
+  setJobCost,
+  setJobSummary,
+  setJobHeadline,
   setJobStatus,
 } from './jobs/firestore.js';
-export type { ResearchJob, JobStatus, JobFile, JobProgress } from './jobs/types.js';
+export type { ResearchJob, JobStatus, JobFile, JobProgress, JobSummary } from './jobs/types.js';
+export { generateHeadline } from './jobs/headline.js';
+export type { Headline } from './jobs/headline.js';
 
 // Storage
 export { uploadObject, listJobFiles, signRead, signJobFiles } from './storage/gcs.js';
@@ -67,9 +72,15 @@ export type {
 export { logEvent, jobLogger } from './obs/log.js';
 export type { LogContext, JobLogger, Severity } from './obs/log.js';
 
-// Depth (optional analysis-depth knob any template can accept)
+// Report modes (public cost/scope knob) + internal depth
+export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES } from './mode.js';
+export type { ReportMode, ModeConfig } from './mode.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';
 export type { Depth, DepthProfile } from './depth.js';
+
+// Cost accounting
+export { emptyCost, addCost, llmCost, searchCost } from './cost.js';
+export type { Cost } from './cost.js';
 export { runJob } from './engine/run-job.js';
 export type { RunJobInput, RunJobResult } from './engine/run-job.js';
 

@@ -1,43 +1,62 @@
 /**
- * Cloud Run Job entrypoint. Runs exactly one research job to completion, then
- * exits. Scales to zero naturally: it only runs when the API triggers an
- * execution. Long-running by design (job task timeout up to 24h).
+ * Worker — a Cloud Run Service (scale-to-0) that runs ONE research job per HTTP
+ * request and returns when it finishes. Cloud Tasks pushes jobs here with a
+ * bounded `maxConcurrentDispatches`, so the queue's concurrency == the number of
+ * jobs running at once (the real global throttle for Vertex quota). Retries and
+ * backpressure come from the queue.
  *
- * Input: JOB_ID env var (set as a per-execution override by the API). The job
- * document (template + params) is read from Firestore.
+ * The request is authenticated at the platform level (Cloud Run
+ * `--no-allow-unauthenticated` + the queue's OIDC token), so no app-level auth.
+ * Concurrency per instance is 1 (deploy `--concurrency=1`); Cloud Run scales
+ * instances up to the queue's cap.
  */
-import { getJob, runJob } from '@agent-researcher/core';
+import Fastify from 'fastify';
+import { config, getJob, runJob } from '@agent-researcher/core';
 
-async function main() {
-  const jobId = process.env.JOB_ID?.trim();
-  if (!jobId) {
-    console.error('JOB_ID env var is required.');
-    process.exit(1);
-  }
+const app = Fastify({ logger: { level: config.server.logLevel } });
+
+app.get('/health', async () => ({ ok: true }));
+
+app.post('/run', async (req, reply) => {
+  const body = (req.body ?? {}) as { jobId?: string };
+  const jobId = body.jobId?.trim();
+  if (!jobId) return reply.code(400).send({ error: 'Missing jobId.' }); // 4xx = no retry
 
   const job = await getJob(jobId);
-  if (!job) {
-    console.error(`Job ${jobId} not found in Firestore.`);
-    process.exit(1);
+  if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` }); // permanent
+
+  // Idempotency: Cloud Tasks is at-least-once. A finished job is acked, not re-run.
+  if (job.status === 'completed' || job.status === 'failed') {
+    return reply.code(200).send({ status: job.status, skipped: true });
   }
 
-  console.log(`[worker] starting job ${jobId} (template=${job.template}, app=${job.appId})`);
-  const result = await runJob({
-    jobId,
-    appId: job.appId,
-    userId: job.userId,
-    template: job.template,
-    params: job.params,
-  });
-  console.log(
-    `[worker] job ${jobId} completed: ${result.files.length} files, ` +
-      `${result.sourcesFound} sources, ${result.reportBytes} report bytes`,
-  );
-}
-
-main().catch((err) => {
-  // Non-zero exit marks the Cloud Run Job execution as failed (and enables retry).
-  // runJob has already recorded status=failed in Firestore.
-  console.error('[worker] job failed:', err);
-  process.exit(1);
+  app.log.info({ jobId, template: job.template, appId: job.appId }, 'worker: starting job');
+  try {
+    const result = await runJob({
+      jobId,
+      appId: job.appId,
+      userId: job.userId,
+      template: job.template,
+      params: job.params,
+    });
+    // Ack (200) even on a business failure — runJob already recorded it. Retrying
+    // a deterministic failure would just burn tokens; transient Vertex errors are
+    // already retried inside the provider.
+    return reply.code(200).send({ status: result.status, sourcesFound: result.sourcesFound });
+  } catch (err) {
+    // Unexpected engine error — runJob marked the job failed. Ack to avoid re-runs.
+    app.log.error({ err, jobId }, 'worker: job errored');
+    return reply.code(200).send({ status: 'failed', error: (err as Error).message });
+  }
 });
+
+const start = async () => {
+  try {
+    await app.listen({ host: '0.0.0.0', port: config.server.port });
+  } catch (err) {
+    app.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();

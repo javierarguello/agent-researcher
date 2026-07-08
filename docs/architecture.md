@@ -4,10 +4,13 @@
 
 ```
 client ──POST /research──▶ API (Cloud Run Service, scale-to-0)
-                             │ validates, records job in Firestore, triggers worker
+                             │ validates + rate-limit, records job (Firestore), ENQUEUES a Cloud Task
                              ▼
-                          Worker (Cloud Run Job, scale-to-0, long timeout)
-                             │ runJob → runResearch (the workflow executor)
+                          Cloud Tasks queue  (maxConcurrentDispatches = global job cap, retries)
+                             │ HTTP push (OIDC) — at most N in flight
+                             ▼
+                          Worker (Cloud Run Service, scale-to-0, concurrency=1, private)
+                             │ POST /run → runJob → runResearch (the workflow executor)
                              ▼
         ┌────────────────────────────────────────────────────┐
         │  Agent workflow (per research model)                │
@@ -22,8 +25,29 @@ client ──POST /research──▶ API (Cloud Run Service, scale-to-0)
 client ──GET /research/:jobId──▶ status + signed download URLs
 ```
 
-The API never runs research inline — it only records the job and triggers the
-worker, so it returns in milliseconds and scales to zero.
+The API never runs research inline — it records the job and enqueues a task, so
+it returns in milliseconds and scales to zero.
+
+## Scaling & concurrency
+
+- **Intake** — the API is a Cloud Run Service; it accepts many concurrent
+  requests and scales instances. Its per-request work is tiny (validate + one
+  Firestore write + one enqueue), so it is never the bottleneck.
+- **Admission** — rate limits (reports/hour, per app AND per user) are checked
+  **before** the job is recorded: over the limit → `429`, nothing enqueued;
+  under → job recorded + enqueued.
+- **Execution throttle** — the **Cloud Tasks queue** dispatches at most
+  `maxConcurrentDispatches` = `JOB_MAX_CONCURRENCY` (default **4**) tasks at once,
+  to the worker Service (`--concurrency=1`, `--max-instances=JOB_MAX_CONCURRENCY`).
+  So **at most N jobs run concurrently**; the rest wait in the queue and are
+  dispatched as slots free. Failed dispatches retry with backoff.
+- **The real ceiling is Vertex quota.** Each job runs its agents at
+  `maxConcurrentAgents` (2) concurrency, so total Vertex load ≈ `N × 2 + retries`.
+  Set `JOB_MAX_CONCURRENCY` to match the project's Vertex quota — raising
+  throughput means raising the queue cap **and** the Vertex quota together. On
+  this low-quota project keep N small (≈3-4); with raised quota, dozens.
+- Idempotent + at-least-once: the enqueue is keyed by jobId (dedup), and the
+  `/run` handler acks already-finished jobs instead of re-running them.
 
 ## The workflow executor (`packages/core/src/engine/research-engine.ts`)
 
@@ -106,6 +130,18 @@ Every job is fully diagnosable.
 A failed run therefore leaves: the Firestore job (`status:failed` + `error`),
 `trace.json` (which agent failed, its notes and error), and the correlated Cloud
 Logging stream — enough to diagnose without reproducing.
+
+### Cost accounting
+
+Each LLM call returns token usage; combined with per-model prices in the registry
+(`config.llm.models[...].inPerM/outPerM`) this gives an **exact LLM cost**.
+Web-search cost is an **estimate** (Tavily calls × `config.search.costPerCallUsd`).
+Cost accumulates **per agent** (in `trace.json` → `agents[].cost`) and into a
+**running job total** (`trace.cost`), updated as each agent finishes, and is
+copied to `report.json` `meta.cost` and `metadata.json`. Every `agent.ok` /
+`job.completed` Cloud Logging line carries `costUsd` + token counts. `Cost` =
+`{ usd, llmUsd, searchUsd, inputTokens, outputTokens, searchCalls }`. Swap the
+prices in `config.llm.models` when a provider's pricing changes — one place.
 
 ## Storage, jobs, environments
 

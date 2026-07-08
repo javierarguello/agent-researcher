@@ -3,7 +3,8 @@
  */
 import { Firestore } from '@google-cloud/firestore';
 import { config } from '../config.js';
-import type { JobFile, JobProgress, JobStatus, ResearchJob } from './types.js';
+import type { Cost } from '../cost.js';
+import type { JobFile, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
 
 let db: Firestore | undefined;
 function firestore(): Firestore {
@@ -60,6 +61,21 @@ export async function markRunning(jobId: string): Promise<void> {
 
 export async function setProgress(jobId: string, progress: JobProgress): Promise<void> {
   await patch(jobId, { progress });
+}
+
+/** Store the running total cost on the job doc (updated as agents finish). */
+export async function setJobCost(jobId: string, cost: Cost): Promise<void> {
+  await patch(jobId, { cost });
+}
+
+/** Store the denormalized summary (metrics + errors) on the job doc. */
+export async function setJobSummary(jobId: string, summary: JobSummary): Promise<void> {
+  await patch(jobId, { summary });
+}
+
+/** Store the auto-generated title + short description (for dashboards). */
+export async function setJobHeadline(jobId: string, headline: { title: string; shortDescription: string }): Promise<void> {
+  await patch(jobId, { title: headline.title, shortDescription: headline.shortDescription });
 }
 
 export async function markCompleted(jobId: string, files: JobFile[]): Promise<void> {

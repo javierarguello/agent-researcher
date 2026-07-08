@@ -59,14 +59,14 @@ export const config = {
      */
     models: {
       /** Cheap tier for the tool-calling research loop (planning + search). */
-      gather: { provider: 'gemini-vertex', model: str('LLM_MODEL_FLASH', 'gemini-2.5-flash') },
+      gather: { provider: 'gemini-vertex', model: str('LLM_MODEL_FLASH', 'gemini-2.5-flash'), inPerM: 0.3, outPerM: 2.5 },
       /** Same as gather; a distinct alias so intent reads clearly at call sites. */
-      flash: { provider: 'gemini-vertex', model: str('LLM_MODEL_FLASH', 'gemini-2.5-flash') },
+      flash: { provider: 'gemini-vertex', model: str('LLM_MODEL_FLASH', 'gemini-2.5-flash'), inPerM: 0.3, outPerM: 2.5 },
       /** Strong tier for structured section synthesis. */
-      pro: { provider: 'gemini-vertex', model: str('LLM_MODEL_PRO', 'gemini-2.5-pro') },
+      pro: { provider: 'gemini-vertex', model: str('LLM_MODEL_PRO', 'gemini-2.5-pro'), inPerM: 1.25, outPerM: 10 },
       // Later (no breaking change): add Claude and reference it per-agent.
-      // 'claude-sonnet': { provider: 'anthropic', model: 'claude-sonnet-5' },
-    } as Record<string, { provider: string; model: string }>,
+      // 'claude-sonnet': { provider: 'anthropic', model: 'claude-sonnet-5', inPerM: 3, outPerM: 15 },
+    } as Record<string, { provider: string; model: string; inPerM: number; outPerM: number }>,
     /** Default alias for an agent's tool-calling / gathering loop. */
     defaultGatherModel: str('LLM_DEFAULT_GATHER', 'gather'),
     /** Default alias for an agent's structured synthesis. */
@@ -81,10 +81,29 @@ export const config = {
     braveApiKey: str('BRAVE_API_KEY'),
     tavilyApiKey: str('TAVILY_API_KEY'),
     maxTurns: int('RESEARCH_MAX_TURNS', 16),
+    /** Estimated USD per web_search/fetch_page call (Tavily: ~2 credits × $0.008).
+     *  Only applied when a Tavily key is set; Brave/DDG are treated as free. */
+    costPerCallUsd: Number(process.env.SEARCH_COST_PER_CALL_USD ?? '0.016'),
   },
   worker: {
-    jobName: str('WORKER_JOB_NAME', `agent-researcher-${ENV}-worker`),
-    jobRegion: str('WORKER_JOB_REGION', 'us-central1'),
+    /** Worker Cloud Run Service name (processes one job per request). */
+    serviceName: str('WORKER_SERVICE_NAME', `agent-researcher-${ENV}-worker`),
+    region: str('WORKER_REGION', 'us-central1'),
+    /** Full https URL of the worker service (set by deploy after the worker deploys). */
+    serviceUrl: str('WORKER_SERVICE_URL', ''),
+    /** Endpoint the queue POSTs a job to. */
+    runPath: '/run',
+  },
+  tasks: {
+    /** Cloud Tasks queue that gates job execution concurrency. */
+    queue: str('TASKS_QUEUE', `agent-researcher-${ENV}-jobs`),
+    region: str('TASKS_REGION', 'us-central1'),
+    /** SA email Cloud Tasks mints an OIDC token as (must have run.invoker on the worker). */
+    invokerServiceAccount: str('TASKS_INVOKER_SA', ''),
+    /** Per-task dispatch deadline; must be >= worker timeout (Cloud Tasks max 1800s). */
+    dispatchDeadlineSeconds: int('TASKS_DISPATCH_DEADLINE', 1800),
+    /** Max jobs running at once — enforced on the queue (maxConcurrentDispatches). */
+    maxConcurrency: int('JOB_MAX_CONCURRENCY', 4),
   },
   server: {
     port: int('PORT', 8080),

@@ -43,9 +43,13 @@ export interface ResolvedModel {
   provider: LlmProvider;
   /** The concrete model id passed to `provider.generate`. */
   model: string;
+  /** USD per 1M input tokens (for cost accounting). */
+  inPerM: number;
+  /** USD per 1M output tokens. */
+  outPerM: number;
 }
 
-/** Resolve a model alias to a concrete provider + model id. Throws if unknown. */
+/** Resolve a model alias to a concrete provider + model id + price. Throws if unknown. */
 export function resolveModel(alias: string): ResolvedModel {
   const entry = config.llm.models[alias];
   if (!entry) {
@@ -53,7 +57,13 @@ export function resolveModel(alias: string): ResolvedModel {
       `Unknown model alias "${alias}". Known aliases: ${Object.keys(config.llm.models).join(', ')}`,
     );
   }
-  return { alias, provider: getProviderFor(entry.provider), model: entry.model };
+  return {
+    alias,
+    provider: getProviderFor(entry.provider),
+    model: entry.model,
+    inPerM: entry.inPerM ?? 0,
+    outPerM: entry.outPerM ?? 0,
+  };
 }
 
 /** All registered model aliases (used by template validation). */

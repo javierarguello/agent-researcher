@@ -65,9 +65,17 @@ export interface GenerateOptions {
   maxOutputTokens?: number;
 }
 
+export interface TokenUsage {
+  inputTokens: number;
+  /** Output tokens billed (candidates + any thinking/thoughts tokens). */
+  outputTokens: number;
+}
+
 export interface GenerateResult {
   text: string;
   toolCalls: ToolCall[];
+  /** Token usage for this call, when the provider reports it. */
+  usage?: TokenUsage;
 }
 
 export interface LlmProvider {

@@ -9,7 +9,9 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
+import { addCost, emptyCost, type Cost } from '../cost.js';
 import { resolveDepthProfile, type DepthProfile } from '../depth.js';
+import { resolveMode } from '../mode.js';
 import { resolveModel, type ResolvedModel } from '../llm/index.js';
 import type { SearchResult } from '../tools/web-search.js';
 import {
@@ -48,10 +50,14 @@ export interface ReportMeta {
   schemaVersion: string;
   jobId: string;
   language: Language;
-  /** Analysis depth used ('light' | 'standard' | 'deep'). */
+  /** Public mode used ('essential' | 'comprehensive'). */
+  mode: string;
+  /** Internal prose depth the mode mapped to ('light' | 'standard' | 'deep'). */
   depth: string;
   generatedAt: string;
   contentFormat: 'markdown';
+  /** Total cost of the report (LLM exact + search estimate). */
+  cost: Cost;
   /** Agent ids that failed and were filled with a degraded placeholder. */
   degradedSections?: string[];
 }
@@ -69,6 +75,8 @@ export interface AgentTrace {
   gatherModel?: string;
   status: 'running' | 'ok' | 'failed';
   turnsUsed: number;
+  /** LLM + search cost incurred by this agent. */
+  cost: Cost;
   /** Chronological progress notes (searches, fetches) — capped. */
   notes: string[];
   /** The agent's validated JSON slice (on success). */
@@ -88,6 +96,8 @@ export interface JobTrace {
   brief: string;
   waves: string[][];
   agents: AgentTrace[];
+  /** Running total cost across all agents (LLM exact + search estimate). */
+  cost: Cost;
   status: 'running' | 'completed' | 'failed';
   /** Job-level fatal error (e.g. final schema validation), if any. */
   error?: string;
@@ -124,17 +134,34 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
 
   const langRaw = (params as Record<string, unknown>).language;
   const language: Language = isLanguage(langRaw) ? langRaw : 'en';
-  const depth = resolveDepthProfile((params as Record<string, unknown>).depth);
 
-  const system = buildSystemPrompt(template, params);
-  const brief = template.buildBrief(params as never);
+  // Resolve the public mode → internal budget/section/depth config, then derive
+  // the effective (mode-filtered) template + params used for the rest of the run.
+  const mode = resolveMode(template.modes, (params as Record<string, unknown>).mode);
+  const effParams: Record<string, unknown> = { ...params, ...(mode.config.params ?? {}) };
+  const exclude = new Set(mode.config.exclude ?? []);
+  const effTemplate: ResearchTemplate<any> = {
+    ...template,
+    sections: template.sections.filter((s) => !exclude.has(s.key)),
+    agents: template.agents
+      .map((a) => ({
+        ...a,
+        produces: (a.produces ?? []).filter((k) => !exclude.has(k)),
+        enriches: (a.enriches ?? []).filter((k) => !exclude.has(k)),
+      }))
+      .filter((a) => a.produces.length + a.enriches.length > 0),
+  };
+  const depth: DepthProfile = { ...resolveDepthProfile(mode.config.depth), budgetScale: mode.config.budgetScale };
+
+  const system = buildSystemPrompt(effTemplate, effParams);
+  const brief = effTemplate.buildBrief(effParams as never);
 
   const evidence = createEvidence();
   const report: Record<string, unknown> = {};
   const degraded: string[] = [];
   const counter = { turns: 0 };
 
-  const waves = topoSortAgents(template);
+  const waves = topoSortAgents(effTemplate);
   const trace: JobTrace = {
     jobId,
     template: template.id,
@@ -143,6 +170,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     brief,
     waves: waves.map((w) => w.map((a) => a.id)),
     agents: [],
+    cost: emptyCost(),
     status: 'running',
     startedAt: new Date().toISOString(),
   };
@@ -152,7 +180,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     onProgress?.({ phase, message, turnsUsed: counter.turns, sourcesFound: evidence.sources.length });
   const persistTrace = async () => onTrace?.(trace);
 
-  await emit('planning', `Starting workflow: ${template.agents.length} agents.`);
+  await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents.`);
 
   for (const [w, wave] of waves.entries()) {
     await emit('planning', `Wave ${w + 1}/${waves.length}: ${wave.map((a) => a.id).join(', ')}.`);
@@ -167,20 +195,23 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         ...(agent.role === 'producer' ? { gatherModel: agent.gatherModel ?? config.llm.defaultGatherModel } : {}),
         status: 'running',
         turnsUsed: 0,
+        cost: emptyCost(),
         notes: [],
         startedAt: new Date().toISOString(),
       };
       trace.agents.push(at);
       try {
-        const slice = await runAgent({ template, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at });
+        const { slice, cost } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at });
         Object.assign(report, slice); // producers set keys; enrichers overwrite in place
         at.status = 'ok';
         at.output = slice;
+        at.cost = cost;
+        trace.cost = addCost(trace.cost, cost);
       } catch (err) {
         at.status = 'failed';
         at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
         for (const key of ownedKeys(agent)) {
-          report[key] = degradedValue(template, key, (err as Error).message);
+          report[key] = degradedValue(effTemplate, key, (err as Error).message);
           degraded.push(key);
         }
         await emit(agent.id, `Failed (${(err as Error).message}); section degraded.`);
@@ -193,7 +224,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
 
   // Derived sections (e.g. sources) — deterministic, filled last.
   await emit('assembling', 'Assembling report.');
-  for (const section of template.sections) {
+  for (const section of effTemplate.sections) {
     if (section.derived && section.derive) {
       try {
         report[section.key] = section.derive({ sources: evidence.sources, report });
@@ -204,7 +235,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   // Final validation — a failure is recorded (not thrown) so the trace persists.
-  const parsed = reportSchemaOf(template).safeParse(report);
+  const parsed = reportSchemaOf(effTemplate).safeParse(report);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
     fatalError = `Assembled report failed schema validation: ${issues}`;
@@ -223,9 +254,11 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     schemaVersion: `${template.id}@${template.version}`,
     jobId,
     language,
+    mode: mode.key,
     depth: depth.key,
     generatedAt,
     contentFormat: 'markdown',
+    cost: trace.cost,
     ...(degraded.length ? { degradedSections: degraded } : {}),
   };
 
@@ -254,7 +287,7 @@ async function runAgent(ctx: {
   counter: { turns: number };
   emit: (phase: string, message: string) => Promise<void> | undefined;
   trace: AgentTrace;
-}): Promise<Record<string, unknown>> {
+}): Promise<{ slice: Record<string, unknown>; cost: Cost }> {
   const { template, agent, brief, language, depth, system, evidence, report, counter, trace } = ctx;
   const depthDirective = depth.directive;
   const owned = ownedKeys(agent);
@@ -272,7 +305,7 @@ async function runAgent(ctx: {
     const gatherModel: ResolvedModel = resolveModel(agent.gatherModel ?? config.llm.defaultGatherModel);
     const budget = Math.max(2, Math.round((agent.researchBudget ?? config.search.maxTurns) * depth.budgetScale));
     await note(`Researching (${owned.join(', ')}).`);
-    const used = await gather({
+    const gres = await gather({
       model: gatherModel,
       system,
       messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, context }) }],
@@ -280,8 +313,8 @@ async function runAgent(ctx: {
       evidence,
       onNote: (m) => note(m),
     });
-    counter.turns += used;
-    trace.turnsUsed = used;
+    counter.turns += gres.turns;
+    trace.turnsUsed = gres.turns;
 
     await note(`Writing (${owned.join(', ')}).`);
     const enrichesOnly = (agent.enriches ?? []).filter((k) => k in report);
@@ -307,13 +340,15 @@ async function runAgent(ctx: {
             lang: language,
             depthDirective,
           });
-    return synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema });
+    const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema });
+    return { slice: sres.value as Record<string, unknown>, cost: addCost(gres.cost, sres.cost) };
   }
 
   // synthesizer — compose from upstream only.
   await note(`Composing (${owned.join(', ')}).`);
   const text = buildSynthesizerPrompt({ agent, brief, sections, context, lang: language, depthDirective });
-  return synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema });
+  const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema });
+  return { slice: sres.value as Record<string, unknown>, cost: sres.cost };
 }
 
 // --- DAG ---------------------------------------------------------------------

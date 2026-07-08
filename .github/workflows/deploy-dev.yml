@@ -1,0 +1,72 @@
+# Deploy DEV from `main`: create every GCP resource if missing, then build + deploy.
+#
+# Target project: sinuous-canto-497518-h7 (same as home-assistant), region us-central1.
+#
+# AUTH — why a service-account key and not the user account:
+#   A GitHub Action cannot log in interactively as a Gmail user
+#   (miltonjaviera@gmail.com). Instead it runs as a service account IN that
+#   project, whose key the owner account creates. The runtime (worker) uses its
+#   own SA (agent-researcher-dev-worker@…) which setup-gcp.sh grants Vertex
+#   access, so nothing depends on a human identity at run time.
+#
+# ONE-TIME SETUP — run locally as the owner account miltonjaviera@gmail.com:
+#   gcloud auth login miltonjaviera@gmail.com
+#   gcloud config set project sinuous-canto-497518-h7
+#   gcloud iam service-accounts create gh-deploy-dev \
+#     --display-name="GitHub deploy (dev)"
+#   # Owner is the simplest role that can create Firestore DBs, buckets, SAs and
+#   # IAM bindings. Narrow it later to a custom role if you prefer.
+#   gcloud projects add-iam-policy-binding sinuous-canto-497518-h7 \
+#     --member="serviceAccount:gh-deploy-dev@sinuous-canto-497518-h7.iam.gserviceaccount.com" \
+#     --role="roles/owner"
+#   gcloud iam service-accounts keys create key.json \
+#     --iam-account="gh-deploy-dev@sinuous-canto-497518-h7.iam.gserviceaccount.com"
+#   gh secret set GCP_SA_KEY_DEV < key.json && rm key.json
+#   gh secret set TAVILY_API_KEY_DEV   # optional web-search key
+#
+name: Deploy dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  ENV: dev
+  GCP_PROJECT_ID: sinuous-canto-497518-h7
+  GCP_LOCATION: us-central1
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (service-account key)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_SA_KEY_DEV }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create resources if missing (idempotent)
+        run: bash infra/setup-gcp.sh
+
+      - name: Build & deploy
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY_DEV }}
+        run: bash infra/deploy.sh
+
+      - name: Show API URL
+        run: |
+          gcloud run services describe agent-researcher-dev-api \
+            --region "${GCP_LOCATION}" --format='value(status.url)'

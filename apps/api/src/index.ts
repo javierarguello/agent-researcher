@@ -159,15 +159,15 @@ app.post(
     logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
 
     try {
-      const { triggerWorker } = await import('./trigger.js');
-      await triggerWorker(jobId);
+      const { enqueueJob } = await import('./enqueue.js');
+      await enqueueJob(jobId);
     } catch (err) {
-      logEvent(logCtx, 'ERROR', 'job.trigger_failed', { message: (err as Error).message });
-      req.log.error({ err, jobId }, 'failed to trigger worker');
+      logEvent(logCtx, 'ERROR', 'job.enqueue_failed', { message: (err as Error).message });
+      req.log.error({ err, jobId }, 'failed to enqueue job');
       return reply.code(202).send({
         jobId,
         status: 'queued',
-        warning: 'Job recorded but worker trigger failed; it will be retried.',
+        warning: 'Job recorded but enqueue failed; retry the request.',
       });
     }
 
@@ -202,8 +202,12 @@ app.get(
       appId: job.appId,
       userId: job.userId,
       template: job.template,
+      title: job.title ?? null,
+      shortDescription: job.shortDescription ?? null,
       status: job.status,
       progress: job.progress ?? null,
+      cost: job.cost ?? null,
+      summary: job.summary ?? null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
       error: job.error ?? null,

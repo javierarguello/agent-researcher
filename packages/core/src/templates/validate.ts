@@ -50,6 +50,13 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
     if (!s.derived && !producedBy.has(s.key)) err(`section "${s.key}" has no producing agent`);
   }
 
+  // Mode configs may only exclude sections that exist.
+  for (const [modeKey, cfg] of Object.entries(t.modes ?? {})) {
+    for (const k of cfg?.exclude ?? []) {
+      if (!sectionKeys.has(k)) err(`mode "${modeKey}" excludes unknown section "${k}"`);
+    }
+  }
+
   // Dependencies + enriched sections must reference existing agents/producers.
   for (const a of t.agents) {
     for (const d of a.dependsOn ?? []) {

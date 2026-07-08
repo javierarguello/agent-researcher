@@ -37,22 +37,39 @@ dependency cycles.
 Nothing else changes — the engine, API, and worker are generic. Existing models
 are untouched.
 
-## Add the depth knob to a template
+## Modes — the public cost/scope knob
 
-`depth` (`light` | `standard` | `deep`) is a framework-level, optional param that
-scales how exhaustive the report is — it swaps the depth directive in every
-writing prompt and multiplies each agent's `researchBudget`. It does **not**
-change sections or the schema, so it is safe on any template. To expose it, add
-the shared field to the template's params:
+The public API exposes exactly one cost control: `mode`
+(`essential` | `comprehensive`). Everything that drives cost (research budget,
+which sections run, prose depth, internal params) is configured **per mode**,
+generically, by each template.
+
+To support it, add the shared param and declare `modes`:
 
 ```ts
-import { depthParamSchema } from '../depth.js';
-// inside paramsSchema:
-depth: depthParamSchema,   // defaults to 'standard'
+import { modeParamSchema } from '../mode.js';
+// paramsSchema:
+mode: modeParamSchema,   // defaults to 'essential' (cost-safe)
+
+// template:
+modes: {
+  comprehensive: { budgetScale: 1,   depth: 'standard', params: { targetCount: 6 } },
+  essential:     { budgetScale: 0.5, depth: 'light', params: { targetCount: 3 },
+                   exclude: ['financial_analysis', 'growth_playbook', /* … */] },
+},
 ```
 
-The engine reads it automatically (like `language`). Tune the profiles centrally
-in `src/depth.ts` (`DEPTH_PROFILES`: directive text + `budgetScale`).
+- `exclude` drops those sections **and skips agents** that produce only them →
+  the big lever for cutting cost (~half).
+- `budgetScale` multiplies every agent's `researchBudget`.
+- `depth` picks the prose length directive (`src/depth.ts`, internal now).
+- `params` are internal overrides merged before `buildBrief` (e.g. `targetCount`,
+  which is no longer a public param).
+
+Validation checks that `exclude` keys are real sections. If a template omits
+`modes`, sane defaults apply (essential = 0.5× budget/light, comprehensive =
+full). **Title + short description** are auto-generated (cheap flash call) for
+every job — no template work needed.
 
 ## Add an LLM model or provider
 

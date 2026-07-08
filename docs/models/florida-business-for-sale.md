@@ -19,11 +19,20 @@ and next steps.
 | `minRevenue`, `minCashFlow` | int? | Floors in USD. |
 | `sbaFriendly` | bool | Prefer SBA 7(a)-eligible deals. |
 | `includeRealEstate` | bool? | Prefer deals with / without real estate. |
-| `targetCount` | int 1–15 | How many listings to profile in depth (default 5). |
 | `preferredSources` | string[] | Marketplaces/brokers to prioritize. |
 | `instructions` | string? | Lower-authority client guidance. |
 | `language` | en \| es \| fr \| pt | Report language (search stays English). |
-| `depth` | light \| standard \| deep | Analysis depth (default `standard`). `light` ≈ 6-10pg, `standard` ≈ 15-20pg, `deep` ≈ 25+pg. Scales prose length targets + each agent's research budget. |
+| `mode` | essential \| comprehensive | Cost/scope (default `essential`). See below. |
+
+### Modes (the only public cost knob)
+
+| Mode | Sections | Budget | Listings | ~Cost |
+|---|---|---|---|---|
+| `essential` | 12 (core; drops competition, financials, comparables, DD checklist, growth playbook) | 0.5× | 3 | ~half |
+| `comprehensive` | 17 (full) | 1× | 6 | full (~$4-6) |
+
+`targetCount` and prose depth are now **internal**, set by the mode — the public
+API exposes only `mode`.
 
 ## Sections (report shape)
 
