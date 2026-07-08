@@ -32,15 +32,22 @@ export interface ModeConfig {
   exclude?: string[];
   /** Prose length/thoroughness directive (see depth.ts). */
   depth: 'light' | 'standard' | 'deep';
+  /** Credits this mode consumes per report (default 1). Aligns with relative cost. */
+  credits?: number;
   /** Internal param overrides merged before the brief is built (e.g. targetCount). */
   params?: Record<string, unknown>;
 }
 
 /** Fallback when a template does not declare its own modes. */
 export const DEFAULT_MODES: Record<ReportMode, ModeConfig> = {
-  essential: { label: 'Essential', budgetScale: 0.5, depth: 'light' },
-  comprehensive: { label: 'Comprehensive', budgetScale: 1, depth: 'standard' },
+  essential: { label: 'Essential', budgetScale: 0.5, depth: 'light', credits: 1 },
+  comprehensive: { label: 'Comprehensive', budgetScale: 1, depth: 'standard', credits: 2 },
 };
+
+/** Credits a mode consumes (defaults: essential 1, comprehensive 2). */
+export function creditsForMode(config: ModeConfig, key: ReportMode): number {
+  return config.credits ?? (key === 'comprehensive' ? 2 : 1);
+}
 
 /** Resolve a requested mode against a template's modes (or the defaults). */
 export function resolveMode(

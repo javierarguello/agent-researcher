@@ -51,6 +51,18 @@ export async function getJob(jobId: string): Promise<ResearchJob | undefined> {
   return snap.exists ? (snap.data() as ResearchJob) : undefined;
 }
 
+/** List an app's jobs for one user, newest first (for the report inbox).
+ *  Requires a composite index on (appId, userId, createdAt desc). */
+export async function listJobs(appId: string, userId: string, limit = 50): Promise<ResearchJob[]> {
+  const snap = await collection()
+    .where('appId', '==', appId)
+    .where('userId', '==', userId)
+    .orderBy('createdAt', 'desc')
+    .limit(limit)
+    .get();
+  return snap.docs.map((d) => d.data() as ResearchJob);
+}
+
 async function patch(jobId: string, data: Partial<ResearchJob>): Promise<void> {
   await collection().doc(jobId).set({ ...data, updatedAt: nowIso() }, { merge: true });
 }

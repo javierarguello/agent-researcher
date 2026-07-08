@@ -54,6 +54,15 @@ echo ">> Firestore named database '${DATABASE}' (Native mode)..."
 gcloud firestore databases create --database="${DATABASE}" \
   --location="${REGION}" --type=firestore-native 2>/dev/null || echo "   (exists)"
 
+echo ">> Firestore composite indexes (report inbox + credit ledger)..."
+for CG in jobs credit-ledger; do
+  gcloud firestore indexes composite create --database="${DATABASE}" --collection-group="${CG}" \
+    --field-config field-path=appId,order=ascending \
+    --field-config field-path=userId,order=ascending \
+    --field-config field-path=createdAt,order=descending --async 2>/dev/null \
+    || echo "   (${CG} index exists/creating)"
+done
+
 echo ">> Cloud Storage bucket gs://${BUCKET} ..."
 gcloud storage buckets create "gs://${BUCKET}" \
   --location="${REGION}" --uniform-bucket-level-access 2>/dev/null || echo "   (exists)"

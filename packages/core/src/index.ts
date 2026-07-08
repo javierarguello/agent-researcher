@@ -17,6 +17,7 @@ export { validateTemplate, assertTemplatesValid } from './templates/validate.js'
 export {
   createJob,
   getJob,
+  listJobs,
   markRunning,
   markCompleted,
   markFailed,
@@ -73,8 +74,23 @@ export { logEvent, jobLogger } from './obs/log.js';
 export type { LogContext, JobLogger, Severity } from './obs/log.js';
 
 // Report modes (public cost/scope knob) + internal depth
-export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES } from './mode.js';
+export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
+
+// Credits / billing (shared across all models + webs)
+export {
+  getBalance,
+  listTransactions,
+  grantCredits,
+  recordPurchase,
+  consumeCredits,
+  refundForJob,
+  getPlan,
+  listPlans,
+  upsertPlan,
+} from './credits/store.js';
+export { InsufficientCreditsError } from './credits/types.js';
+export type { CreditLedgerEntry, CreditBalance, Plan, LedgerEntryType } from './credits/types.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';
 export type { Depth, DepthProfile } from './depth.js';
 

@@ -12,6 +12,7 @@ import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
 import { addCost, emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
+import { refundForJob } from '../credits/store.js';
 import { jobLogger } from '../obs/log.js';
 import { runResearch, type JobTrace } from './research-engine.js';
 
@@ -181,6 +182,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
 
     if (output.trace.status === 'failed') {
       log.error('job.failed', { message: output.trace.error, degradedSections: output.meta.degradedSections });
+      await refundOnFailure(input, log);
       await markFailed(input.jobId, output.trace.error ?? 'Report failed validation.', files);
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'failed' };
     }
@@ -200,7 +202,18 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
   } catch (error) {
     // Unexpected/engine error — the trace (if any) was already persisted incrementally.
     log.error('job.error', { message: (error as Error).stack ?? (error as Error).message ?? String(error) });
+    await refundOnFailure(input, log);
     await markFailed(input.jobId, (error as Error).message ?? String(error));
     throw error;
+  }
+}
+
+/** Refund any credits consumed for a failed job (idempotent; no-op if none were). */
+async function refundOnFailure(input: RunJobInput, log: ReturnType<typeof jobLogger>): Promise<void> {
+  try {
+    const refunded = await refundForJob(input.appId, input.userId, input.jobId, 'job failed');
+    if (refunded) log.info('credits.refunded', { jobId: input.jobId });
+  } catch (err) {
+    log.warn('credits.refund_failed', { message: (err as Error).message });
   }
 }

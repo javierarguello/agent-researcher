@@ -48,6 +48,15 @@ export const config = {
     /** Doc id holding the general/default settings. */
     generalDoc: 'general',
   },
+  credits: {
+    ledgerCollection: str('CREDITS_LEDGER_COLLECTION', 'credit-ledger'),
+    balancesCollection: str('CREDITS_BALANCES_COLLECTION', 'credit-balances'),
+    plansCollection: str('PLANS_COLLECTION', 'plans'),
+  },
+  stripe: {
+    secretKey: str('STRIPE_SECRET_KEY'),
+    webhookSecret: str('STRIPE_WEBHOOK_SECRET'),
+  },
   llm: {
     /** Default provider (used by legacy helpers / as a fallback). */
     provider: str('LLM_PROVIDER', 'gemini-vertex'),

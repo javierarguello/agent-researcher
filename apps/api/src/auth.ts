@@ -19,7 +19,9 @@ declare module 'fastify' {
   }
 }
 
-const PUBLIC_PREFIXES = ['/health', '/docs'];
+// /credits/webhook is public to the apiKey layer — Stripe authenticates it via
+// its signature header instead.
+const PUBLIC_PREFIXES = ['/health', '/docs', '/credits/webhook'];
 
 function isPublic(url: string): boolean {
   const path = url.split('?')[0] ?? url;
