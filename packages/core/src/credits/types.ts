@@ -39,9 +39,12 @@ export interface Plan {
   appId: string;
   planId: string;
   name: string;
+  /** Cached for display; the source of truth can be the Stripe Price metadata. */
   credits: number;
   priceUsd: number;
-  /** Stripe Price id backing this plan. */
+  /** Stripe Price `lookup_key` — when set, price + credits (metadata) come from Stripe. */
+  lookupKey?: string;
+  /** Stripe Price id (alternative to lookupKey). */
   stripePriceId?: string;
   active: boolean;
 }

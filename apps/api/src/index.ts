@@ -372,7 +372,25 @@ app.get(
   async (req, reply) => {
     const appId = req.appRecord?.appId ?? (req.query as { appId?: string }).appId;
     if (!appId) return reply.code(400).send({ error: 'appId is required.' });
-    return { plans: await listPlans(appId) };
+    const plans = await listPlans(appId);
+    if (!stripeConfigured()) return { plans };
+    // Enrich with live price + credits from Stripe (source of truth) for display.
+    const enriched = await Promise.all(
+      plans.map(async (p) => {
+        if (!p.lookupKey) return p;
+        try {
+          const r = await stripe().prices.list({ lookup_keys: [p.lookupKey], active: true, expand: ['data.product'], limit: 1 });
+          const price = r.data[0];
+          if (!price) return p;
+          const productMd = typeof price.product === 'object' && 'metadata' in price.product ? price.product.metadata : {};
+          const md = { ...productMd, ...price.metadata };
+          return { ...p, priceUsd: (price.unit_amount ?? 0) / 100, credits: Number(md.credits ?? p.credits) };
+        } catch {
+          return p;
+        }
+      }),
+    );
+    return { plans: enriched };
   },
 );
 
@@ -406,24 +424,51 @@ app.post(
     const plan = await getPlan(appId, b.planId);
     if (!plan || !plan.active) return reply.code(404).send({ error: `Unknown plan: ${b.planId}` });
 
+    // Resolve the line item + how many credits this purchase grants. Priority:
+    //   1) lookup_key  → Stripe is the source of truth (price + metadata.credits)
+    //   2) stripePriceId → price from Stripe, credits from our catalog
+    //   3) inline price_data + credits from our catalog
+    let lineItem: Stripe.Checkout.SessionCreateParams.LineItem;
+    let credits = plan.credits;
+    if (plan.lookupKey) {
+      const prices = await stripe().prices.list({
+        lookup_keys: [plan.lookupKey],
+        active: true,
+        expand: ['data.product'],
+        limit: 1,
+      });
+      const price = prices.data[0];
+      if (!price) return reply.code(404).send({ error: `No active Stripe price for lookup_key "${plan.lookupKey}".` });
+      const productMd = typeof price.product === 'object' && 'metadata' in price.product ? price.product.metadata : {};
+      const md = { ...productMd, ...price.metadata };
+      credits = Number(md.credits ?? plan.credits ?? 0);
+      lineItem = { price: price.id, quantity: 1 };
+    } else if (plan.stripePriceId) {
+      lineItem = { price: plan.stripePriceId, quantity: 1 };
+    } else {
+      lineItem = {
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(plan.priceUsd * 100),
+          product_data: { name: `${plan.name} — ${plan.credits} credits` },
+        },
+      };
+    }
+    if (!credits || credits <= 0) {
+      return reply.code(400).send({ error: `Plan "${plan.planId}" has no credits configured.` });
+    }
+
     const session = await stripe().checkout.sessions.create({
       mode: 'payment',
       success_url: b.successUrl,
       cancel_url: b.cancelUrl,
       client_reference_id: b.userId,
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: 'usd',
-            unit_amount: Math.round(plan.priceUsd * 100),
-            product_data: { name: `${plan.name} — ${plan.credits} credits` },
-          },
-        },
-      ],
-      metadata: { appId, userId: b.userId, planId: plan.planId, credits: String(plan.credits) },
+      allow_promotion_codes: true, // Stripe-managed coupons/promo codes
+      line_items: [lineItem],
+      metadata: { appId, userId: b.userId, planId: plan.planId, credits: String(credits) },
     });
-    return { url: session.url, sessionId: session.id };
+    return { url: session.url, sessionId: session.id, credits };
   },
 );
 
@@ -479,13 +524,14 @@ app.put(
       security: sec,
       body: {
         type: 'object',
-        required: ['appId', 'planId', 'name', 'credits', 'priceUsd'],
+        required: ['appId', 'planId', 'name'],
         properties: {
           appId: { type: 'string' },
           planId: { type: 'string' },
           name: { type: 'string' },
-          credits: { type: 'integer', minimum: 1 },
+          credits: { type: 'integer', minimum: 0, description: 'Cached; source of truth is the Stripe price metadata when using lookupKey.' },
           priceUsd: { type: 'number', minimum: 0 },
+          lookupKey: { type: 'string', description: 'Stripe Price lookup_key (price + credits come from Stripe).' },
           stripePriceId: { type: 'string' },
           active: { type: 'boolean' },
         },
@@ -493,8 +539,8 @@ app.put(
     },
   },
   async (req) => {
-    const b = req.body as Plan;
-    return { plan: await upsertPlan({ ...b, active: b.active ?? true }) };
+    const b = req.body as Partial<Plan> & { appId: string; planId: string; name: string };
+    return { plan: await upsertPlan({ credits: 0, priceUsd: 0, ...b, active: b.active ?? true }) };
   },
 );
 
