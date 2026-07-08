@@ -33,6 +33,9 @@ gcloud config set project "${PROJECT_ID}"
 
 echo ">> Enabling APIs..."
 gcloud services enable \
+  cloudresourcemanager.googleapis.com \
+  serviceusage.googleapis.com \
+  iam.googleapis.com \
   run.googleapis.com \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
