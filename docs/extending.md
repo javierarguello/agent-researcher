@@ -85,6 +85,29 @@ every job — no template work needed.
   Agents opt in by alias; every existing agent (still on `gather`/`pro`) is
   unaffected. One workflow can mix providers.
 
+## Add an auth provider (e.g. email/password)
+
+Login is provider-based and the verified-identity shape is provider-agnostic
+(`Identity`), so a new provider doesn't touch anything past login.
+
+1. Implement a verifier in `packages/core/src/auth/tokens.ts` returning an
+   `Identity` (`{ provider, email, name?, emailVerified, sub? }`), e.g.
+   `verifyPassword(email, password)` with `provider: 'password'`. `'password'` is
+   already in the `IdentityProvider` type and the `/auth/session` request enum.
+2. Add a branch to the provider dispatch in `POST /auth/session`
+   (`apps/api/src/index.ts`) — it currently returns `501` for non-google.
+3. Nothing else changes: you still `signSession({ email, appId, role, name })`,
+   and the same app-doc / admin-whitelist / role logic applies. Every downstream
+   handler only sees the session claims. See [auth.md](auth.md).
+
+## Add a research model — modes & credits
+
+A new model gets the public cost knob for free by adding `mode: modeParamSchema` to
+its params and declaring `modes` (below). Each mode's `credits` sets what a report
+costs (default essential 1 / comprehensive 2) — the credits system, Stripe plans,
+consumption, and refunds are all shared and need no per-model work. See
+[credits.md](credits.md).
+
 ## Making a breaking change
 
 If you must rename/remove a section key or change a field's type:

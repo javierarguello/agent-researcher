@@ -1,12 +1,14 @@
 /**
  * agent-researcher API (Cloud Run Service, scale-to-0).
  *
- * Lightweight: validates requests, records jobs in Firestore, and triggers the
- * long-running worker (a Cloud Run Job). It never runs research inline, so
- * requests return in milliseconds and the service can scale to zero.
+ * Lightweight BFF: verifies the caller's session JWT, validates the request,
+ * consumes credits, records the job in Firestore, and enqueues a Cloud Task for
+ * the worker Service. It never runs research inline, so requests return in
+ * milliseconds and the service scales to zero.
  *
- * Auth: API key resolved against the Firestore `apps` registry (x-api-key or
- * Bearer). Admin-role keys can manage apps (backoffice). Docs: Swagger at /docs.
+ * Auth: user session JWT (Authorization: Bearer), issued by POST /auth/session
+ * after verifying a Google id_token. appId + userId come from the token. Admin
+ * tokens (whitelisted emails on the admin app) unlock /admin/*. Docs: /docs.
  */
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';

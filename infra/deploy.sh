@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Build + deploy ONE environment (dev | prod) of agent-researcher.
-#   API    -> Cloud Run Service (scale-to-0)
-#   Worker -> Cloud Run Job (long task timeout)
+#   API    -> Cloud Run Service (public, scale-to-0)
+#   Worker -> Cloud Run Service (private, concurrency=1, invoked by Cloud Tasks)
 # Run infra/setup-gcp.sh for the same ENV first.
 #
 #   ENV=dev  TAVILY_API_KEY=... bash infra/deploy.sh
