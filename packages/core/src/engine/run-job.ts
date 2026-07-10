@@ -13,6 +13,7 @@ import { generateHeadline } from '../jobs/headline.js';
 import { addCost, emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
 import { refundForJob } from '../credits/store.js';
+import { recordReportStats } from '../stats/store.js';
 import { jobLogger } from '../obs/log.js';
 import { runResearch, type JobTrace } from './research-engine.js';
 
@@ -179,6 +180,20 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       ...(agentErrors.length ? { agentErrors } : {}),
     };
     await setJobSummary(input.jobId, summary);
+
+    // Per-app analytics (best-effort; never breaks the job).
+    try {
+      await recordReportStats({
+        appId: input.appId,
+        userId: input.userId,
+        template: input.template,
+        status: output.trace.status === 'failed' ? 'failed' : 'completed',
+        costUsd: output.meta.cost.usd,
+        durationMs: summary.durationMs,
+      });
+    } catch (err) {
+      log.warn('stats.report_failed', { message: (err as Error).message });
+    }
 
     if (output.trace.status === 'failed') {
       log.error('job.failed', { message: output.trace.error, degradedSections: output.meta.degradedSections });

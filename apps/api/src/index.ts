@@ -37,6 +37,7 @@ import {
   listTransactions,
   grantCredits,
   recordPurchase,
+  recordPurchaseStats,
   InsufficientCreditsError,
   type RateLimitEntry,
 } from '@agent-researcher/core';
@@ -440,20 +441,26 @@ app.post(
       const s = event.data.object as Stripe.Checkout.Session;
       const m = (s.metadata ?? {}) as Record<string, string>;
       if (m.appId && m.userId && m.credits) {
-        await recordPurchase({
+        const amountUsd = (s.amount_total ?? 0) / 100;
+        const credits = Number(m.credits);
+        const res = await recordPurchase({
           appId: m.appId,
           userId: m.userId,
-          credits: Number(m.credits),
+          credits,
           plan: m.planId ?? 'unknown',
           paymentId: (typeof s.payment_intent === 'string' ? s.payment_intent : undefined) ?? s.id,
-          amountUsd: (s.amount_total ?? 0) / 100,
+          amountUsd,
           currency: s.currency ?? 'usd',
         });
+        // Only fold into analytics the first time (webhook is at-least-once).
+        if (res.applied) {
+          await recordPurchaseStats({ appId: m.appId, userId: m.userId, amountUsd, credits });
+        }
         logEvent(
           { jobId: s.id, appId: m.appId, userId: m.userId },
           'INFO',
           'credits.purchased',
-          { credits: Number(m.credits), plan: m.planId },
+          { credits, plan: m.planId, applied: res.applied },
         );
       }
     }

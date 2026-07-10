@@ -53,6 +53,15 @@ export const config = {
     balancesCollection: str('CREDITS_BALANCES_COLLECTION', 'credit-balances'),
     // Plans/catalog are NOT in Firestore — they live entirely in Stripe.
   },
+  stats: {
+    /** All-time per-app aggregates; daily buckets in a `daily` subcollection. */
+    appStatsCollection: str('APP_STATS_COLLECTION', 'app-stats'),
+    dailySubcollection: 'daily',
+    /** Per-(app,user) records (distinct-user counting + per-user detail). */
+    appUsersCollection: str('APP_USERS_COLLECTION', 'app-users'),
+    /** Daily buckets auto-expire after N days (Firestore TTL on `expireAt`). */
+    retentionDays: int('STATS_RETENTION_DAYS', 60),
+  },
   stripe: {
     secretKey: str('STRIPE_SECRET_KEY'),
     webhookSecret: str('STRIPE_WEBHOOK_SECRET'),

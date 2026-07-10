@@ -7,7 +7,7 @@
  * Refuses to run unless ENV=dev and --confirm is passed. Destructive.
  * Plans are NOT stored here — the catalog lives entirely in Stripe.
  */
-import { Firestore } from '@google-cloud/firestore';
+import { Firestore, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
 import { createApp } from '../apps/store.js';
 import { ensureDefaultSettings } from '../settings/store.js';
@@ -15,10 +15,18 @@ import { ensureDefaultSettings } from '../settings/store.js';
 const FBIZLAB_APP_ID = 'fbizlab';
 
 async function wipe(db: Firestore, name: string): Promise<number> {
-  const col = db.collection(name);
+  return drain(db, db.collection(name));
+}
+
+/** Delete every doc in a collection GROUP (e.g. the `daily` subcollections). */
+async function wipeGroup(db: Firestore, name: string): Promise<number> {
+  return drain(db, db.collectionGroup(name));
+}
+
+async function drain(db: Firestore, query: Query): Promise<number> {
   let total = 0;
   for (;;) {
-    const snap = await col.limit(400).get();
+    const snap = await query.limit(400).get();
     if (snap.empty) break;
     const batch = db.batch();
     snap.docs.forEach((d) => batch.delete(d.ref));
@@ -46,6 +54,8 @@ async function main() {
     config.credits.balancesCollection,
     config.rateLimits.collection,
     config.apps.collection,
+    config.stats.appStatsCollection,
+    config.stats.appUsersCollection,
     'plans', // legacy — plans now live in Stripe
     'users', // in case any were created
   ];
@@ -55,6 +65,9 @@ async function main() {
     const n = await wipe(db, c);
     console.error(`   ${c}: deleted ${n}`);
   }
+  // `daily` buckets are a subcollection of app-stats docs — wipe those too.
+  const dailyN = await wipeGroup(db, config.stats.dailySubcollection);
+  console.error(`   ${config.stats.dailySubcollection} (subcol): deleted ${dailyN}`);
 
   console.error('\n>> Seeding clean slate...');
   await ensureDefaultSettings();

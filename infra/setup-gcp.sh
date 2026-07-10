@@ -63,6 +63,10 @@ for CG in jobs credit-ledger; do
     || echo "   (${CG} index exists/creating)"
 done
 
+echo ">> Firestore TTL on daily stats buckets (auto-expire after 60 days)..."
+gcloud firestore fields ttls update expireAt --database="${DATABASE}" \
+  --collection-group=daily --enable-ttl 2>/dev/null || echo "   (ttl already enabled / creating)"
+
 echo ">> Cloud Storage bucket gs://${BUCKET} ..."
 gcloud storage buckets create "gs://${BUCKET}" \
   --location="${REGION}" --uniform-bucket-level-access 2>/dev/null || echo "   (exists)"

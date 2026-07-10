@@ -88,6 +88,15 @@ export {
 } from './credits/store.js';
 export { InsufficientCreditsError } from './credits/types.js';
 export type { CreditLedgerEntry, CreditBalance, LedgerEntryType } from './credits/types.js';
+
+// Per-app analytics (write-only for now; read helpers for later)
+export {
+  recordReportStats,
+  recordPurchaseStats,
+  getAppStats,
+  getDailyStats,
+} from './stats/store.js';
+export type { ReportStatsInput, PurchaseStatsInput } from './stats/store.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';
 export type { Depth, DepthProfile } from './depth.js';
 
