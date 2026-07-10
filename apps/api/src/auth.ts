@@ -1,27 +1,26 @@
 /**
- * API-key authentication (onRequest hook), backed by the Firestore `apps`
- * collection.
+ * Token-based auth (onRequest hook). The API is a BFF authority: clients send a
+ * session JWT (`Authorization: Bearer <token>`) issued by `/auth/session`. The
+ * token carries { email (sub), appId, role }; appId + userId are taken from it,
+ * never from the request body.
  *
- * A client authenticates with a key via `x-api-key: <key>` or
- * `Authorization: Bearer <key>`. The key is looked up in the apps registry; the
- * resolved (active) app is attached to `req.appRecord` for downstream handlers.
- *
- * Auth is DISABLED when APP_ENV=local (local dev). Public paths (health check,
- * Swagger docs) always skip auth.
+ * Public paths (no token): /health, /docs, /credits/webhook (Stripe-signed),
+ * and /auth/* (login). In APP_ENV=local, auth is bypassed with dev identity
+ * headers (x-app-id / x-user-id / x-role) so local testing needs no JWT.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { config, getAppByApiKey, type AppRecord } from '@agent-researcher/core';
+import { config, getApp, verifySession, type AppRecord, type SessionClaims } from '@agent-researcher/core';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    /** The app resolved from the API key (undefined in local/dev mode). */
+    /** Verified session claims (email, appId, role). */
+    auth?: SessionClaims;
+    /** The app the token belongs to (loaded for rate limits / config). */
     appRecord?: AppRecord;
   }
 }
 
-// /credits/webhook is public to the apiKey layer — Stripe authenticates it via
-// its signature header instead.
-const PUBLIC_PREFIXES = ['/health', '/docs', '/credits/webhook'];
+const PUBLIC_PREFIXES = ['/health', '/docs', '/credits/webhook', '/auth'];
 
 function isPublic(url: string): boolean {
   const path = url.split('?')[0] ?? url;
@@ -29,37 +28,50 @@ function isPublic(url: string): boolean {
   return PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
-function extractKey(req: FastifyRequest): string | undefined {
-  const header = req.headers['x-api-key'];
-  if (typeof header === 'string' && header.trim()) return header.trim();
+function bearer(req: FastifyRequest): string | undefined {
   const auth = req.headers.authorization;
   if (typeof auth === 'string' && auth.startsWith('Bearer ')) return auth.slice(7).trim();
   return undefined;
 }
 
-export async function apiKeyAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-  if (config.server.appEnv === 'local') return; // local dev — no key required
+export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (isPublic(req.url)) return;
 
-  const key = extractKey(req);
-  if (!key) {
-    await reply.code(401).send({ error: 'Unauthorized: missing API key.' });
+  // Local dev — identity comes from headers (no Google/JWT needed).
+  if (config.server.appEnv === 'local') {
+    const appId = (req.headers['x-app-id'] as string) || 'fbizlab';
+    const email = (req.headers['x-user-id'] as string) || 'local@dev';
+    const role = (req.headers['x-role'] as string) === 'admin' ? 'admin' : 'user';
+    req.auth = { email, appId, role };
+    req.appRecord = await getApp(appId);
     return;
   }
 
-  const app = await getAppByApiKey(key);
-  if (!app) {
-    await reply.code(401).send({ error: 'Unauthorized: invalid or inactive API key.' });
+  const token = bearer(req);
+  if (!token) {
+    await reply.code(401).send({ error: 'Unauthorized: missing bearer token.' });
     return;
   }
-
+  let claims: SessionClaims;
+  try {
+    claims = await verifySession(token);
+  } catch {
+    await reply.code(401).send({ error: 'Unauthorized: invalid or expired token.' });
+    return;
+  }
+  const app = await getApp(claims.appId);
+  if (!app || !app.active) {
+    await reply.code(401).send({ error: 'Unauthorized: app not found or inactive.' });
+    return;
+  }
+  req.auth = claims;
   req.appRecord = app;
 }
 
-/** Guards admin-only routes (backoffice). Must run after apiKeyAuth. */
+/** Guards admin-only routes. Must run after jwtAuth. */
 export async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (config.server.appEnv === 'local') return; // local dev — allow
-  if (req.appRecord?.role !== 'admin') {
-    await reply.code(403).send({ error: 'Forbidden: admin API key required.' });
+  if (req.auth?.role !== 'admin') {
+    await reply.code(403).send({ error: 'Forbidden: admin token required.' });
   }
 }

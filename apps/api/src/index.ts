@@ -10,11 +10,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import {
   config,
   createApp,
+  getApp,
   checkRateLimits,
   createJob,
   getJob,
@@ -38,11 +40,13 @@ import {
   grantCredits,
   recordPurchase,
   recordPurchaseStats,
+  signSession,
+  verifyGoogleIdToken,
   InsufficientCreditsError,
   type RateLimitEntry,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
-import { apiKeyAuth, requireAdmin } from './auth.js';
+import { jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan } from './stripe.js';
 
 const app = Fastify({ logger: { level: config.server.logLevel } });
@@ -69,25 +73,93 @@ await app.register(swagger, {
         'download the generated Markdown report + executive summary via signed URLs.',
       version: '0.1.0',
     },
-    components: { securitySchemes: { apiKey: { type: 'apiKey', name: 'x-api-key', in: 'header' } } },
-    security: [{ apiKey: [] }],
+    components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
+    security: [{ bearerAuth: [] }],
     tags: [
+      { name: 'auth', description: 'Login: exchange a provider identity for a session token' },
       { name: 'templates', description: 'Supported research templates ("models")' },
       { name: 'research', description: 'Create, list, and poll research jobs' },
       { name: 'credits', description: 'Credit balance + ledger (shared billing)' },
-      { name: 'admin', description: 'App management (admin key required)' },
+      { name: 'admin', description: 'Management + stats (admin token required)' },
     ],
   },
 });
 await app.register(swaggerUi, { routePrefix: '/docs' });
 
-// --- Auth (after swagger so /docs stays public) -----------------------------
-app.addHook('onRequest', apiKeyAuth);
+// CORS for the static web frontends.
+await app.register(cors, {
+  origin: config.cors.origins === '*' ? true : config.cors.origins.split(',').map((o) => o.trim()),
+});
 
-const sec = [{ apiKey: [] }];
+// --- Auth (after swagger so /docs stays public) -----------------------------
+app.addHook('onRequest', jwtAuth);
+
+const sec = [{ bearerAuth: [] }];
 
 // --- Health -----------------------------------------------------------------
 app.get('/health', { schema: { hide: true } }, async () => ({ ok: true }));
+
+// --- Auth: exchange a provider identity for a session token -----------------
+app.post(
+  '/auth/session',
+  {
+    schema: {
+      summary: 'Log in / sign up: verify a provider identity, return a session JWT',
+      description:
+        "Send { appId, provider, ...credentials }. provider='google' takes an `idToken`. " +
+        'Regular apps allow any Google account; the admin app only its whitelisted emails.',
+      tags: ['auth'],
+      body: {
+        type: 'object',
+        required: ['appId', 'provider'],
+        properties: {
+          appId: { type: 'string' },
+          provider: { type: 'string', enum: ['google', 'password'] },
+          idToken: { type: 'string', description: "Google id_token (provider='google')." },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const b = req.body as { appId?: string; provider?: string; idToken?: string };
+    if (!b.appId || !b.provider) return reply.code(400).send({ error: 'appId and provider are required.' });
+
+    const appRec = await getApp(b.appId);
+    if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
+
+    // Verify identity (dispatch on provider — add 'password' etc. here later).
+    let identity;
+    if (b.provider === 'google') {
+      if (!appRec.googleClientId) return reply.code(400).send({ error: 'App has no googleClientId configured.' });
+      if (!b.idToken) return reply.code(400).send({ error: 'idToken is required for provider "google".' });
+      try {
+        identity = await verifyGoogleIdToken(b.idToken, appRec.googleClientId);
+      } catch (err) {
+        return reply.code(401).send({ error: `Google verification failed: ${(err as Error).message}` });
+      }
+    } else {
+      return reply.code(501).send({ error: `Auth provider "${b.provider}" is not enabled yet.` });
+    }
+
+    // Authorization: admin app requires the email to be whitelisted.
+    let role: 'user' | 'admin' = 'user';
+    if (appRec.role === 'admin') {
+      const whitelist = (appRec.adminEmails ?? []).map((e) => e.toLowerCase());
+      if (!whitelist.includes(identity.email)) {
+        return reply.code(403).send({ error: 'This email is not allowed to log into this app.' });
+      }
+      role = 'admin';
+    }
+
+    const token = await signSession({ email: identity.email, appId: appRec.appId, role, name: identity.name });
+    logEvent({ jobId: '-', appId: appRec.appId, userId: identity.email }, 'INFO', 'auth.login', { provider: b.provider, role });
+    return {
+      token,
+      user: { email: identity.email, name: identity.name ?? null, role, appId: appRec.appId },
+      expiresInSeconds: config.auth.jwtTtlSeconds,
+    };
+  },
+);
 
 // --- Templates --------------------------------------------------------------
 app.get(
@@ -127,10 +199,8 @@ app.post(
       security: sec,
       body: {
         type: 'object',
-        required: ['appId', 'userId', 'template'],
+        required: ['template'],
         properties: {
-          appId: { type: 'string', description: 'Calling app id (must match the API key).', maxLength: 128 },
-          userId: { type: 'string', description: 'Calling user — a UUID or an email.', maxLength: 320 },
           template: { type: 'string', description: 'Template id, e.g. "florida-business-for-sale".' },
           params: { type: 'object', additionalProperties: true, description: 'Template-specific params.' },
         },
@@ -145,20 +215,17 @@ app.post(
       return reply.code(400).send({ error: (err as Error).message });
     }
 
-    // In production the app is resolved from the API key; the body appId must match it.
-    const appRecord = req.appRecord;
-    if (appRecord && validated.appId !== appRecord.appId) {
-      return reply.code(403).send({ error: 'Forbidden: appId does not match the API key.' });
-    }
+    // Identity comes from the session token, never the body.
+    const appId = req.auth!.appId;
+    const userId = req.auth!.email;
 
-    // Rate limits (reports per hour) — per app and per user. Defaults come from
-    // the general settings; an app may override its own cap. Skipped in local dev.
+    // Rate limits (reports per hour) — per app and per user. Skipped in local dev.
     if (config.server.appEnv !== 'local') {
       const settings = await getSettings();
-      const appLimit = appRecord?.rateLimitPerHour ?? settings.appRateLimitPerHour;
+      const appLimit = req.appRecord?.rateLimitPerHour ?? settings.appRateLimitPerHour;
       const entries: RateLimitEntry[] = [
-        { key: `app:${validated.appId}`, limit: appLimit, scope: 'app' },
-        { key: `user:${validated.userId}`, limit: settings.userRateLimitPerHour, scope: 'user' },
+        { key: `app:${appId}`, limit: appLimit, scope: 'app' },
+        { key: `user:${userId}`, limit: settings.userRateLimitPerHour, scope: 'user' },
       ];
       const rl = await checkRateLimits(entries);
       if (!rl.allowed && rl.violation) {
@@ -173,7 +240,7 @@ app.post(
     }
 
     const jobId = randomUUID();
-    const logCtx = { jobId, appId: validated.appId, userId: validated.userId, template: validated.template };
+    const logCtx = { jobId, appId, userId, template: validated.template };
 
     // Credits gate: consume the mode's credit cost up front (refunded if the job fails).
     if (config.server.appEnv !== 'local') {
@@ -181,7 +248,7 @@ app.post(
       const mode = resolveMode(tmpl?.modes, (validated.params as Record<string, unknown>).mode);
       const cost = creditsForMode(mode.config, mode.key);
       try {
-        await consumeCredits(validated.appId, validated.userId, cost, jobId);
+        await consumeCredits(appId, userId, cost, jobId);
         logEvent(logCtx, 'INFO', 'credits.consumed', { credits: cost, mode: mode.key });
       } catch (err) {
         if (err instanceof InsufficientCreditsError) {
@@ -191,13 +258,7 @@ app.post(
       }
     }
 
-    await createJob({
-      jobId,
-      appId: validated.appId,
-      userId: validated.userId,
-      template: validated.template,
-      params: validated.params,
-    });
+    await createJob({ jobId, appId, userId, template: validated.template, params: validated.params });
     logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
 
     try {
@@ -229,10 +290,9 @@ app.get(
       security: sec,
       querystring: {
         type: 'object',
-        required: ['userId'],
         properties: {
-          userId: { type: 'string' },
-          appId: { type: 'string', description: 'Only needed when auth is off (local dev).' },
+          userId: { type: 'string', description: 'Admin only: list another user (defaults to the token user).' },
+          appId: { type: 'string', description: 'Admin only: another app (defaults to the token app).' },
           limit: { type: 'integer', minimum: 1, maximum: 100 },
         },
       },
@@ -240,9 +300,10 @@ app.get(
   },
   async (req, reply) => {
     const q = req.query as { userId?: string; appId?: string; limit?: number };
-    const appId = req.appRecord?.appId ?? q.appId;
-    if (!appId || !q.userId) return reply.code(400).send({ error: 'appId and userId are required.' });
-    const jobs = await listJobs(appId, q.userId, q.limit ?? 50);
+    const isAdmin = req.auth!.role === 'admin';
+    const appId = (isAdmin && q.appId) || req.auth!.appId;
+    const userId = (isAdmin && q.userId) || req.auth!.email;
+    const jobs = await listJobs(appId, userId, q.limit ?? 50);
     return {
       jobs: jobs.map((j) => ({
         jobId: j.jobId,
@@ -275,9 +336,9 @@ app.get(
     const job = await getJob(jobId);
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
 
-    // A non-admin app may only read its own jobs.
-    if (req.appRecord && req.appRecord.role !== 'admin' && job.appId !== req.appRecord.appId) {
-      return reply.code(403).send({ error: 'Forbidden: job belongs to another app.' });
+    // Admins can read any job; a regular user only their own (same app + email).
+    if (req.auth!.role !== 'admin' && (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)) {
+      return reply.code(403).send({ error: 'Forbidden: not your report.' });
     }
 
     const base = {
@@ -319,21 +380,21 @@ app.get(
   '/credits/balance',
   {
     schema: {
-      summary: "Get a user's credit balance",
+      summary: "Get the current user's credit balance",
       tags: ['credits'],
       security: sec,
       querystring: {
         type: 'object',
-        required: ['userId'],
         properties: { userId: { type: 'string' }, appId: { type: 'string' } },
       },
     },
   },
-  async (req, reply) => {
+  async (req) => {
     const q = req.query as { userId?: string; appId?: string };
-    const appId = req.appRecord?.appId ?? q.appId;
-    if (!appId || !q.userId) return reply.code(400).send({ error: 'appId and userId are required.' });
-    return { appId, userId: q.userId, balance: await getBalance(appId, q.userId) };
+    const isAdmin = req.auth!.role === 'admin';
+    const appId = (isAdmin && q.appId) || req.auth!.appId;
+    const userId = (isAdmin && q.userId) || req.auth!.email;
+    return { appId, userId, balance: await getBalance(appId, userId) };
   },
 );
 
@@ -341,12 +402,11 @@ app.get(
   '/credits/transactions',
   {
     schema: {
-      summary: "Get a user's credit ledger (purchases + consumption)",
+      summary: "Get the current user's credit ledger (purchases + consumption)",
       tags: ['credits'],
       security: sec,
       querystring: {
         type: 'object',
-        required: ['userId'],
         properties: {
           userId: { type: 'string' },
           appId: { type: 'string' },
@@ -355,20 +415,20 @@ app.get(
       },
     },
   },
-  async (req, reply) => {
+  async (req) => {
     const q = req.query as { userId?: string; appId?: string; limit?: number };
-    const appId = req.appRecord?.appId ?? q.appId;
-    if (!appId || !q.userId) return reply.code(400).send({ error: 'appId and userId are required.' });
-    return { transactions: await listTransactions(appId, q.userId, q.limit ?? 50) };
+    const isAdmin = req.auth!.role === 'admin';
+    const appId = (isAdmin && q.appId) || req.auth!.appId;
+    const userId = (isAdmin && q.userId) || req.auth!.email;
+    return { transactions: await listTransactions(appId, userId, q.limit ?? 50) };
   },
 );
 
 app.get(
   '/credits/plans',
   { schema: { summary: 'List the purchasable credit packs for this app', tags: ['credits'], security: sec } },
-  async (req, reply) => {
-    const appId = req.appRecord?.appId ?? (req.query as { appId?: string }).appId;
-    if (!appId) return reply.code(400).send({ error: 'appId is required.' });
+  async (req) => {
+    const appId = req.auth!.appId;
     if (!stripeConfigured()) return { plans: [] };
     return { plans: await listStripePlans(appId) };
   },
@@ -384,22 +444,20 @@ app.post(
       security: sec,
       body: {
         type: 'object',
-        required: ['planId', 'userId', 'successUrl', 'cancelUrl'],
+        required: ['planId', 'successUrl', 'cancelUrl'],
         properties: {
           planId: { type: 'string' },
-          userId: { type: 'string' },
           successUrl: { type: 'string' },
           cancelUrl: { type: 'string' },
-          appId: { type: 'string' },
         },
       },
     },
   },
   async (req, reply) => {
     if (!stripeConfigured()) return reply.code(503).send({ error: 'Billing is not configured.' });
-    const b = req.body as { planId: string; userId: string; successUrl: string; cancelUrl: string; appId?: string };
-    const appId = req.appRecord?.appId ?? b.appId;
-    if (!appId) return reply.code(400).send({ error: 'appId is required.' });
+    const b = req.body as { planId: string; successUrl: string; cancelUrl: string };
+    const appId = req.auth!.appId;
+    const userId = req.auth!.email;
 
     // Catalog is entirely in Stripe: resolve by lookup_key `<appId>_<planId>`.
     const plan = await resolveStripePlan(appId, b.planId);
@@ -412,10 +470,10 @@ app.post(
       mode: 'payment',
       success_url: b.successUrl,
       cancel_url: b.cancelUrl,
-      client_reference_id: b.userId,
+      client_reference_id: userId,
       allow_promotion_codes: true, // Stripe-managed coupons/promo codes
       line_items: [{ price: plan.priceId, quantity: 1 }],
-      metadata: { appId, userId: b.userId, planId: plan.planId, credits: String(plan.credits) },
+      metadata: { appId, userId, planId: plan.planId, credits: String(plan.credits) },
     });
     return { url: session.url, sessionId: session.id, credits: plan.credits };
   },

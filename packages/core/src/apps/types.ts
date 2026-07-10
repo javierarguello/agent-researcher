@@ -15,6 +15,10 @@ export interface AppRecord {
   role: AppRole;
   /** Optional cap: max reports (jobs) this app may create per calendar hour. */
   rateLimitPerHour?: number;
+  /** Google OAuth client id of this app's frontend (validates the id_token `aud`). */
+  googleClientId?: string;
+  /** For the admin/backoffice app: emails allowed to log in (get admin tokens). */
+  adminEmails?: string[];
   createdAt: string;
   updatedAt: string;
 }

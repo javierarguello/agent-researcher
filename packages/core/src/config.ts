@@ -66,6 +66,17 @@ export const config = {
     secretKey: str('STRIPE_SECRET_KEY'),
     webhookSecret: str('STRIPE_WEBHOOK_SECRET'),
   },
+  auth: {
+    /** HS256 secret the API signs/verifies its own session JWTs with. */
+    jwtSecret: str('AUTH_JWT_SECRET'),
+    jwtIssuer: str('AUTH_JWT_ISSUER', 'agent-researcher'),
+    /** Session token lifetime (default 7 days). */
+    jwtTtlSeconds: int('AUTH_JWT_TTL_SECONDS', 604800),
+  },
+  cors: {
+    /** Comma-separated allowed origins for the static web frontends; "*" for dev. */
+    origins: str('CORS_ORIGINS', '*'),
+  },
   llm: {
     /** Default provider (used by legacy helpers / as a fallback). */
     provider: str('LLM_PROVIDER', 'gemini-vertex'),

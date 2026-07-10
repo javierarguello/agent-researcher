@@ -110,43 +110,25 @@ export type { RunJobInput, RunJobResult } from './engine/run-job.js';
 export { getProvider, resolveModel, getProviderFor, modelAliases } from './llm/index.js';
 export type { LlmProvider, ResolvedModel } from './llm/index.js';
 
+// Auth (session JWTs + Google id_token verification)
+export { signSession, verifySession, verifyGoogleIdToken } from './auth/tokens.js';
+export type { SessionClaims, SessionRole, Identity, IdentityProvider } from './auth/tokens.js';
+
 import { z } from 'zod';
 import { getTemplate } from './templates/registry.js';
 
 export interface ValidatedRequest {
-  appId: string;
-  userId: string;
   template: string;
   params: Record<string, unknown>;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Caller identity: which app and which user a job belongs to (rate-limit keys). */
-const identitySchema = z.object({
-  appId: z.string().trim().min(1, 'appId is required').max(128),
-  userId: z
-    .string()
-    .trim()
-    .min(1, 'userId is required')
-    .max(320)
-    .refine((v) => UUID_RE.test(v) || EMAIL_RE.test(v), 'userId must be a UUID or an email'),
-});
-
 /**
- * Validates a full incoming research request:
- *   { appId, userId, template, params }
- * Throws a descriptive Error if identity, template, or params are invalid.
+ * Validates a research request body `{ template, params }`. The caller identity
+ * (appId + userId) is NOT in the body — it comes from the session token.
+ * Throws a descriptive Error if the template or params are invalid.
  */
 export function validateRequest(body: unknown): ValidatedRequest {
   const raw = (body ?? {}) as Record<string, unknown>;
-
-  const identity = identitySchema.safeParse({ appId: raw.appId, userId: raw.userId });
-  if (!identity.success) {
-    const issues = identity.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
-    throw new Error(`Invalid request: ${issues}`);
-  }
 
   const templateId = typeof raw.template === 'string' ? raw.template : '';
   const template = getTemplate(templateId);
@@ -158,10 +140,5 @@ export function validateRequest(body: unknown): ValidatedRequest {
     throw new Error(`Invalid params: ${issues}`);
   }
 
-  return {
-    appId: identity.data.appId,
-    userId: identity.data.userId,
-    template: templateId,
-    params: parsed.data as Record<string, unknown>,
-  };
+  return { template: templateId, params: parsed.data as Record<string, unknown> };
 }

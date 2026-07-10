@@ -66,6 +66,8 @@ jobs:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY_DEV }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY_DEV }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET_DEV }}
+          AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET_DEV }}
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS_DEV || '*' }}
         run: bash infra/deploy.sh
 
       - name: Show API URL

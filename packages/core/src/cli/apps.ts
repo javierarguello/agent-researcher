@@ -41,11 +41,14 @@ async function main() {
       if (!name) throw new Error('create requires --name');
       const role = (arg('role') as 'admin' | 'app') ?? 'app';
       const rate = arg('rate');
+      const emails = arg('admin-emails');
       const created = await createApp({
         name,
         role,
         appId: arg('appId'),
         rateLimitPerHour: rate ? Number.parseInt(rate, 10) : undefined,
+        googleClientId: arg('google-client-id'),
+        adminEmails: emails ? emails.split(',').map((e) => e.trim().toLowerCase()) : undefined,
       });
       console.log(JSON.stringify(created, null, 2));
       console.log('\n>> SAVE THIS apiKey — it is not shown again.');
@@ -65,13 +68,23 @@ async function main() {
     case 'update': {
       const appId = arg('appId');
       if (!appId) throw new Error('update requires --appId');
-      const patch: { active?: boolean; rateLimitPerHour?: number | null; name?: string } = {};
+      const patch: {
+        active?: boolean;
+        rateLimitPerHour?: number | null;
+        name?: string;
+        googleClientId?: string;
+        adminEmails?: string[];
+      } = {};
       const active = arg('active');
       if (active != null) patch.active = active === 'true';
       const rate = arg('rate');
       if (rate != null) patch.rateLimitPerHour = rate === 'none' ? null : Number.parseInt(rate, 10);
       const name = arg('name');
       if (name != null) patch.name = name;
+      const gcid = arg('google-client-id');
+      if (gcid != null) patch.googleClientId = gcid;
+      const emails = arg('admin-emails');
+      if (emails != null) patch.adminEmails = emails.split(',').map((e) => e.trim().toLowerCase());
       const updated = await updateApp(appId, patch);
       if (!updated) throw new Error(`Unknown app: ${appId}`);
       console.log(JSON.stringify({ ...updated, apiKey: `${updated.apiKey.slice(0, 8)}…` }, null, 2));

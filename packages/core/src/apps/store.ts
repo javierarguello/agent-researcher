@@ -33,6 +33,8 @@ export interface CreateAppInput {
   apiKey?: string;
   active?: boolean;
   rateLimitPerHour?: number;
+  googleClientId?: string;
+  adminEmails?: string[];
 }
 
 export async function createApp(input: CreateAppInput): Promise<AppRecord> {
@@ -44,6 +46,8 @@ export async function createApp(input: CreateAppInput): Promise<AppRecord> {
     active: input.active ?? true,
     role: input.role ?? 'app',
     ...(input.rateLimitPerHour != null ? { rateLimitPerHour: input.rateLimitPerHour } : {}),
+    ...(input.googleClientId ? { googleClientId: input.googleClientId } : {}),
+    ...(input.adminEmails ? { adminEmails: input.adminEmails } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -74,6 +78,8 @@ export interface UpdateAppInput {
   name?: string;
   active?: boolean;
   rateLimitPerHour?: number | null; // null clears the limit
+  googleClientId?: string;
+  adminEmails?: string[];
 }
 
 export async function updateApp(appId: string, patch: UpdateAppInput): Promise<AppRecord | undefined> {
@@ -85,6 +91,8 @@ export async function updateApp(appId: string, patch: UpdateAppInput): Promise<A
   if (patch.active != null) data.active = patch.active;
   if (patch.rateLimitPerHour === null) data.rateLimitPerHour = FieldValue.delete();
   else if (patch.rateLimitPerHour != null) data.rateLimitPerHour = patch.rateLimitPerHour;
+  if (patch.googleClientId != null) data.googleClientId = patch.googleClientId;
+  if (patch.adminEmails != null) data.adminEmails = patch.adminEmails;
   await ref.set(data, { merge: true });
   return (await ref.get()).data() as AppRecord;
 }
