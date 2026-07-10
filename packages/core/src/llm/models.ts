@@ -15,6 +15,16 @@ import type { LlmProvider } from './provider.js';
 
 const providers = new Map<string, LlmProvider>();
 
+/** Test seam: inject a provider instance for a name (e.g. a mock). */
+const overrides = new Map<string, LlmProvider>();
+export function __setProviderForTests(name: string, provider: LlmProvider): void {
+  overrides.set(name, provider);
+}
+export function __clearProvidersForTests(): void {
+  overrides.clear();
+  providers.clear();
+}
+
 function instantiate(name: string): LlmProvider {
   switch (name) {
     case 'gemini-vertex':
@@ -26,8 +36,10 @@ function instantiate(name: string): LlmProvider {
   }
 }
 
-/** The provider instance for a provider name (memoized). */
+/** The provider instance for a provider name (memoized; test overrides win). */
 export function getProviderFor(name: string): LlmProvider {
+  const override = overrides.get(name);
+  if (override) return override;
   let p = providers.get(name);
   if (!p) {
     p = instantiate(name);

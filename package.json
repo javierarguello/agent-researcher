@@ -19,7 +19,8 @@
     "research:local": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/run-local.ts",
     "templates:check": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/validate-templates.ts",
     "reset:dev": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/reset-dev.ts",
-    "apps": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/apps.ts"
+    "apps": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/apps.ts",
+    "test": "npm run test -w @agent-researcher/core"
   },
   "license": "MIT"
 }
