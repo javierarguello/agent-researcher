@@ -30,8 +30,10 @@ export const Timestamp = {
 // --- shared store -----------------------------------------------------------
 
 const DB = new Map<string, Record<string, unknown>>(); // docPath -> data
+let txMutex: Promise<void> = Promise.resolve();
 export function __resetDb(): void {
   DB.clear();
+  txMutex = Promise.resolve();
 }
 export function __dump(): Map<string, Record<string, unknown>> {
   return new Map(DB);
@@ -219,7 +221,15 @@ export class Firestore {
     return new WriteBatch();
   }
   async runTransaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
-    return fn(new Transaction());
+    // Serialize transactions so concurrent runs are isolated (no lost updates) —
+    // this mirrors the isolation real Firestore guarantees, so concurrency tests
+    // exercise our read-check-write logic faithfully.
+    const result = txMutex.then(() => fn(new Transaction()));
+    txMutex = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 }
 

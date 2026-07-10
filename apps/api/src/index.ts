@@ -660,10 +660,12 @@ app.patch(
 );
 
 // --- Start ------------------------------------------------------------------
+export { app };
+
 const start = async () => {
   try {
     if (config.server.appEnv === 'local') {
-      app.log.warn('APP_ENV=local — API-key auth is DISABLED.');
+      app.log.warn('APP_ENV=local — auth is DISABLED (identity from x-app-id/x-user-id/x-role).');
     }
     await app.listen({ host: '0.0.0.0', port: config.server.port });
   } catch (err) {
@@ -672,4 +674,5 @@ const start = async () => {
   }
 };
 
-start();
+// Don't bind a port under test — tests drive routes via app.inject().
+if (!process.env.VITEST) start();

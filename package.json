@@ -20,7 +20,7 @@
     "templates:check": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/validate-templates.ts",
     "reset:dev": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/reset-dev.ts",
     "apps": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/apps.ts",
-    "test": "npm run test -w @agent-researcher/core"
+    "test": "npm run test -w @agent-researcher/core && npm run test -w @agent-researcher/api"
   },
   "license": "MIT"
 }
