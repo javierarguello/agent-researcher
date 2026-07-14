@@ -1,26 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
-import { SimpleGrid, Card, Text, Title, Group, Table, Loader, Alert, Stack } from '@mantine/core';
-import { api } from '../api/client';
-import type { AdminStats } from '../api/types';
+import { Alert, Card, Group, Loader, SimpleGrid, Stack, Table, Text } from '@mantine/core';
+import { PageHeader } from '../components/PageHeader';
+import { Mono } from '../components/Mono';
+import { useAdminStats } from '../api/hooks';
+import { int, secs, usd } from '../lib/format';
 
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
-    <Card withBorder padding="md" radius="md">
-      <Text size="xs" c="dimmed" tt="uppercase" fw={600}>{label}</Text>
-      <Text size="xl" fw={700}>{value}</Text>
+    <Card padding="md">
+      <Text size="xs" c="dimmed" tt="uppercase" fw={700} style={{ letterSpacing: '0.06em' }}>{label}</Text>
+      <Mono fw={700} fz={28} c={accent}>{value}</Mono>
       {hint && <Text size="xs" c="dimmed">{hint}</Text>}
     </Card>
   );
 }
 
-const usd = (n: number) => `$${n.toFixed(2)}`;
-const secs = (ms: number | null) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`);
-
 export function Dashboard() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['admin-stats'],
-    queryFn: () => api<AdminStats>('/admin/stats?days=30'),
-  });
+  const { data, isLoading, error } = useAdminStats(30);
 
   if (isLoading) return <Loader />;
   if (error) return <Alert color="red">{(error as Error).message}</Alert>;
@@ -29,45 +24,51 @@ export function Dashboard() {
 
   return (
     <Stack>
-      <Title order={2}>Dashboard</Title>
+      <PageHeader eyebrow="Overview" title="Dashboard" subtitle="Last 30 days across all apps." />
+
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }}>
-        <Kpi label="Reports" value={String(t.reports)} hint={`${t.reportsCompleted} completed`} />
-        <Kpi label="Errors" value={String(t.reportsFailed)} hint="failed reports" />
-        <Kpi label="Degraded" value={String(t.degradedReports)} hint="partial reports" />
-        <Kpi label="Revenue" value={usd(t.revenueUsd)} hint={`${t.purchases} purchases`} />
+        <Kpi label="Reports" value={int(t.reports)} hint={`${int(t.reportsCompleted)} completed`} />
+        <Kpi label="Errors" value={int(t.reportsFailed)} hint="failed reports" accent={t.reportsFailed > 0 ? 'red' : undefined} />
+        <Kpi label="Degraded" value={int(t.degradedReports)} hint="partial delivery" accent={t.degradedReports > 0 ? 'yellow' : undefined} />
+        <Kpi label="Revenue" value={usd(t.revenueUsd)} hint={`${int(t.purchases)} purchases`} accent="teal" />
         <Kpi label="Cost" value={usd(t.costUsd)} hint="LLM + search" />
         <Kpi label="Avg gen" value={secs(t.avgGenMs)} hint={`${secs(t.genTimeMsMin)}–${secs(t.genTimeMsMax)}`} />
       </SimpleGrid>
 
-      <Card withBorder padding="md" radius="md">
+      <Card padding="md">
         <Group justify="space-between" mb="sm">
-          <Title order={4}>By app</Title>
+          <Text fw={650}>By app</Text>
           <Text size="sm" c="dimmed">{data.apps.length} apps</Text>
         </Group>
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>App</Table.Th>
-              <Table.Th>Reports</Table.Th>
-              <Table.Th>Errors</Table.Th>
-              <Table.Th>Users</Table.Th>
-              <Table.Th>Revenue</Table.Th>
-              <Table.Th>Avg gen</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {data.apps.map((a) => (
-              <Table.Tr key={a.appId}>
-                <Table.Td>{a.appId}</Table.Td>
-                <Table.Td>{a.reports}</Table.Td>
-                <Table.Td>{a.reportsFailed}</Table.Td>
-                <Table.Td>{a.users}</Table.Td>
-                <Table.Td>{usd(a.revenueUsd)}</Table.Td>
-                <Table.Td>{secs(a.avgGenMs)}</Table.Td>
+        <Table.ScrollContainer minWidth={640}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>App</Table.Th>
+                <Table.Th ta="right">Reports</Table.Th>
+                <Table.Th ta="right">Errors</Table.Th>
+                <Table.Th ta="right">Users</Table.Th>
+                <Table.Th ta="right">Revenue</Table.Th>
+                <Table.Th ta="right">Avg gen</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {data.apps.map((a) => (
+                <Table.Tr key={a.appId}>
+                  <Table.Td><Mono size="sm">{a.appId}</Mono></Table.Td>
+                  <Table.Td ta="right"><Mono size="sm">{int(a.reports)}</Mono></Table.Td>
+                  <Table.Td ta="right"><Mono size="sm" c={a.reportsFailed > 0 ? 'red' : undefined}>{int(a.reportsFailed)}</Mono></Table.Td>
+                  <Table.Td ta="right"><Mono size="sm">{int(a.users)}</Mono></Table.Td>
+                  <Table.Td ta="right"><Mono size="sm">{usd(a.revenueUsd)}</Mono></Table.Td>
+                  <Table.Td ta="right"><Mono size="sm">{secs(a.avgGenMs)}</Mono></Table.Td>
+                </Table.Tr>
+              ))}
+              {data.apps.length === 0 && (
+                <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" size="sm">No activity yet.</Text></Table.Td></Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       </Card>
     </Stack>
   );

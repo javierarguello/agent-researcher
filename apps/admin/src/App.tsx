@@ -3,6 +3,8 @@ import { RequireAuth } from './components/RequireAuth';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { Apps } from './pages/Apps';
+import { Users } from './pages/Users';
 import { Placeholder } from './pages/Placeholder';
 
 export function App() {
@@ -14,8 +16,8 @@ export function App() {
           <Route index element={<Dashboard />} />
           <Route path="jobs" element={<Placeholder title="Jobs" />} />
           <Route path="jobs/new" element={<Placeholder title="New job" />} />
-          <Route path="users" element={<Placeholder title="Users" />} />
-          <Route path="apps" element={<Placeholder title="Apps" />} />
+          <Route path="users" element={<Users />} />
+          <Route path="apps" element={<Apps />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
