@@ -202,8 +202,18 @@ list|update|get|delete|settings>`) or the `/admin/*` endpoints.
 ## Admin SPA (`apps/admin`) — Firebase Hosting
 
 The admin backoffice is a **static SPA** (Vite + React + Mantine) that talks to
-the API directly — no server. It's hosted on its own Firebase Hosting site
-(`agent-researcher-admin`) in the same project (`sinuous-canto-497518-h7`).
+the API directly — no server. It's hosted on its own Firebase Hosting sites in
+the same project (`sinuous-canto-497518-h7`), one per env (mirroring the
+`agent-researcher-{dev,prod}-*` convention):
+
+| Env | Hosting site | URL | Target | Builds against |
+|---|---|---|---|---|
+| dev | `agent-researcher-dev-admin` | https://agent-researcher-dev-admin.web.app | `admin-dev` | the dev API |
+| prod | `agent-researcher-prod-admin` | https://agent-researcher-prod-admin.web.app | `admin-prod` | the prod API |
+
+Both targets are mapped in `apps/admin/.firebaserc`. CI (`deploy-admin.yml`, push
+to `main`) deploys **dev**; prod is deployed manually (`ADMIN_HOSTING_TARGET=admin-prod
+bash infra/deploy-admin.sh`) once the prod API + site exist.
 
 **Build-time config** (Vite `VITE_*`, baked into the bundle): `VITE_API_BASE_URL`
 (the API's public URL) and `VITE_ADMIN_GOOGLE_CLIENT_ID` (the admin app's Google
@@ -213,8 +223,8 @@ OAuth client id). See `apps/admin/.env.example`.
 
 ```bash
 firebase login
-firebase hosting:sites:create agent-researcher-admin --project sinuous-canto-497518-h7
-# the `admin` target → that site is mapped in apps/admin/.firebaserc
+firebase hosting:sites:create agent-researcher-dev-admin --project sinuous-canto-497518-h7
+# targets admin-dev / admin-prod → sites are mapped in apps/admin/.firebaserc
 
 # repo variables for CI (both are public — not secrets):
 gh variable set ADMIN_API_BASE_URL     --body "$(gcloud run services describe agent-researcher-dev-api --region us-central1 --format='value(status.url)')"
@@ -225,7 +235,7 @@ Then, so login actually works:
 
 1. **Google OAuth client** — create an OAuth 2.0 Web client in the GCP console;
    set its authorized JavaScript origins to the Hosting URL
-   (`https://agent-researcher-admin.web.app`) **and** `http://localhost:5173` (dev).
+   (`https://agent-researcher-dev-admin.web.app`) **and** `http://localhost:5173` (dev).
 2. **Point the admin app at it** — `npm run apps -- update --appId admin
    --google-client-id <id>.apps.googleusercontent.com` and whitelist your email
    with `--admin-emails you@example.com`.

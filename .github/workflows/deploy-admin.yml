@@ -6,12 +6,12 @@
 #
 # ONE-TIME SETUP:
 #   # create the Hosting site (owner account, miltonjaviera@gmail.com):
-#   firebase hosting:sites:create agent-researcher-admin --project sinuous-canto-497518-h7
+#   firebase hosting:sites:create agent-researcher-dev-admin --project sinuous-canto-497518-h7
 #   # build-time config as repo VARIABLES (both are public, not secrets):
 #   gh variable set ADMIN_API_BASE_URL --body "https://agent-researcher-dev-api-xxxxx.run.app"
 #   gh variable set ADMIN_GOOGLE_CLIENT_ID --body "1234-abc.apps.googleusercontent.com"
 #
-name: Deploy admin SPA
+name: Deploy admin SPA (dev)
 
 on:
   push:
@@ -22,7 +22,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: deploy-admin
+  group: deploy-admin-dev
   cancel-in-progress: true
 
 permissions:
@@ -56,6 +56,6 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
           credentials_json: ${{ secrets.GCP_SA_KEY_DEV }}
 
-      - name: Deploy to Firebase Hosting
+      - name: Deploy to Firebase Hosting (dev site)
         working-directory: apps/admin
-        run: npx --yes firebase-tools deploy --only hosting:admin --project "${GCP_PROJECT_ID}" --non-interactive
+        run: npx --yes firebase-tools deploy --only hosting:admin-dev --project "${GCP_PROJECT_ID}" --non-interactive

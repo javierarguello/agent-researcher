@@ -7,6 +7,7 @@ import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { useApps, useCreateApp, useDeleteApp, useTemplates, useUpdateApp } from '../api/hooks';
+import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import type { AppPublic } from '../api/types';
 
@@ -25,6 +26,7 @@ const empty: FormState = { name: '', appId: '', role: 'app', active: true, rateL
 
 export function Apps() {
   const apps = useApps();
+  const { user } = useAuth();
   const templates = useTemplates();
   const createApp = useCreateApp();
   const updateApp = useUpdateApp();
@@ -139,7 +141,10 @@ export function Apps() {
               {apps.data.apps.map((a) => (
                 <Table.Tr key={a.appId}>
                   <Table.Td>
-                    <Text fw={600}>{a.name}</Text>
+                    <Group gap="xs">
+                      <Text fw={600}>{a.name}</Text>
+                      {a.appId === user?.appId && <Badge size="xs" variant="light" color="violet" tt="none">current</Badge>}
+                    </Group>
                     <Mono size="xs" c="dimmed">{a.appId}</Mono>
                   </Table.Td>
                   <Table.Td>
@@ -160,9 +165,13 @@ export function Apps() {
                   <Table.Td>
                     <Group gap="xs" justify="flex-end" wrap="nowrap">
                       <Button size="compact-sm" variant="subtle" onClick={() => openEdit(a)}>Edit</Button>
-                      <Tooltip label="Delete app" withArrow>
+                      {a.appId === user?.appId ? (
+                        <Tooltip label="Can't delete the app you're signed in with" withArrow>
+                          <Button size="compact-sm" variant="subtle" color="gray" disabled data-disabled onClick={(e) => e.preventDefault()}>Delete</Button>
+                        </Tooltip>
+                      ) : (
                         <Button size="compact-sm" variant="subtle" color="red" onClick={() => setToDelete(a)}>Delete</Button>
-                      </Tooltip>
+                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>
@@ -177,7 +186,15 @@ export function Apps() {
         <Stack>
           <Group justify="space-between" align="flex-end">
             <TextInput label="Name" style={{ flex: 1 }} value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
-            {editing && <Switch label="Active" checked={form.active} onChange={(e) => setForm({ ...form, active: e.currentTarget.checked })} mb={6} />}
+            {editing && (
+              <Switch
+                label="Active"
+                checked={form.active}
+                disabled={editing.appId === user?.appId}
+                onChange={(e) => setForm({ ...form, active: e.currentTarget.checked })}
+                mb={6}
+              />
+            )}
           </Group>
           {!editing && (
             <Group grow>

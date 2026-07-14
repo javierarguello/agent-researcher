@@ -5,7 +5,8 @@
   "targets": {
     "sinuous-canto-497518-h7": {
       "hosting": {
-        "admin": ["agent-researcher-admin"]
+        "admin-dev": ["agent-researcher-dev-admin"],
+        "admin-prod": ["agent-researcher-prod-admin"]
       }
     }
   }
