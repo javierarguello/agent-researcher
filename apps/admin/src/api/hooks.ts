@@ -5,9 +5,12 @@ import type {
   AdminStats,
   AdminUser,
   AppPublic,
+  JobDetail,
   LedgerEntry,
   TemplateManifest,
 } from './types';
+
+const LIVE_STATUSES = new Set(['queued', 'running', 'incomplete']);
 
 // --- Queries ---------------------------------------------------------------
 
@@ -20,6 +23,24 @@ export function useTemplates() {
     queryKey: ['templates'],
     queryFn: () => api<{ templates: TemplateManifest[] }>('/templates'),
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useTemplate(id: string | null) {
+  return useQuery({
+    queryKey: ['template', id],
+    enabled: !!id,
+    queryFn: () => api<TemplateManifest>(`/templates/${encodeURIComponent(id!)}`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useJob(jobId: string) {
+  return useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => api<JobDetail>(`/research/${encodeURIComponent(jobId)}`),
+    // Poll while the job is still running; stop once terminal.
+    refetchInterval: (query) => (LIVE_STATUSES.has((query.state.data as JobDetail | undefined)?.status ?? '') ? 3000 : false),
   });
 }
 
@@ -82,6 +103,15 @@ export function useDeleteApp() {
   return useMutation({
     mutationFn: (appId: string) => api(`/admin/apps/${encodeURIComponent(appId)}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['apps'] }),
+  });
+}
+
+export function useCreateJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { template: string; params: Record<string, unknown> }) =>
+      api<{ jobId: string; status: string }>('/research', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
   });
 }
 

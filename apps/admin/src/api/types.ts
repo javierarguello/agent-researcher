@@ -53,6 +53,16 @@ export interface AdminUser {
 }
 
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'incomplete';
+
+export interface Cost {
+  usd: number;
+  llmUsd: number;
+  searchUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  searchCalls: number;
+}
+
 export interface AdminJob {
   jobId: string;
   appId: string;
@@ -60,11 +70,63 @@ export interface AdminJob {
   template: string;
   title: string | null;
   status: JobStatus;
-  cost: { totalUsd?: number } | null;
+  cost: Cost | null;
   attempts: number | null;
   createdAt: string;
   updatedAt: string;
   finishedAt: string | null;
+}
+
+export interface JobProgress {
+  phase: string;
+  message: string;
+  turnsUsed: number;
+  sourcesFound: number;
+  updatedAt: string;
+}
+export interface JobAgentSummary {
+  id: string;
+  wave: number;
+  status: string;
+  durationMs: number | null;
+  attempts: number;
+  costUsd: number;
+}
+export interface JobSummary {
+  mode?: string;
+  depth?: string;
+  turnsUsed?: number;
+  sourcesFound?: number;
+  durationMs?: number;
+  attempts?: number;
+  agents?: JobAgentSummary[];
+  warnings?: string[];
+  degradedSections?: string[];
+  agentErrors?: Array<{ agentId: string; error: string }>;
+}
+export interface JobFileSigned {
+  name: string;
+  contentType: string;
+  size: number | null;
+  url: string;
+  expiresAt: string;
+}
+export interface JobDetail {
+  jobId: string;
+  appId: string;
+  userId: string;
+  template: string;
+  title: string | null;
+  shortDescription: string | null;
+  status: JobStatus;
+  progress: JobProgress | null;
+  cost: Cost | null;
+  summary: JobSummary | null;
+  createdAt: string;
+  updatedAt: string;
+  error: string | null;
+  finishedAt?: string | null;
+  files?: JobFileSigned[];
 }
 
 export interface AppPublic {
