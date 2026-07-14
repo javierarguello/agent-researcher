@@ -44,6 +44,27 @@ export async function uploadObject(input: UploadInput): Promise<JobFile> {
   return { name: input.name, path, contentType: input.contentType, size: body.byteLength };
 }
 
+/** Downloads one object's text, or undefined if it does not exist (e.g. no checkpoint yet). */
+export async function downloadObject(jobId: string, name: string): Promise<string | undefined> {
+  const file = client().bucket(config.storage.bucket).file(`${jobPrefix(jobId)}/${name}`);
+  try {
+    const [buf] = await file.download();
+    return buf.toString('utf8');
+  } catch (err) {
+    if ((err as { code?: number }).code === 404) return undefined;
+    throw err;
+  }
+}
+
+/** Deletes one object (best-effort; ignores 404). */
+export async function deleteObject(jobId: string, name: string): Promise<void> {
+  try {
+    await client().bucket(config.storage.bucket).file(`${jobPrefix(jobId)}/${name}`).delete();
+  } catch (err) {
+    if ((err as { code?: number }).code !== 404) throw err;
+  }
+}
+
 /** Lists every object under a job folder as JobFile descriptors. */
 export async function listJobFiles(jobId: string): Promise<JobFile[]> {
   const prefix = `${jobPrefix(jobId)}/`;

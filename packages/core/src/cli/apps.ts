@@ -8,7 +8,7 @@
  *
  * Requires ADC + Firestore access. The apiKey is printed only at creation time.
  */
-import { createApp, listApps, updateApp, getApp } from '../apps/store.js';
+import { createApp, listApps, updateApp, getApp, deleteApp } from '../apps/store.js';
 import { ensureDefaultSettings, getSettings, updateSettings } from '../settings/store.js';
 
 function arg(name: string): string | undefined {
@@ -49,6 +49,7 @@ async function main() {
         rateLimitPerHour: rate ? Number.parseInt(rate, 10) : undefined,
         googleClientId: arg('google-client-id'),
         adminEmails: emails ? emails.split(',').map((e) => e.trim().toLowerCase()) : undefined,
+        allowedTemplates: arg('allowed-templates')?.split(',').map((t) => t.trim()),
       });
       console.log(JSON.stringify(created, null, 2));
       console.log('\n>> SAVE THIS apiKey — it is not shown again.');
@@ -74,6 +75,7 @@ async function main() {
         name?: string;
         googleClientId?: string;
         adminEmails?: string[];
+        allowedTemplates?: string[];
       } = {};
       const active = arg('active');
       if (active != null) patch.active = active === 'true';
@@ -85,9 +87,18 @@ async function main() {
       if (gcid != null) patch.googleClientId = gcid;
       const emails = arg('admin-emails');
       if (emails != null) patch.adminEmails = emails.split(',').map((e) => e.trim().toLowerCase());
+      const tmpls = arg('allowed-templates');
+      if (tmpls != null) patch.allowedTemplates = tmpls.split(',').map((t) => t.trim());
       const updated = await updateApp(appId, patch);
       if (!updated) throw new Error(`Unknown app: ${appId}`);
       console.log(JSON.stringify({ ...updated, apiKey: `${updated.apiKey.slice(0, 8)}…` }, null, 2));
+      break;
+    }
+    case 'delete': {
+      const appId = arg('appId');
+      if (!appId) throw new Error('delete requires --appId');
+      await deleteApp(appId);
+      console.log(`deleted app ${appId}`);
       break;
     }
     case 'get': {
@@ -112,7 +123,7 @@ async function main() {
       break;
     }
     default:
-      console.error('Usage: apps <seed-admin|create|list|update|get|settings> [flags]');
+      console.error('Usage: apps <seed-admin|create|list|update|get|delete|settings> [flags]');
       console.error('  settings [set --app N|none --user N|none]');
       process.exit(1);
   }

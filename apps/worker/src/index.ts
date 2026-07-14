@@ -39,9 +39,13 @@ app.post('/run', async (req, reply) => {
       template: job.template,
       params: job.params,
     });
-    // Ack (200) even on a business failure — runJob already recorded it. Retrying
-    // a deterministic failure would just burn tokens; transient Vertex errors are
-    // already retried inside the provider.
+    // 'incomplete' → some steps still failing; return a RETRYABLE status so Cloud
+    // Tasks re-dispatches with backoff and runJob resumes from its checkpoint.
+    if (result.status === 'incomplete') {
+      return reply.code(503).send({ status: 'incomplete' });
+    }
+    // Ack (200) on completed/failed — runJob already recorded the outcome. Retrying
+    // a finished job would just burn tokens.
     return reply.code(200).send({ status: result.status, sourcesFound: result.sourcesFound });
   } catch (err) {
     // Unexpected engine error — runJob marked the job failed. Ack to avoid re-runs.

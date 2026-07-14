@@ -6,13 +6,15 @@ vi.mock('../src/tools/web-search.js', () => ({
 }));
 vi.mock('../src/storage/gcs.js', () => ({
   uploadObject: async ({ name }: { name: string }) => ({ name, path: `researchs/j/${name}`, contentType: 'application/json', size: 10 }),
+  downloadObject: async () => undefined,
+  deleteObject: async () => {},
   signJobFiles: async (f: unknown) => f,
   listJobFiles: async () => [],
   signRead: async () => '',
 }));
 
 import { runJob } from '../src/engine/run-job.js';
-import { getJob } from '../src/jobs/firestore.js';
+import { getJob, createJob, setJobAttempts } from '../src/jobs/firestore.js';
 import { getTemplate } from '../src/templates/registry.js';
 import { __setProviderForTests } from '../src/llm/models.js';
 import { MockLlmProvider } from './mocks/llm.js';
@@ -45,8 +47,11 @@ describe('run-job — a failing agent leaves a trace in Firestore + logs', () =>
   });
 
   it('records degradedSections + agentErrors on the job doc and logs agent.failed', async () => {
-    const cap = captureLogs();
     const params = template.paramsSchema.parse({ industry: 'laundromats', mode: 'essential' }) as Record<string, unknown>;
+    // Seed on the final attempt (MAX_JOB_ATTEMPTS=2) so it finalizes/degrades this run.
+    await createJob({ jobId: 'j1', appId: 'fbizlab', userId: 'u@x.com', template: template.id, params });
+    await setJobAttempts('j1', 1);
+    const cap = captureLogs();
     const result = await runJob({ jobId: 'j1', appId: 'fbizlab', userId: 'u@x.com', template: template.id, params });
     cap.restore();
 

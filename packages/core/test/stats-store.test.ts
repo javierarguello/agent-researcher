@@ -20,6 +20,20 @@ describe('per-app stats', () => {
     expect((s.genTimeMsTotal as number) / (s.genCount as number)).toBe(800_000);
   });
 
+  it('tracks total errors, degraded reports, and min/max/avg gen time', async () => {
+    await recordReportStats({ appId: A, userId: 'u1@x.com', template: 't', status: 'completed', costUsd: 1, durationMs: 500_000 });
+    await recordReportStats({ appId: A, userId: 'u2@x.com', template: 't', status: 'completed', costUsd: 1, durationMs: 900_000, degraded: true });
+    await recordReportStats({ appId: A, userId: 'u3@x.com', template: 't', status: 'completed', costUsd: 1, durationMs: 700_000 });
+    await recordReportStats({ appId: A, userId: 'u4@x.com', template: 't', status: 'failed', costUsd: 0.2, durationMs: 0 });
+
+    const s = (await getAppStats(A))!;
+    expect(s.reportsFailed).toBe(1); // total errors
+    expect(s.degradedReports).toBe(1);
+    expect(s.genTimeMsMin).toBe(500_000);
+    expect(s.genTimeMsMax).toBe(900_000);
+    expect((s.genTimeMsTotal as number) / (s.genCount as number)).toBe(700_000); // avg
+  });
+
   it('folds purchases into revenue + a daily bucket', async () => {
     await recordPurchaseStats({ appId: A, userId: 'u1@x.com', amountUsd: 49, credits: 15 });
     const s = (await getAppStats(A))!;

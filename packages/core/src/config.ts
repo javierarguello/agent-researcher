@@ -106,6 +106,15 @@ export const config = {
     /** Max agents synthesizing/gathering concurrently (Vertex quota guard). */
     maxConcurrentAgents: int('LLM_MAX_CONCURRENT_AGENTS', 2),
   },
+  workflow: {
+    /** In-run retries per agent (each retries the whole gather+synthesis). */
+    agentMaxAttempts: int('AGENT_MAX_ATTEMPTS', 3),
+    /** Backoff between agent retries (exponential from base, capped, + jitter). */
+    agentRetryBaseMs: int('AGENT_RETRY_BASE_MS', 2000),
+    agentRetryMaxMs: int('AGENT_RETRY_MAX_MS', 30000),
+    /** Job re-dispatches (Cloud Tasks) before finalizing with degraded sections. */
+    maxJobAttempts: int('MAX_JOB_ATTEMPTS', 8),
+  },
   search: {
     braveApiKey: str('BRAVE_API_KEY'),
     tavilyApiKey: str('TAVILY_API_KEY'),

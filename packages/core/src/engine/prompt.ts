@@ -110,12 +110,17 @@ export function buildAgentKickoff(input: {
   sections: ReportSection[];
   maxTurns: number;
   context: Record<string, unknown>;
+  sites?: string[];
 }): string {
-  const { agent, brief, sections, maxTurns, context } = input;
+  const { agent, brief, sections, maxTurns, context, sites } = input;
   return (
     `RESEARCH BRIEF (shared goal):\n${brief}\n\n` +
     `YOUR ROLE: ${agent.objective}\n` +
     (agent.focus ? `FOCUS: ${agent.focus}\n` : '') +
+    (sites?.length
+      ? `SUGGESTED SOURCES (additive — NOT a restriction): also consult these sites — ${sites.join(', ')}. ` +
+        `Prioritize them (e.g. a few \`site:\` queries) IN ADDITION TO open web search; never limit yourself to them.\n`
+      : '') +
     `\nYou are responsible ONLY for these report sections:\n${sectionGuidance(sections)}\n` +
     contextBlock(context) +
     `\n\nSearch the web in ENGLISH (best recall; the report is written in the target language later). ` +

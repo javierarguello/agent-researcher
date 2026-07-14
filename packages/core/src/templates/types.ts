@@ -62,6 +62,12 @@ export interface AgentSpec {
   gatherModel?: string;
   /** Extra focus for this agent's research + writing (e.g. which sources to prefer). */
   focus?: string;
+  /**
+   * Domains this producer's `web_search` is scoped to (e.g. `bizbuysell.com`).
+   * Merged (union) with the template-level `sites`. Bare hostnames — no scheme
+   * or `www.`. Ignored for synthesizers (they don't search).
+   */
+  sites?: string[];
 }
 
 /**
@@ -86,6 +92,12 @@ export interface ResearchTemplate<TParams = unknown> {
   sections: ReportSection[];
   /** The agent workflow that produces the sections. */
   agents: AgentSpec[];
+  /**
+   * Default domains every producer's `web_search` is scoped to (e.g. the
+   * marketplaces/registries this vertical trusts). Individual agents may add
+   * their own via `AgentSpec.sites` (the two are unioned). Bare hostnames.
+   */
+  sites?: string[];
   /**
    * Per-mode cost/scope config. The public API exposes only `mode`
    * ('essential' | 'comprehensive'); each mode maps to internal budget scale,

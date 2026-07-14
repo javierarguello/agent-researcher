@@ -9,7 +9,7 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { grantCredits, getBalance, listJobs } from '@agent-researcher/core';
+import { grantCredits, getBalance, listJobs, updateApp } from '@agent-researcher/core';
 import { seedApp, seedAdmin, token, auth } from './helpers.js';
 
 const research = { template: 'florida-business-for-sale', params: { industry: 'laundromats', mode: 'essential' } };
@@ -75,6 +75,20 @@ describe('API security — auth, credits gate, isolation', () => {
     const r = await app.inject({ method: 'GET', url: '/credits/balance?userId=alice@x.com', headers: auth(tb) });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toMatchObject({ userId: 'bob@x.com', balance: 0 });
+  });
+
+  it("rejects a research model not in the app's allowedTemplates (403); admin is exempt", async () => {
+    await updateApp('fbizlab', { allowedTemplates: ['some-other-model'] });
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 5 });
+    const t = await token('fbizlab', 'u@x.com');
+    const r = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
+    expect(r.statusCode).toBe(403);
+
+    // The admin app is exempt from the model restriction.
+    await seedAdmin(['boss@x.com']);
+    const admin = await token('admin', 'boss@x.com', 'admin');
+    const ra = await app.inject({ method: 'POST', url: '/research', headers: auth(admin), payload: research });
+    expect(ra.statusCode).not.toBe(403); // passes the model check (then 402 for no credits)
   });
 
   it('admin-only endpoints reject non-admin tokens (403) and allow admin', async () => {

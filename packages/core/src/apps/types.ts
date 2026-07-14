@@ -19,6 +19,8 @@ export interface AppRecord {
   googleClientId?: string;
   /** For the admin/backoffice app: emails allowed to log in (get admin tokens). */
   adminEmails?: string[];
+  /** Research model ids this app may use. If set, other models are rejected (admin apps are exempt). */
+  allowedTemplates?: string[];
   createdAt: string;
   updatedAt: string;
 }

@@ -106,7 +106,33 @@ Source of truth for who may log in. Fields (`AppRecord`,
 | `rateLimitPerHour` | number? | Optional per-app reports/hour cap (overrides the settings default). |
 | `googleClientId` | string? | The frontend's Google OAuth client id; validates the `id_token` `aud`. |
 | `adminEmails` | string[]? | Admin app only: emails allowed to log in (→ admin tokens). |
+| `allowedTemplates` | string[]? | If set, the **only** research models (template ids) this app may submit. Admin apps are exempt. Omit/empty ⇒ any model. |
 | `createdAt` / `updatedAt` | string | ISO timestamps. |
+
+### Well-known apps use a slug doc id (never a UUID)
+
+`createApp` defaults `appId` to a random UUID, but **well-known apps pin a
+human slug as their doc id** — `admin`, `fbizlab`, … — so code, config, and
+Firestore reads reference a stable, readable key instead of `98ce1627-…`. Always
+pass `--appId <slug>` when creating one; `reset-dev` seeds them this way. To
+re-key an existing app, create the new slug doc and `delete` the old one:
+
+```bash
+npm run apps -- create --name "Backoffice Admin" --role admin --appId admin
+npm run apps -- delete --appId 98ce1627-4ea5-4d69-9f63-28d85e2a2b40   # old UUID doc
+```
+
+### Restricting an app to specific models (`allowedTemplates`)
+
+A non-admin app is confined to a fixed set of research models; a request for any
+other model is rejected `403` **before** rate-limit or credit checks (enforced in
+`POST /research`, `apps/api/src/index.ts`). Admin apps bypass the check entirely.
+
+```bash
+# fbizlab may ONLY run the Florida business-for-sale model
+npm run apps -- update --appId fbizlab --allowed-templates florida-business-for-sale
+npm run apps -- create --name "Multi" --appId multi --allowed-templates "model-a,model-b"
+```
 
 Manage apps with the CLI (`npm run apps -- …`) or the admin endpoints. Set the
 Google client id and admin whitelist with, e.g.:

@@ -33,10 +33,12 @@ policy on the `daily` collection group auto-deletes buckets after
 | `users` | report/purchase (first time a user is seen) | Distinct users all-time (app-stats only). |
 | `newUsers` | first-seen | New distinct users that day (daily only). |
 | `reports` | every finished report | Total reports attempted. |
-| `reportsCompleted` / `reportsFailed` | per report | Split by outcome. |
+| `reportsCompleted` / `reportsFailed` | per report | Split by outcome. `reportsFailed` = **total error count**. |
+| `degradedReports` | per report | Reports delivered with ≥1 section degraded (partial success). |
 | `reportsByTemplate.<templateId>` | per report | Count per template (nested map of counters). |
 | `costUsd` | per report | Sum of report generation cost (LLM + search). |
 | `genTimeMsTotal` / `genCount` | completed reports only | For `avgGenMs = genTimeMsTotal / genCount`. |
+| `genTimeMsMin` / `genTimeMsMax` | completed reports only | Fastest / slowest total generation time (ms). |
 | `revenueUsd` | per purchase | Sum of money paid. |
 | `purchases` | per purchase | Count of purchases. |
 | `creditsPurchased` | per purchase | Sum of credits bought. |
@@ -51,10 +53,13 @@ credits (purchases). `firstSeenAt` is set once; `lastSeenAt` on every activity.
 
 - **`recordReportStats(input)`** — called from `run-job.ts` after every job
   (completed **or** failed; best-effort, wrapped in try/catch so it never breaks
-  the job). Input: `{ appId, userId, template, status, costUsd, durationMs }`. It
-  bumps `reports`, the outcome counter, `costUsd`, `reportsByTemplate[template]`,
-  and (only when completed) `genTimeMsTotal`/`genCount`, across app-stats + the
-  day's bucket + the user doc; and ensures the user is counted.
+  the job). Input: `{ appId, userId, template, status, costUsd, durationMs,
+  degraded? }`. It bumps `reports`, the outcome counter (`reportsFailed` is the
+  running **total error count**), `costUsd`, `reportsByTemplate[template]`,
+  `degradedReports` when `degraded`, and (only when completed)
+  `genTimeMsTotal`/`genCount` plus a transactional `genTimeMsMin`/`genTimeMsMax`
+  update (min/max can't be done with `FieldValue.increment`), across app-stats +
+  the day's bucket + the user doc; and ensures the user is counted.
 - **`recordPurchaseStats(input)`** — called from the Stripe **webhook** (only the
   first time a purchase is applied — idempotent with the ledger). Input:
   `{ appId, userId, amountUsd, credits }`. Bumps `revenueUsd`, `purchases`,

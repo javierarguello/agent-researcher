@@ -71,6 +71,11 @@ export async function markRunning(jobId: string): Promise<void> {
   await patch(jobId, { status: 'running', startedAt: nowIso() });
 }
 
+/** Record the dispatch/attempt count on the job (resumable retries). */
+export async function setJobAttempts(jobId: string, attempts: number): Promise<void> {
+  await patch(jobId, { attempts });
+}
+
 export async function setProgress(jobId: string, progress: JobProgress): Promise<void> {
   await patch(jobId, { progress });
 }

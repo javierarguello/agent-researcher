@@ -75,10 +75,14 @@ QUEUE="${PREFIX}-jobs"
 JOB_MAX_CONCURRENCY="${JOB_MAX_CONCURRENCY:-4}"
 echo ">> Cloud Tasks queue '${QUEUE}' (max ${JOB_MAX_CONCURRENCY} concurrent jobs)..."
 gcloud tasks queues create "${QUEUE}" --location="${REGION}" 2>/dev/null || echo "   (exists)"
+# Retries are durable resume: a job that returns 503 (incomplete) is re-dispatched
+# with backoff and resumes from its checkpoint. maxJobAttempts (default 8) makes
+# runJob finalize before the queue gives up, so a report is always delivered.
 gcloud tasks queues update "${QUEUE}" --location="${REGION}" \
   --max-concurrent-dispatches="${JOB_MAX_CONCURRENCY}" \
   --max-dispatches-per-second=1 \
-  --max-attempts=3 --min-backoff=10s --max-backoff=300s >/dev/null
+  --max-attempts=12 --max-retry-duration=10800s \
+  --min-backoff=10s --max-backoff=600s >/dev/null
 
 echo ">> Service accounts..."
 gcloud iam service-accounts create "${API_SA}" \

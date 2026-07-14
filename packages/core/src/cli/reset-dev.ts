@@ -71,8 +71,14 @@ async function main() {
 
   console.error('\n>> Seeding clean slate...');
   await ensureDefaultSettings();
-  const admin = await createApp({ name: 'Backoffice Admin', role: 'admin' });
-  const fbizlab = await createApp({ appId: FBIZLAB_APP_ID, name: 'FloridaBizLab', role: 'app' });
+  // Well-known apps use a slug doc id (never a UUID): 'admin', 'fbizlab', …
+  const admin = await createApp({ appId: 'admin', name: 'Backoffice Admin', role: 'admin' });
+  const fbizlab = await createApp({
+    appId: FBIZLAB_APP_ID,
+    name: 'FloridaBizLab',
+    role: 'app',
+    allowedTemplates: ['florida-business-for-sale'],
+  });
 
   console.log('\n=== Seeded apps (SAVE THESE KEYS — shown once) ===');
   console.log(`admin    appId=${admin.appId}  apiKey=${admin.apiKey}`);

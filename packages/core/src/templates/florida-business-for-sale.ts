@@ -330,6 +330,17 @@ const agents: AgentSpec[] = [
     focus:
       'BizBuySell, BizQuest, LoopNet, Sunbelt Network, Transworld, and reputable Florida brokers. ' +
       'fetch_page each promising listing for asking price, revenue, SDE, cash flow, and lease terms.',
+    // Suggested (additive) sources: the major business-for-sale marketplaces/brokers.
+    sites: [
+      'bizbuysell.com',
+      'bizquest.com',
+      'loopnet.com',
+      'businessesforsale.com',
+      'businessbroker.net',
+      'sunbeltnetwork.com',
+      'tworld.com',
+      'dealstream.com',
+    ],
   },
   {
     id: 'compliance-analyst',
@@ -349,6 +360,8 @@ const agents: AgentSpec[] = [
       'Search site:reddit.com (r/smallbusiness, r/Entrepreneur, r/sweatystartup and sector subreddits), ' +
       'industry forums, Trustpilot, Google/Yelp reviews, and BBB. fetch_page full threads/reviews. Only ' +
       'report real, findable mentions.',
+    // Suggested (additive) sources: community + review platforms.
+    sites: ['reddit.com', 'trustpilot.com', 'yelp.com', 'bbb.org'],
   },
   {
     id: 'valuation-analyst',

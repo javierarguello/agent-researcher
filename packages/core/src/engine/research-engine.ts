@@ -73,15 +73,19 @@ export interface AgentTrace {
   /** Resolved model aliases (not concrete ids). */
   model: string;
   gatherModel?: string;
-  status: 'running' | 'ok' | 'failed';
+  status: 'running' | 'ok' | 'failed' | 'pending';
   turnsUsed: number;
+  /** How many times this agent was attempted this run (in-run retries). */
+  attempts: number;
+  /** Wall-clock time the agent took (ms), when finished. */
+  durationMs?: number;
   /** LLM + search cost incurred by this agent. */
   cost: Cost;
-  /** Chronological progress notes (searches, fetches) — capped. */
+  /** Chronological progress notes (searches, fetches, retry reasons) — capped. */
   notes: string[];
   /** The agent's validated JSON slice (on success). */
   output?: unknown;
-  /** Error message (on failure). */
+  /** Last error message/stack (on failure) — the reason it couldn't complete. */
   error?: string;
   startedAt: string;
   finishedAt?: string;
@@ -98,11 +102,26 @@ export interface JobTrace {
   agents: AgentTrace[];
   /** Running total cost across all agents (LLM exact + search estimate). */
   cost: Cost;
-  status: 'running' | 'completed' | 'failed';
+  /** 'incomplete' = some steps still failing; the job will be re-dispatched to resume. */
+  status: 'running' | 'completed' | 'failed' | 'incomplete';
   /** Job-level fatal error (e.g. final schema validation), if any. */
   error?: string;
+  /** Warnings worth reviewing later (e.g. sections degraded after exhausting retries). */
+  warnings?: string[];
+  /** Total wall-clock time so far (ms). */
+  durationMs?: number;
   startedAt: string;
   finishedAt?: string;
+}
+
+/** Resumable checkpoint of a run (persisted so a re-dispatch continues, not restarts). */
+export interface Checkpoint {
+  report: Record<string, unknown>;
+  /** Evidence sources gathered so far (for the derived `sources` section). */
+  sources: SearchResult[];
+  /** Agent ids already completed — skipped on resume. */
+  doneAgentIds: string[];
+  degraded: string[];
 }
 
 export interface ResearchOutput {
@@ -112,8 +131,10 @@ export interface ResearchOutput {
   sources: SearchResult[];
   language: Language;
   turnsUsed: number;
-  /** Diagnosable per-agent trace (output + errors). */
+  /** Diagnosable per-agent trace (output + errors + timing + attempts). */
   trace: JobTrace;
+  /** Current resumable state (persist when status is 'incomplete'). */
+  checkpoint: Checkpoint;
 }
 
 export interface RunResearchInput {
@@ -124,6 +145,12 @@ export interface RunResearchInput {
   onProgress?: (p: ResearchProgress) => void | Promise<void>;
   /** Called with a trace snapshot after each wave + at the end (persist it). */
   onTrace?: (trace: JobTrace) => void | Promise<void>;
+  /** Prior checkpoint to resume from (skip done agents, keep their output). */
+  resume?: Checkpoint;
+  /** When true, degrade any still-failing steps and finalize; else return 'incomplete'. Default true. */
+  finalize?: boolean;
+  /** Called after each agent completes, to persist the resumable checkpoint. */
+  onCheckpoint?: (cp: Checkpoint) => void | Promise<void>;
 }
 
 /** Max notes kept per agent (bounds trace size). */
@@ -157,11 +184,24 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   const brief = effTemplate.buildBrief(effParams as never);
 
   const evidence = createEvidence();
-  const report: Record<string, unknown> = {};
-  const degraded: string[] = [];
+  const report: Record<string, unknown> = { ...(input.resume?.report ?? {}) };
+  const degraded: string[] = [...(input.resume?.degraded ?? [])];
+  const done = new Set<string>(input.resume?.doneAgentIds ?? []);
+  const warnings: string[] = [];
   const counter = { turns: 0 };
+  const finalize = input.finalize ?? true;
+
+  // Seed evidence sources from the checkpoint (feeds the derived `sources` section).
+  for (const s of input.resume?.sources ?? []) {
+    if (s.url && !evidence.seenUrls.has(s.url)) {
+      evidence.seenUrls.add(s.url);
+      evidence.sources.push(s);
+    }
+  }
 
   const waves = topoSortAgents(effTemplate);
+  const producers = producerOf(effTemplate);
+  const byId = new Map(effTemplate.agents.map((a) => [a.id, a]));
   const trace: JobTrace = {
     jobId,
     template: template.id,
@@ -179,12 +219,16 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   const emit = async (phase: string, message: string) =>
     onProgress?.({ phase, message, turnsUsed: counter.turns, sourcesFound: evidence.sources.length });
   const persistTrace = async () => onTrace?.(trace);
+  const saveCheckpoint = async () =>
+    input.onCheckpoint?.({ report, sources: evidence.sources, doneAgentIds: [...done], degraded });
 
-  await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents.`);
+  await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents (${done.size} already done).`);
 
   for (const [w, wave] of waves.entries()) {
-    await emit('planning', `Wave ${w + 1}/${waves.length}: ${wave.map((a) => a.id).join(', ')}.`);
-    await runPool(wave, config.llm.maxConcurrentAgents, async (agent) => {
+    const todo = wave.filter((a) => !done.has(a.id));
+    if (!todo.length) continue;
+    await emit('planning', `Wave ${w + 1}/${waves.length}: ${todo.map((a) => a.id).join(', ')}.`);
+    await runPool(todo, config.llm.maxConcurrentAgents, async (agent) => {
       const at: AgentTrace = {
         id: agent.id,
         role: agent.role,
@@ -195,31 +239,93 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         ...(agent.role === 'producer' ? { gatherModel: agent.gatherModel ?? config.llm.defaultGatherModel } : {}),
         status: 'running',
         turnsUsed: 0,
+        attempts: 0,
         cost: emptyCost(),
         notes: [],
         startedAt: new Date().toISOString(),
       };
       trace.agents.push(at);
-      try {
-        const { slice, cost } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at });
-        Object.assign(report, slice); // producers set keys; enrichers overwrite in place
-        at.status = 'ok';
-        at.output = slice;
-        at.cost = cost;
-        trace.cost = addCost(trace.cost, cost);
-      } catch (err) {
-        at.status = 'failed';
-        at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
-        for (const key of ownedKeys(agent)) {
-          report[key] = degradedValue(effTemplate, key, (err as Error).message);
-          degraded.push(key);
-        }
-        await emit(agent.id, `Failed (${(err as Error).message}); section degraded.`);
-      } finally {
+
+      // While retries remain, defer an agent whose dependency hasn't completed —
+      // it runs once its deps succeed (a later re-dispatch), never on stale context.
+      // On the finalize pass there's no future retry, so run it best-effort with
+      // whatever context exists (a failed dep just means missing context).
+      const deps = depsOf(agent, producers);
+      const depsReady = [...deps].every((d) => done.has(d) || !byId.has(d));
+      if (!finalize && !depsReady) {
+        at.status = 'pending';
         at.finishedAt = new Date().toISOString();
+        return;
       }
+
+      // In-run retries with exponential backoff — keep trying the step.
+      for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
+        at.attempts = attempt;
+        try {
+          const { slice, cost } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at });
+          Object.assign(report, slice);
+          at.status = 'ok';
+          at.output = slice;
+          at.cost = cost;
+          trace.cost = addCost(trace.cost, cost);
+          done.add(agent.id);
+          break;
+        } catch (err) {
+          at.status = 'failed';
+          at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
+          if (attempt < config.workflow.agentMaxAttempts) {
+            const backoff = backoffMs(attempt);
+            at.notes.push(`${new Date().toISOString()} retry ${attempt} after: ${(err as Error).message}`);
+            await emit(agent.id, `Retry ${attempt}/${config.workflow.agentMaxAttempts - 1} after error; backing off ${Math.round(backoff)}ms.`);
+            await sleep(backoff);
+          } else {
+            await emit(agent.id, `Failed after ${attempt} attempts: ${(err as Error).message}`);
+          }
+        }
+      }
+      at.durationMs = Date.now() - Date.parse(at.startedAt);
+      at.finishedAt = new Date().toISOString();
+      if (at.status === 'ok') await saveCheckpoint();
     });
-    await persistTrace(); // snapshot after each wave — survives a crash mid-run
+    await persistTrace();
+  }
+
+  const pending = effTemplate.agents.filter((a) => !done.has(a.id));
+
+  const makeMeta = (): ReportMeta => ({
+    title: template.name,
+    template: template.id,
+    templateVersion: template.version,
+    schemaVersion: `${template.id}@${template.version}`,
+    jobId,
+    language,
+    mode: mode.key,
+    depth: depth.key,
+    generatedAt,
+    contentFormat: 'markdown',
+    cost: trace.cost,
+    ...(degraded.length ? { degradedSections: degraded } : {}),
+  });
+  const checkpoint: Checkpoint = { report, sources: evidence.sources, doneAgentIds: [...done], degraded };
+
+  // Not finalizing yet → return 'incomplete' so a re-dispatch resumes the rest.
+  if (pending.length && !finalize) {
+    trace.status = 'incomplete';
+    trace.durationMs = Date.now() - Date.parse(trace.startedAt);
+    trace.finishedAt = new Date().toISOString();
+    await persistTrace();
+    await emit('incomplete', `Incomplete: ${pending.length} step(s) still pending — will resume.`);
+    return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint };
+  }
+
+  // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
+  for (const agent of pending) {
+    const reason = agentReason(trace, agent.id);
+    for (const key of ownedKeys(agent)) {
+      report[key] = degradedValue(effTemplate, key, reason);
+      if (!degraded.includes(key)) degraded.push(key);
+    }
+    warnings.push(`Degraded [${ownedKeys(agent).join(', ')}] from agent "${agent.id}" after exhausting retries/re-dispatches: ${reason}`);
   }
 
   // Derived sections (e.g. sources) — deterministic, filled last.
@@ -234,7 +340,6 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     }
   }
 
-  // Final validation — a failure is recorded (not thrown) so the trace persists.
   const parsed = reportSchemaOf(effTemplate).safeParse(report);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
@@ -244,33 +349,36 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   const failed = !!fatalError;
   trace.status = failed ? 'failed' : 'completed';
   if (fatalError) trace.error = fatalError;
+  if (warnings.length) trace.warnings = warnings;
+  trace.durationMs = Date.now() - Date.parse(trace.startedAt);
   trace.finishedAt = new Date().toISOString();
   await persistTrace();
-
-  const meta: ReportMeta = {
-    title: template.name,
-    template: template.id,
-    templateVersion: template.version,
-    schemaVersion: `${template.id}@${template.version}`,
-    jobId,
-    language,
-    mode: mode.key,
-    depth: depth.key,
-    generatedAt,
-    contentFormat: 'markdown',
-    cost: trace.cost,
-    ...(degraded.length ? { degradedSections: degraded } : {}),
-  };
 
   await emit(failed ? 'failed' : 'done', failed ? `Report failed: ${fatalError}` : 'Report complete.');
   return {
     report: parsed.success ? parsed.data : report,
-    meta,
+    meta: makeMeta(),
     sources: evidence.sources,
     language,
     turnsUsed: counter.turns,
     trace,
+    checkpoint: { report, sources: evidence.sources, doneAgentIds: [...done], degraded },
   };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Exponential backoff (from base, capped) with jitter (up to min(1s, base)). */
+function backoffMs(attempt: number): number {
+  const base = Math.min(config.workflow.agentRetryMaxMs, config.workflow.agentRetryBaseMs * 2 ** (attempt - 1));
+  return base + Math.random() * Math.min(1000, base);
+}
+
+/** Why an agent didn't complete — its last error, or a pending dependency. */
+function agentReason(trace: JobTrace, agentId: string): string {
+  const at = trace.agents.find((a) => a.id === agentId);
+  if (at?.error) return (at.error.split('\n')[0] ?? '').slice(0, 300);
+  return 'a dependency did not complete';
 }
 
 // --- Single agent ------------------------------------------------------------
@@ -304,11 +412,13 @@ async function runAgent(ctx: {
   if (agent.role === 'producer') {
     const gatherModel: ResolvedModel = resolveModel(agent.gatherModel ?? config.llm.defaultGatherModel);
     const budget = Math.max(2, Math.round((agent.researchBudget ?? config.search.maxTurns) * depth.budgetScale));
+    const sites = effectiveSites(template, agent);
+    if (sites.length) await note(`Suggested sources (additive): ${sites.join(', ')}.`);
     await note(`Researching (${owned.join(', ')}).`);
     const gres = await gather({
       model: gatherModel,
       system,
-      messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, context }) }],
+      messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, context, sites }) }],
       maxTurns: budget,
       evidence,
       onNote: (m) => note(m),
@@ -356,6 +466,11 @@ async function runAgent(ctx: {
 /** All section keys an agent is responsible for (authors or enriches). */
 function ownedKeys(agent: AgentSpec): string[] {
   return [...new Set([...(agent.produces ?? []), ...(agent.enriches ?? [])])];
+}
+
+/** Union of the template-level and agent-level `sites` — the domains suggested (additively) to this producer. */
+export function effectiveSites(template: ResearchTemplate<any>, agent: AgentSpec): string[] {
+  return [...new Set([...(template.sites ?? []), ...(agent.sites ?? [])])];
 }
 
 /** Map a section key to the id of the agent that produces it. */

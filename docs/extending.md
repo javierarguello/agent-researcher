@@ -19,8 +19,10 @@ working.
 ## Add an agent to a model
 
 Add an `AgentSpec` to `agents`. Give it `produces` (and/or `enriches`),
-`dependsOn`, a `role`, and optionally `model` / `gatherModel` aliases and a
-`researchBudget`. The executor recomputes waves automatically. Validation
+`dependsOn`, a `role`, and optionally `model` / `gatherModel` aliases, a
+`researchBudget`, and `sites` (additive suggested source domains — see
+[agents.md](agents.md#suggested-sources-sites--additive-in-the-workflow-definition)).
+The executor recomputes waves automatically. Validation
 rejects: unknown section/agent refs, two agents producing the same section,
 enriching a section nobody produces, self-enrichment, unknown model aliases, and
 dependency cycles.

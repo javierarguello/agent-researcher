@@ -12,7 +12,7 @@
  * Write-only for now — the consuming API comes later. `getAppStats` /
  * `getDailyStats` are provided for convenience.
  */
-import { FieldValue, Firestore, Timestamp } from '@google-cloud/firestore';
+import { FieldValue, Firestore, Timestamp, type DocumentReference } from '@google-cloud/firestore';
 import { config } from '../config.js';
 
 let db: Firestore | undefined;
@@ -64,6 +64,23 @@ export interface ReportStatsInput {
   costUsd: number;
   /** Generation duration in ms (used only when completed). */
   durationMs: number;
+  /** Whether the completed report had degraded sections. */
+  degraded?: boolean;
+}
+
+/** Transactionally fold a duration into a doc's min/max gen time. */
+async function updateGenMinMax(
+  ref: DocumentReference,
+  ms: number,
+  seed: Record<string, unknown>,
+): Promise<void> {
+  await firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const d = (snap.exists ? snap.data() : {}) as { genTimeMsMin?: number; genTimeMsMax?: number };
+    const genTimeMsMin = d.genTimeMsMin != null ? Math.min(d.genTimeMsMin, ms) : ms;
+    const genTimeMsMax = d.genTimeMsMax != null ? Math.max(d.genTimeMsMax, ms) : ms;
+    tx.set(ref, { ...seed, genTimeMsMin, genTimeMsMax, updatedAt: nowIso() }, { merge: true });
+  });
 }
 
 /** Record a finished report into the app + daily + user aggregates. */
@@ -75,9 +92,12 @@ export async function recordReportStats(input: ReportStatsInput): Promise<void> 
   const completed = input.status === 'completed';
   const inc: Record<string, unknown> = {
     reports: FieldValue.increment(1),
+    // reportsFailed is the total error count; reportsCompleted the successes.
     [completed ? 'reportsCompleted' : 'reportsFailed']: FieldValue.increment(1),
+    ...(input.degraded ? { degradedReports: FieldValue.increment(1) } : {}),
     costUsd: FieldValue.increment(input.costUsd || 0),
     reportsByTemplate: { [input.template]: FieldValue.increment(1) },
+    // avg = genTimeMsTotal / genCount; min/max are maintained transactionally below.
     ...(completed
       ? { genTimeMsTotal: FieldValue.increment(input.durationMs || 0), genCount: FieldValue.increment(1) }
       : {}),
@@ -94,6 +114,13 @@ export async function recordReportStats(input: ReportStatsInput): Promise<void> 
         { merge: true },
       ),
   ]);
+
+  if (completed && (input.durationMs || 0) > 0) {
+    await Promise.all([
+      updateGenMinMax(appStats().doc(input.appId), input.durationMs, { appId: input.appId }),
+      updateGenMinMax(dailyDoc(input.appId, date), input.durationMs, { appId: input.appId, date, expireAt: expireAt() }),
+    ]);
+  }
 }
 
 export interface PurchaseStatsInput {

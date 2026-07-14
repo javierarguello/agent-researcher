@@ -12,6 +12,11 @@ export default defineConfig({
       GCP_PROJECT_ID: 'test-project',
       AUTH_JWT_SECRET: 'test-jwt-secret-0123456789abcdef',
       RESEARCH_MAX_TURNS: '4',
+      // Fast, deterministic retries in tests.
+      AGENT_RETRY_BASE_MS: '1',
+      AGENT_RETRY_MAX_MS: '1',
+      AGENT_MAX_ATTEMPTS: '2',
+      MAX_JOB_ATTEMPTS: '2',
     },
   },
   resolve: {

@@ -221,6 +221,12 @@ app.post(
     const appId = req.auth!.appId;
     const userId = req.auth!.email;
 
+    // Enforce which research models this app may use (admin apps are exempt).
+    const allowed = req.appRecord?.allowedTemplates;
+    if (req.auth!.role !== 'admin' && allowed && allowed.length && !allowed.includes(validated.template)) {
+      return reply.code(403).send({ error: `App "${appId}" is not allowed to use model "${validated.template}".` });
+    }
+
     // Rate limits (reports per hour) — per app and per user. Skipped in local dev.
     if (config.server.appEnv !== 'local') {
       const settings = await getSettings();

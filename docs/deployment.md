@@ -179,15 +179,17 @@ unavailable.
 ## The apps: `fbizlab` and admin
 
 `npm run reset:dev -- --confirm` (DEV only) wipes all test data and seeds a clean
-slate: default settings, a **Backoffice Admin** app (`role: admin`), and the
-**FloridaBizLab** app with fixed doc id **`fbizlab`** (`role: app`). It prints both
-apiKeys once. Then, for real logins, configure each app:
+slate: default settings, a **Backoffice Admin** app (doc id **`admin`**,
+`role: admin`), and the **FloridaBizLab** app (doc id **`fbizlab`**, `role: app`,
+restricted to `allowedTemplates: ['florida-business-for-sale']`). Both use a
+**slug doc id, never a UUID** — see [auth.md](auth.md#well-known-apps-use-a-slug-doc-id-never-a-uuid).
+It prints both apiKeys once. Then, for real logins, configure each app:
 
 ```bash
 # point the frontend's Google OAuth client at the app
 npm run apps -- update --appId fbizlab --google-client-id <id>.apps.googleusercontent.com
-# whitelist admin login emails on the admin app
-npm run apps -- update --appId <adminAppId> --admin-emails "you@co.com"
+# whitelist admin login emails on the admin app (doc id `admin`)
+npm run apps -- update --appId admin --admin-emails "you@co.com"
 ```
 
 For billing, create Stripe Prices tagged `metadata { app: "fbizlab", credits: N }`
@@ -195,7 +197,7 @@ with `lookup_key "fbizlab_<planId>"` (see [credits.md](credits.md)). Point Strip
 webhook at `POST /credits/webhook` and set `STRIPE_WEBHOOK_SECRET`.
 
 Manage apps/settings anytime with the CLI (`npm run apps -- <seed-admin|create|
-list|update|get|settings>`) or the `/admin/*` endpoints.
+list|update|get|delete|settings>`) or the `/admin/*` endpoints.
 
 ## Local development
 
