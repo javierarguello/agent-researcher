@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "sinuous-canto-497518-h7"
+  },
+  "targets": {
+    "sinuous-canto-497518-h7": {
+      "hosting": {
+        "admin": ["agent-researcher-admin"]
+      }
+    }
+  }
+}

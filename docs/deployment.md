@@ -199,6 +199,48 @@ webhook at `POST /credits/webhook` and set `STRIPE_WEBHOOK_SECRET`.
 Manage apps/settings anytime with the CLI (`npm run apps -- <seed-admin|create|
 list|update|get|delete|settings>`) or the `/admin/*` endpoints.
 
+## Admin SPA (`apps/admin`) — Firebase Hosting
+
+The admin backoffice is a **static SPA** (Vite + React + Mantine) that talks to
+the API directly — no server. It's hosted on its own Firebase Hosting site
+(`agent-researcher-admin`) in the same project (`sinuous-canto-497518-h7`).
+
+**Build-time config** (Vite `VITE_*`, baked into the bundle): `VITE_API_BASE_URL`
+(the API's public URL) and `VITE_ADMIN_GOOGLE_CLIENT_ID` (the admin app's Google
+OAuth client id). See `apps/admin/.env.example`.
+
+**One-time setup** (owner account, miltonjaviera@gmail.com):
+
+```bash
+firebase login
+firebase hosting:sites:create agent-researcher-admin --project sinuous-canto-497518-h7
+# the `admin` target → that site is mapped in apps/admin/.firebaserc
+
+# repo variables for CI (both are public — not secrets):
+gh variable set ADMIN_API_BASE_URL     --body "$(gcloud run services describe agent-researcher-dev-api --region us-central1 --format='value(status.url)')"
+gh variable set ADMIN_GOOGLE_CLIENT_ID --body "<id>.apps.googleusercontent.com"
+```
+
+Then, so login actually works:
+
+1. **Google OAuth client** — create an OAuth 2.0 Web client in the GCP console;
+   set its authorized JavaScript origins to the Hosting URL
+   (`https://agent-researcher-admin.web.app`) **and** `http://localhost:5173` (dev).
+2. **Point the admin app at it** — `npm run apps -- update --appId admin
+   --google-client-id <id>.apps.googleusercontent.com` and whitelist your email
+   with `--admin-emails you@example.com`.
+3. **CORS** — set the `CORS_ORIGINS_DEV` repo variable (consumed by
+   `deploy-dev.yml`) to include the Hosting origin + `http://localhost:5173`, then
+   redeploy the API. Dev defaults to `*`, so this only matters when locking down.
+
+**Deploy** — on push to `main` touching `apps/admin/**`, `deploy-admin.yml` builds
+and deploys automatically. Manually:
+
+```bash
+VITE_API_BASE_URL=https://…run.app VITE_ADMIN_GOOGLE_CLIENT_ID=…apps.googleusercontent.com \
+  bash infra/deploy-admin.sh
+```
+
 ## Local development
 
 ```bash

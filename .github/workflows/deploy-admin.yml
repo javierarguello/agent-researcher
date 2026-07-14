@@ -1,0 +1,61 @@
+# Build + deploy the admin SPA (apps/admin) to Firebase Hosting on push to main.
+#
+# Static site, no server. Auth reuses the dev service-account key (GCP_SA_KEY_DEV,
+# roles/owner) — google-github-actions/auth exports GOOGLE_APPLICATION_CREDENTIALS,
+# which firebase-tools uses to deploy Hosting.
+#
+# ONE-TIME SETUP:
+#   # create the Hosting site (owner account, miltonjaviera@gmail.com):
+#   firebase hosting:sites:create agent-researcher-admin --project sinuous-canto-497518-h7
+#   # build-time config as repo VARIABLES (both are public, not secrets):
+#   gh variable set ADMIN_API_BASE_URL --body "https://agent-researcher-dev-api-xxxxx.run.app"
+#   gh variable set ADMIN_GOOGLE_CLIENT_ID --body "1234-abc.apps.googleusercontent.com"
+#
+name: Deploy admin SPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/admin/**'
+      - '.github/workflows/deploy-admin.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-admin
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT_ID: sinuous-canto-497518-h7
+
+jobs:
+  deploy-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build admin SPA
+        env:
+          VITE_API_BASE_URL: ${{ vars.ADMIN_API_BASE_URL }}
+          VITE_ADMIN_GOOGLE_CLIENT_ID: ${{ vars.ADMIN_GOOGLE_CLIENT_ID }}
+        run: npm run build -w @agent-researcher/admin
+
+      - name: Authenticate to Google Cloud (service-account key)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_SA_KEY_DEV }}
+
+      - name: Deploy to Firebase Hosting
+        working-directory: apps/admin
+        run: npx --yes firebase-tools deploy --only hosting:admin --project "${GCP_PROJECT_ID}" --non-interactive
