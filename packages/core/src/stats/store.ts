@@ -12,7 +12,7 @@
  * Write-only for now — the consuming API comes later. `getAppStats` /
  * `getDailyStats` are provided for convenience.
  */
-import { FieldValue, Firestore, Timestamp, type DocumentReference } from '@google-cloud/firestore';
+import { FieldValue, Firestore, Timestamp, type DocumentReference, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
 
 let db: Firestore | undefined;
@@ -175,4 +175,143 @@ export async function getDailyStats(appId: string, days = 60): Promise<Record<st
     .limit(days)
     .get();
   return snap.docs.map((d) => d.data() as Record<string, unknown>);
+}
+
+// --- Admin (cross-app) aggregates -------------------------------------------
+
+/** Every app's all-time stats doc. */
+export async function listAllAppStats(): Promise<Record<string, unknown>[]> {
+  const snap = await appStats().get();
+  return snap.docs.map((d) => d.data() as Record<string, unknown>);
+}
+
+const num = (d: Record<string, unknown>, k: string): number => (typeof d[k] === 'number' ? (d[k] as number) : 0);
+
+export interface AppStatsRollup {
+  appId: string;
+  reports: number;
+  reportsCompleted: number;
+  reportsFailed: number; // total error count
+  degradedReports: number;
+  users: number;
+  costUsd: number;
+  revenueUsd: number;
+  purchases: number;
+  creditsPurchased: number;
+  avgGenMs: number | null;
+  genTimeMsMin: number | null;
+  genTimeMsMax: number | null;
+}
+
+export interface AdminStats {
+  totals: Omit<AppStatsRollup, 'appId'>;
+  apps: AppStatsRollup[];
+  daily: Array<{ date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; revenueUsd: number }>;
+}
+
+function rollup(d: Record<string, unknown>): AppStatsRollup {
+  const genTotal = num(d, 'genTimeMsTotal');
+  const genCount = num(d, 'genCount');
+  return {
+    appId: String(d.appId ?? ''),
+    reports: num(d, 'reports'),
+    reportsCompleted: num(d, 'reportsCompleted'),
+    reportsFailed: num(d, 'reportsFailed'),
+    degradedReports: num(d, 'degradedReports'),
+    users: num(d, 'users'),
+    costUsd: num(d, 'costUsd'),
+    revenueUsd: num(d, 'revenueUsd'),
+    purchases: num(d, 'purchases'),
+    creditsPurchased: num(d, 'creditsPurchased'),
+    avgGenMs: genCount > 0 ? genTotal / genCount : null,
+    genTimeMsMin: typeof d.genTimeMsMin === 'number' ? (d.genTimeMsMin as number) : null,
+    genTimeMsMax: typeof d.genTimeMsMax === 'number' ? (d.genTimeMsMax as number) : null,
+  };
+}
+
+/**
+ * Cross-app dashboard aggregate: per-app rollups, global totals (errors =
+ * reportsFailed, avg/min/max total gen time), and a merged daily series.
+ */
+export async function getAdminStats(days = 30): Promise<AdminStats> {
+  const docs = await listAllAppStats();
+  const apps = docs.map(rollup).sort((a, b) => b.reports - a.reports);
+
+  // Global totals. avg is recomputed from the summed total/count, not averaged.
+  let genTotal = 0;
+  let genCount = 0;
+  const totals: Omit<AppStatsRollup, 'appId'> = {
+    reports: 0, reportsCompleted: 0, reportsFailed: 0, degradedReports: 0, users: 0,
+    costUsd: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
+    avgGenMs: null, genTimeMsMin: null, genTimeMsMax: null,
+  };
+  for (const d of docs) {
+    totals.reports += num(d, 'reports');
+    totals.reportsCompleted += num(d, 'reportsCompleted');
+    totals.reportsFailed += num(d, 'reportsFailed');
+    totals.degradedReports += num(d, 'degradedReports');
+    totals.users += num(d, 'users');
+    totals.costUsd += num(d, 'costUsd');
+    totals.revenueUsd += num(d, 'revenueUsd');
+    totals.purchases += num(d, 'purchases');
+    totals.creditsPurchased += num(d, 'creditsPurchased');
+    genTotal += num(d, 'genTimeMsTotal');
+    genCount += num(d, 'genCount');
+    if (typeof d.genTimeMsMin === 'number') {
+      totals.genTimeMsMin = totals.genTimeMsMin == null ? (d.genTimeMsMin as number) : Math.min(totals.genTimeMsMin, d.genTimeMsMin as number);
+    }
+    if (typeof d.genTimeMsMax === 'number') {
+      totals.genTimeMsMax = totals.genTimeMsMax == null ? (d.genTimeMsMax as number) : Math.max(totals.genTimeMsMax, d.genTimeMsMax as number);
+    }
+  }
+  totals.avgGenMs = genCount > 0 ? genTotal / genCount : null;
+
+  // Merge each app's daily buckets by date (summed) → newest-first series.
+  const byDate = new Map<string, { date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; revenueUsd: number }>();
+  await Promise.all(
+    apps.map(async (a) => {
+      for (const b of await getDailyStats(a.appId, days)) {
+        const date = String(b.date ?? '');
+        if (!date) continue;
+        const cur = byDate.get(date) ?? { date, reports: 0, reportsCompleted: 0, reportsFailed: 0, costUsd: 0, revenueUsd: 0 };
+        cur.reports += num(b, 'reports');
+        cur.reportsCompleted += num(b, 'reportsCompleted');
+        cur.reportsFailed += num(b, 'reportsFailed');
+        cur.costUsd += num(b, 'costUsd');
+        cur.revenueUsd += num(b, 'revenueUsd');
+        byDate.set(date, cur);
+      }
+    }),
+  );
+  const daily = [...byDate.values()].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, days);
+
+  return { totals, apps, daily };
+}
+
+export interface UserRecord {
+  appId: string;
+  userId: string;
+  reports: number;
+  costUsd: number;
+  spentUsd: number;
+  creditsPurchased: number;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
+}
+
+/**
+ * Search/list users from the `app-users` rollup. Filter by app and/or an email
+ * prefix (case-sensitive prefix match on userId). Needs composite indexes in
+ * prod: (appId, userId) for the prefix path, (appId, lastSeenAt desc) otherwise.
+ */
+export async function queryUsers(opts: { appId?: string; emailPrefix?: string; limit?: number } = {}): Promise<UserRecord[]> {
+  let q: Query = appUsers();
+  if (opts.appId) q = q.where('appId', '==', opts.appId);
+  if (opts.emailPrefix) {
+    q = q.where('userId', '>=', opts.emailPrefix).where('userId', '<', `${opts.emailPrefix}`).orderBy('userId');
+  } else {
+    q = q.orderBy('lastSeenAt', 'desc');
+  }
+  const snap = await q.limit(opts.limit ?? 50).get();
+  return snap.docs.map((d) => d.data() as UserRecord);
 }

@@ -1,7 +1,7 @@
 /**
  * Firestore-backed job store. One document per research job, keyed by jobId.
  */
-import { Firestore } from '@google-cloud/firestore';
+import { Firestore, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
 import type { Cost } from '../cost.js';
 import type { JobFile, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
@@ -60,6 +60,27 @@ export async function listJobs(appId: string, userId: string, limit = 50): Promi
     .orderBy('createdAt', 'desc')
     .limit(limit)
     .get();
+  return snap.docs.map((d) => d.data() as ResearchJob);
+}
+
+/**
+ * Admin cross-app job query: any combination of appId/userId/status/template,
+ * newest first. Each filter combination needs a composite index in prod
+ * (e.g. (appId, createdAt desc), (status, createdAt desc), …).
+ */
+export async function queryJobs(opts: {
+  appId?: string;
+  userId?: string;
+  status?: JobStatus;
+  template?: string;
+  limit?: number;
+} = {}): Promise<ResearchJob[]> {
+  let q: Query = collection();
+  if (opts.appId) q = q.where('appId', '==', opts.appId);
+  if (opts.userId) q = q.where('userId', '==', opts.userId);
+  if (opts.status) q = q.where('status', '==', opts.status);
+  if (opts.template) q = q.where('template', '==', opts.template);
+  const snap = await q.orderBy('createdAt', 'desc').limit(opts.limit ?? 50).get();
   return snap.docs.map((d) => d.data() as ResearchJob);
 }
 

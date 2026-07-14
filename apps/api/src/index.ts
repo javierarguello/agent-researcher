@@ -19,12 +19,16 @@ import {
   config,
   createApp,
   getApp,
+  deleteApp,
   checkRateLimits,
   createJob,
   getJob,
   getSettings,
   listApps,
   listJobs,
+  queryJobs,
+  getAdminStats,
+  queryUsers,
   listTemplates,
   getTemplate,
   logEvent,
@@ -46,6 +50,8 @@ import {
   verifyGoogleIdToken,
   InsufficientCreditsError,
   type RateLimitEntry,
+  type LedgerEntryType,
+  type JobStatus,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { jwtAuth, requireAdmin } from './auth.js';
@@ -419,16 +425,21 @@ app.get(
           userId: { type: 'string' },
           appId: { type: 'string' },
           limit: { type: 'integer', minimum: 1, maximum: 200 },
+          type: {
+            type: 'string',
+            enum: ['purchase', 'consumption', 'refund', 'grant'],
+            description: 'Filter to one ledger entry type (e.g. only grants, for the credit audit).',
+          },
         },
       },
     },
   },
   async (req) => {
-    const q = req.query as { userId?: string; appId?: string; limit?: number };
+    const q = req.query as { userId?: string; appId?: string; limit?: number; type?: LedgerEntryType };
     const isAdmin = req.auth!.role === 'admin';
     const appId = (isAdmin && q.appId) || req.auth!.appId;
     const userId = (isAdmin && q.userId) || req.auth!.email;
-    return { transactions: await listTransactions(appId, userId, q.limit ?? 50) };
+    return { transactions: await listTransactions(appId, userId, q.limit ?? 50, q.type) };
   },
 );
 
@@ -541,24 +552,46 @@ app.post(
     preHandler: requireAdmin,
     schema: {
       summary: 'Grant credits to a user (admin / promo / testing)',
+      description:
+        'Recorded in the credit ledger with attribution: `grantedBy` is taken from the admin token ' +
+        '(never the body) and a `reason` is required for the audit trail.',
       tags: ['admin'],
       security: sec,
       body: {
         type: 'object',
-        required: ['appId', 'userId', 'credits'],
+        required: ['appId', 'userId', 'credits', 'reason'],
         properties: {
           appId: { type: 'string' },
           userId: { type: 'string' },
           credits: { type: 'integer', minimum: 1 },
+          reason: { type: 'string', minLength: 1, description: 'Why the credits were granted (audit).' },
+          idempotencyKey: { type: 'string', description: 'Optional: dedupes retries/double-clicks.' },
           note: { type: 'string' },
         },
       },
     },
   },
   async (req) => {
-    const b = req.body as { appId: string; userId: string; credits: number; note?: string };
-    await grantCredits(b);
-    return { granted: b.credits, balance: await getBalance(b.appId, b.userId) };
+    const b = req.body as {
+      appId: string;
+      userId: string;
+      credits: number;
+      reason: string;
+      idempotencyKey?: string;
+      note?: string;
+    };
+    // Attribution comes from the verified admin token, never the request body.
+    const grantedBy = req.auth!.email;
+    const res = await grantCredits({
+      appId: b.appId,
+      userId: b.userId,
+      credits: b.credits,
+      reason: b.reason,
+      grantedBy,
+      ...(b.idempotencyKey ? { idempotencyKey: b.idempotencyKey } : {}),
+      ...(b.note ? { note: b.note } : {}),
+    });
+    return { granted: res.applied ? b.credits : 0, applied: res.applied, grantedBy, balance: res.balance };
   },
 );
 
@@ -612,8 +645,11 @@ app.post(
         properties: {
           name: { type: 'string' },
           role: { type: 'string', enum: ['admin', 'app'] },
-          appId: { type: 'string', description: 'Optional; a UUID is generated if omitted.' },
+          appId: { type: 'string', description: 'Optional slug doc id; a UUID is generated if omitted.' },
           rateLimitPerHour: { type: 'integer', minimum: 1, description: 'Optional reports/hour cap.' },
+          allowedTemplates: { type: 'array', items: { type: 'string' }, description: 'If set, the only models this app may run (admin apps are exempt).' },
+          googleClientId: { type: 'string' },
+          adminEmails: { type: 'array', items: { type: 'string' } },
         },
       },
     },
@@ -624,6 +660,9 @@ app.post(
       role?: 'admin' | 'app';
       appId?: string;
       rateLimitPerHour?: number;
+      allowedTemplates?: string[];
+      googleClientId?: string;
+      adminEmails?: string[];
     };
     if (!body.name) return reply.code(400).send({ error: 'Missing "name".' });
     const created = await createApp({
@@ -631,6 +670,9 @@ app.post(
       role: body.role ?? 'app',
       appId: body.appId,
       rateLimitPerHour: body.rateLimitPerHour,
+      allowedTemplates: body.allowedTemplates,
+      googleClientId: body.googleClientId,
+      adminEmails: body.adminEmails,
     });
     // Return the full record (incl. apiKey) ONCE, at creation time.
     return reply.code(201).send({ app: created });
@@ -652,16 +694,131 @@ app.patch(
           name: { type: 'string' },
           active: { type: 'boolean' },
           rateLimitPerHour: { type: ['integer', 'null'], minimum: 1, description: 'null clears the limit.' },
+          allowedTemplates: { type: 'array', items: { type: 'string' }, description: 'Models this app may run (admin apps exempt).' },
+          googleClientId: { type: 'string' },
+          adminEmails: { type: 'array', items: { type: 'string' } },
         },
       },
     },
   },
   async (req, reply) => {
     const { appId } = req.params as { appId: string };
-    const body = (req.body ?? {}) as { name?: string; active?: boolean; rateLimitPerHour?: number | null };
+    const body = (req.body ?? {}) as {
+      name?: string;
+      active?: boolean;
+      rateLimitPerHour?: number | null;
+      allowedTemplates?: string[];
+      googleClientId?: string;
+      adminEmails?: string[];
+    };
     const updated = await updateApp(appId, body);
     if (!updated) return reply.code(404).send({ error: `Unknown app: ${appId}` });
     return { app: toPublicApp(updated) };
+  },
+);
+
+app.delete(
+  '/admin/apps/:appId',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Delete an app',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', properties: { appId: { type: 'string' } }, required: ['appId'] },
+    },
+  },
+  async (req, reply) => {
+    const { appId } = req.params as { appId: string };
+    // Don't let an admin delete the app their own token belongs to.
+    if (appId === req.auth!.appId) return reply.code(400).send({ error: 'Refusing to delete your own app.' });
+    const existing = await getApp(appId);
+    if (!existing) return reply.code(404).send({ error: `Unknown app: ${appId}` });
+    await deleteApp(appId);
+    return reply.code(200).send({ deleted: appId });
+  },
+);
+
+app.get(
+  '/admin/stats',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Cross-app dashboard stats (totals + per-app + daily series)',
+      description: 'Global totals (errors = reportsFailed, avg/min/max total gen time), per-app rollups, and a merged daily series.',
+      tags: ['admin'],
+      security: sec,
+      querystring: { type: 'object', properties: { days: { type: 'integer', minimum: 1, maximum: 365 } } },
+    },
+  },
+  async (req) => {
+    const { days } = req.query as { days?: number };
+    return getAdminStats(days ?? 30);
+  },
+);
+
+app.get(
+  '/admin/users',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Search / list users across apps (from the app-users rollup)',
+      tags: ['admin'],
+      security: sec,
+      querystring: {
+        type: 'object',
+        properties: {
+          appId: { type: 'string', description: 'Filter to one app.' },
+          q: { type: 'string', description: 'Email/userId prefix match.' },
+          limit: { type: 'integer', minimum: 1, maximum: 200 },
+        },
+      },
+    },
+  },
+  async (req) => {
+    const { appId, q, limit } = req.query as { appId?: string; q?: string; limit?: number };
+    return { users: await queryUsers({ appId, emailPrefix: q, limit: limit ?? 50 }) };
+  },
+);
+
+app.get(
+  '/admin/jobs',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'List / filter research jobs across apps',
+      tags: ['admin'],
+      security: sec,
+      querystring: {
+        type: 'object',
+        properties: {
+          appId: { type: 'string' },
+          userId: { type: 'string' },
+          status: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'incomplete'] },
+          template: { type: 'string' },
+          limit: { type: 'integer', minimum: 1, maximum: 200 },
+        },
+      },
+    },
+  },
+  async (req) => {
+    const q = req.query as { appId?: string; userId?: string; status?: JobStatus; template?: string; limit?: number };
+    const jobs = await queryJobs({ appId: q.appId, userId: q.userId, status: q.status, template: q.template, limit: q.limit ?? 50 });
+    return {
+      jobs: jobs.map((j) => ({
+        jobId: j.jobId,
+        appId: j.appId,
+        userId: j.userId,
+        template: j.template,
+        title: j.title ?? null,
+        status: j.status,
+        cost: j.cost ?? null,
+        attempts: j.attempts ?? null,
+        createdAt: j.createdAt,
+        updatedAt: j.updatedAt,
+        finishedAt: j.finishedAt ?? null,
+      })),
+    };
   },
 );
 

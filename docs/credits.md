@@ -19,8 +19,9 @@ Two collections, both keyed for idempotency:
 { id, appId, userId,
   type: 'purchase' | 'consumption' | 'refund' | 'grant',
   credits,              // absolute amount, always positive; `type` gives direction
-  plan?, paymentId?, provider?, amountUsd?, currency?,  // purchase
+  plan?, paymentId?, provider?, amountUsd?, currency?,  // purchase (Stripe provenance)
   jobId?,               // consumption / refund
+  grantedBy?, reason?,  // manual grant: who issued it + why (audit)
   note?, createdAt }
 ```
 
@@ -34,7 +35,7 @@ diverge. Deterministic ledger ids make each operation replay-safe:
 
 | Function | Ledger id | Semantics |
 |---|---|---|
-| `grantCredits({appId,userId,credits,note?})` | `grant_<random>` | Add free credits (admin/promo). |
+| `grantCredits({appId,userId,credits,grantedBy?,reason?,note?,idempotencyKey?})` | `grant_<idempotencyKey \| random>` | Add free credits (admin/promo). Records `grantedBy`+`reason` for audit; pass `idempotencyKey` to dedupe. |
 | `recordPurchase({…, paymentId})` | `purchase_<paymentId>` | Add bought credits; a duplicate webhook is a no-op. |
 | `consumeCredits(appId,userId,credits,jobId)` | `consume_<jobId>` | Subtract; throws `InsufficientCreditsError` if balance < credits. One consumption per job. |
 | `refundForJob(appId,userId,jobId,note?)` | `refund_<jobId>` | Refund exactly what `consume_<jobId>` took — only if it was consumed and not already refunded. Returns `false` if nothing to do. |
@@ -106,13 +107,19 @@ If Stripe isn't configured (`STRIPE_SECRET_KEY` unset), `/credits/plans` returns
 ## Reading balance & history
 
 - `GET /credits/balance` → `{ appId, userId, balance }` (`getBalance`, 0 if none).
-- `GET /credits/transactions?limit=` → `{ transactions: [ CreditLedgerEntry… ] }`
+- `GET /credits/transactions?limit=&type=` → `{ transactions: [ CreditLedgerEntry… ] }`
   newest-first (`listTransactions`; needs the composite index on
-  `(appId, userId, createdAt desc)` — see [deployment.md](deployment.md)).
+  `(appId, userId, createdAt desc)`, or `(appId, userId, type, createdAt desc)` when
+  filtering by `type` — see [deployment.md](deployment.md)).
 
 Admins may target another `appId`/`userId` via query params on both.
 
-## Admin grants
+## Admin grants (audited)
 
-`POST /admin/credits/grant { appId, userId, credits, note? }` (admin token) →
-`grantCredits` then returns the new balance. Useful for promos, comps, and testing.
+`POST /admin/credits/grant { appId, userId, credits, reason, idempotencyKey?, note? }`
+(admin token) → `grantCredits` then returns `{ granted, applied, grantedBy, balance }`.
+**`grantedBy` is taken from the admin token, never the body**, and `reason` is
+required — so every manual grant is attributed and explains itself in the ledger,
+sitting alongside Stripe purchases (which carry `paymentId`). Filter a user's grants
+with `GET /credits/transactions?type=grant`. Admins top up themselves by targeting
+their own `appId`/`userId`. Useful for promos, comps, and testing.

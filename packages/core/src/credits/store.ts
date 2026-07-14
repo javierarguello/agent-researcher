@@ -35,14 +35,17 @@ export async function getBalance(appId: string, userId: string): Promise<number>
   return snap.exists ? (snap.data() as CreditBalance).balance : 0;
 }
 
-export async function listTransactions(appId: string, userId: string, limit = 50): Promise<CreditLedgerEntry[]> {
-  // Requires a composite index on (appId, userId, createdAt desc).
-  const snap = await ledger()
-    .where('appId', '==', appId)
-    .where('userId', '==', userId)
-    .orderBy('createdAt', 'desc')
-    .limit(limit)
-    .get();
+export async function listTransactions(
+  appId: string,
+  userId: string,
+  limit = 50,
+  type?: LedgerEntryType,
+): Promise<CreditLedgerEntry[]> {
+  // Requires a composite index on (appId, userId, createdAt desc); adding a
+  // `type` filter needs (appId, userId, type, createdAt desc).
+  let q = ledger().where('appId', '==', appId).where('userId', '==', userId);
+  if (type) q = q.where('type', '==', type);
+  const snap = await q.orderBy('createdAt', 'desc').limit(limit).get();
   return snap.docs.map((d) => d.data() as CreditLedgerEntry);
 }
 
@@ -60,6 +63,8 @@ interface DeltaInput {
   amountUsd?: number;
   currency?: string;
   jobId?: string;
+  grantedBy?: string;
+  reason?: string;
   note?: string;
 }
 
@@ -92,10 +97,23 @@ async function applyEntry(entry: DeltaInput): Promise<{ applied: boolean; balanc
   });
 }
 
-/** Grant free credits (admin / promo). */
-export function grantCredits(input: { appId: string; userId: string; credits: number; note?: string }) {
-  const id = ledger().doc().id;
-  return applyEntry({ id: `grant_${id}`, type: 'grant', ...input });
+/**
+ * Grant free credits (admin / promo). Recorded in the append-only ledger with
+ * attribution (`grantedBy` = the admin, `reason` = why) for audit. Pass an
+ * `idempotencyKey` to make the grant idempotent (else each call is a new entry).
+ */
+export function grantCredits(input: {
+  appId: string;
+  userId: string;
+  credits: number;
+  grantedBy?: string;
+  reason?: string;
+  note?: string;
+  idempotencyKey?: string;
+}) {
+  const { idempotencyKey, ...rest } = input;
+  const id = idempotencyKey ? `grant_${idempotencyKey}` : `grant_${ledger().doc().id}`;
+  return applyEntry({ id, type: 'grant', ...rest });
 }
 
 /** Record a purchase (idempotent by paymentId). */

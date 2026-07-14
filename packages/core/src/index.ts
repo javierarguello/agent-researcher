@@ -18,6 +18,7 @@ export {
   createJob,
   getJob,
   listJobs,
+  queryJobs,
   markRunning,
   markCompleted,
   markFailed,
@@ -42,6 +43,7 @@ export {
   getAppByApiKey,
   listApps,
   updateApp,
+  deleteApp,
   generateApiKey,
   checkRateLimits,
 } from './apps/store.js';
@@ -95,8 +97,11 @@ export {
   recordPurchaseStats,
   getAppStats,
   getDailyStats,
+  listAllAppStats,
+  getAdminStats,
+  queryUsers,
 } from './stats/store.js';
-export type { ReportStatsInput, PurchaseStatsInput } from './stats/store.js';
+export type { ReportStatsInput, PurchaseStatsInput, AdminStats, AppStatsRollup, UserRecord } from './stats/store.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';
 export type { Depth, DepthProfile } from './depth.js';
 

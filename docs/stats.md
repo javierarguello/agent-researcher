@@ -74,9 +74,16 @@ The consuming API isn't built yet, but two read helpers exist:
 
 - `getAppStats(appId)` → the all-time doc (or `null`).
 - `getDailyStats(appId, days = 60)` → the last N `daily` buckets, newest first.
+- `listAllAppStats()` → every app's all-time doc (admin dashboard).
+- `getAdminStats(days = 30)` → cross-app aggregate: `{ totals, apps[], daily[] }`
+  (global totals incl. errors=reportsFailed and avg/min/max gen time, per-app
+  rollups, merged daily series). Powers `GET /admin/stats`.
+- `queryUsers({ appId?, emailPrefix?, limit })` → users from `app-users` (powers
+  `GET /admin/users`). Needs composite indexes: `(appId, userId)` for the prefix
+  path, `(appId, lastSeenAt desc)` otherwise.
 
-Both are plain document reads. `getDailyStats` orders by `date desc` (single-field
-index — no composite needed).
+`getAppStats`/`getDailyStats` are plain reads; `getDailyStats` orders by
+`date desc` (single-field index — no composite needed).
 
 ## Notes
 

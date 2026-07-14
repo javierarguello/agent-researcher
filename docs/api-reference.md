@@ -132,8 +132,11 @@ See [credits.md](credits.md) for semantics.
 Query (admin only): `userId`, `appId`. → `{ appId, userId, balance }`.
 
 ### `GET /credits/transactions` — credit ledger  · user
-Query: `limit` (1-200, default 50); admin only `userId`, `appId`. →
-`{ transactions: [ CreditLedgerEntry… ] }` newest-first.
+Query: `limit` (1-200, default 50); `type` (`purchase|consumption|refund|grant` —
+e.g. only grants, for the credit audit); admin only `userId`, `appId`. →
+`{ transactions: [ CreditLedgerEntry… ] }` newest-first. Each entry carries its
+provenance: purchases → `paymentId`/`plan`/`amountUsd` (Stripe); manual grants →
+`grantedBy` (admin) + `reason`; consumption/refund → `jobId`.
 
 ### `GET /credits/plans` — purchasable credit packs  · user
 Returns the Stripe-defined packs for the caller's app (`metadata.app == appId`).
@@ -164,8 +167,30 @@ payment id) and, the first time only, folds it into per-app stats. Always `200
 ## admin  · admin token required (`requireAdmin`)
 
 ### `POST /admin/credits/grant` — grant credits
-Request: `{ "appId", "userId", "credits" (≥1), "note"? }`. →
-`{ granted, balance }`. Idempotency id is random (each call grants).
+Request: `{ "appId", "userId", "credits" (≥1), "reason" (required), "idempotencyKey"?,
+"note"? }`. → `{ granted, applied, grantedBy, balance }`. **`grantedBy` is taken
+from the admin token** (never the body) and `reason` is required — every manual
+grant is attributed in the ledger for audit. Pass `idempotencyKey` to dedupe
+double-clicks/retries (else each call is a new grant). Grant an admin their own
+credits by targeting their own `appId`/`userId`.
+
+### `GET /admin/stats` — cross-app dashboard aggregate
+Query: `days` (1-365, default 30). → `{ totals, apps: [ rollup… ], daily: [ … ] }`.
+`totals`/`apps` include reports, `reportsCompleted`, `reportsFailed` (= total error
+count), `degradedReports`, `users`, `costUsd`, `revenueUsd`, `purchases`,
+`creditsPurchased`, and `avgGenMs`/`genTimeMsMin`/`genTimeMsMax` (total generation
+time). `daily` is the merged newest-first series across all apps.
+
+### `GET /admin/users` — search users
+Query: `appId`?, `q`? (email/userId prefix), `limit` (1-200, default 50). →
+`{ users: [ { appId, userId, reports, costUsd, spentUsd, creditsPurchased,
+firstSeenAt, lastSeenAt } … ] }` from the `app-users` rollup.
+
+### `GET /admin/jobs` — list/filter jobs across apps
+Query: `appId`?, `userId`?, `status`? (`queued|running|completed|failed|incomplete`),
+`template`?, `limit` (1-200, default 50). → `{ jobs: [ { jobId, appId, userId,
+template, title, status, cost, attempts, createdAt, updatedAt, finishedAt } … ] }`
+newest-first. Use `GET /research/:jobId` for full status/summary/download URLs.
 
 ### `GET /admin/settings` — default rate limits
 → `{ settings: { appRateLimitPerHour, userRateLimitPerHour, updatedAt } }`.
@@ -178,14 +203,18 @@ unlimited). → `{ settings }`.
 → `{ apps: [ AppPublic… ] }` (apiKey masked to `apiKeyPreview`).
 
 ### `POST /admin/apps` — create an app
-Body: `{ "name", "role"?: 'admin'|'app', "appId"?, "rateLimitPerHour"? }`. Returns
-`201 { app }` including the **full apiKey once** (legacy secret; the live auth path
-is session JWTs). `400` if `name` missing.
+Body: `{ "name", "role"?: 'admin'|'app', "appId"?, "rateLimitPerHour"?,
+"allowedTemplates"?, "googleClientId"?, "adminEmails"? }`. Returns `201 { app }`
+including the **full apiKey once** (legacy secret; the live auth path is session
+JWTs). `400` if `name` missing. Pass `appId` as a slug for well-known apps.
 
 ### `PATCH /admin/apps/:appId` — update an app
-Body: `{ "name"?, "active"?, "rateLimitPerHour"? }` (`null` clears the limit). →
-`{ app: AppPublic }`. `404` if unknown. (Set `googleClientId` / `adminEmails` via
-the CLI.)
+Body: `{ "name"?, "active"?, "rateLimitPerHour"? (`null` clears), "allowedTemplates"?,
+"googleClientId"?, "adminEmails"? }`. → `{ app: AppPublic }`. `404` if unknown.
+
+### `DELETE /admin/apps/:appId` — delete an app
+Removes the app doc. `400` if it's the admin's own app, `404` if unknown, else
+`200 { deleted }`.
 
 ---
 

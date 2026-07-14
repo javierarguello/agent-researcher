@@ -63,6 +63,31 @@ for CG in jobs credit-ledger; do
     || echo "   (${CG} index exists/creating)"
 done
 
+echo ">> Firestore composite indexes (admin dashboard: cross-app jobs, user search, credit audit)..."
+# Admin job filter: by one field (appId/status/template/userId) + newest-first.
+for FP in appId status template userId; do
+  gcloud firestore indexes composite create --database="${DATABASE}" --collection-group=jobs \
+    --field-config field-path="${FP}",order=ascending \
+    --field-config field-path=createdAt,order=descending --async 2>/dev/null \
+    || echo "   (jobs/${FP} index exists/creating)"
+done
+# User search: by app + email prefix, and list by app + recency.
+gcloud firestore indexes composite create --database="${DATABASE}" --collection-group=app-users \
+  --field-config field-path=appId,order=ascending \
+  --field-config field-path=userId,order=ascending --async 2>/dev/null \
+  || echo "   (app-users/appId+userId index exists/creating)"
+gcloud firestore indexes composite create --database="${DATABASE}" --collection-group=app-users \
+  --field-config field-path=appId,order=ascending \
+  --field-config field-path=lastSeenAt,order=descending --async 2>/dev/null \
+  || echo "   (app-users/appId+lastSeenAt index exists/creating)"
+# Credit audit: filter the ledger by type (e.g. only grants) for a user.
+gcloud firestore indexes composite create --database="${DATABASE}" --collection-group=credit-ledger \
+  --field-config field-path=appId,order=ascending \
+  --field-config field-path=userId,order=ascending \
+  --field-config field-path=type,order=ascending \
+  --field-config field-path=createdAt,order=descending --async 2>/dev/null \
+  || echo "   (credit-ledger/type index exists/creating)"
+
 echo ">> Firestore TTL on daily stats buckets (auto-expire after 60 days)..."
 gcloud firestore fields ttls update expireAt --database="${DATABASE}" \
   --collection-group=daily --enable-ttl 2>/dev/null || echo "   (ttl already enabled / creating)"

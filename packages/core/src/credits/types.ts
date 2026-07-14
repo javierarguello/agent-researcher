@@ -23,6 +23,10 @@ export interface CreditLedgerEntry {
   currency?: string;
   /** Consumption/refund: the job this relates to. */
   jobId?: string;
+  /** Manual grant: the admin (email) who issued it — audit attribution. */
+  grantedBy?: string;
+  /** Manual grant: why it was issued (required for admin grants). */
+  reason?: string;
   note?: string;
   createdAt: string;
 }
