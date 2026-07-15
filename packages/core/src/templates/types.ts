@@ -88,6 +88,19 @@ export interface ParamFieldUi {
   widget?: 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'tags' | 'autocomplete';
 }
 
+/** Two numeric params (a min + a max) rendered as one range slider. */
+export interface ParamRangeUi {
+  label: string;
+  minKey: string;
+  maxKey: string;
+  /** Slider floor / ceiling. Dragging a thumb to an extreme clears that bound. */
+  min: number;
+  max: number;
+  step?: number;
+  /** Value prefix, e.g. '$'. */
+  prefix?: string;
+}
+
 export interface ParamsUi {
   /**
    * Rows of param keys rendered side-by-side for a condensed form
@@ -99,6 +112,10 @@ export interface ParamsUi {
   fields?: Record<string, ParamFieldUi>;
   /** Param keys to hide from the generated form. */
   hidden?: string[];
+  /** Min/max param pairs rendered as a single range slider. */
+  ranges?: ParamRangeUi[];
+  /** Param keys tucked into a collapsed "Advanced" section (hidden until expanded). */
+  advanced?: string[];
 }
 
 /**

@@ -1,5 +1,5 @@
-import { Autocomplete, Group, NumberInput, Select, Stack, Switch, TagsInput, Text, Textarea, TextInput } from '@mantine/core';
-import type { ParamsUi } from '../api/types';
+import { Accordion, Autocomplete, Group, NumberInput, RangeSlider, Select, Stack, Switch, TagsInput, Text, Textarea, TextInput } from '@mantine/core';
+import type { ParamRangeUi, ParamsUi } from '../api/types';
 
 export interface JsonProp {
   type?: string;
@@ -33,13 +33,13 @@ export function defaultsFor(schema: JsonSchema | undefined): Record<string, unkn
   return out;
 }
 
-/** Ordered rows of field keys: ui.rows first, then any remaining (non-hidden) keys. */
-function layout(schema: JsonSchema, ui?: ParamsUi): string[][] {
+/** Ordered rows of field keys: ui.rows first, then any remaining keys. `omit`
+ *  (hidden + advanced) are excluded from both. */
+function layout(schema: JsonSchema, ui: ParamsUi | undefined, omit: Set<string>): string[][] {
   const all = Object.keys(schema.properties ?? {});
-  const hidden = new Set(ui?.hidden ?? []);
-  const rows = (ui?.rows ?? []).map((r) => r.filter((k) => !hidden.has(k) && all.includes(k)));
+  const rows = (ui?.rows ?? []).map((r) => r.filter((k) => !omit.has(k) && all.includes(k)));
   const placed = new Set(rows.flat());
-  const rest = all.filter((k) => !placed.has(k) && !hidden.has(k)).map((k) => [k]);
+  const rest = all.filter((k) => !placed.has(k) && !omit.has(k)).map((k) => [k]);
   return [...rows, ...rest].filter((r) => r.length > 0);
 }
 
@@ -105,13 +105,63 @@ export function JsonSchemaForm({
     );
   }
 
+  // A min/max pair rendered as one range slider (extremes clear the bound).
+  function rangeField(r: ParamRangeUi) {
+    const fmt = (n: number) => `${r.prefix ?? ''}${n.toLocaleString('en-US')}`;
+    const lo = (value[r.minKey] as number) ?? r.min;
+    const hi = (value[r.maxKey] as number) ?? r.max;
+    return (
+      <div key={r.minKey}>
+        <Group justify="space-between" mb={2}>
+          <Text size="sm" fw={500}>{r.label}</Text>
+          <Text size="xs" c="dimmed">{fmt(lo)} – {hi >= r.max ? `${fmt(r.max)}+` : fmt(hi)}</Text>
+        </Group>
+        <RangeSlider
+          min={r.min}
+          max={r.max}
+          step={r.step}
+          value={[lo, hi]}
+          label={fmt}
+          onChange={([a, b]) =>
+            onChange({ ...value, [r.minKey]: a <= r.min ? undefined : a, [r.maxKey]: b >= r.max ? undefined : b })
+          }
+          mt="xs"
+          mb="lg"
+        />
+      </div>
+    );
+  }
+
+  const ranges = ui?.ranges ?? [];
+  const rangeKeys = new Set(ranges.flatMap((r) => [r.minKey, r.maxKey]));
+  const advancedKeys = (ui?.advanced ?? []).filter((k) => schema.properties?.[k]);
+  const omit = new Set([...(ui?.hidden ?? []), ...advancedKeys]);
+
   return (
     <Stack gap="sm">
-      {layout(schema, ui).map((row, i) => (
-        <Group key={i} grow align="flex-start" gap="sm" wrap="nowrap">
-          {row.map((key) => cell(key))}
-        </Group>
-      ))}
+      {layout(schema, ui, omit).map((row, i) => {
+        // A row that is exactly a range's min/max pair renders as one slider.
+        const r = ranges.find((rg) => row.includes(rg.minKey) && row.includes(rg.maxKey));
+        if (r) return <div key={i}>{rangeField(r)}</div>;
+        const keys = row.filter((k) => !rangeKeys.has(k));
+        if (!keys.length) return null;
+        return (
+          <Group key={i} grow align="flex-start" gap="sm" wrap="nowrap">
+            {keys.map((key) => cell(key))}
+          </Group>
+        );
+      })}
+
+      {advancedKeys.length > 0 && (
+        <Accordion variant="separated" defaultValue={null} mt="xs">
+          <Accordion.Item value="advanced">
+            <Accordion.Control>Advanced</Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap="sm">{advancedKeys.map((key) => cell(key))}</Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      )}
     </Stack>
   );
 }

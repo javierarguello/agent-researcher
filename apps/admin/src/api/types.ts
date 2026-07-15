@@ -167,10 +167,21 @@ export interface ParamFieldUi {
   placeholder?: string;
   widget?: 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'tags' | 'autocomplete';
 }
+export interface ParamRangeUi {
+  label: string;
+  minKey: string;
+  maxKey: string;
+  min: number;
+  max: number;
+  step?: number;
+  prefix?: string;
+}
 export interface ParamsUi {
   rows?: string[][];
   fields?: Record<string, ParamFieldUi>;
   hidden?: string[];
+  ranges?: ParamRangeUi[];
+  advanced?: string[];
 }
 
 export interface TemplateManifest {

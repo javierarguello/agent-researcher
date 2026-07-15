@@ -12,6 +12,7 @@ export type {
   TemplateManifest,
   ParamsUi,
   ParamFieldUi,
+  ParamRangeUi,
 } from './templates/types.js';
 export { validateTemplate, assertTemplatesValid } from './templates/validate.js';
 

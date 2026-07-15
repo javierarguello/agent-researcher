@@ -517,10 +517,13 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       ['askingPriceMin', 'askingPriceMax'],
       ['minRevenue', 'minCashFlow'],
       ['sbaFriendly', 'includeRealEstate'],
-      ['keywords'],
-      ['preferredSources'],
-      ['instructions'],
     ],
+    // Asking price is a single range slider (dragging to an end = no bound).
+    ranges: [
+      { label: 'Asking price', minKey: 'askingPriceMin', maxKey: 'askingPriceMax', min: 0, max: 5_000_000, step: 25_000, prefix: '$' },
+    ],
+    // Secondary inputs live in a collapsed "Advanced" section.
+    advanced: ['keywords', 'preferredSources', 'instructions'],
     fields: {
       industry: {
         help: 'Type of business to search for. Pick a suggestion or type your own.',
