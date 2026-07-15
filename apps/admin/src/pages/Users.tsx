@@ -118,9 +118,9 @@ export function Users() {
       <Modal opened={grantOpen} onClose={() => setGrantOpen(false)} title="Grant credits" size="md">
         <Stack>
           <Select label="App" data={appOptions} value={gApp} onChange={setGApp} searchable required />
-          <TextInput label="User (email)" value={gUser} onChange={(e) => setGUser(e.currentTarget.value)} required />
-          <NumberInput label="Credits" min={1} value={gCredits} onChange={(v) => setGCredits(typeof v === 'number' ? v : '')} />
-          <TextInput label="Reason" placeholder="promo, comp, testing…" value={gReason} onChange={(e) => setGReason(e.currentTarget.value)} required />
+          <TextInput label="User (email)" maxLength={320} value={gUser} onChange={(e) => setGUser(e.currentTarget.value)} required />
+          <NumberInput label="Credits" min={1} max={1_000_000} value={gCredits} onChange={(v) => setGCredits(typeof v === 'number' ? v : '')} />
+          <TextInput label="Reason" placeholder="promo, comp, testing…" maxLength={500} value={gReason} onChange={(e) => setGReason(e.currentTarget.value)} required />
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setGrantOpen(false)}>Cancel</Button>
             <Button onClick={submitGrant} loading={grant.isPending} disabled={!gApp || !gUser.trim() || !gReason.trim()}>Grant</Button>

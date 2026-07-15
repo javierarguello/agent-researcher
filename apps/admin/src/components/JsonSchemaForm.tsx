@@ -5,9 +5,11 @@ export interface JsonProp {
   type?: string;
   enum?: string[];
   default?: unknown;
-  items?: { type?: string };
+  items?: { type?: string; maxLength?: number };
   minimum?: number;
   maximum?: number;
+  maxLength?: number;
+  maxItems?: number;
   description?: string;
 }
 export interface JsonSchema {
@@ -66,6 +68,8 @@ export function JsonSchemaForm({
     const isRequired = required.has(key) && prop.default === undefined;
     const widget = f?.widget;
     const common = { key, label, description, placeholder };
+    // Mirror the schema's limits in the UI (server still enforces them).
+    const maxLength = prop.maxLength;
 
     if (prop.enum || widget === 'select') {
       return <Select {...common} data={prop.enum ?? f?.suggestions ?? []} value={(value[key] as string) ?? null} onChange={(v) => set(key, v)} required={isRequired} />;
@@ -74,19 +78,29 @@ export function JsonSchemaForm({
       return <Switch key={key} label={label} description={description} checked={Boolean(value[key])} onChange={(e) => set(key, e.currentTarget.checked)} />;
     }
     if (prop.type === 'integer' || prop.type === 'number' || widget === 'number') {
-      return <NumberInput {...common} min={prop.minimum} value={(value[key] as number) ?? ''} onChange={(v) => set(key, typeof v === 'number' ? v : undefined)} required={isRequired} />;
+      return <NumberInput {...common} min={prop.minimum ?? 0} max={prop.maximum} allowNegative={(prop.minimum ?? 0) < 0} value={(value[key] as number) ?? ''} onChange={(v) => set(key, typeof v === 'number' ? v : undefined)} required={isRequired} />;
     }
     if (prop.type === 'array' || widget === 'tags') {
-      return <TagsInput {...common} data={f?.suggestions ?? []} value={(value[key] as string[]) ?? []} onChange={(v) => set(key, v)} />;
+      const maxTags = prop.maxItems;
+      const itemMax = prop.items?.maxLength;
+      return (
+        <TagsInput
+          {...common}
+          data={f?.suggestions ?? []}
+          maxTags={maxTags}
+          value={(value[key] as string[]) ?? []}
+          onChange={(v) => set(key, itemMax ? v.map((t) => t.slice(0, itemMax)) : v)}
+        />
+      );
     }
     if (widget === 'textarea' || key.toLowerCase().includes('instruction')) {
-      return <Textarea {...common} value={(value[key] as string) ?? ''} onChange={(e) => set(key, e.currentTarget.value)} autosize minRows={2} />;
+      return <Textarea {...common} maxLength={maxLength} value={(value[key] as string) ?? ''} onChange={(e) => set(key, e.currentTarget.value)} autosize minRows={2} />;
     }
     // String — suggestions render a free-text autocomplete (type or pick).
     if (f?.suggestions?.length || widget === 'autocomplete') {
-      return <Autocomplete {...common} data={f?.suggestions ?? []} value={(value[key] as string) ?? ''} onChange={(v) => set(key, v)} required={isRequired} />;
+      return <Autocomplete {...common} data={f?.suggestions ?? []} maxLength={maxLength} value={(value[key] as string) ?? ''} onChange={(v) => set(key, maxLength ? v.slice(0, maxLength) : v)} required={isRequired} />;
     }
-    return <TextInput {...common} value={(value[key] as string) ?? ''} onChange={(e) => set(key, e.currentTarget.value)} required={isRequired} />;
+    return <TextInput {...common} maxLength={maxLength} value={(value[key] as string) ?? ''} onChange={(e) => set(key, e.currentTarget.value)} required={isRequired} />;
   }
 
   return (

@@ -25,6 +25,13 @@ template). This is the pattern to follow for every new client.
 - **`paramsSchema`** is the **source of truth** — the API re-validates every
   request against it (`POST /research { template, params }`), so the UI is free to
   be lenient; the server rejects anything invalid.
+- **Bound every field** (security, assume hostile clients). In the template's Zod
+  schema, cap each string with `.max()`, each array with `.max()` items (and a
+  `.max()` per item), and each number with a ceiling — so a client can't bloat the
+  LLM prompt or the report cost. These bounds surface in the JSON Schema
+  (`maxLength` / `maxItems` / `maximum`), and the generated form mirrors them
+  (input `maxLength`, `maxTags`, number `max`). The API also enforces a global
+  512 KB body limit and length caps on every other endpoint's fields.
 - **`paramsUi`** is purely cosmetic: layout, per-field help, and suggested values.
   Optional — without it the form still renders, one field per row.
 

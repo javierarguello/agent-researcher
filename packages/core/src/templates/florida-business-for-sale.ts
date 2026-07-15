@@ -4,18 +4,22 @@ import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
 
+// Bounded so a hostile client can't bloat the LLM prompt or the report cost:
+// every string is length-capped, every array item-capped, every number ceiling-capped.
+const PRICE_MAX = 1_000_000_000; // $1B ceiling — well above any lower-middle-market deal.
+
 const paramsSchema = z.object({
-  location: z.string().default('State of Florida, USA'),
-  industry: z.string().optional(),
-  keywords: z.array(z.string()).default([]),
-  askingPriceMin: z.number().int().nonnegative().optional(),
-  askingPriceMax: z.number().int().nonnegative().optional(),
-  minRevenue: z.number().int().nonnegative().optional(),
-  minCashFlow: z.number().int().nonnegative().optional(),
+  location: z.string().trim().max(200).default('State of Florida, USA'),
+  industry: z.string().trim().max(120).optional(),
+  keywords: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+  askingPriceMin: z.number().int().nonnegative().max(PRICE_MAX).optional(),
+  askingPriceMax: z.number().int().nonnegative().max(PRICE_MAX).optional(),
+  minRevenue: z.number().int().nonnegative().max(PRICE_MAX).optional(),
+  minCashFlow: z.number().int().nonnegative().max(PRICE_MAX).optional(),
   sbaFriendly: z.boolean().default(false),
   includeRealEstate: z.boolean().optional(),
-  preferredSources: z.array(z.string()).default([]),
-  instructions: z.string().optional(),
+  preferredSources: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
+  instructions: z.string().trim().max(2000).optional(),
   language: z.enum(['en', 'es', 'fr', 'pt']).default('en'),
   /** Public cost/scope knob. 'essential' (~half cost, core sections) | 'comprehensive' (full report). */
   mode: modeParamSchema,

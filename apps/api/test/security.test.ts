@@ -77,6 +77,20 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(r.json()).toMatchObject({ userId: 'bob@x.com', balance: 0 });
   });
 
+  it('rejects oversized research params at the validation layer (400), no job created', async () => {
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 1 });
+    const t = await token('fbizlab', 'u@x.com');
+    const r = await app.inject({
+      method: 'POST',
+      url: '/research',
+      headers: auth(t),
+      payload: { template: 'florida-business-for-sale', params: { mode: 'essential', instructions: 'x'.repeat(3000) } },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(await listJobs('fbizlab', 'u@x.com')).toHaveLength(0);
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(1); // not charged
+  });
+
   it("rejects a research model not in the app's allowedTemplates (403); admin is exempt", async () => {
     await updateApp('fbizlab', { allowedTemplates: ['some-other-model'] });
     await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 5 });

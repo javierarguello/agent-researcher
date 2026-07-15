@@ -57,8 +57,8 @@ function GrantCredits({ appId, userId }: { appId: string; userId: string }) {
       </Popover.Target>
       <Popover.Dropdown>
         <Stack gap="xs" w={260}>
-          <NumberInput label="Credits" min={1} value={credits} onChange={(v) => setCredits(typeof v === 'number' ? v : '')} />
-          <TextInput label="Reason" placeholder="promo, comp, testing…" required value={reason} onChange={(e) => setReason(e.currentTarget.value)} />
+          <NumberInput label="Credits" min={1} max={1_000_000} value={credits} onChange={(v) => setCredits(typeof v === 'number' ? v : '')} />
+          <TextInput label="Reason" placeholder="promo, comp, testing…" maxLength={500} required value={reason} onChange={(e) => setReason(e.currentTarget.value)} />
           <Button onClick={submit} loading={grant.isPending} disabled={!reason.trim()}>Grant</Button>
         </Stack>
       </Popover.Dropdown>

@@ -57,7 +57,10 @@ import type Stripe from 'stripe';
 import { jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan } from './stripe.js';
 
-const app = Fastify({ logger: { level: config.server.logLevel } });
+// bodyLimit caps every request body at 512 KB — far above any legitimate payload
+// (research params are bounded per-field, a Google id_token is ~2 KB, Stripe
+// events are small) but blocks an attacker from sending a huge body at all.
+const app = Fastify({ logger: { level: config.server.logLevel }, bodyLimit: 512 * 1024 });
 
 // Keep the raw JSON body on the request (Stripe webhook signature needs it),
 // while still parsing JSON normally for every other route.
@@ -120,10 +123,11 @@ app.post(
       body: {
         type: 'object',
         required: ['appId', 'provider'],
+        additionalProperties: false,
         properties: {
-          appId: { type: 'string' },
+          appId: { type: 'string', minLength: 1, maxLength: 128 },
           provider: { type: 'string', enum: ['google', 'password'] },
-          idToken: { type: 'string', description: "Google id_token (provider='google')." },
+          idToken: { type: 'string', maxLength: 8192, description: "Google id_token (provider='google')." },
         },
       },
     },
@@ -183,7 +187,7 @@ app.get(
       summary: 'Get one template + its JSON-Schema params',
       tags: ['templates'],
       security: sec,
-      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      params: { type: 'object', properties: { id: { type: 'string', maxLength: 128 } }, required: ['id'] },
     },
   },
   async (req, reply) => {
@@ -205,12 +209,15 @@ app.post(
         'Returns immediately with a jobId to poll.',
       tags: ['research'],
       security: sec,
+      // Extra top-level fields (e.g. a spoofed appId/userId) are intentionally
+      // ignored, not rejected — identity always comes from the token. `params`
+      // is bounded per-field by the template's Zod paramsSchema (validateRequest).
       body: {
         type: 'object',
         required: ['template'],
         properties: {
-          template: { type: 'string', description: 'Template id, e.g. "florida-business-for-sale".' },
-          params: { type: 'object', additionalProperties: true, description: 'Template-specific params.' },
+          template: { type: 'string', minLength: 1, maxLength: 128, description: 'Template id, e.g. "florida-business-for-sale".' },
+          params: { type: 'object', description: 'Template-specific params.' },
         },
       },
     },
@@ -304,9 +311,10 @@ app.get(
       security: sec,
       querystring: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          userId: { type: 'string', description: 'Admin only: list another user (defaults to the token user).' },
-          appId: { type: 'string', description: 'Admin only: another app (defaults to the token app).' },
+          userId: { type: 'string', maxLength: 320, description: 'Admin only: list another user (defaults to the token user).' },
+          appId: { type: 'string', maxLength: 128, description: 'Admin only: another app (defaults to the token app).' },
           limit: { type: 'integer', minimum: 1, maximum: 100 },
         },
       },
@@ -342,7 +350,7 @@ app.get(
       description: 'Returns status + progress. When completed, includes short-lived signed read URLs.',
       tags: ['research'],
       security: sec,
-      params: { type: 'object', properties: { jobId: { type: 'string' } }, required: ['jobId'] },
+      params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
     },
   },
   async (req, reply) => {
@@ -399,7 +407,8 @@ app.get(
       security: sec,
       querystring: {
         type: 'object',
-        properties: { userId: { type: 'string' }, appId: { type: 'string' } },
+        additionalProperties: false,
+        properties: { userId: { type: 'string', maxLength: 320 }, appId: { type: 'string', maxLength: 128 } },
       },
     },
   },
@@ -421,9 +430,10 @@ app.get(
       security: sec,
       querystring: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          userId: { type: 'string' },
-          appId: { type: 'string' },
+          userId: { type: 'string', maxLength: 320 },
+          appId: { type: 'string', maxLength: 128 },
           limit: { type: 'integer', minimum: 1, maximum: 200 },
           type: {
             type: 'string',
@@ -464,10 +474,11 @@ app.post(
       body: {
         type: 'object',
         required: ['planId', 'successUrl', 'cancelUrl'],
+        additionalProperties: false,
         properties: {
-          planId: { type: 'string' },
-          successUrl: { type: 'string' },
-          cancelUrl: { type: 'string' },
+          planId: { type: 'string', minLength: 1, maxLength: 128 },
+          successUrl: { type: 'string', maxLength: 2048, pattern: '^https?://' },
+          cancelUrl: { type: 'string', maxLength: 2048, pattern: '^https?://' },
         },
       },
     },
@@ -560,13 +571,14 @@ app.post(
       body: {
         type: 'object',
         required: ['appId', 'userId', 'credits', 'reason'],
+        additionalProperties: false,
         properties: {
-          appId: { type: 'string' },
-          userId: { type: 'string' },
-          credits: { type: 'integer', minimum: 1 },
-          reason: { type: 'string', minLength: 1, description: 'Why the credits were granted (audit).' },
-          idempotencyKey: { type: 'string', description: 'Optional: dedupes retries/double-clicks.' },
-          note: { type: 'string' },
+          appId: { type: 'string', minLength: 1, maxLength: 128 },
+          userId: { type: 'string', minLength: 1, maxLength: 320 },
+          credits: { type: 'integer', minimum: 1, maximum: 1_000_000 },
+          reason: { type: 'string', minLength: 1, maxLength: 500, description: 'Why the credits were granted (audit).' },
+          idempotencyKey: { type: 'string', maxLength: 128, description: 'Optional: dedupes retries/double-clicks.' },
+          note: { type: 'string', maxLength: 500 },
         },
       },
     },
@@ -612,9 +624,10 @@ app.patch(
       security: sec,
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          appRateLimitPerHour: { type: ['integer', 'null'], minimum: 1 },
-          userRateLimitPerHour: { type: ['integer', 'null'], minimum: 1 },
+          appRateLimitPerHour: { type: ['integer', 'null'], minimum: 1, maximum: 1_000_000 },
+          userRateLimitPerHour: { type: ['integer', 'null'], minimum: 1, maximum: 1_000_000 },
         },
       },
     },
@@ -642,14 +655,15 @@ app.post(
       body: {
         type: 'object',
         required: ['name'],
+        additionalProperties: false,
         properties: {
-          name: { type: 'string' },
+          name: { type: 'string', minLength: 1, maxLength: 200 },
           role: { type: 'string', enum: ['admin', 'app'] },
-          appId: { type: 'string', description: 'Optional slug doc id; a UUID is generated if omitted.' },
-          rateLimitPerHour: { type: 'integer', minimum: 1, description: 'Optional reports/hour cap.' },
-          allowedTemplates: { type: 'array', items: { type: 'string' }, description: 'If set, the only models this app may run (admin apps are exempt).' },
-          googleClientId: { type: 'string' },
-          adminEmails: { type: 'array', items: { type: 'string' } },
+          appId: { type: 'string', maxLength: 128, pattern: '^[a-zA-Z0-9._-]+$', description: 'Optional slug doc id; a UUID is generated if omitted.' },
+          rateLimitPerHour: { type: 'integer', minimum: 1, maximum: 1_000_000, description: 'Optional reports/hour cap.' },
+          allowedTemplates: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 128 }, description: 'If set, the only models this app may run (admin apps are exempt).' },
+          googleClientId: { type: 'string', maxLength: 256 },
+          adminEmails: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 320 } },
         },
       },
     },
@@ -687,16 +701,17 @@ app.patch(
       summary: 'Update an app (activate/deactivate, rename, set/clear rate limit)',
       tags: ['admin'],
       security: sec,
-      params: { type: 'object', properties: { appId: { type: 'string' } }, required: ['appId'] },
+      params: { type: 'object', properties: { appId: { type: 'string', maxLength: 128 } }, required: ['appId'] },
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          name: { type: 'string' },
+          name: { type: 'string', minLength: 1, maxLength: 200 },
           active: { type: 'boolean' },
-          rateLimitPerHour: { type: ['integer', 'null'], minimum: 1, description: 'null clears the limit.' },
-          allowedTemplates: { type: 'array', items: { type: 'string' }, description: 'Models this app may run (admin apps exempt).' },
-          googleClientId: { type: 'string' },
-          adminEmails: { type: 'array', items: { type: 'string' } },
+          rateLimitPerHour: { type: ['integer', 'null'], minimum: 1, maximum: 1_000_000, description: 'null clears the limit.' },
+          allowedTemplates: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 128 }, description: 'Models this app may run (admin apps exempt).' },
+          googleClientId: { type: 'string', maxLength: 256 },
+          adminEmails: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 320 } },
         },
       },
     },
@@ -725,7 +740,7 @@ app.delete(
       summary: 'Delete an app',
       tags: ['admin'],
       security: sec,
-      params: { type: 'object', properties: { appId: { type: 'string' } }, required: ['appId'] },
+      params: { type: 'object', properties: { appId: { type: 'string', maxLength: 128 } }, required: ['appId'] },
     },
   },
   async (req, reply) => {
@@ -767,9 +782,10 @@ app.get(
       security: sec,
       querystring: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          appId: { type: 'string', description: 'Filter to one app.' },
-          q: { type: 'string', description: 'Email/userId prefix match.' },
+          appId: { type: 'string', maxLength: 128, description: 'Filter to one app.' },
+          q: { type: 'string', maxLength: 320, description: 'Email/userId prefix match.' },
           limit: { type: 'integer', minimum: 1, maximum: 200 },
         },
       },
@@ -791,11 +807,12 @@ app.get(
       security: sec,
       querystring: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          appId: { type: 'string' },
-          userId: { type: 'string' },
+          appId: { type: 'string', maxLength: 128 },
+          userId: { type: 'string', maxLength: 320 },
           status: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'incomplete'] },
-          template: { type: 'string' },
+          template: { type: 'string', maxLength: 128 },
           limit: { type: 'integer', minimum: 1, maximum: 200 },
         },
       },

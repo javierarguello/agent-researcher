@@ -185,7 +185,7 @@ export function Apps() {
       <Modal opened={modalOpen} onClose={closeModal} title={editing ? `Edit ${editing.appId}` : 'New app'} size="lg">
         <Stack>
           <Group justify="space-between" align="flex-end">
-            <TextInput label="Name" style={{ flex: 1 }} value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
+            <TextInput label="Name" style={{ flex: 1 }} maxLength={200} value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
             {editing && (
               <Switch
                 label="Active"
@@ -198,11 +198,11 @@ export function Apps() {
           </Group>
           {!editing && (
             <Group grow>
-              <TextInput label="App id (slug)" placeholder="auto UUID if empty" value={form.appId} onChange={(e) => setForm({ ...form, appId: e.currentTarget.value })} />
+              <TextInput label="App id (slug)" placeholder="auto UUID if empty" maxLength={128} value={form.appId} onChange={(e) => setForm({ ...form, appId: e.currentTarget.value.replace(/[^a-zA-Z0-9._-]/g, '') })} />
               <Select label="Role" data={['app', 'admin']} value={form.role} onChange={(v) => setForm({ ...form, role: (v as 'app' | 'admin') ?? 'app' })} />
             </Group>
           )}
-          <NumberInput label="Rate limit (reports/hour)" placeholder="unlimited" min={1} value={form.rateLimitPerHour} onChange={(v) => setForm({ ...form, rateLimitPerHour: typeof v === 'number' ? v : '' })} />
+          <NumberInput label="Rate limit (reports/hour)" placeholder="unlimited" min={1} max={1_000_000} value={form.rateLimitPerHour} onChange={(v) => setForm({ ...form, rateLimitPerHour: typeof v === 'number' ? v : '' })} />
           <MultiSelect
             label="Allowed models"
             description="Empty = any model. Admin apps ignore this."
@@ -212,8 +212,8 @@ export function Apps() {
             searchable
             clearable
           />
-          <TextInput label="Google client id" description="Frontend OAuth client for login." value={form.googleClientId} onChange={(e) => setForm({ ...form, googleClientId: e.currentTarget.value })} />
-          <TagsInput label="Admin emails" description="For admin apps: who may log in." value={form.adminEmails} onChange={(v) => setForm({ ...form, adminEmails: v })} />
+          <TextInput label="Google client id" description="Frontend OAuth client for login." maxLength={256} value={form.googleClientId} onChange={(e) => setForm({ ...form, googleClientId: e.currentTarget.value })} />
+          <TagsInput label="Admin emails" description="For admin apps: who may log in." maxTags={100} value={form.adminEmails} onChange={(v) => setForm({ ...form, adminEmails: v.map((x) => x.slice(0, 320)) })} />
           <Group justify="flex-end" mt="sm">
             <Button variant="default" onClick={closeModal}>Cancel</Button>
             <Button onClick={submit} loading={createApp.isPending || updateApp.isPending} disabled={!form.name}>

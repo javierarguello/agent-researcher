@@ -109,6 +109,8 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
   // --- Task 1: credit grant auditability -----------------------------------
   it('POST /admin/credits/grant records grantedBy (from token) + reason; body cannot spoof grantedBy', async () => {
     const admin = await adminToken();
+    // A body trying to spoof grantedBy is harmless — it's stripped
+    // (additionalProperties: false) and the attribution comes from the token.
     const r = await app.inject({
       method: 'POST',
       url: '/admin/credits/grant',
@@ -151,6 +153,23 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
     const tx = (onlyGrants.json() as any).transactions;
     expect(tx).toHaveLength(1);
     expect(tx[0]).toMatchObject({ type: 'grant', grantedBy: 'boss@x.com', reason: 'once' });
+  });
+
+  // --- Input hardening: schema-layer validation (assume attackers) ---------
+  it('rejects oversized / malformed / unknown admin input (400)', async () => {
+    const admin = await adminToken();
+    const grant = (body: object) => app.inject({ method: 'POST', url: '/admin/credits/grant', headers: auth(admin), payload: body });
+
+    // reason over the 500-char cap
+    expect((await grant({ appId: 'fbizlab', userId: 'u@x.com', credits: 1, reason: 'x'.repeat(600) })).statusCode).toBe(400);
+    // credits over the ceiling
+    expect((await grant({ appId: 'fbizlab', userId: 'u@x.com', credits: 2_000_000, reason: 'ok' })).statusCode).toBe(400);
+    // app id with illegal characters (pattern)
+    const badApp = await app.inject({ method: 'POST', url: '/admin/apps', headers: auth(admin), payload: { name: 'X', appId: 'bad id!' } });
+    expect(badApp.statusCode).toBe(400);
+    // oversized name
+    const bigName = await app.inject({ method: 'POST', url: '/admin/apps', headers: auth(admin), payload: { name: 'x'.repeat(300) } });
+    expect(bigName.statusCode).toBe(400);
   });
 
   // --- Task 6: security — every /admin/* requires an admin token ------------
