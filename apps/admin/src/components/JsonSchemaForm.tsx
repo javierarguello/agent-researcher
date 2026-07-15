@@ -1,6 +1,9 @@
 import { Autocomplete, Group, NumberInput, Select, Stack, Switch, TagsInput, Textarea, TextInput } from '@mantine/core';
 import type { ParamsUi } from '../api/types';
 
+// Label above the control, help text below it — keeps two-column rows aligned.
+const INPUT_ORDER: ('label' | 'input' | 'description' | 'error')[] = ['label', 'input', 'description', 'error'];
+
 export interface JsonProp {
   type?: string;
   enum?: string[];
@@ -67,7 +70,10 @@ export function JsonSchemaForm({
     const placeholder = f?.placeholder;
     const isRequired = required.has(key) && prop.default === undefined;
     const widget = f?.widget;
-    const common = { key, label, description, placeholder };
+    // Render order label → input → description so a longer help text (which
+    // varies per field) sits BELOW the input and never pushes the inputs in a
+    // two-column row out of alignment.
+    const common = { key, label, description, placeholder, inputWrapperOrder: INPUT_ORDER };
     // Mirror the schema's limits in the UI (server still enforces them).
     const maxLength = prop.maxLength;
 
