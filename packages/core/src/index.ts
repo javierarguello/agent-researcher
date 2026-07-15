@@ -22,6 +22,8 @@ export {
   getJob,
   listJobs,
   queryJobs,
+  requeueJob,
+  setJobAttempts,
   markRunning,
   markCompleted,
   markFailed,

@@ -115,6 +115,17 @@ export function useCreateJob() {
   });
 }
 
+export function useRetryJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) => api<{ jobId: string; status: string }>(`/admin/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' }),
+    onSuccess: (_res, jobId) => {
+      qc.invalidateQueries({ queryKey: ['job', jobId] });
+      qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+}
+
 export function useGrantCredits() {
   const qc = useQueryClient();
   return useMutation({

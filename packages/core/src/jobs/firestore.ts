@@ -1,7 +1,7 @@
 /**
  * Firestore-backed job store. One document per research job, keyed by jobId.
  */
-import { Firestore, type Query } from '@google-cloud/firestore';
+import { FieldValue, Firestore, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
 import type { Cost } from '../cost.js';
 import type { JobFile, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
@@ -127,4 +127,19 @@ export async function markFailed(jobId: string, error: string, files?: JobFile[]
 
 export function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
   return patch(jobId, { status });
+}
+
+/**
+ * Reset a terminal job for a manual retry: back to `queued`, attempt count
+ * cleared (fresh retry budget), and the prior error/finish time removed. The
+ * caller re-enqueues it. Credits are NOT re-charged (consumption is idempotent
+ * by jobId).
+ */
+export async function requeueJob(jobId: string): Promise<void> {
+  await collection()
+    .doc(jobId)
+    .set(
+      { status: 'queued', attempts: 0, error: FieldValue.delete(), finishedAt: FieldValue.delete(), updatedAt: nowIso() },
+      { merge: true },
+    );
 }

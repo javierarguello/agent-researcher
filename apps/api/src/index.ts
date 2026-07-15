@@ -27,6 +27,7 @@ import {
   listApps,
   listJobs,
   queryJobs,
+  requeueJob,
   getAdminStats,
   queryUsers,
   listTemplates,
@@ -836,6 +837,35 @@ app.get(
         finishedAt: j.finishedAt ?? null,
       })),
     };
+  },
+);
+
+app.post(
+  '/admin/jobs/:jobId/retry',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Re-run a failed/incomplete job (manual retry)',
+      description:
+        'Resets the job to queued with a fresh retry budget and re-dispatches it to the worker. ' +
+        'Credits are not re-charged. Rejects a job that is still queued or running.',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
+    },
+  },
+  async (req, reply) => {
+    const { jobId } = req.params as { jobId: string };
+    const job = await getJob(jobId);
+    if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
+    if (job.status === 'queued' || job.status === 'running') {
+      return reply.code(409).send({ error: `Job is already ${job.status}.` });
+    }
+    await requeueJob(jobId);
+    const { enqueueJob } = await import('./enqueue.js');
+    await enqueueJob(jobId, { unique: true });
+    logEvent({ jobId, appId: job.appId, userId: job.userId }, 'INFO', 'job.retry', { by: req.auth!.email });
+    return reply.code(202).send({ jobId, status: 'queued' });
   },
 );
 

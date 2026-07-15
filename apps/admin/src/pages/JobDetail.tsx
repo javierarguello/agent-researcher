@@ -2,10 +2,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Alert, Anchor, Badge, Button, Card, Group, Loader, SimpleGrid, Stack, Table, Text, Progress,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
-import { useJob } from '../api/hooks';
+import { useJob, useRetryJob } from '../api/hooks';
+import { ApiError } from '../api/client';
 import { int, secs, shortDateTime, usd } from '../lib/format';
 
 const AGENT_COLOR: Record<string, string> = { ok: 'teal', failed: 'red', pending: 'yellow', running: 'blue' };
@@ -23,12 +25,23 @@ export function JobDetail() {
   const { jobId = '' } = useParams();
   const navigate = useNavigate();
   const { data: job, isLoading, error } = useJob(jobId);
+  const retry = useRetryJob();
+
+  async function onRetry() {
+    try {
+      await retry.mutateAsync(jobId);
+      notifications.show({ message: 'Job re-queued', color: 'teal' });
+    } catch (err) {
+      notifications.show({ message: err instanceof ApiError ? err.message : 'Retry failed', color: 'red' });
+    }
+  }
 
   if (isLoading) return <Loader />;
   if (error) return <Alert color="red">{(error as Error).message}</Alert>;
   if (!job) return null;
 
   const live = job.status === 'queued' || job.status === 'running' || job.status === 'incomplete';
+  const canRetry = job.status === 'failed' || job.status === 'incomplete';
   const s = job.summary;
 
   return (
@@ -37,7 +50,12 @@ export function JobDetail() {
         eyebrow="Job"
         title={job.title || jobId}
         subtitle={job.title ? jobId : undefined}
-        actions={<Button variant="default" onClick={() => navigate('/jobs')}>Back</Button>}
+        actions={
+          <>
+            {canRetry && <Button color="violet" loading={retry.isPending} onClick={onRetry}>Retry</Button>}
+            <Button variant="default" onClick={() => navigate('/jobs')}>Back</Button>
+          </>
+        }
       />
 
       <Card padding="lg">

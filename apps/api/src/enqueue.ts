@@ -13,7 +13,12 @@ import { config } from '@agent-researcher/core';
 
 const client = new CloudTasksClient();
 
-export async function enqueueJob(jobId: string): Promise<void> {
+/**
+ * @param opts.unique  Omit the deduped task name so the task always dispatches.
+ *   Used for a manual retry: the original `jobId` task name is retained by Cloud
+ *   Tasks for a while after completion, so reusing it would be a silent no-op.
+ */
+export async function enqueueJob(jobId: string, opts: { unique?: boolean } = {}): Promise<void> {
   if (!config.worker.serviceUrl) throw new Error('WORKER_SERVICE_URL is not configured.');
   if (!config.tasks.invokerServiceAccount) throw new Error('TASKS_INVOKER_SA is not configured.');
 
@@ -24,7 +29,8 @@ export async function enqueueJob(jobId: string): Promise<void> {
     await client.createTask({
       parent,
       task: {
-        name: `${parent}/tasks/${jobId}`, // dedup by jobId
+        // Deduped by jobId normally; a manual retry uses an auto-generated name.
+        ...(opts.unique ? {} : { name: `${parent}/tasks/${jobId}` }),
         dispatchDeadline: { seconds: config.tasks.dispatchDeadlineSeconds },
         httpRequest: {
           httpMethod: 'POST',

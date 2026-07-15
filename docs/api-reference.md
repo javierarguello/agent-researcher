@@ -186,6 +186,12 @@ Query: `appId`?, `q`? (email/userId prefix), `limit` (1-200, default 50). →
 `{ users: [ { appId, userId, reports, costUsd, spentUsd, creditsPurchased,
 firstSeenAt, lastSeenAt } … ] }` from the `app-users` rollup.
 
+### `POST /admin/jobs/:jobId/retry` — re-run a failed job (manual retry)
+Resets the job to `queued` with a fresh retry budget (attempts → 0, prior error
+cleared) and re-dispatches it to the worker with a unique task name. Credits are
+**not** re-charged (consumption is idempotent by jobId). → `202 { jobId, status }`.
+`404` if unknown, `409` if the job is still `queued`/`running`.
+
 ### `GET /admin/jobs` — list/filter jobs across apps
 Query: `appId`?, `userId`?, `status`? (`queued|running|completed|failed|incomplete`),
 `template`?, `limit` (1-200, default 50). → `{ jobs: [ { jobId, appId, userId,

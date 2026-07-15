@@ -2,18 +2,31 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Group, Loader, Select, Stack, Table, Text, TextInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
 import { NewJobModal } from '../components/NewJobModal';
-import { useApps, useJobs, useTemplates } from '../api/hooks';
+import { useApps, useJobs, useRetryJob, useTemplates } from '../api/hooks';
+import { ApiError } from '../api/client';
 import { relative, usd } from '../lib/format';
 
 const STATUSES = ['queued', 'running', 'completed', 'failed', 'incomplete'];
 
 export function Jobs() {
   const navigate = useNavigate();
+  const retry = useRetryJob();
   const [newOpen, setNewOpen] = useState(false);
+
+  async function onRetry(e: React.MouseEvent, jobId: string) {
+    e.stopPropagation();
+    try {
+      await retry.mutateAsync(jobId);
+      notifications.show({ message: `Job ${jobId} re-queued`, color: 'teal' });
+    } catch (err) {
+      notifications.show({ message: err instanceof ApiError ? err.message : 'Retry failed', color: 'red' });
+    }
+  }
   const apps = useApps();
   const templates = useTemplates();
   const [appId, setAppId] = useState<string | null>(null);
@@ -63,6 +76,7 @@ export function Jobs() {
                 <Table.Th ta="right">Cost</Table.Th>
                 <Table.Th ta="right">Tries</Table.Th>
                 <Table.Th ta="right">Created</Table.Th>
+                <Table.Th />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -81,10 +95,17 @@ export function Jobs() {
                   <Table.Td ta="right"><Mono size="sm">{usd(j.cost?.usd)}</Mono></Table.Td>
                   <Table.Td ta="right"><Mono size="sm">{j.attempts ?? '—'}</Mono></Table.Td>
                   <Table.Td ta="right"><Text size="xs" c="dimmed">{relative(j.createdAt)}</Text></Table.Td>
+                  <Table.Td ta="right">
+                    {(j.status === 'failed' || j.status === 'incomplete') && (
+                      <Button size="compact-xs" variant="subtle" color="violet" loading={retry.isPending} onClick={(e) => onRetry(e, j.jobId)}>
+                        Retry
+                      </Button>
+                    )}
+                  </Table.Td>
                 </Table.Tr>
               ))}
               {jobs.data.jobs.length === 0 && (
-                <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" size="sm">No jobs match.</Text></Table.Td></Table.Tr>
+                <Table.Tr><Table.Td colSpan={8}><Text c="dimmed" size="sm">No jobs match.</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>

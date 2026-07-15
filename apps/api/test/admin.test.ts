@@ -14,6 +14,8 @@ import {
   recordPurchaseStats,
   createJob,
   setJobStatus,
+  setJobAttempts,
+  getJob,
   listTransactions,
   getApp,
 } from '@agent-researcher/core';
@@ -83,6 +85,24 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
 
     const byTemplate = await app.inject({ method: 'GET', url: '/admin/jobs?template=other', headers: auth(admin) });
     expect((byTemplate.json() as any).jobs.map((j: any) => j.jobId)).toEqual(['j3']);
+  });
+
+  // --- Manual retry of a failed job ----------------------------------------
+  it('retries a failed job (202, reset to queued + attempts 0); 409 if in progress, 404 if unknown', async () => {
+    await createJob({ jobId: 'f1', appId: 'appA', userId: 'a@x.com', template: 'florida-business-for-sale', params: {} });
+    await setJobStatus('f1', 'failed');
+    await setJobAttempts('f1', 5);
+    const admin = await adminToken();
+
+    const r = await app.inject({ method: 'POST', url: '/admin/jobs/f1/retry', headers: auth(admin) });
+    expect(r.statusCode).toBe(202);
+    const job = await getJob('f1');
+    expect(job?.status).toBe('queued');
+    expect(job?.attempts).toBe(0);
+
+    await setJobStatus('f1', 'running');
+    expect((await app.inject({ method: 'POST', url: '/admin/jobs/f1/retry', headers: auth(admin) })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: '/admin/jobs/nope/retry', headers: auth(admin) })).statusCode).toBe(404);
   });
 
   // --- Task 5: app CRUD (extra fields + delete) ----------------------------
@@ -179,6 +199,7 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
       ['GET', '/admin/stats'],
       ['GET', '/admin/users'],
       ['GET', '/admin/jobs'],
+      ['POST', '/admin/jobs/x/retry'],
       ['GET', '/admin/settings'],
       ['PATCH', '/admin/settings', {}],
       ['GET', '/admin/apps'],
