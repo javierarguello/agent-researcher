@@ -71,6 +71,37 @@ export interface AgentSpec {
 }
 
 /**
+ * Presentation hints for a template's params — how a client UI (the admin form,
+ * or a model-specific web app) should render `paramsSchema`. Purely cosmetic:
+ * the API still validates against `paramsSchema` regardless of these hints.
+ */
+export interface ParamFieldUi {
+  /** One-line explanation shown under the field to help the user choose. */
+  help?: string;
+  /**
+   * Suggested values offered as a dropdown that STILL allows manual entry
+   * (autocomplete for a string field, tag suggestions for an array field).
+   */
+  suggestions?: string[];
+  placeholder?: string;
+  /** Force a widget; otherwise it's inferred from the JSON-Schema type. */
+  widget?: 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'tags' | 'autocomplete';
+}
+
+export interface ParamsUi {
+  /**
+   * Rows of param keys rendered side-by-side for a condensed form
+   * (e.g. `[['askingPriceMin','askingPriceMax']]`). Keys not listed are
+   * appended one-per-row in schema order.
+   */
+  rows?: string[][];
+  /** Per-field UI hints, keyed by param name. */
+  fields?: Record<string, ParamFieldUi>;
+  /** Param keys to hide from the generated form. */
+  hidden?: string[];
+}
+
+/**
  * A research template ("model") = one research vertical: its base prompt, the
  * validated params clients may pass, the report's typed sections, and the agent
  * workflow that fills them.
@@ -108,6 +139,8 @@ export interface ResearchTemplate<TParams = unknown> {
   buildBrief: (params: TParams) => string;
   /** Optional params field carrying lower-authority client instructions. */
   instructionsField?: string;
+  /** Presentation hints for rendering `paramsSchema` in a client UI. */
+  paramsUi?: ParamsUi;
 }
 
 /** The full report schema = every section's sub-schema composed into one object. */
@@ -139,6 +172,8 @@ export interface TemplateManifest {
   version: number;
   sections: Array<Pick<ReportSection, 'key' | 'title'>>;
   paramsSchema: unknown;
+  /** Presentation hints for rendering `paramsSchema` (see ParamsUi). */
+  paramsUi?: ParamsUi;
   /** JSON Schema of the report envelope's `report` object (consumer contract). */
   reportSchema: unknown;
 }

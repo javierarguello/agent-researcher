@@ -5,6 +5,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
+import { NewJobModal } from '../components/NewJobModal';
 import { useApps, useJobs, useTemplates } from '../api/hooks';
 import { relative, usd } from '../lib/format';
 
@@ -12,6 +13,7 @@ const STATUSES = ['queued', 'running', 'completed', 'failed', 'incomplete'];
 
 export function Jobs() {
   const navigate = useNavigate();
+  const [newOpen, setNewOpen] = useState(false);
   const apps = useApps();
   const templates = useTemplates();
   const [appId, setAppId] = useState<string | null>(null);
@@ -35,8 +37,10 @@ export function Jobs() {
         eyebrow="Operations"
         title="Jobs"
         subtitle="Every research job across apps."
-        actions={<Button onClick={() => navigate('/jobs/new')}>New job</Button>}
+        actions={<Button onClick={() => setNewOpen(true)}>New job</Button>}
       />
+
+      <NewJobModal opened={newOpen} onClose={() => setNewOpen(false)} />
 
       <Group>
         <Select placeholder="All apps" data={appOptions} value={appId} onChange={setAppId} clearable w={180} />

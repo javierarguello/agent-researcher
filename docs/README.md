@@ -53,4 +53,6 @@ tracked as **analytics** in Firestore.
 11. [extending.md](extending.md) — add a section / agent / research model / LLM
     provider / auth provider **without breaking** anything.
 12. [deployment.md](deployment.md) — infra scripts, CI, every env var, Firestore
-    indexes + TTL, the `fbizlab` / admin apps.
+    indexes + TTL, the `fbizlab` / admin apps, admin SPA Hosting.
+13. [model-ui.md](model-ui.md) — how a client (the admin, or a model-specific web
+    app) renders a model's params from its manifest (`paramsSchema` + `paramsUi`).

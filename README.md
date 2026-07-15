@@ -60,17 +60,28 @@ npm run research:local -- --template florida-business-for-sale \
 
 ## Environments
 
-Two isolated environments, `dev` and `prod`, selected by the `ENV` var. Every
-stateful resource is suffixed with it, so they never collide in the shared GCP
-project:
+Two isolated environments, `dev` and `prod`, selected by the `ENV` var, both in
+the shared GCP/Firebase project **`sinuous-canto-497518-h7`** (region
+**`us-central1`**). Every stateful resource is suffixed with the env, so they
+never collide. **This is the source of truth for resource names + URLs.**
 
 | Resource | dev | prod |
 | --- | --- | --- |
+| API base URL (Cloud Run) | https://agent-researcher-dev-api-b74fjmzlha-uc.a.run.app | _(after prod deploy)_ |
+| Admin SPA (Firebase Hosting) | https://agent-researcher-dev-admin.web.app | https://agent-researcher-prod-admin.web.app |
 | Firestore database | `agent-researcher-dev` | `agent-researcher-prod` |
 | GCS bucket | `agent-researcher-dev-reports` | `agent-researcher-prod-reports` |
-| Cloud Run service | `agent-researcher-dev-api` | `agent-researcher-prod-api` |
-| Cloud Run job | `agent-researcher-dev-worker` | `agent-researcher-prod-worker` |
+| Cloud Run service (API) | `agent-researcher-dev-api` | `agent-researcher-prod-api` |
+| Cloud Run service (worker) | `agent-researcher-dev-worker` | `agent-researcher-prod-worker` |
+| Cloud Tasks queue | `agent-researcher-dev-jobs` | `agent-researcher-prod-jobs` |
+| Firebase Hosting site | `agent-researcher-dev-admin` | `agent-researcher-prod-admin` |
 | Service accounts | `agent-researcher-dev-{api,worker}@` | `agent-researcher-prod-{api,worker}@` |
+
+**Well-known app doc ids** (Firestore `apps/{appId}`, slugs — never UUIDs):
+`admin` (backoffice, role admin) and `fbizlab` (FloridaBizLab, role app). The
+admin SPA lives in `apps/admin` — see [docs/deployment.md](docs/deployment.md#admin-spa-appsadmin--firebase-hosting)
+for its Hosting + OAuth setup, and [docs/model-ui.md](docs/model-ui.md) for how a
+client renders a model's params.
 
 ## Deploy
 

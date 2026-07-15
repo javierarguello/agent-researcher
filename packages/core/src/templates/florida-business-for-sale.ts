@@ -503,6 +503,50 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     },
   },
   instructionsField: 'instructions',
+  // How the admin form (and any model-specific web app) should render the params:
+  // a condensed layout (paired min/max on one row), per-field help, and suggested
+  // values that still allow manual entry. See docs/model-ui.md.
+  paramsUi: {
+    rows: [
+      ['industry', 'location'],
+      ['mode', 'language'],
+      ['askingPriceMin', 'askingPriceMax'],
+      ['minRevenue', 'minCashFlow'],
+      ['sbaFriendly', 'includeRealEstate'],
+      ['keywords'],
+      ['preferredSources'],
+      ['instructions'],
+    ],
+    fields: {
+      industry: {
+        help: 'Type of business to search for. Pick a suggestion or type your own.',
+        placeholder: 'e.g. Laundromats',
+        suggestions: [
+          'Laundromats', 'Car washes', 'Restaurants', 'HVAC', 'Landscaping',
+          'Auto repair', 'Liquor stores', 'Gyms', 'Daycares', 'Self storage',
+          'Pest control', 'Medical practices', 'Franchises',
+        ],
+      },
+      location: { help: 'Geographic focus within Florida.', placeholder: 'e.g. Miami-Dade County, FL' },
+      mode: { help: 'Essential = ~half the cost, core sections. Comprehensive = full long-form report.' },
+      language: { help: 'Language the final report is written in.' },
+      askingPriceMin: { help: 'Minimum asking price (USD). Leave blank for no floor.' },
+      askingPriceMax: { help: 'Maximum asking price (USD). Leave blank for no ceiling.' },
+      minRevenue: { help: 'Minimum annual revenue (USD).' },
+      minCashFlow: { help: 'Minimum annual cash flow / SDE (USD).' },
+      sbaFriendly: { help: 'Prioritize deals likely eligible for SBA 7(a) financing.' },
+      includeRealEstate: { help: 'Prefer deals that include commercial real estate.' },
+      keywords: {
+        help: 'Extra search keywords to bias the hunt.',
+        suggestions: ['SBA', 'absentee owner', 'owner financing', 'real estate included', 'turnkey', 'established'],
+      },
+      preferredSources: {
+        help: 'Marketplaces/brokers to prioritize (in addition to the defaults).',
+        suggestions: ['bizbuysell.com', 'bizquest.com', 'loopnet.com', 'businessesforsale.com', 'sunbeltnetwork.com'],
+      },
+      instructions: { help: 'Free-form guidance for the analysts (lower authority than the model’s base rules).' },
+    },
+  },
   buildBrief: (p) => {
     const lines: string[] = [];
     lines.push(`Find and analyze businesses currently for sale in ${p.location}.`);

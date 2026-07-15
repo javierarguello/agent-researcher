@@ -1,4 +1,5 @@
-import { NumberInput, Select, Stack, Switch, TagsInput, Textarea, TextInput } from '@mantine/core';
+import { Autocomplete, Group, NumberInput, Select, Stack, Switch, TagsInput, Textarea, TextInput } from '@mantine/core';
+import type { ParamsUi } from '../api/types';
 
 export interface JsonProp {
   type?: string;
@@ -30,100 +31,71 @@ export function defaultsFor(schema: JsonSchema | undefined): Record<string, unkn
   return out;
 }
 
-/** A form generated from a template's params JSON-Schema (Zod → JSON Schema). */
+/** Ordered rows of field keys: ui.rows first, then any remaining (non-hidden) keys. */
+function layout(schema: JsonSchema, ui?: ParamsUi): string[][] {
+  const all = Object.keys(schema.properties ?? {});
+  const hidden = new Set(ui?.hidden ?? []);
+  const rows = (ui?.rows ?? []).map((r) => r.filter((k) => !hidden.has(k) && all.includes(k)));
+  const placed = new Set(rows.flat());
+  const rest = all.filter((k) => !placed.has(k) && !hidden.has(k)).map((k) => [k]);
+  return [...rows, ...rest].filter((r) => r.length > 0);
+}
+
+/** A form generated from a template's params JSON-Schema + optional UI hints. */
 export function JsonSchemaForm({
   schema,
+  ui,
   value,
   onChange,
 }: {
   schema: JsonSchema;
+  ui?: ParamsUi;
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
 }) {
   const set = (key: string, v: unknown) => onChange({ ...value, [key]: v });
   const required = new Set(schema.required ?? []);
-  const props = Object.entries(schema.properties ?? {});
+
+  function field(key: string) {
+    const prop = schema.properties?.[key];
+    if (!prop) return null;
+    const f = ui?.fields?.[key];
+    const label = humanize(key);
+    const description = f?.help ?? prop.description;
+    const placeholder = f?.placeholder;
+    const isRequired = required.has(key) && prop.default === undefined;
+    const widget = f?.widget;
+    const common = { key, label, description, placeholder };
+
+    if (prop.enum || widget === 'select') {
+      return <Select {...common} data={prop.enum ?? f?.suggestions ?? []} value={(value[key] as string) ?? null} onChange={(v) => set(key, v)} required={isRequired} />;
+    }
+    if (prop.type === 'boolean' || widget === 'switch') {
+      return <Switch key={key} label={label} description={description} checked={Boolean(value[key])} onChange={(e) => set(key, e.currentTarget.checked)} />;
+    }
+    if (prop.type === 'integer' || prop.type === 'number' || widget === 'number') {
+      return <NumberInput {...common} min={prop.minimum} value={(value[key] as number) ?? ''} onChange={(v) => set(key, typeof v === 'number' ? v : undefined)} required={isRequired} />;
+    }
+    if (prop.type === 'array' || widget === 'tags') {
+      return <TagsInput {...common} data={f?.suggestions ?? []} value={(value[key] as string[]) ?? []} onChange={(v) => set(key, v)} />;
+    }
+    if (widget === 'textarea' || key.toLowerCase().includes('instruction')) {
+      return <Textarea {...common} value={(value[key] as string) ?? ''} onChange={(e) => set(key, e.currentTarget.value)} autosize minRows={2} />;
+    }
+    // String — suggestions render a free-text autocomplete (type or pick).
+    if (f?.suggestions?.length || widget === 'autocomplete') {
+      return <Autocomplete {...common} data={f?.suggestions ?? []} value={(value[key] as string) ?? ''} onChange={(v) => set(key, v)} required={isRequired} />;
+    }
+    return <TextInput {...common} value={(value[key] as string) ?? ''} onChange={(e) => set(key, e.currentTarget.value)} required={isRequired} />;
+  }
 
   return (
-    <Stack>
-      {props.map(([key, prop]) => {
-        const label = humanize(key);
-        // Fields with a default are effectively optional in the form.
-        const isRequired = required.has(key) && prop.default === undefined;
-
-        if (prop.enum) {
-          return (
-            <Select
-              key={key}
-              label={label}
-              description={prop.description}
-              data={prop.enum}
-              value={(value[key] as string) ?? null}
-              onChange={(v) => set(key, v)}
-              required={isRequired}
-            />
-          );
-        }
-        if (prop.type === 'boolean') {
-          return (
-            <Switch
-              key={key}
-              label={label}
-              description={prop.description}
-              checked={Boolean(value[key])}
-              onChange={(e) => set(key, e.currentTarget.checked)}
-            />
-          );
-        }
-        if (prop.type === 'integer' || prop.type === 'number') {
-          return (
-            <NumberInput
-              key={key}
-              label={label}
-              description={prop.description}
-              min={prop.minimum}
-              value={(value[key] as number) ?? ''}
-              onChange={(v) => set(key, typeof v === 'number' ? v : undefined)}
-              required={isRequired}
-            />
-          );
-        }
-        if (prop.type === 'array') {
-          return (
-            <TagsInput
-              key={key}
-              label={label}
-              description={prop.description}
-              value={(value[key] as string[]) ?? []}
-              onChange={(v) => set(key, v)}
-            />
-          );
-        }
-        // string — long free-text (instructions) gets a textarea.
-        if (key.toLowerCase().includes('instruction')) {
-          return (
-            <Textarea
-              key={key}
-              label={label}
-              description={prop.description}
-              value={(value[key] as string) ?? ''}
-              onChange={(e) => set(key, e.currentTarget.value)}
-              autosize
-              minRows={2}
-            />
-          );
-        }
-        return (
-          <TextInput
-            key={key}
-            label={label}
-            description={prop.description}
-            value={(value[key] as string) ?? ''}
-            onChange={(e) => set(key, e.currentTarget.value)}
-            required={isRequired}
-          />
-        );
-      })}
+    <Stack gap="sm">
+      {layout(schema, ui).map((row, i) => (
+        <Group key={i} grow align="flex-start" gap="sm" wrap="nowrap">
+          {row.map((key) => field(key))}
+        </Group>
+      ))}
     </Stack>
   );
 }

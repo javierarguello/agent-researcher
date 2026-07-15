@@ -161,6 +161,18 @@ export interface LedgerEntry {
   createdAt: string;
 }
 
+export interface ParamFieldUi {
+  help?: string;
+  suggestions?: string[];
+  placeholder?: string;
+  widget?: 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'tags' | 'autocomplete';
+}
+export interface ParamsUi {
+  rows?: string[][];
+  fields?: Record<string, ParamFieldUi>;
+  hidden?: string[];
+}
+
 export interface TemplateManifest {
   id: string;
   name: string;
@@ -168,5 +180,6 @@ export interface TemplateManifest {
   version: number;
   sections: Array<{ key: string; title: string }>;
   paramsSchema: unknown;
+  paramsUi?: ParamsUi;
   reportSchema: unknown;
 }

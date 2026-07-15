@@ -31,7 +31,9 @@ dependency cycles.
 
 1. Create `packages/core/src/templates/<id>.ts` exporting a `ResearchTemplate`
    (`id`, `name`, `description`, `version: 1`, `basePrompt`, `paramsSchema`,
-   `sections`, `agents`, `buildBrief`).
+   `sections`, `agents`, `buildBrief`). Optionally add `paramsUi` (form layout,
+   per-field help + suggestions) so clients render a good form with no UI change —
+   see [model-ui.md](model-ui.md).
 2. Register it in `templates/registry.ts` (`TEMPLATES` map).
 3. Add its doc `docs/models/<id>.md`.
 4. `npm run templates:check`.

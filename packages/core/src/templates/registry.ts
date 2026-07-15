@@ -28,6 +28,7 @@ export function toManifest(t: ResearchTemplate<any>): TemplateManifest {
     version: t.version,
     sections: t.sections.map((s) => ({ key: s.key, title: s.title })),
     paramsSchema: z.toJSONSchema(t.paramsSchema),
+    ...(t.paramsUi ? { paramsUi: t.paramsUi } : {}),
     reportSchema: z.toJSONSchema(reportSchemaOf(t)),
   };
 }

@@ -26,7 +26,12 @@ npm run build -w @agent-researcher/admin   # → apps/admin/dist (static)
 - `src/api/` — central fetch client (Bearer + 401 handling) + response types.
 - `src/auth/` — Google Identity Services wrapper + `AuthProvider`/`useAuth`.
 - `src/components/` — `RequireAuth` route guard, `Layout` (Mantine AppShell).
-- `src/pages/` — Dashboard (live `/admin/stats`); Jobs/Users/Apps/New-job stubs
-  (built in later phases).
+- `src/pages/` — Dashboard (live `/admin/stats`), Jobs (list + live-polling
+  detail), Users (search + credit audit + grant), Apps (CRUD).
+- `src/components/NewJobModal.tsx` + `JsonSchemaForm.tsx` — the "new job" dialog:
+  a params form generated from the model's manifest (`paramsSchema` + `paramsUi`).
+  See [../../docs/model-ui.md](../../docs/model-ui.md) — the pattern to reuse when
+  building a model-specific web app.
 
-Config is build-time via `VITE_*` env vars (see `.env.example`).
+Config is build-time via `VITE_*` env vars (see `.env.example`). Live URLs +
+resource names are in the root [README](../../README.md#environments).

@@ -10,6 +10,8 @@ export type {
   AgentSpec,
   AgentRole,
   TemplateManifest,
+  ParamsUi,
+  ParamFieldUi,
 } from './templates/types.js';
 export { validateTemplate, assertTemplatesValid } from './templates/validate.js';
 
