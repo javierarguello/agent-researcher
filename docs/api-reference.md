@@ -46,17 +46,28 @@ whitelisted) · `404` (unknown/inactive app) · `501` (provider not enabled).
 ## templates
 
 ### `GET /templates` — list research models  · user
+Query: `lang` (`en|es|fr|pt`, default `en`). Returns only the models the app is
+allowed to use (scoped to `allowedTemplates`; admin apps see all). Each manifest
+is self-contained — a client renders the whole form, texts, and credit cost from
+it. See [model-ui.md](model-ui.md).
 ```jsonc
 { "templates": [ {
   "id": "florida-business-for-sale", "name": "…", "description": "…", "version": 1,
-  "sections": [ { "key": "shortlist", "title": "Shortlist…" }, … ],
-  "paramsSchema": { /* JSON Schema of accepted params */ },
+  "lang": "en",
+  "sections":     [ { "key": "shortlist", "title": "Shortlist…" }, … ],
+  "paramsSchema": { /* JSON Schema of accepted params (validate + build the form) */ },
+  "paramsUi":     { /* rows, fields{help,suggestions,optionLabels,placeholder}, ranges, advanced, hidden */ },
+  "modes":        [ { "key": "essential", "label": "Essential", "credits": 1 },
+                    { "key": "comprehensive", "label": "Comprehensive", "credits": 2 } ],
   "reportSchema": { /* JSON Schema of the report object */ } } ] }
 ```
-The internal `basePrompt` is never exposed.
+`modes[].credits` is the authoritative per-tier cost. Texts are localized to
+`lang` (missing translations fall back to English). The internal `basePrompt` is
+never exposed.
 
-### `GET /templates/:id` — one model + its schemas  · user
-Returns the single manifest (same shape as an item above). `404` if unknown.
+### `GET /templates/:id` — one model manifest  · user
+Query: `lang` (as above). Returns the single manifest (same shape). `404` if
+unknown; **`403` if the app isn't allowed to use this model**.
 
 ---
 

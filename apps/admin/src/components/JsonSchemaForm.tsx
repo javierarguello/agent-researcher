@@ -1,5 +1,5 @@
 import { Accordion, Autocomplete, Group, NumberInput, RangeSlider, Select, Stack, Switch, TagsInput, Text, Textarea, TextInput } from '@mantine/core';
-import type { ParamRangeUi, ParamsUi } from '../api/types';
+import type { ModeInfo, ParamRangeUi, ParamsUi } from '../api/types';
 
 export interface JsonProp {
   type?: string;
@@ -47,16 +47,19 @@ function layout(schema: JsonSchema, ui: ParamsUi | undefined, omit: Set<string>)
 export function JsonSchemaForm({
   schema,
   ui,
+  modes,
   value,
   onChange,
 }: {
   schema: JsonSchema;
   ui?: ParamsUi;
+  modes?: ModeInfo[];
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
 }) {
   const set = (key: string, v: unknown) => onChange({ ...value, [key]: v });
   const required = new Set(schema.required ?? []);
+  const creditWord = (n: number) => `${n} credit${n > 1 ? 's' : ''}`;
 
   // The control itself, WITHOUT any description (help is rendered separately,
   // below the input, so variable-height help never misaligns a two-column row).
@@ -71,7 +74,13 @@ export function JsonSchemaForm({
     const maxLength = prop.maxLength;
 
     if (prop.enum || widget === 'select') {
-      return <Select {...common} data={prop.enum ?? f?.suggestions ?? []} value={(value[key] as string) ?? null} onChange={(v) => set(key, v)} required={isRequired} />;
+      const opts = prop.enum ?? f?.suggestions ?? [];
+      // If this enum is the report tier, show each option with its credit cost.
+      const isMode = modes && prop.enum && prop.enum.every((v) => modes.some((m) => m.key === v));
+      const data = isMode
+        ? modes!.map((m) => ({ value: m.key, label: `${m.label} · ${creditWord(m.credits)}` }))
+        : opts.map((v) => ({ value: v, label: f?.optionLabels?.[v] ?? v }));
+      return <Select {...common} data={data} value={(value[key] as string) ?? null} onChange={(v) => set(key, v)} required={isRequired} />;
     }
     if (prop.type === 'boolean' || widget === 'switch') {
       return <Switch mt={6} label={label} checked={Boolean(value[key])} onChange={(e) => set(key, e.currentTarget.checked)} />;

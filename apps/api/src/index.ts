@@ -32,6 +32,8 @@ import {
   queryUsers,
   listTemplates,
   getTemplate,
+  SUPPORTED_LANGS,
+  DEFAULT_LANG,
   logEvent,
   signJobFiles,
   toManifest,
@@ -80,16 +82,36 @@ await app.register(swagger, {
   openapi: {
     info: {
       title: 'agent-researcher API',
-      description:
-        'Deep-research API. Submit a research request against a template ("model"); poll the job; ' +
-        'download the generated Markdown report + executive summary via signed URLs.',
       version: '0.1.0',
+      description: [
+        'Deep-research API: submit a research request against a **model** (template), poll the job, and',
+        'download the generated report via short-lived signed URLs. This spec is self-sufficient for building',
+        'a frontend — no other knowledge required.',
+        '',
+        '### Build a frontend in 5 steps',
+        '1. **Log in** — `POST /auth/session` with `{ appId, provider:"google", idToken }` → `{ token }` (a',
+        '   session JWT). Send it as `Authorization: Bearer <token>` on every other call. appId+userId come',
+        '   from the token, never the body.',
+        '2. **List models** — `GET /templates?lang=<en|es|…>` → each item is a self-contained *manifest*:',
+        '   `paramsSchema` (JSON Schema — validate + generate the input form), `paramsUi` (layout `rows`,',
+        '   per-field `help`/`suggestions`/`optionLabels`/`placeholder`, `ranges` = min/max sliders, `advanced`',
+        '   = collapsed fields), `modes` (report tiers with their **credit cost**), and `sections`/`reportSchema`',
+        '   (the report structure). All display texts are localized to `lang` (default `en`). The list is scoped',
+        '   to the app’s allowed models.',
+        '3. **Show credits** — `GET /credits/balance`; buy more via `GET /credits/plans` + `POST /credits/checkout`.',
+        '4. **Run** — `POST /research { template, params }` → `202 { jobId }`. Params are validated against the',
+        '   model’s `paramsSchema`; the chosen `mode` costs its `modes[].credits`.',
+        '5. **Poll** — `GET /research/:jobId` until `status:"completed"` (or `failed`); a completed job returns',
+        '   `files[]` with signed download URLs. `progress`/`summary` drive a live view.',
+        '',
+        'See docs/model-ui.md for the form-generation pattern. Errors are `{ error: string }` with a 4xx/5xx code.',
+      ].join('\n'),
     },
     components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
     security: [{ bearerAuth: [] }],
     tags: [
       { name: 'auth', description: 'Login: exchange a provider identity for a session token' },
-      { name: 'templates', description: 'Supported research templates ("models")' },
+      { name: 'templates', description: 'Research models: self-contained manifests (form schema + UI hints + texts + credits), scoped per app, localizable via ?lang' },
       { name: 'research', description: 'Create, list, and poll research jobs' },
       { name: 'credits', description: 'Credit balance + ledger (shared billing)' },
       { name: 'admin', description: 'Management + stats (admin token required)' },
@@ -175,27 +197,69 @@ app.post(
 );
 
 // --- Templates --------------------------------------------------------------
+const langQuery = {
+  lang: {
+    type: 'string',
+    enum: SUPPORTED_LANGS,
+    description: `Language for the manifest texts (name, description, section titles, mode labels, field help). Default '${DEFAULT_LANG}'; strings without a translation fall back to '${DEFAULT_LANG}'.`,
+  },
+} as const;
+
+/** The manifest language: the validated `lang` query, or the default. */
+function reqLang(req: { query?: unknown }): string {
+  const l = (req.query as { lang?: string } | undefined)?.lang;
+  return l && SUPPORTED_LANGS.includes(l) ? l : DEFAULT_LANG;
+}
+
 app.get(
   '/templates',
-  { schema: { summary: 'List supported research templates', tags: ['templates'], security: sec } },
-  async () => ({ templates: listTemplates().map(toManifest) }),
+  {
+    schema: {
+      summary: 'List the research models this app may use',
+      description:
+        'Returns one manifest per model the app is allowed to use (scoped to the app’s `allowedTemplates`; ' +
+        'admin apps see all). Each manifest is self-contained — enough to render a full input form, all display ' +
+        'texts, the report structure, and the per-tier credit cost, with no client-side hardcoding. See the ' +
+        '`ResearchModelManifest` schema and docs/model-ui.md.',
+      tags: ['templates'],
+      security: sec,
+      querystring: { type: 'object', additionalProperties: false, properties: { ...langQuery } },
+    },
+  },
+  async (req) => {
+    const lang = reqLang(req);
+    const allowed = req.appRecord?.allowedTemplates;
+    const restrict = req.auth!.role !== 'admin' && allowed && allowed.length ? new Set(allowed) : null;
+    const list = listTemplates().filter((t) => !restrict || restrict.has(t.id));
+    return { templates: list.map((t) => toManifest(t, lang)) };
+  },
 );
 
 app.get(
   '/templates/:id',
   {
     schema: {
-      summary: 'Get one template + its JSON-Schema params',
+      summary: 'Get one research model manifest (form + texts + credits)',
+      description:
+        'The full manifest for one model: `paramsSchema` (JSON Schema — validate + generate the form), ' +
+        '`paramsUi` (layout, per-field help, suggestions, ranges, advanced section), `modes` (report tiers with ' +
+        'their credit cost), `sections`/`reportSchema` (the report structure), all localized to `lang`. ' +
+        '403 if the app is not allowed to use this model.',
       tags: ['templates'],
       security: sec,
       params: { type: 'object', properties: { id: { type: 'string', maxLength: 128 } }, required: ['id'] },
+      querystring: { type: 'object', additionalProperties: false, properties: { ...langQuery } },
     },
   },
   async (req, reply) => {
     const { id } = req.params as { id: string };
     const t = getTemplate(id);
     if (!t) return reply.code(404).send({ error: `Unknown template: ${id}` });
-    return toManifest(t);
+    const allowed = req.appRecord?.allowedTemplates;
+    if (req.auth!.role !== 'admin' && allowed && allowed.length && !allowed.includes(id)) {
+      return reply.code(403).send({ error: `App "${req.auth!.appId}" is not allowed to use model "${id}".` });
+    }
+    return toManifest(t, reqLang(req));
   },
 );
 

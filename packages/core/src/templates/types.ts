@@ -83,6 +83,8 @@ export interface ParamFieldUi {
    * (autocomplete for a string field, tag suggestions for an array field).
    */
   suggestions?: string[];
+  /** Human labels for an enum field's raw values, e.g. { en: 'English' }. */
+  optionLabels?: Record<string, string>;
   placeholder?: string;
   /** Force a widget; otherwise it's inferred from the JSON-Schema type. */
   widget?: 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'tags' | 'autocomplete';
@@ -158,6 +160,24 @@ export interface ResearchTemplate<TParams = unknown> {
   instructionsField?: string;
   /** Presentation hints for rendering `paramsSchema` in a client UI. */
   paramsUi?: ParamsUi;
+  /**
+   * Translations of the client-facing manifest strings, keyed by language code
+   * (e.g. 'es'). The template's own fields are the English ('en') base; any
+   * string missing a translation falls back to English. See `toManifest(t, lang)`.
+   */
+  i18n?: Record<string, TemplateI18n>;
+}
+
+/** Per-language overrides of a template's client-facing strings. */
+export interface TemplateI18n {
+  name?: string;
+  description?: string;
+  /** Section title by section key. */
+  sectionTitles?: Record<string, string>;
+  /** Report-tier label by mode key. */
+  modeLabels?: Partial<Record<ReportMode, string>>;
+  /** paramsUi field overrides by param key. */
+  fields?: Record<string, { help?: string; placeholder?: string }>;
 }
 
 /** The full report schema = every section's sub-schema composed into one object. */
@@ -187,10 +207,14 @@ export interface TemplateManifest {
   name: string;
   description: string;
   version: number;
+  /** The language this manifest's texts are in (the requested `lang`, or 'en'). */
+  lang: string;
   sections: Array<Pick<ReportSection, 'key' | 'title'>>;
   paramsSchema: unknown;
   /** Presentation hints for rendering `paramsSchema` (see ParamsUi). */
   paramsUi?: ParamsUi;
+  /** Report tiers the client picks from, with their credit cost. */
+  modes: Array<{ key: ReportMode; label: string; credits: number }>;
   /** JSON Schema of the report envelope's `report` object (consumer contract). */
   reportSchema: unknown;
 }

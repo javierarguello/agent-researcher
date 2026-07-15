@@ -164,6 +164,7 @@ export interface LedgerEntry {
 export interface ParamFieldUi {
   help?: string;
   suggestions?: string[];
+  optionLabels?: Record<string, string>;
   placeholder?: string;
   widget?: 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'tags' | 'autocomplete';
 }
@@ -184,13 +185,20 @@ export interface ParamsUi {
   advanced?: string[];
 }
 
+export interface ModeInfo {
+  key: string;
+  label: string;
+  credits: number;
+}
 export interface TemplateManifest {
   id: string;
   name: string;
   description: string;
   version: number;
+  lang: string;
   sections: Array<{ key: string; title: string }>;
   paramsSchema: unknown;
   paramsUi?: ParamsUi;
+  modes: ModeInfo[];
   reportSchema: unknown;
 }

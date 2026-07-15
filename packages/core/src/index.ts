@@ -2,7 +2,7 @@
 export { config } from './config.js';
 
 // Templates
-export { getTemplate, listTemplates, toManifest, TEMPLATES } from './templates/registry.js';
+export { getTemplate, listTemplates, toManifest, TEMPLATES, SUPPORTED_LANGS, DEFAULT_LANG } from './templates/registry.js';
 export { reportSchemaOf, sectionSubsetSchema, sectionByKey } from './templates/types.js';
 export type {
   ResearchTemplate,
@@ -13,6 +13,7 @@ export type {
   ParamsUi,
   ParamFieldUi,
   ParamRangeUi,
+  TemplateI18n,
 } from './templates/types.js';
 export { validateTemplate, assertTemplatesValid } from './templates/validate.js';
 
@@ -83,6 +84,7 @@ export type { LogContext, JobLogger, Severity } from './obs/log.js';
 // Report modes (public cost/scope knob) + internal depth
 export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
+export { LANGUAGE_LABELS } from './languages.js';
 
 // Credits / billing (shared across all models + webs)
 export {

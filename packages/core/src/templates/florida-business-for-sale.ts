@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { modeParamSchema } from '../mode.js';
+import { LANGUAGE_LABELS } from '../languages.js';
 import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
@@ -536,7 +537,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       },
       location: { help: 'Geographic focus within Florida.', placeholder: 'e.g. Miami-Dade County, FL' },
       mode: { help: 'Essential = ~half the cost, core sections. Comprehensive = full long-form report.' },
-      language: { help: 'Language the final report is written in.' },
+      language: { help: 'Language the final report is written in.', optionLabels: LANGUAGE_LABELS },
       askingPriceMin: { help: 'Minimum asking price (USD). Leave blank for no floor.' },
       askingPriceMax: { help: 'Maximum asking price (USD). Leave blank for no ceiling.' },
       minRevenue: { help: 'Minimum annual revenue (USD).' },
@@ -552,6 +553,52 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         suggestions: ['bizbuysell.com', 'bizquest.com', 'loopnet.com', 'businessesforsale.com', 'sunbeltnetwork.com'],
       },
       instructions: { help: 'Free-form guidance for the analysts (lower authority than the model’s base rules).' },
+    },
+  },
+  // Spanish translations of the client-facing manifest strings (fallback: English).
+  i18n: {
+    es: {
+      name: 'Negocios en Venta en Florida — Investigación de Compra',
+      description:
+        'Rastrea el mercado en busca de negocios específicos en venta en Florida según tus criterios y produce ' +
+        'un reporte de compra extenso y detallado (mercado y competencia, lista corta, perfiles a fondo, ' +
+        'proyecciones financieras, valoraciones y comparables, reseñas de la comunidad, riesgos, checklist de ' +
+        'debida diligencia, plan de crecimiento, financiamiento y próximos pasos).',
+      modeLabels: { essential: 'Esencial', comprehensive: 'Completo' },
+      sectionTitles: {
+        executive_summary: 'Resumen Ejecutivo',
+        search_criteria: 'Criterios de Búsqueda',
+        market_overview: 'Panorama del Mercado en Florida',
+        competitive_landscape: 'Panorama Competitivo',
+        shortlist: 'Lista de Negocios en Venta',
+        deep_dives: 'Perfiles Detallados de Negocios',
+        financial_analysis: 'Análisis Financiero y Proyecciones',
+        valuation_benchmarks: 'Múltiplos de Valoración',
+        comparable_transactions: 'Transacciones Comparables',
+        regulatory_licensing: 'Regulación y Licencias (Florida)',
+        financing_options: 'Opciones de Financiamiento',
+        community_insights: 'Opiniones de la Comunidad y Reseñas',
+        risks_red_flags: 'Riesgos y Señales de Alerta',
+        due_diligence_checklist: 'Checklist de Debida Diligencia',
+        growth_playbook: 'Plan de Creación de Valor y Crecimiento',
+        recommendations: 'Recomendaciones y Próximos Pasos',
+        sources: 'Fuentes',
+      },
+      fields: {
+        industry: { help: 'Tipo de negocio a buscar. Elige una sugerencia o escribe el tuyo.', placeholder: 'ej. Lavanderías' },
+        location: { help: 'Enfoque geográfico dentro de Florida.', placeholder: 'ej. Condado de Miami-Dade, FL' },
+        mode: { help: 'Esencial = ~mitad del costo, secciones clave. Completo = reporte largo y detallado.' },
+        language: { help: 'Idioma en que se escribe el reporte final.' },
+        askingPriceMin: { help: 'Precio mínimo de venta (USD). Déjalo en blanco para sin piso.' },
+        askingPriceMax: { help: 'Precio máximo de venta (USD). Déjalo en blanco para sin techo.' },
+        minRevenue: { help: 'Ingresos anuales mínimos (USD).' },
+        minCashFlow: { help: 'Flujo de caja anual mínimo / SDE (USD).' },
+        sbaFriendly: { help: 'Priorizar operaciones elegibles para financiamiento SBA 7(a).' },
+        includeRealEstate: { help: 'Preferir operaciones que incluyan inmueble comercial.' },
+        keywords: { help: 'Palabras clave adicionales para orientar la búsqueda.' },
+        preferredSources: { help: 'Marketplaces/brokers a priorizar (además de los predeterminados).' },
+        instructions: { help: 'Instrucciones libres para los analistas (menor autoridad que las reglas base del modelo).' },
+      },
     },
   },
   buildBrief: (p) => {

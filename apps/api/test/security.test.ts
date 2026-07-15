@@ -91,6 +91,35 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(1); // not charged
   });
 
+  it('GET /templates is scoped to the app allowedTemplates; /:id is 403 for disallowed', async () => {
+    const t = await token('fbizlab', 'u@x.com');
+    // No restriction → the model is visible.
+    expect((await app.inject({ method: 'GET', url: '/templates', headers: auth(t) })).json().templates.map((x: any) => x.id))
+      .toContain('florida-business-for-sale');
+
+    // Restrict to a model this app doesn't include → list is empty, /:id is 403.
+    await updateApp('fbizlab', { allowedTemplates: ['some-other-model'] });
+    expect((await app.inject({ method: 'GET', url: '/templates', headers: auth(t) })).json().templates).toHaveLength(0);
+    expect((await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale', headers: auth(t) })).statusCode).toBe(403);
+  });
+
+  it('template manifest carries modes+credits and localizes to ?lang', async () => {
+    const t = await token('fbizlab', 'u@x.com');
+    const en = (await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale', headers: auth(t) })).json();
+    expect(en.lang).toBe('en');
+    expect(en.modes).toEqual([
+      { key: 'essential', label: 'Essential', credits: 1 },
+      { key: 'comprehensive', label: 'Comprehensive', credits: 2 },
+    ]);
+    const es = (await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale?lang=es', headers: auth(t) })).json();
+    expect(es.lang).toBe('es');
+    expect(es.name).toContain('Negocios');
+    expect(es.modes[0].label).toBe('Esencial');
+    // Unknown lang falls back to en.
+    const xx = (await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale?lang=zz', headers: auth(t) }));
+    expect(xx.statusCode).toBe(400); // enum-validated query rejects an unsupported lang
+  });
+
   it("rejects a research model not in the app's allowedTemplates (403); admin is exempt", async () => {
     await updateApp('fbizlab', { allowedTemplates: ['some-other-model'] });
     await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 5 });

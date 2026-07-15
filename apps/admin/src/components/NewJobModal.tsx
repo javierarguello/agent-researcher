@@ -65,7 +65,7 @@ export function NewJobModal({ opened, onClose }: { opened: boolean; onClose: () 
         {template.data && schema && (
           <>
             <Text size="sm" c="dimmed">{template.data.description}</Text>
-            <JsonSchemaForm schema={schema} ui={ui} value={params} onChange={setParams} />
+            <JsonSchemaForm schema={schema} ui={ui} modes={template.data.modes} value={params} onChange={setParams} />
           </>
         )}
 
