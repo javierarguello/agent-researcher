@@ -18,5 +18,5 @@ export async function initGoogleAuth(clientId: string, onCredential: (idToken: s
 }
 
 export function renderGoogleButton(id: GoogleAccountsId, container: HTMLElement): void {
-  id.renderButton(container, { theme: 'outline', size: 'large', width: 300, text: 'continue_with', shape: 'rectangular' });
+  id.renderButton(container, { theme: 'outline', size: 'large', width: 360, text: 'continue_with', shape: 'rectangular' });
 }
