@@ -5,6 +5,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Apps } from './pages/Apps';
 import { Users } from './pages/Users';
+import { Pricing } from './pages/Pricing';
 import { Jobs } from './pages/Jobs';
 import { JobDetail } from './pages/JobDetail';
 
@@ -18,6 +19,7 @@ export function App() {
           <Route path="jobs" element={<Jobs />} />
           <Route path="jobs/:jobId" element={<JobDetail />} />
           <Route path="users" element={<Users />} />
+          <Route path="pricing" element={<Pricing />} />
           <Route path="apps" element={<Apps />} />
         </Route>
       </Route>

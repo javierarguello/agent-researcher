@@ -214,3 +214,15 @@ export interface JobReport {
   meta: Record<string, unknown>;
   report: Record<string, unknown>;
 }
+
+export interface PricingMode {
+  key: string;
+  defaultCredits: number;
+  credits: number;
+}
+export interface PricingView {
+  templateId: string;
+  modes: PricingMode[];
+  addons: Record<string, number>;
+  updatedAt: string | null;
+}

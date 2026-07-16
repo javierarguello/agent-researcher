@@ -7,6 +7,7 @@ import type {
   AppPublic,
   JobDetail,
   LedgerEntry,
+  PricingView,
   TemplateManifest,
 } from './types';
 
@@ -55,6 +56,26 @@ export function useJob(jobId: string) {
 
 export function useApps() {
   return useQuery({ queryKey: ['apps'], queryFn: () => api<{ apps: AppPublic[] }>('/admin/apps') });
+}
+
+export function usePricing(templateId: string) {
+  return useQuery({
+    queryKey: ['pricing', templateId],
+    queryFn: () => api<PricingView>(`/admin/pricing/${encodeURIComponent(templateId)}`),
+  });
+}
+
+export function useSetPricing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ templateId, body }: { templateId: string; body: { modes?: Record<string, number>; addons?: Record<string, number> } }) =>
+      api<PricingView>(`/admin/pricing/${encodeURIComponent(templateId)}`, { method: 'PUT', body }),
+    onSuccess: (_res, { templateId }) => {
+      qc.invalidateQueries({ queryKey: ['pricing', templateId] });
+      qc.invalidateQueries({ queryKey: ['templates'] });
+      qc.invalidateQueries({ queryKey: ['template', templateId] });
+    },
+  });
 }
 
 export function useUsers(filter: { appId?: string; q?: string }) {
