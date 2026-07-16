@@ -41,31 +41,42 @@ export interface StripePlan {
   features?: string[];
 }
 
-/** Build a plan from a product + its resolved default price. */
-function planFromProduct(product: Stripe.Product, price: Stripe.Price): StripePlan {
+/**
+ * Localized marketing. Stripe has no native per-language `description`, so we keep
+ * per-locale copy in PRODUCT metadata under suffixed keys: `sub_es`, `features_fr`,
+ * … (pipe-separated for features). The base `sub`/`features` (and the native
+ * `description`) are the English/default fallback. Pass `lang` to pick a locale.
+ */
+function localized(md: Record<string, string>, base: string, lang: string): string | undefined {
+  return md[`${base}_${lang}`] ?? md[base] ?? undefined;
+}
+
+/** Build a plan from a product + its resolved default price, in `lang`. */
+function planFromProduct(product: Stripe.Product, price: Stripe.Price, lang: string): StripePlan {
   const md = product.metadata ?? {};
   const planId = String(md.planId ?? product.id);
-  const description = product.description ?? undefined;
+  const sub = localized(md, 'sub', lang) ?? product.description ?? undefined;
+  const features = localized(md, 'features', lang);
   return {
     planId,
-    name: product.name,
+    name: localized(md, 'name', lang) ?? product.name,
     priceUsd: (price.unit_amount ?? 0) / 100,
     credits: Number(md.credits ?? 0),
     priceId: price.id,
     ...(price.recurring?.interval ? { interval: price.recurring.interval } : {}),
-    ...(md.sub ?? description ? { sub: String(md.sub ?? description) } : {}),
+    ...(sub ? { sub } : {}),
     ...(md.popular === 'true' ? { popular: true } : {}),
-    // Features: pipe-separated in metadata, e.g. "3 reports/mo|Basic ROI|…"
-    ...(md.features ? { features: String(md.features).split('|').map((f) => f.trim()).filter(Boolean) } : {}),
+    // Features: pipe-separated, e.g. "≈4 reports|Basic ROI|…"
+    ...(features ? { features: features.split('|').map((f) => f.trim()).filter(Boolean) } : {}),
   };
 }
 
 /**
  * All plans for an app — Stripe **products** tagged with metadata.appId == appId,
- * each represented by its default price. Products without a default price are
- * skipped (not purchasable).
+ * each represented by its default price, localized to `lang`. Products without a
+ * default price are skipped (not purchasable).
  */
-export async function listStripePlans(appId: string): Promise<StripePlan[]> {
+export async function listStripePlans(appId: string, lang = 'en'): Promise<StripePlan[]> {
   const res = await stripe().products.search({
     query: `active:'true' AND metadata['appId']:'${appId}'`,
     expand: ['data.default_price'],
@@ -73,7 +84,7 @@ export async function listStripePlans(appId: string): Promise<StripePlan[]> {
   });
   return res.data
     .filter((p) => p.default_price && typeof p.default_price === 'object')
-    .map((p) => planFromProduct(p, p.default_price as Stripe.Price))
+    .map((p) => planFromProduct(p, p.default_price as Stripe.Price, lang))
     .sort((a, b) => a.priceUsd - b.priceUsd);
 }
 

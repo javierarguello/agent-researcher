@@ -102,15 +102,17 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(0); // never negative
   });
 
-  it('GET /plans is public (no auth), Stripe-sourced, filtered by appId, and cached 30min', async () => {
+  it('GET /plans is public (no auth), Stripe-sourced, filtered by appId; empty catalog is never cached', async () => {
     const r = await app.inject({ method: 'GET', url: '/plans?appId=fbizlab' }); // no Authorization header
     expect(r.statusCode).toBe(200);
     expect(r.json().plans).toHaveLength(1);
     expect(r.json().plans[0]).toMatchObject({ planId: 'scout', credits: 3, popular: true });
-    expect(r.headers['cache-control']).toContain('max-age=1800'); // 30min
-    // Another app sees its own (empty) catalog — appId is the only scope.
+    // Short browser cache with background revalidation (not a long, un-purgeable TTL).
+    expect(r.headers['cache-control']).toContain('stale-while-revalidate');
+    // An empty catalog must be no-store, so a fix propagates immediately.
     const other = await app.inject({ method: 'GET', url: '/plans?appId=other-app' });
     expect(other.json().plans).toHaveLength(0);
+    expect(other.headers['cache-control']).toBe('no-store');
   });
 
   it('CONCURRENT duplicate webhooks credit only once (no over-credit)', async () => {

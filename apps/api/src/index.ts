@@ -63,7 +63,7 @@ import {
 import type Stripe from 'stripe';
 import { jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan } from './stripe.js';
-import { cached, PUBLIC_TTL_MS, PUBLIC_TTL_SECONDS } from './cache.js';
+import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
 
 // bodyLimit caps every request body at 512 KB — far above any legitimate payload
 // (research params are bounded per-field, a Google id_token is ~2 KB, Stripe
@@ -594,29 +594,46 @@ app.get(
     schema: {
       summary: 'Public: purchasable plans/packs for an app (from Stripe)',
       description:
-        'Lists the Stripe Prices whose metadata.appId matches — no auth, for a public landing page pricing ' +
-        'section. The catalog (name, price, credits, and marketing metadata sub/popular/features) lives ' +
-        'entirely in Stripe; nothing is hardcoded in the client.',
+        'Lists the Stripe products whose metadata.appId matches (each by its default price) — no auth, for a ' +
+        'public landing pricing section. The catalog (name, price, credits, and marketing metadata ' +
+        'sub/popular/features, localized per `lang`) lives entirely in Stripe; nothing is hardcoded in the client.',
       tags: ['credits'],
-      querystring: { type: 'object', additionalProperties: false, required: ['appId'], properties: { appId: { type: 'string', maxLength: 128 } } },
+      querystring: { type: 'object', additionalProperties: false, required: ['appId'], properties: { appId: { type: 'string', maxLength: 128 }, ...langQuery } },
     },
   },
   async (req, reply) => {
     const { appId } = req.query as { appId: string };
-    // Public, unauthenticated response — cache it (30min) at the edge and in-process.
-    reply.header('Cache-Control', `public, max-age=${PUBLIC_TTL_SECONDS}`);
-    if (!stripeConfigured()) return { plans: [] };
-    return { plans: await cached(`plans:${appId}`, PUBLIC_TTL_MS, () => listStripePlans(appId)) };
+    const lang = reqLang(req);
+    // Public, unauthenticated response. Cache it (30min in-process) — but ONLY when
+    // the catalog is non-empty, so a misconfigured/empty catalog is never pinned and
+    // recovers the moment it's fixed. Keyed by lang. The BROWSER cache is short with
+    // stale-while-revalidate so a Stripe change (which also busts the server cache
+    // via webhook) reaches every client within ~a minute.
+    const plans = stripeConfigured()
+      ? await cached(`plans:${appId}:${lang}`, PUBLIC_TTL_MS, () => listStripePlans(appId, lang), (p) => p.length > 0)
+      : [];
+    reply.header(
+      'Cache-Control',
+      plans.length ? `public, max-age=${PUBLIC_BROWSER_MAX_AGE}, stale-while-revalidate=${PUBLIC_BROWSER_SWR}` : 'no-store',
+    );
+    return { plans };
   },
 );
 
 app.get(
   '/credits/plans',
-  { schema: { summary: 'List the purchasable credit packs for this app', tags: ['credits'], security: sec } },
+  {
+    schema: {
+      summary: 'List the purchasable credit packs for this app',
+      tags: ['credits'],
+      security: sec,
+      querystring: { type: 'object', additionalProperties: false, properties: { ...langQuery } },
+    },
+  },
   async (req) => {
     const appId = req.auth!.appId;
     if (!stripeConfigured()) return { plans: [] };
-    return { plans: await listStripePlans(appId) };
+    return { plans: await listStripePlans(appId, reqLang(req)) };
   },
 );
 
@@ -680,6 +697,15 @@ app.post(
       event = stripe().webhooks.constructEvent(raw ?? Buffer.from(''), sig, config.stripe.webhookSecret);
     } catch (err) {
       return reply.code(400).send({ error: `Signature verification failed: ${(err as Error).message}` });
+    }
+
+    // Catalog changed in Stripe → drop the cached plans so every client sees the
+    // new price/product on their next request (no waiting out the 30min TTL).
+    if (event.type.startsWith('product.') || event.type.startsWith('price.')) {
+      const obj = event.data.object as { metadata?: Record<string, string> };
+      const appId = obj.metadata?.appId;
+      bustPublicCache(appId ? `plans:${appId}` : 'plans:');
+      logEvent({ jobId: '-', appId: appId ?? '-', userId: '-' }, 'INFO', 'plans.cache_busted', { event: event.type });
     }
 
     if (event.type === 'checkout.session.completed') {
