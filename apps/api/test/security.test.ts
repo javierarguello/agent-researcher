@@ -38,6 +38,13 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(r.statusCode).toBe(202);
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(7); // 12 - 5
     expect(await listJobs('fbizlab', 'u@x.com')).toHaveLength(1);
+
+    // A non-admin user never sees internal cost/turns in job info.
+    const list = (await app.inject({ method: 'GET', url: '/research', headers: auth(t) })).json();
+    expect(list.jobs[0]).not.toHaveProperty('cost');
+    const { jobId } = r.json() as { jobId: string };
+    const detail = (await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(t) })).json();
+    expect(detail).not.toHaveProperty('cost');
   });
 
   it('identity comes from the token — body appId/userId are ignored (no spoofing)', async () => {

@@ -35,3 +35,19 @@ npm run build -w @agent-researcher/admin   # → apps/admin/dist (static)
 
 Config is build-time via `VITE_*` env vars (see `.env.example`). Live URLs +
 resource names are in the root [README](../../README.md#environments).
+
+## Deploy — dev vs prod (every key/id/URL differs)
+
+Firebase Hosting, per-env sites. There is **no shared value across environments**;
+CI variables are namespaced per env.
+
+- **Dev** — `.github/workflows/deploy-admin.yml`, on push to `main` touching
+  `apps/admin/**`. Site `agent-researcher-dev-admin`. Reads `ADMIN_DEV_*`.
+- **Prod** — `.github/workflows/deploy-admin-prod.yml`, manual (`workflow_dispatch`).
+  Site `agent-researcher-prod-admin`. Reads `ADMIN_PROD_*`.
+
+| Build var | Dev repo variable | Prod repo variable |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | `ADMIN_DEV_API_BASE_URL` | `ADMIN_PROD_API_BASE_URL` |
+| `VITE_ADMIN_GOOGLE_CLIENT_ID` | `ADMIN_DEV_GOOGLE_CLIENT_ID` | `ADMIN_PROD_GOOGLE_CLIENT_ID` |
+| deploy SA key (secret) | `GCP_SA_KEY_DEV` | `GCP_SA_KEY_PROD` |

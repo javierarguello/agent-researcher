@@ -63,6 +63,7 @@ import {
 import type Stripe from 'stripe';
 import { jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan } from './stripe.js';
+import { cached, PUBLIC_TTL_MS, PUBLIC_TTL_SECONDS } from './cache.js';
 
 // bodyLimit caps every request body at 512 KB — far above any legitimate payload
 // (research params are bounded per-field, a Google id_token is ~2 KB, Stripe
@@ -423,7 +424,8 @@ app.get(
         title: j.title ?? null,
         shortDescription: j.shortDescription ?? null,
         status: j.status,
-        cost: j.cost ?? null,
+        // Cost is internal — only admins see it.
+        ...(isAdmin ? { cost: j.cost ?? null } : {}),
         createdAt: j.createdAt,
         updatedAt: j.updatedAt,
         finishedAt: j.finishedAt ?? null,
@@ -453,6 +455,21 @@ app.get(
       return reply.code(403).send({ error: 'Forbidden: not your report.' });
     }
 
+    // Non-admin callers get only client-facing info — no cost, turns, tokens, or
+    // per-agent internals. Progress keeps the current phase + message; summary
+    // keeps only what a client should see (whether the report was degraded).
+    const isAdmin = req.auth!.role === 'admin';
+    const progress = job.progress
+      ? isAdmin
+        ? job.progress
+        : { phase: job.progress.phase, message: job.progress.message, updatedAt: job.progress.updatedAt }
+      : null;
+    const s = job.summary;
+    const summary = s
+      ? isAdmin
+        ? s
+        : { ...(s.warnings ? { warnings: s.warnings } : {}), ...(s.degradedSections ? { degradedSections: s.degradedSections } : {}) }
+      : null;
     const base = {
       jobId: job.jobId,
       appId: job.appId,
@@ -461,9 +478,9 @@ app.get(
       title: job.title ?? null,
       shortDescription: job.shortDescription ?? null,
       status: job.status,
-      progress: job.progress ?? null,
-      cost: job.cost ?? null,
-      summary: job.summary ?? null,
+      progress,
+      ...(isAdmin ? { cost: job.cost ?? null } : {}),
+      summary,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
       error: job.error ?? null,
@@ -568,6 +585,28 @@ app.get(
     const appId = (isAdmin && q.appId) || req.auth!.appId;
     const userId = (isAdmin && q.userId) || req.auth!.email;
     return { transactions: await listTransactions(appId, userId, q.limit ?? 50, q.type) };
+  },
+);
+
+app.get(
+  '/plans',
+  {
+    schema: {
+      summary: 'Public: purchasable plans/packs for an app (from Stripe)',
+      description:
+        'Lists the Stripe Prices whose metadata.appId matches — no auth, for a public landing page pricing ' +
+        'section. The catalog (name, price, credits, and marketing metadata sub/popular/features) lives ' +
+        'entirely in Stripe; nothing is hardcoded in the client.',
+      tags: ['credits'],
+      querystring: { type: 'object', additionalProperties: false, required: ['appId'], properties: { appId: { type: 'string', maxLength: 128 } } },
+    },
+  },
+  async (req, reply) => {
+    const { appId } = req.query as { appId: string };
+    // Public, unauthenticated response — cache it (30min) at the edge and in-process.
+    reply.header('Cache-Control', `public, max-age=${PUBLIC_TTL_SECONDS}`);
+    if (!stripeConfigured()) return { plans: [] };
+    return { plans: await cached(`plans:${appId}`, PUBLIC_TTL_MS, () => listStripePlans(appId)) };
   },
 );
 

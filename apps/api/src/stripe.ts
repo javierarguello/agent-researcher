@@ -32,6 +32,12 @@ export interface StripePlan {
   priceUsd: number;
   credits: number;
   priceId: string;
+  /** Billing interval when the Price is recurring, e.g. 'month'. */
+  interval?: string;
+  /** Marketing metadata (all optional, from Product/Price metadata). */
+  sub?: string;
+  popular?: boolean;
+  features?: string[];
 }
 
 function planFromPrice(price: Stripe.Price): StripePlan {
@@ -39,7 +45,19 @@ function planFromPrice(price: Stripe.Price): StripePlan {
   const md = { ...productMd, ...price.metadata }; // price metadata wins over product metadata
   const planId = String(md.planId ?? price.lookup_key ?? price.id);
   const name = typeof price.product === 'object' && 'name' in price.product ? String(price.product.name) : planId;
-  return { planId, name, priceUsd: (price.unit_amount ?? 0) / 100, credits: Number(md.credits ?? 0), priceId: price.id };
+  const description = typeof price.product === 'object' && 'description' in price.product ? (price.product.description ?? undefined) : undefined;
+  return {
+    planId,
+    name,
+    priceUsd: (price.unit_amount ?? 0) / 100,
+    credits: Number(md.credits ?? 0),
+    priceId: price.id,
+    ...(price.recurring?.interval ? { interval: price.recurring.interval } : {}),
+    ...(md.sub ?? description ? { sub: String(md.sub ?? description) } : {}),
+    ...(md.popular === 'true' ? { popular: true } : {}),
+    // Features: pipe-separated in metadata, e.g. "3 reports/mo|Basic ROI|…"
+    ...(md.features ? { features: String(md.features).split('|').map((f) => f.trim()).filter(Boolean) } : {}),
+  };
 }
 
 /** All plans for an app — Stripe prices tagged with metadata.appId == appId. */

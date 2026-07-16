@@ -4,12 +4,16 @@
 # roles/owner) — google-github-actions/auth exports GOOGLE_APPLICATION_CREDENTIALS,
 # which firebase-tools uses to deploy Hosting.
 #
-# ONE-TIME SETUP:
+# Every key/id/URL differs between dev and prod, so build-time config is namespaced
+# per environment: this dev workflow reads ADMIN_DEV_*; the prod workflow
+# (deploy-admin-prod.yml) reads ADMIN_PROD_*. Never share a value across envs.
+#
+# ONE-TIME SETUP (dev):
 #   # create the Hosting site (owner account, miltonjaviera@gmail.com):
 #   firebase hosting:sites:create agent-researcher-dev-admin --project sinuous-canto-497518-h7
 #   # build-time config as repo VARIABLES (both are public, not secrets):
-#   gh variable set ADMIN_API_BASE_URL --body "https://agent-researcher-dev-api-xxxxx.run.app"
-#   gh variable set ADMIN_GOOGLE_CLIENT_ID --body "1234-abc.apps.googleusercontent.com"
+#   gh variable set ADMIN_DEV_API_BASE_URL --body "https://agent-researcher-dev-api-xxxxx.run.app"
+#   gh variable set ADMIN_DEV_GOOGLE_CLIENT_ID --body "1234-abc.apps.googleusercontent.com"
 #
 name: Deploy admin SPA (dev)
 
@@ -46,8 +50,8 @@ jobs:
 
       - name: Build admin SPA
         env:
-          VITE_API_BASE_URL: ${{ vars.ADMIN_API_BASE_URL }}
-          VITE_ADMIN_GOOGLE_CLIENT_ID: ${{ vars.ADMIN_GOOGLE_CLIENT_ID }}
+          VITE_API_BASE_URL: ${{ vars.ADMIN_DEV_API_BASE_URL }}
+          VITE_ADMIN_GOOGLE_CLIENT_ID: ${{ vars.ADMIN_DEV_GOOGLE_CLIENT_ID }}
         run: npm run build -w @agent-researcher/admin
 
       - name: Authenticate to Google Cloud (service-account key)

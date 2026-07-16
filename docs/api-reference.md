@@ -109,7 +109,10 @@ token's). Returns newest-first summaries:
 
 ### `GET /research/:jobId` — poll a job  · user
 Ownership: admins read any job; a regular user only their own (same `appId` +
-email), else `403`. `404` if unknown.
+email), else `403`. `404` if unknown. **Non-admin callers get only client-facing
+fields** — no `cost`, token/turn counts, or per-agent internals; `progress` keeps
+`phase`+`message`, `summary` keeps only `warnings`/`degradedSections`. Admins see
+everything. (Same for the `cost` field in `GET /research`.)
 
 While `queued`/`running`/`failed`:
 ```jsonc
@@ -161,12 +164,24 @@ e.g. only grants, for the credit audit); admin only `userId`, `appId`. →
 provenance: purchases → `paymentId`/`plan`/`amountUsd` (Stripe); manual grants →
 `grantedBy` (admin) + `reason`; consumption/refund → `jobId`.
 
+### `GET /plans?appId=<id>` — public pricing  · no auth
+Public catalog for a landing page's pricing section — **no token required**. Lists
+the Stripe Prices whose `metadata.appId` matches the query. The catalog lives
+entirely in Stripe (nothing hardcoded in any client). Cached 30 min in-process and
+via `Cache-Control: public, max-age=1800`. `{ plans: [] }` if Stripe is not
+configured. Same shape as `/credits/plans`.
+
 ### `GET /credits/plans` — purchasable credit packs  · user
 Returns the Stripe-defined packs for the caller's app (`metadata.appId == appId`).
-`{ plans: [] }` if Stripe is not configured.
+Identical data to the public `/plans`, but scoped to the token's `appId`.
+`{ plans: [] }` if Stripe is not configured. Optional marketing metadata (`sub`,
+`popular`, `features` [pipe-separated in Stripe], `interval` [recurring prices])
+flows straight through from the Stripe Price/Product.
 ```jsonc
 { "plans": [ { "planId": "starter", "name": "Starter", "priceUsd": 10,
-              "credits": 5, "priceId": "price_…" } ] }
+              "credits": 5, "priceId": "price_…", "interval": "month",
+              "sub": "For curious buyers", "popular": true,
+              "features": ["5 reports", "Basic ROI"] } ] }
 ```
 
 ### `POST /credits/checkout` — start a Stripe Checkout  · user

@@ -1,0 +1,66 @@
+# Build + deploy the public FloridaBizLab SPA (apps/fbizlab) to Firebase Hosting on push to main.
+#
+# Static site, no server. Auth reuses the dev service-account key (GCP_SA_KEY_DEV,
+# roles/owner) — google-github-actions/auth exports GOOGLE_APPLICATION_CREDENTIALS,
+# which firebase-tools uses to deploy Hosting.
+#
+# Every key/id/URL differs between dev and prod, so build-time config is namespaced
+# per environment: this dev workflow reads FBIZLAB_DEV_*; the prod workflow
+# (deploy-fbizlab-prod.yml) reads FBIZLAB_PROD_*. Never share a value across envs.
+#
+# ONE-TIME SETUP (dev):
+#   # create the Hosting site (owner account, miltonjaviera@gmail.com):
+#   firebase hosting:sites:create agent-researcher-dev-fbizlab --project sinuous-canto-497518-h7
+#   # build-time config as repo VARIABLES (all public, not secrets):
+#   gh variable set FBIZLAB_DEV_API_BASE_URL --body "https://agent-researcher-dev-api-xxxxx.run.app"
+#   gh variable set FBIZLAB_DEV_GOOGLE_CLIENT_ID --body "1234-abc.apps.googleusercontent.com"
+#
+name: Deploy fbizlab SPA (dev)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/fbizlab/**'
+      - '.github/workflows/deploy-fbizlab.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-fbizlab-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT_ID: sinuous-canto-497518-h7
+
+jobs:
+  deploy-fbizlab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build fbizlab SPA
+        env:
+          VITE_API_BASE_URL: ${{ vars.FBIZLAB_DEV_API_BASE_URL }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.FBIZLAB_DEV_GOOGLE_CLIENT_ID }}
+          VITE_APP_ID: fbizlab
+        run: npm run build -w @agent-researcher/fbizlab
+
+      - name: Authenticate to Google Cloud (service-account key)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_SA_KEY_DEV }}
+
+      - name: Deploy to Firebase Hosting (dev site)
+        working-directory: apps/fbizlab
+        run: npx --yes firebase-tools deploy --only hosting:fbizlab-dev --project "${GCP_PROJECT_ID}" --non-interactive

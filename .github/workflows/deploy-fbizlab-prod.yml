@@ -1,0 +1,59 @@
+# Build + deploy the public FloridaBizLab SPA (apps/fbizlab) to the PROD Firebase
+# Hosting site. Manual trigger only (workflow_dispatch) — prod releases are deliberate.
+#
+# Every key/id/URL differs between dev and prod. This workflow reads FBIZLAB_PROD_*
+# variables and the GCP_SA_KEY_PROD secret; it shares nothing with the dev workflow.
+#
+# ONE-TIME SETUP (prod):
+#   firebase hosting:sites:create agent-researcher-prod-fbizlab --project sinuous-canto-497518-h7
+#   gh variable set FBIZLAB_PROD_API_BASE_URL     --body "https://<prod-cloud-run-api-url>"
+#   gh variable set FBIZLAB_PROD_GOOGLE_CLIENT_ID --body "<prod-oauth-client-id>.apps.googleusercontent.com"
+#   # SA key with deploy rights on the prod hosting site (may equal the dev key if
+#   # the prod site lives in the same GCP project):
+#   gh secret set GCP_SA_KEY_PROD < prod-sa-key.json
+#
+name: Deploy fbizlab SPA (prod)
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-fbizlab-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT_ID: sinuous-canto-497518-h7
+
+jobs:
+  deploy-fbizlab-prod:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build fbizlab SPA (prod config)
+        env:
+          VITE_API_BASE_URL: ${{ vars.FBIZLAB_PROD_API_BASE_URL }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.FBIZLAB_PROD_GOOGLE_CLIENT_ID }}
+          VITE_APP_ID: fbizlab
+        run: npm run build -w @agent-researcher/fbizlab
+
+      - name: Authenticate to Google Cloud (prod service-account key)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+
+      - name: Deploy to Firebase Hosting (prod site)
+        working-directory: apps/fbizlab
+        run: npx --yes firebase-tools deploy --only hosting:fbizlab-prod --project "${GCP_PROJECT_ID}" --non-interactive

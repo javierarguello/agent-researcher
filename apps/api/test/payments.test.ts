@@ -19,7 +19,10 @@ vi.mock('../src/stripe.js', () => ({
     planId === 'investor'
       ? { planId: 'investor', name: 'Investor', priceUsd: 100, credits: 15, priceId: 'price_1', appId }
       : undefined,
-  listStripePlans: async () => [],
+  listStripePlans: async (appId: string) =>
+    appId === 'fbizlab'
+      ? [{ planId: 'scout', name: 'Scout', priceUsd: 19, credits: 3, priceId: 'price_s', popular: true, sub: 'Curious buyers', features: ['3 reports', 'Discovery'] }]
+      : [],
 }));
 
 import { app } from '../src/index.js';
@@ -97,6 +100,17 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     expect(ok).toBe(3); // exactly the affordable number
     expect(denied).toBe(3);
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(0); // never negative
+  });
+
+  it('GET /plans is public (no auth), Stripe-sourced, filtered by appId, and cached 30min', async () => {
+    const r = await app.inject({ method: 'GET', url: '/plans?appId=fbizlab' }); // no Authorization header
+    expect(r.statusCode).toBe(200);
+    expect(r.json().plans).toHaveLength(1);
+    expect(r.json().plans[0]).toMatchObject({ planId: 'scout', credits: 3, popular: true });
+    expect(r.headers['cache-control']).toContain('max-age=1800'); // 30min
+    // Another app sees its own (empty) catalog — appId is the only scope.
+    const other = await app.inject({ method: 'GET', url: '/plans?appId=other-app' });
+    expect(other.json().plans).toHaveLength(0);
   });
 
   it('CONCURRENT duplicate webhooks credit only once (no over-credit)', async () => {
