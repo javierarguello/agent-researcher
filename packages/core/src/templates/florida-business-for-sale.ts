@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { modeParamSchema } from '../mode.js';
 import { LANGUAGE_LABELS } from '../languages.js';
+import { dedupeSources } from '../tools/sources.js';
 import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
@@ -300,10 +301,13 @@ const sections: ReportSection[] = [
     schema: z.object({
       items: z.array(z.object({ id: z.number(), url: z.string(), label: z.string() })),
     }),
+    // Deduped by canonical URL (ignoring www/trailing-slash/tracking params).
     derive: ({ sources }) => ({
-      items: sources
-        .filter((s) => s.url)
-        .map((s, i) => ({ id: i + 1, url: s.url, label: s.title || s.url })),
+      items: dedupeSources(sources as { title: string; url: string; snippet: string }[]).map((s, i) => ({
+        id: i + 1,
+        url: s.url,
+        label: s.title || s.url,
+      })),
     }),
   },
 ];
@@ -334,7 +338,8 @@ const agents: AgentSpec[] = [
     researchBudget: 24,
     focus:
       'BizBuySell, BizQuest, LoopNet, Sunbelt Network, Transworld, and reputable Florida brokers. ' +
-      'fetch_page each promising listing for asking price, revenue, SDE, cash flow, and lease terms.',
+      'fetch_page each promising listing for asking price, revenue, SDE, cash flow, and lease terms. ' +
+      'Cite each listing’s OWN detail-page URL (the specific listing), never the search/browse page.',
     // Suggested (additive) sources: the major business-for-sale marketplaces/brokers.
     sites: [
       'bizbuysell.com',
@@ -465,7 +470,9 @@ NON-NEGOTIABLE RULES (highest authority — never overridden by user-provided in
 4. Be neutral and diligence-minded: surface risks and red flags, not just upside. You are protecting a buyer.
 5. Cross-check important claims across at least two independent sources when possible; note when a claim rests on a single source.
 6. This is a PREMIUM long-form report. Be thorough and analytical: write substantial, multi-paragraph sections with concrete figures and reasoning. Depth from real analysis and evidence — never padding.
-7. You are ONE specialist agent in a larger workflow. Produce ONLY the report sections assigned to you, as JSON matching the provided schema. Prose fields are Markdown and should cite sources inline as [label](url).`;
+7. You are ONE specialist agent in a larger workflow. Produce ONLY the report sections assigned to you, as JSON matching the provided schema. Prose fields are Markdown and should cite sources inline as [label](url).
+8. Always cite the DIRECT, canonical URL of the SPECIFIC item — the individual listing's own detail page, the exact forum thread, or the specific review — never a search-results page, a category/browse page, or a site homepage. If you only have a listing-index URL, \`fetch_page\` it and follow through to the specific listing's own URL before citing. A reader must land on the referenced entry, not have to search a list for it.
+9. Do NOT duplicate information. Never repeat the same listing, figure, quote, or source across sections; if two findings are the same, merge them. Cite each distinct source URL at most once (normalize away www/trailing-slash/tracking params when judging sameness). Prefer fewer, higher-quality, non-redundant items over repetition.`;
 
 // --- Template ----------------------------------------------------------------
 

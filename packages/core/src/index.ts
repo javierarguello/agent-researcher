@@ -86,6 +86,7 @@ export type { LogContext, JobLogger, Severity } from './obs/log.js';
 export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
 export { LANGUAGE_LABELS } from './languages.js';
+export { dedupeSources, normalizeUrl } from './tools/sources.js';
 
 // Credits / billing (shared across all models + webs)
 export {
