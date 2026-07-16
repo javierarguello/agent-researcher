@@ -72,17 +72,17 @@ together and makes both replay-safe under Cloud Tasks' at-least-once delivery.
 The plan catalog is defined **in Stripe**, not the codebase (`apps/api/src/stripe.ts`):
 
 - Create a Stripe **Product** + **Price** per pack.
-- **Convention:** set the Price `lookup_key = <appId>_<planId>` and put
-  `metadata.app = <appId>` and `metadata.credits = <n>` on the Price (or Product;
-  Price metadata wins on merge).
+- **Convention (metadata-driven, no lookup_key):** put `metadata.appId = <appId>`,
+  `metadata.planId = <planId>`, and `metadata.credits = <n>` on the Price (or
+  Product; Price metadata wins on merge).
 
 `StripePlan` resolved from a Price:
-`{ planId, name, priceUsd, credits, lookupKey, priceId }`.
+`{ planId, name, priceUsd, credits, priceId }`.
 
 - **`listStripePlans(appId)`** — `prices.search` for `active AND
-  metadata['app'] == appId`, sorted by price. Powers `GET /credits/plans`.
-- **`resolveStripePlan(appId, planId)`** — `prices.list` by
-  `lookup_key = <appId>_<planId>`. Powers checkout.
+  metadata['appId'] == appId`, sorted by price. Powers `GET /credits/plans`.
+- **`resolveStripePlan(appId, planId)`** — `prices.search` for `active AND
+  metadata['appId'] == appId AND metadata['planId'] == planId`. Powers checkout.
 
 ### Checkout → webhook → grant
 

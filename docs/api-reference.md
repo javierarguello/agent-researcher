@@ -161,16 +161,16 @@ provenance: purchases → `paymentId`/`plan`/`amountUsd` (Stripe); manual grants
 `grantedBy` (admin) + `reason`; consumption/refund → `jobId`.
 
 ### `GET /credits/plans` — purchasable credit packs  · user
-Returns the Stripe-defined packs for the caller's app (`metadata.app == appId`).
+Returns the Stripe-defined packs for the caller's app (`metadata.appId == appId`).
 `{ plans: [] }` if Stripe is not configured.
 ```jsonc
 { "plans": [ { "planId": "starter", "name": "Starter", "priceUsd": 10,
-              "credits": 5, "lookupKey": "fbizlab_starter", "priceId": "price_…" } ] }
+              "credits": 5, "priceId": "price_…" } ] }
 ```
 
 ### `POST /credits/checkout` — start a Stripe Checkout  · user
 Request: `{ "planId": "starter", "successUrl": "https://…", "cancelUrl": "https://…" }`.
-Resolves the plan by `lookup_key = <appId>_<planId>`; creates a hosted Checkout
+Resolves the plan by Price metadata `appId` + `planId`; creates a hosted Checkout
 session with metadata `{ appId, userId, planId, credits }`.
 ```jsonc
 { "url": "https://checkout.stripe.com/…", "sessionId": "cs_…", "credits": 5 }

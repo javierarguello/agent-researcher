@@ -72,7 +72,7 @@ Full detail: [auth.md](auth.md).
 userId)`); insufficient balance → `402`. If the job fails, the worker **refunds**
 those credits (idempotent). Credits are bought via **Stripe hosted Checkout**; the
 signature-verified webhook grants them. The plan catalog lives **entirely in
-Stripe** (Prices with `lookup_key = <appId>_<planId>` and metadata `{ app,
+Stripe** (Prices with metadata `{ appId, planId,
 credits }`) — nothing in Firestore. Full detail: [credits.md](credits.md).
 
 ## Scaling & concurrency

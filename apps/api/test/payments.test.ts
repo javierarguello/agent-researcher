@@ -17,7 +17,7 @@ vi.mock('../src/stripe.js', () => ({
   }),
   resolveStripePlan: async (appId: string, planId: string) =>
     planId === 'investor'
-      ? { planId: 'investor', name: 'Investor', priceUsd: 100, credits: 15, priceId: 'price_1', lookupKey: `${appId}_investor` }
+      ? { planId: 'investor', name: 'Investor', priceUsd: 100, credits: 15, priceId: 'price_1', appId }
       : undefined,
   listStripePlans: async () => [],
 }));

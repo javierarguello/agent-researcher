@@ -21,45 +21,44 @@ export function stripe(): Stripe {
 
 /**
  * A plan resolved from Stripe (the catalog lives entirely in Stripe — no
- * Firestore). Convention: Price `lookup_key` = `<appId>_<planId>` and Price/
- * Product metadata carries `app=<appId>` and `credits=<n>`.
+ * Firestore). Convention: a Price/Product carries metadata `appId=<appId>`,
+ * `planId=<planId>`, and `credits=<n>`. The app owns a Price when its metadata
+ * `appId` matches; `planId` selects the specific pack. (lookup_key is no longer
+ * used for resolution.)
  */
 export interface StripePlan {
   planId: string;
   name: string;
   priceUsd: number;
   credits: number;
-  lookupKey?: string;
   priceId: string;
 }
 
-function planFromPrice(appId: string, price: Stripe.Price): StripePlan {
+function planFromPrice(price: Stripe.Price): StripePlan {
   const productMd = typeof price.product === 'object' && 'metadata' in price.product ? price.product.metadata : {};
-  const md = { ...productMd, ...price.metadata };
-  const lk = price.lookup_key ?? undefined;
-  const planId = lk && lk.startsWith(`${appId}_`) ? lk.slice(appId.length + 1) : (lk ?? price.id);
+  const md = { ...productMd, ...price.metadata }; // price metadata wins over product metadata
+  const planId = String(md.planId ?? price.lookup_key ?? price.id);
   const name = typeof price.product === 'object' && 'name' in price.product ? String(price.product.name) : planId;
-  return { planId, name, priceUsd: (price.unit_amount ?? 0) / 100, credits: Number(md.credits ?? 0), lookupKey: lk, priceId: price.id };
+  return { planId, name, priceUsd: (price.unit_amount ?? 0) / 100, credits: Number(md.credits ?? 0), priceId: price.id };
 }
 
-/** All plans for an app — Stripe prices tagged with metadata.app == appId. */
+/** All plans for an app — Stripe prices tagged with metadata.appId == appId. */
 export async function listStripePlans(appId: string): Promise<StripePlan[]> {
   const res = await stripe().prices.search({
-    query: `active:'true' AND metadata['app']:'${appId}'`,
+    query: `active:'true' AND metadata['appId']:'${appId}'`,
     expand: ['data.product'],
     limit: 20,
   });
-  return res.data.map((p) => planFromPrice(appId, p)).sort((a, b) => a.priceUsd - b.priceUsd);
+  return res.data.map(planFromPrice).sort((a, b) => a.priceUsd - b.priceUsd);
 }
 
-/** Resolve one plan by its lookup_key `<appId>_<planId>`. */
+/** Resolve one plan by its metadata `appId` + `planId`. */
 export async function resolveStripePlan(appId: string, planId: string): Promise<StripePlan | undefined> {
-  const res = await stripe().prices.list({
-    lookup_keys: [`${appId}_${planId}`],
-    active: true,
+  const res = await stripe().prices.search({
+    query: `active:'true' AND metadata['appId']:'${appId}' AND metadata['planId']:'${planId}'`,
     expand: ['data.product'],
     limit: 1,
   });
   const price = res.data[0];
-  return price ? planFromPrice(appId, price) : undefined;
+  return price ? planFromPrice(price) : undefined;
 }

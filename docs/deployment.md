@@ -192,8 +192,8 @@ npm run apps -- update --appId fbizlab --google-client-id <id>.apps.googleuserco
 npm run apps -- update --appId admin --admin-emails "you@co.com"
 ```
 
-For billing, create Stripe Prices tagged `metadata { app: "fbizlab", credits: N }`
-with `lookup_key "fbizlab_<planId>"` (see [credits.md](credits.md)). Point Stripe's
+For billing, create Stripe Prices tagged `metadata { appId: "fbizlab", planId:
+"<planId>", credits: N }` (see [credits.md](credits.md)). Point Stripe's
 webhook at `POST /credits/webhook` and set `STRIPE_WEBHOOK_SECRET`.
 
 Manage apps/settings anytime with the CLI (`npm run apps -- <seed-admin|create|

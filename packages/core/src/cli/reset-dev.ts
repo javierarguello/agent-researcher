@@ -83,7 +83,7 @@ async function main() {
   console.log('\n=== Seeded apps (SAVE THESE KEYS — shown once) ===');
   console.log(`admin    appId=${admin.appId}  apiKey=${admin.apiKey}`);
   console.log(`fbizlab  appId=${fbizlab.appId}  apiKey=${fbizlab.apiKey}`);
-  console.log('\nStripe: tag each Price with metadata { app: "fbizlab", credits: N } and lookup_key "fbizlab_<planId>".');
+  console.log('\nStripe: tag each Price with metadata { appId: "fbizlab", planId: "<planId>", credits: N }.');
 }
 
 main().catch((err) => {

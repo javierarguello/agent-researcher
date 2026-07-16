@@ -583,7 +583,7 @@ app.post(
     const appId = req.auth!.appId;
     const userId = req.auth!.email;
 
-    // Catalog is entirely in Stripe: resolve by lookup_key `<appId>_<planId>`.
+    // Catalog is entirely in Stripe: resolve by Price metadata appId + planId.
     const plan = await resolveStripePlan(appId, b.planId);
     if (!plan) return reply.code(404).send({ error: `Unknown plan "${b.planId}" for app "${appId}".` });
     if (!plan.credits || plan.credits <= 0) {

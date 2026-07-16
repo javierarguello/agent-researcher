@@ -87,11 +87,11 @@ Key points:
 
 ```
 Frontend           API                        Stripe                      Core
-  │ GET /credits/plans ───────▶ listStripePlans(appId) ─▶ prices.search(metadata.app==appId)
+  │ GET /credits/plans ───────▶ listStripePlans(appId) ─▶ prices.search(metadata.appId==appId)
   │ ◀── {plans:[{planId,priceUsd,credits,…}]}                                   │
   │                                                                             │
   │ POST /credits/checkout {planId, successUrl, cancelUrl}                      │
-  │ ───────────▶ resolveStripePlan(appId,planId)  ─▶ prices.list(lookup_key=appId_planId)
+  │ ───────────▶ resolveStripePlan(appId,planId)  ─▶ prices.search(metadata.appId==appId AND metadata.planId==planId)
   │              checkout.sessions.create(                                      │
   │                 metadata={appId,userId,planId,credits})  ─▶ Stripe          │
   │ ◀── {url, sessionId, credits}                                              │
@@ -106,7 +106,7 @@ Frontend           API                        Stripe                      Core
   │                          ◀── 200 {received:true}                            │
 ```
 
-- The plan **catalog lives entirely in Stripe** (Prices + `lookup_key`/metadata),
+- The plan **catalog lives entirely in Stripe** (Prices + `appId`/`planId`/`credits` metadata),
   never Firestore.
 - `recordPurchase` is idempotent (`purchase_<paymentId>`); stats are folded in
   **only** the first time an event applies — safe under Stripe's at-least-once
