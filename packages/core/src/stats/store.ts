@@ -45,7 +45,7 @@ async function ensureUserSeen(appId: string, userId: string, date: string): Prom
       tx.set(uref, { lastSeenAt: now }, { merge: true });
       return false;
     }
-    tx.set(uref, { appId, userId, firstSeenAt: now, lastSeenAt: now });
+    tx.set(uref, { appId, userId, firstSeenAt: now, lastSeenAt: now, hasPurchased: false });
     tx.set(appStats().doc(appId), { appId, users: FieldValue.increment(1), updatedAt: now }, { merge: true });
     tx.set(
       dailyDoc(appId, date),
@@ -54,6 +54,18 @@ async function ensureUserSeen(appId: string, userId: string, date: string): Prom
     );
     return true;
   });
+}
+
+/**
+ * Record a user login so they show up in the admin the moment they authenticate —
+ * even if they never generate a report or buy credits. Creates the `app-users`
+ * doc (with `hasPurchased: false`) on first login and tracks login recency/count.
+ */
+export async function recordLogin(appId: string, userId: string): Promise<void> {
+  await ensureUserSeen(appId, userId, utcDate());
+  await appUsers()
+    .doc(userKey(appId, userId))
+    .set({ logins: FieldValue.increment(1), lastLoginAt: nowIso() }, { merge: true });
 }
 
 export interface ReportStatsInput {
@@ -143,19 +155,29 @@ export async function recordPurchaseStats(input: PurchaseStatsInput): Promise<vo
     updatedAt: now,
   };
 
+  // Flip the user's hasPurchased flag; the FIRST time, they convert from
+  // signed-up to paying, so bump the app's payingUsers counter.
+  const uref = appUsers().doc(userKey(input.appId, input.userId));
+  const firstPurchase = await firestore().runTransaction(async (tx) => {
+    const data = (await tx.get(uref)).data() ?? {};
+    const wasPaying = data.hasPurchased === true || num(data, 'creditsPurchased') > 0;
+    tx.set(
+      uref,
+      {
+        spentUsd: FieldValue.increment(input.amountUsd || 0),
+        creditsPurchased: FieldValue.increment(input.credits || 0),
+        hasPurchased: true,
+        lastSeenAt: now,
+      },
+      { merge: true },
+    );
+    return !wasPaying;
+  });
+
+  const appInc = firstPurchase ? { ...inc, payingUsers: FieldValue.increment(1) } : inc;
   await Promise.all([
-    appStats().doc(input.appId).set({ appId: input.appId, ...inc }, { merge: true }),
+    appStats().doc(input.appId).set({ appId: input.appId, ...appInc }, { merge: true }),
     dailyDoc(input.appId, date).set({ appId: input.appId, date, expireAt: expireAt(), ...inc }, { merge: true }),
-    appUsers()
-      .doc(userKey(input.appId, input.userId))
-      .set(
-        {
-          spentUsd: FieldValue.increment(input.amountUsd || 0),
-          creditsPurchased: FieldValue.increment(input.credits || 0),
-          lastSeenAt: now,
-        },
-        { merge: true },
-      ),
   ]);
 }
 
@@ -194,6 +216,8 @@ export interface AppStatsRollup {
   reportsFailed: number; // total error count
   degradedReports: number;
   users: number;
+  /** Users who have ever purchased credits (the rest signed up but never paid). */
+  payingUsers: number;
   costUsd: number;
   revenueUsd: number;
   purchases: number;
@@ -219,6 +243,7 @@ function rollup(d: Record<string, unknown>): AppStatsRollup {
     reportsFailed: num(d, 'reportsFailed'),
     degradedReports: num(d, 'degradedReports'),
     users: num(d, 'users'),
+    payingUsers: num(d, 'payingUsers'),
     costUsd: num(d, 'costUsd'),
     revenueUsd: num(d, 'revenueUsd'),
     purchases: num(d, 'purchases'),
@@ -241,7 +266,7 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
   let genTotal = 0;
   let genCount = 0;
   const totals: Omit<AppStatsRollup, 'appId'> = {
-    reports: 0, reportsCompleted: 0, reportsFailed: 0, degradedReports: 0, users: 0,
+    reports: 0, reportsCompleted: 0, reportsFailed: 0, degradedReports: 0, users: 0, payingUsers: 0,
     costUsd: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
     avgGenMs: null, genTimeMsMin: null, genTimeMsMax: null,
   };
@@ -251,6 +276,7 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
     totals.reportsFailed += num(d, 'reportsFailed');
     totals.degradedReports += num(d, 'degradedReports');
     totals.users += num(d, 'users');
+    totals.payingUsers += num(d, 'payingUsers');
     totals.costUsd += num(d, 'costUsd');
     totals.revenueUsd += num(d, 'revenueUsd');
     totals.purchases += num(d, 'purchases');
@@ -295,8 +321,30 @@ export interface UserRecord {
   costUsd: number;
   spentUsd: number;
   creditsPurchased: number;
+  /** True once the user has ever bought credits; false = signed up but never paid. */
+  hasPurchased: boolean;
   firstSeenAt?: string;
   lastSeenAt?: string;
+  lastLoginAt?: string;
+  logins?: number;
+}
+
+function toUserRecord(d: Record<string, unknown>): UserRecord {
+  const creditsPurchased = num(d, 'creditsPurchased');
+  return {
+    appId: String(d.appId ?? ''),
+    userId: String(d.userId ?? ''),
+    reports: num(d, 'reports'),
+    costUsd: num(d, 'costUsd'),
+    spentUsd: num(d, 'spentUsd'),
+    creditsPurchased,
+    // Legacy docs predate the flag → derive it from purchased credits.
+    hasPurchased: d.hasPurchased === true || creditsPurchased > 0,
+    firstSeenAt: d.firstSeenAt as string | undefined,
+    lastSeenAt: d.lastSeenAt as string | undefined,
+    lastLoginAt: d.lastLoginAt as string | undefined,
+    logins: typeof d.logins === 'number' ? (d.logins as number) : undefined,
+  };
 }
 
 /**
@@ -304,7 +352,9 @@ export interface UserRecord {
  * prefix (case-sensitive prefix match on userId). Needs composite indexes in
  * prod: (appId, userId) for the prefix path, (appId, lastSeenAt desc) otherwise.
  */
-export async function queryUsers(opts: { appId?: string; emailPrefix?: string; limit?: number } = {}): Promise<UserRecord[]> {
+export async function queryUsers(
+  opts: { appId?: string; emailPrefix?: string; limit?: number; neverPurchased?: boolean } = {},
+): Promise<UserRecord[]> {
   let q: Query = appUsers();
   if (opts.appId) q = q.where('appId', '==', opts.appId);
   if (opts.emailPrefix) {
@@ -312,6 +362,10 @@ export async function queryUsers(opts: { appId?: string; emailPrefix?: string; l
   } else {
     q = q.orderBy('lastSeenAt', 'desc');
   }
-  const snap = await q.limit(opts.limit ?? 50).get();
-  return snap.docs.map((d) => d.data() as UserRecord);
+  const limit = opts.limit ?? 50;
+  // When filtering in memory, over-fetch so the page can still fill up.
+  const snap = await q.limit(opts.neverPurchased ? Math.max(limit, 300) : limit).get();
+  let users = snap.docs.map((d) => toUserRecord(d.data() as Record<string, unknown>));
+  if (opts.neverPurchased) users = users.filter((u) => !u.hasPurchased);
+  return users.slice(0, limit);
 }

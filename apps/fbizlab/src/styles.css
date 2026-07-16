@@ -362,6 +362,27 @@ p { margin: 0; }
   .dash-balance { flex-direction: column; align-items: flex-start; gap: 14px; }
 }
 
+/* ── Top up (credits) ────────────────────────────────────── */
+.tu-hero { background: var(--bg-alt); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 34px; }
+.tu-herotop { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; flex-wrap: wrap; }
+.tu-title { font-size: clamp(30px, 4vw, 44px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.03; margin-top: 12px; }
+.tu-bal { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); padding: 20px 22px; min-width: 240px; }
+.topups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.topup { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); padding: 26px; }
+.topup.hl { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.topup__tag { position: absolute; top: -10px; left: 20px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 4px 8px; border-radius: 4px; }
+.topup__cr { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+.topup__crlbl { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.topup__price { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
+.topup__per { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+.topup__note { font-size: 13px; color: var(--ink-soft); margin: 14px 0 20px; }
+.tu-faqgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.tu-q { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+@media (max-width: 860px) {
+  .topups, .tu-faqgrid { grid-template-columns: 1fr; }
+  .tu-bal { width: 100%; }
+}
+
 /* ── Confirm modal ───────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(42, 40, 36, 0.42); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 100; animation: fade .15s ease; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }

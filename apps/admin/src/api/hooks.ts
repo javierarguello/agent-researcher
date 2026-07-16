@@ -78,10 +78,10 @@ export function useSetPricing() {
   });
 }
 
-export function useUsers(filter: { appId?: string; q?: string }) {
+export function useUsers(filter: { appId?: string; q?: string; neverPurchased?: boolean }) {
   return useQuery({
-    queryKey: ['users', filter.appId ?? '', filter.q ?? ''],
-    queryFn: () => api<{ users: AdminUser[] }>(`/admin/users${qs({ appId: filter.appId, q: filter.q })}`),
+    queryKey: ['users', filter.appId ?? '', filter.q ?? '', filter.neverPurchased ? 'np' : ''],
+    queryFn: () => api<{ users: AdminUser[] }>(`/admin/users${qs({ appId: filter.appId, q: filter.q, neverPurchased: filter.neverPurchased ? 'true' : undefined })}`),
   });
 }
 

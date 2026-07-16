@@ -110,6 +110,7 @@ export type { ModelPricing } from './credits/pricing.js';
 export {
   recordReportStats,
   recordPurchaseStats,
+  recordLogin,
   getAppStats,
   getDailyStats,
   listAllAppStats,

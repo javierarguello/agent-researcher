@@ -54,6 +54,7 @@ import {
   grantCredits,
   recordPurchase,
   recordPurchaseStats,
+  recordLogin,
   signSession,
   verifyGoogleIdToken,
   InsufficientCreditsError,
@@ -193,6 +194,11 @@ app.post(
     }
 
     const token = await signSession({ email: identity.email, appId: appRec.appId, role, name: identity.name });
+    // Make the user visible in the admin from their very first login (even before
+    // any report or purchase). Never let a stats hiccup break login.
+    await recordLogin(appRec.appId, identity.email).catch((err) =>
+      logEvent({ jobId: '-', appId: appRec.appId, userId: identity.email }, 'WARNING', 'auth.login_stats_failed', { error: (err as Error).message }),
+    );
     logEvent({ jobId: '-', appId: appRec.appId, userId: identity.email }, 'INFO', 'auth.login', { provider: b.provider, role });
     return {
       token,
@@ -983,14 +989,15 @@ app.get(
         properties: {
           appId: { type: 'string', maxLength: 128, description: 'Filter to one app.' },
           q: { type: 'string', maxLength: 320, description: 'Email/userId prefix match.' },
+          neverPurchased: { type: 'boolean', description: 'Only users who signed up but never bought credits.' },
           limit: { type: 'integer', minimum: 1, maximum: 200 },
         },
       },
     },
   },
   async (req) => {
-    const { appId, q, limit } = req.query as { appId?: string; q?: string; limit?: number };
-    return { users: await queryUsers({ appId, emailPrefix: q, limit: limit ?? 50 }) };
+    const { appId, q, neverPurchased, limit } = req.query as { appId?: string; q?: string; neverPurchased?: boolean; limit?: number };
+    return { users: await queryUsers({ appId, emailPrefix: q, neverPurchased, limit: limit ?? 50 }) };
   },
 );
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Drawer, Group, Loader, Modal, NumberInput, Select, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Drawer, Group, Loader, Modal, NumberInput, Select, Stack, Switch, Table, Text, TextInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
@@ -17,7 +17,8 @@ export function Users() {
   const [appId, setAppId] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [debouncedQ] = useDebouncedValue(q, 300);
-  const users = useUsers({ appId: appId ?? undefined, q: debouncedQ || undefined });
+  const [neverPurchased, setNeverPurchased] = useState(false);
+  const users = useUsers({ appId: appId ?? undefined, q: debouncedQ || undefined, neverPurchased: neverPurchased || undefined });
   const [selected, setSelected] = useState<{ appId: string; userId: string } | null>(null);
 
   // Grant-to-anyone tool (works for users not yet in the list — e.g. the admin).
@@ -64,6 +65,7 @@ export function Users() {
       <Group>
         <Select placeholder="All apps" data={appOptions} value={appId} onChange={setAppId} clearable w={220} />
         <TextInput placeholder="Search email prefix…" value={q} onChange={(e) => setQ(e.currentTarget.value)} w={280} />
+        <Switch label="Only never-purchased" checked={neverPurchased} onChange={(e) => setNeverPurchased(e.currentTarget.checked)} />
       </Group>
 
       {users.isLoading && <Loader />}
@@ -75,6 +77,7 @@ export function Users() {
               <Table.Tr>
                 <Table.Th>User</Table.Th>
                 <Table.Th>App</Table.Th>
+                <Table.Th>Status</Table.Th>
                 <Table.Th>Reports</Table.Th>
                 <Table.Th>Spent</Table.Th>
                 <Table.Th>Credits bought</Table.Th>
@@ -90,6 +93,7 @@ export function Users() {
                 >
                   <Table.Td><Mono size="sm">{u.userId}</Mono></Table.Td>
                   <Table.Td><Mono size="xs" c="dimmed">{u.appId}</Mono></Table.Td>
+                  <Table.Td>{u.hasPurchased ? <Badge color="teal" variant="light">Paying</Badge> : <Badge color="orange" variant="light">No credits</Badge>}</Table.Td>
                   <Table.Td><Mono size="sm">{int(u.reports)}</Mono></Table.Td>
                   <Table.Td><Mono size="sm">{usd(u.spentUsd)}</Mono></Table.Td>
                   <Table.Td><Mono size="sm">{int(u.creditsPurchased)}</Mono></Table.Td>
@@ -97,7 +101,7 @@ export function Users() {
                 </Table.Tr>
               ))}
               {users.data.users.length === 0 && (
-                <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" size="sm">No users match.</Text></Table.Td></Table.Tr>
+                <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" size="sm">No users match.</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>

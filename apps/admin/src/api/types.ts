@@ -19,6 +19,7 @@ export interface AppStatsRollup {
   reportsFailed: number;
   degradedReports: number;
   users: number;
+  payingUsers: number;
   costUsd: number;
   revenueUsd: number;
   purchases: number;
@@ -48,8 +49,11 @@ export interface AdminUser {
   costUsd: number;
   spentUsd: number;
   creditsPurchased: number;
+  hasPurchased: boolean;
   firstSeenAt?: string;
   lastSeenAt?: string;
+  lastLoginAt?: string;
+  logins?: number;
 }
 
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'incomplete';

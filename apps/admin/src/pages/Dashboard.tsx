@@ -26,8 +26,13 @@ export function Dashboard() {
     <Stack>
       <PageHeader eyebrow="Overview" title="Dashboard" subtitle="Last 30 days across all apps." />
 
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }}>
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }}>
         <Kpi label="Reports" value={int(t.reports)} hint={`${int(t.reportsCompleted)} completed`} />
+        <Kpi
+          label="Users"
+          value={int(t.users)}
+          hint={`${int(t.payingUsers)} paying · ${int(Math.max(0, t.users - t.payingUsers))} never bought`}
+        />
         <Kpi label="Errors" value={int(t.reportsFailed)} hint="failed reports" accent={t.reportsFailed > 0 ? 'red' : undefined} />
         <Kpi label="Degraded" value={int(t.degradedReports)} hint="partial delivery" accent={t.degradedReports > 0 ? 'yellow' : undefined} />
         <Kpi label="Revenue" value={usd(t.revenueUsd)} hint={`${int(t.purchases)} purchases`} accent="teal" />
