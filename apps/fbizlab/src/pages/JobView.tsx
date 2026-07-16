@@ -35,13 +35,15 @@ export function JobView() {
   return (
     <div className="stack" style={{ gap: 22 }}>
       <Link to="/app" className="mono muted" style={{ fontSize: 11 }}>{t.back}</Link>
-      <div className="between" style={{ alignItems: 'flex-end' }}>
-        <div className="stack" style={{ gap: 6 }}>
-          <h2 style={{ fontSize: 26 }}>{job.title ?? job.template}</h2>
-          {job.shortDescription && <p className="soft" style={{ fontSize: 14 }}>{job.shortDescription}</p>}
+      {job.status !== 'completed' && (
+        <div className="between" style={{ alignItems: 'flex-end' }}>
+          <div className="stack" style={{ gap: 6 }}>
+            <h2 style={{ fontSize: 26 }}>{job.title ?? job.template}</h2>
+            {job.shortDescription && <p className="soft" style={{ fontSize: 14 }}>{job.shortDescription}</p>}
+          </div>
+          <span className={`badge ${job.status}`}>{sl[job.status] ?? job.status}</span>
         </div>
-        <span className={`badge ${job.status}`}>{sl[job.status] ?? job.status}</span>
-      </div>
+      )}
 
       {live && (
         <div className="card" style={{ padding: 22 }}>
@@ -64,7 +66,7 @@ export function JobView() {
       )}
 
       {job.status === 'completed' && report.data && (
-        <ReportViewer report={report.data.report} sections={template.data?.sections} />
+        <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} />
       )}
 
       {job.status === 'completed' && job.files && job.files.length > 0 && (
