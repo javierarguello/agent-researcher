@@ -127,9 +127,16 @@ verticals while still accepting anything.
   of a raw id, and render a stepper from the list.
 - **Report viewer** — `GET /research/:jobId/report` returns the parsed
   `{ meta, report }`. `report` is keyed by section; render each in `sections`
-  order. A value is either **Markdown** (render styled) or a structured
-  object/array (render recursively — strings inside are Markdown). Reference:
+  order. A value is either **Markdown** (render styled, links in a new tab),
+  a number (format with thousands separators + `$` for money), or a structured
+  object/array (render recursively). Reference:
   `apps/admin/src/components/ReportViewer.tsx`.
+- **Charts** — agents can emit **chart specs** (`chartSchema` in core): an object
+  `{ type: 'bar'|'line'|'pie'|'area', title, description?, labels[], series[{name,
+  data[]}], unit?, stacked? }`, built from real report figures. Render any value of
+  that shape as a chart (the florida model has a `charts` section produced by a
+  `chart-analyst` + refined by a `chart-refiner`). The viewer also derives simple
+  bar charts from plain numeric arrays as a fallback.
 
 ## Localization (`lang`)
 

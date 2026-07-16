@@ -56,11 +56,11 @@ describe('engine — runResearch with mocked LLM + search', () => {
     expect(mock.calls).toBeGreaterThan(0);
   });
 
-  it('produces the full comprehensive report (17 sections)', async () => {
+  it('produces the full comprehensive report (18 sections)', async () => {
     const out = await run('comprehensive');
     expect(out.trace.status).toBe('completed');
     expect(out.meta.mode).toBe('comprehensive');
-    expect(Object.keys(out.report)).toHaveLength(17);
+    expect(Object.keys(out.report)).toHaveLength(18);
     expect(out.report).toHaveProperty('financial_analysis');
     expect(out.report).toHaveProperty('growth_playbook');
   });

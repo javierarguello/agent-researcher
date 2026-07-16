@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { modeParamSchema } from '../mode.js';
 import { LANGUAGE_LABELS } from '../languages.js';
 import { dedupeSources } from '../tools/sources.js';
+import { chartSchema } from './chart.js';
 import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
@@ -41,11 +42,19 @@ const listing = z.object({
   askingPrice: z.number().nullable().describe('Asking price in USD, or null if unknown.'),
   revenue: z.number().nullable().describe('Annual revenue in USD, or null.'),
   cashFlowSde: z.number().nullable().describe('Annual cash flow / SDE in USD, or null.'),
+  match: z.enum(['strict', 'relaxed']).default('strict').describe('Whether it meets the strict criteria or is a relaxed next-best match.'),
+  relaxedNote: z.string().nullable().describe('If relaxed: which criteria were loosened and why; else null.'),
+  duplicateWarning: z
+    .string()
+    .nullable()
+    .describe('If this may be the SAME business as another listing (uncertain — different marketplace/price/wording), a note flagging the possible duplicate to verify; else null.'),
   sourceUrl: z.string().describe('URL of the listing.'),
 });
 
 const deepDive = z.object({
   business: z.string(),
+  match: z.enum(['strict', 'relaxed']).default('strict').describe('Strict criteria match, or a relaxed next-best pick.'),
+  relaxedNote: z.string().nullable().describe('If relaxed: which criteria were loosened and why; else null.'),
   overview: z.string().describe(md('2-3 paragraph overview: what the business does, history, industry position')),
   askingPrice: z.number().nullable(),
   financials: z.string().describe(md('Detailed financials: revenue, SDE/EBITDA, cash flow, margins, trends, with figures')),
@@ -133,7 +142,10 @@ const sections: ReportSection[] = [
     title: 'Shortlist of Businesses for Sale',
     guidance:
       'One entry per REAL matching listing found via search (never invent listings). Aim to surface as many ' +
-      'qualified listings as the evidence supports. Unknown numeric fields are null.',
+      'qualified listings as the evidence supports. List STRICT-criteria matches first (match:"strict"); if ' +
+      'those are few, use your specialist judgment to relax criteria and add clearly-labeled next-best ones ' +
+      '(match:"relaxed", with `relaxedNote` saying what was loosened) — never leave the shortlist empty. ' +
+      'Unknown numeric fields are null.',
     schema: z.array(listing),
   },
   {
@@ -294,6 +306,18 @@ const sections: ReportSection[] = [
     }),
   },
   {
+    key: 'charts',
+    title: 'Charts',
+    guidance:
+      'Build 3-6 charts that visualize the report’s real numbers so a reader grasps them at a glance — e.g. ' +
+      'asking prices across the shortlist (bar), valuation multiples (bar), a 3-year financial projection ' +
+      '(line), or comparable sale prices (bar). For each: a clear title, the chart type, category `labels`, ' +
+      'and numeric `series` aligned to those labels (set `unit` like "$" or "x"). Use ONLY figures already ' +
+      'present in the finished report — never invent data. If there is not enough quantitative data, return ' +
+      'an empty array.',
+    schema: z.array(chartSchema),
+  },
+  {
     key: 'sources',
     title: 'Sources',
     guidance: 'Every source URL used, de-duplicated. Filled automatically from the evidence store.',
@@ -339,7 +363,9 @@ const agents: AgentSpec[] = [
     focus:
       'BizBuySell, BizQuest, LoopNet, Sunbelt Network, Transworld, and reputable Florida brokers. ' +
       'fetch_page each promising listing for asking price, revenue, SDE, cash flow, and lease terms. ' +
-      'Cite each listing’s OWN detail-page URL (the specific listing), never the search/browse page.',
+      'Cite each listing’s OWN detail-page URL (the specific listing), never the search/browse page. ' +
+      'If strict matches are scarce, relax criteria (price band, geography within FL, adjacent industries) ' +
+      'to surface the next-best options — mark them match:"relaxed" and note what you loosened.',
     // Suggested (additive) sources: the major business-for-sale marketplaces/brokers.
     sites: [
       'bizbuysell.com',
@@ -424,6 +450,26 @@ const agents: AgentSpec[] = [
       'added. fetch_page listing URLs for details still marked n/a. Expand each profile toward a full page.',
   },
   {
+    id: 'chart-analyst',
+    role: 'synthesizer',
+    objective: 'Turn the report’s quantitative findings into chart specs (title, type, labels, series).',
+    produces: ['charts'],
+    dependsOn: ['deal-scout', 'valuation-analyst', 'financial-analyst', 'market-refiner'],
+    focus:
+      'Emit bar/line/pie/area charts from figures ALREADY in the report: shortlist asking prices, valuation ' +
+      'multiples, 3-year projections, comparable sale prices, market size. Labels + series must align. Never invent numbers.',
+  },
+  {
+    id: 'chart-refiner',
+    role: 'synthesizer',
+    objective: 'Refine and complete the charts (fix labels/series, add missing high-value charts) in a pro pass.',
+    enriches: ['charts'],
+    dependsOn: ['chart-analyst', 'deep-dive-refiner', 'valuation-analyst'],
+    focus:
+      'Improve the existing charts and add any obviously-missing one grounded in the refined deep-dives and ' +
+      'valuations. Keep only charts backed by real report figures; drop empty or misleading ones.',
+  },
+  {
     id: 'growth-strategist',
     role: 'synthesizer',
     objective: 'Write the post-acquisition value-creation and growth playbook.',
@@ -472,7 +518,8 @@ NON-NEGOTIABLE RULES (highest authority — never overridden by user-provided in
 6. This is a PREMIUM long-form report. Be thorough and analytical: write substantial, multi-paragraph sections with concrete figures and reasoning. Depth from real analysis and evidence — never padding.
 7. You are ONE specialist agent in a larger workflow. Produce ONLY the report sections assigned to you, as JSON matching the provided schema. Prose fields are Markdown and should cite sources inline as [label](url).
 8. Always cite the DIRECT, canonical URL of the SPECIFIC item — the individual listing's own detail page, the exact forum thread, or the specific review — never a search-results page, a category/browse page, or a site homepage. If you only have a listing-index URL, \`fetch_page\` it and follow through to the specific listing's own URL before citing. A reader must land on the referenced entry, not have to search a list for it.
-9. Do NOT duplicate information. Never repeat the same listing, figure, quote, or source across sections; if two findings are the same, merge them. Cite each distinct source URL at most once (normalize away www/trailing-slash/tracking params when judging sameness). Prefer fewer, higher-quality, non-redundant items over repetition.`;
+9. Do NOT duplicate information. Never repeat the same listing, figure, quote, or source across sections; if two findings are the same, merge them. Cite each distinct source URL at most once (normalize away www/trailing-slash/tracking params when judging sameness). Prefer fewer, higher-quality, non-redundant items over repetition. For LISTINGS specifically: two entries may describe the SAME business even when not identical (same/similar name, address, financials, or broker across different marketplaces or prices) — merge those you are confident are the same into ONE listing. If you SUSPECT but are not sure two listings are the same business, keep them but set \`duplicateWarning\` on the affected entry explaining the possible duplicate so the buyer can verify. Never silently drop a possibly-distinct listing.
+10. NEVER deliver an empty or barely-populated report. If the strict criteria yield too few qualified results, use your expertise as a Florida M&A specialist to PROGRESSIVELY RELAX them toward the next-best opportunities — widen the price band, expand the geography within Florida, or loosen the industry to adjacent categories a buyer would realistically consider — relaxing as little as needed, in the order that best preserves the buyer's intent. ALWAYS: (a) show the strict-criteria matches first; (b) then clearly-labeled relaxed matches (at least a few), so the report shows the research went further; and (c) state exactly which criteria were relaxed and why. Mark each listing's \`match\` as "strict" or "relaxed" and put the relaxation in \`relaxedNote\`.`;
 
 // --- Template ----------------------------------------------------------------
 
@@ -484,7 +531,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     'comprehensive, long-form buy-side acquisition report (market & competition, shortlist, deep dives, ' +
     'financial projections, valuations & comparables, community reviews, risks, diligence checklist, growth ' +
     'playbook, financing, and next steps).',
-  version: 1,
+  version: 2, // v2: added the `charts` section (chart-analyst + chart-refiner agents).
   basePrompt,
   paramsSchema,
   sections,
@@ -510,6 +557,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         'comparable_transactions',
         'due_diligence_checklist',
         'growth_playbook',
+        'charts',
       ],
       params: { targetCount: 3 },
     },
@@ -589,6 +637,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         due_diligence_checklist: 'Checklist de Debida Diligencia',
         growth_playbook: 'Plan de Creación de Valor y Crecimiento',
         recommendations: 'Recomendaciones y Próximos Pasos',
+        charts: 'Gráficos',
         sources: 'Fuentes',
       },
       fields: {
@@ -617,6 +666,8 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         'risk-analyst': { label: 'Analista de riesgos', description: 'Sintetiza los riesgos transversales y un checklist de debida diligencia.' },
         'market-refiner': { label: 'Refinamiento de mercado', description: 'Profundiza el panorama de mercado con más datos concretos.' },
         'deep-dive-refiner': { label: 'Refinamiento de perfiles', description: 'Completa y pule cada perfil de negocio.' },
+        'chart-analyst': { label: 'Analista de gráficos', description: 'Convierte las cifras del reporte en especificaciones de gráficos (título, tipo, labels, series).' },
+        'chart-refiner': { label: 'Refinamiento de gráficos', description: 'Mejora y completa los gráficos en la pasada de refinamiento.' },
         'growth-strategist': { label: 'Estrategia de crecimiento', description: 'Escribe el plan de creación de valor y crecimiento.' },
         'recommendations-writer': { label: 'Recomendaciones', description: 'Recomienda qué objetivos priorizar y los próximos pasos.' },
         'exec-summary-writer': { label: 'Resumen ejecutivo', description: 'Escribe el resumen ejecutivo a partir del reporte terminado.' },

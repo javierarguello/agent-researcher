@@ -1,7 +1,10 @@
-import { Accordion, Card, Stack, Text, TypographyStylesProvider } from '@mantine/core';
+import { Accordion, Badge, Card, Stack, Text, TypographyStylesProvider } from '@mantine/core';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
+  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
 
 function humanizeKey(k: string): string {
   const s = k.replace(/([A-Z])/g, ' $1').replace(/[_-]/g, ' ').toLowerCase().trim();
@@ -59,6 +62,103 @@ function SectionChart({ data, currency }: ChartData) {
   );
 }
 
+// --- agent-authored chart specs ---------------------------------------------
+const PALETTE = [
+  'var(--mantine-color-violet-6)', 'var(--mantine-color-teal-6)', 'var(--mantine-color-blue-6)',
+  'var(--mantine-color-orange-6)', 'var(--mantine-color-grape-6)', 'var(--mantine-color-cyan-6)',
+];
+const CHART_TYPES = new Set(['bar', 'line', 'pie', 'area']);
+
+interface ChartSpec {
+  type: 'bar' | 'line' | 'pie' | 'area';
+  title: string;
+  description?: string;
+  labels: string[];
+  series: Array<{ name: string; data: Array<number | null> }>;
+  unit?: string;
+  stacked?: boolean;
+}
+function isChartSpec(v: unknown): v is ChartSpec {
+  const o = v as ChartSpec | null;
+  return !!o && typeof o === 'object' && !Array.isArray(o) && CHART_TYPES.has((o as ChartSpec).type)
+    && Array.isArray(o.labels) && Array.isArray(o.series);
+}
+function fmtUnit(unit: string | undefined, v: number | null): string {
+  if (v == null) return '';
+  const s = Math.abs(v) >= 1000 ? abbr(v) : v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  if (unit === '$') return `$${s}`;
+  if (unit === '%') return `${v}%`;
+  return unit ? `${s}${unit}` : s;
+}
+
+/** Render an agent-authored chart (bar/line/pie/area). */
+function ChartSpecRender({ spec }: { spec: ChartSpec }) {
+  const rows = spec.labels.map((label, i) => {
+    const r: Record<string, unknown> = { label };
+    spec.series.forEach((s) => { r[s.name] = s.data[i] ?? null; });
+    return r;
+  });
+  const tick = (v: number) => fmtUnit(spec.unit, v);
+  const legend = spec.series.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} /> : null;
+
+  let chart: React.ReactNode;
+  if (spec.type === 'pie') {
+    const s0 = spec.series[0];
+    const pieData = spec.labels.map((label, i) => ({ name: label, value: s0?.data[i] ?? 0 }));
+    chart = (
+      <PieChart>
+        <Pie data={pieData} dataKey="value" nameKey="name" outerRadius="80%" label={(e: { name: string }) => e.name}>
+          {pieData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+        </Pie>
+        <Tooltip formatter={(v: number) => fmtUnit(spec.unit, v)} />
+      </PieChart>
+    );
+  } else if (spec.type === 'line') {
+    chart = (
+      <LineChart data={rows} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--mantine-color-default-border)" />
+        <XAxis dataKey="label" fontSize={11} />
+        <YAxis tickFormatter={tick} fontSize={11} width={56} />
+        <Tooltip formatter={(v: number) => fmtUnit(spec.unit, v)} />
+        {legend}
+        {spec.series.map((s, i) => <Line key={s.name} type="monotone" dataKey={s.name} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={false} />)}
+      </LineChart>
+    );
+  } else if (spec.type === 'area') {
+    chart = (
+      <AreaChart data={rows} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--mantine-color-default-border)" />
+        <XAxis dataKey="label" fontSize={11} />
+        <YAxis tickFormatter={tick} fontSize={11} width={56} />
+        <Tooltip formatter={(v: number) => fmtUnit(spec.unit, v)} />
+        {legend}
+        {spec.series.map((s, i) => <Area key={s.name} type="monotone" dataKey={s.name} stackId={spec.stacked ? '1' : undefined} stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]} fillOpacity={0.25} />)}
+      </AreaChart>
+    );
+  } else {
+    chart = (
+      <BarChart data={rows} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--mantine-color-default-border)" />
+        <XAxis dataKey="label" fontSize={11} interval={0} angle={rows.length > 6 ? -20 : 0} textAnchor={rows.length > 6 ? 'end' : 'middle'} height={rows.length > 6 ? 60 : 30} />
+        <YAxis tickFormatter={tick} fontSize={11} width={56} />
+        <Tooltip formatter={(v: number) => fmtUnit(spec.unit, v)} />
+        {legend}
+        {spec.series.map((s, i) => <Bar key={s.name} dataKey={s.name} stackId={spec.stacked ? '1' : undefined} fill={PALETTE[i % PALETTE.length]} radius={[3, 3, 0, 0]} />)}
+      </BarChart>
+    );
+  }
+
+  return (
+    <Card withBorder padding="md" radius="sm">
+      <Text fw={600} size="sm">{spec.title}</Text>
+      {spec.description && <Text size="xs" c="dimmed" mb="xs">{spec.description}</Text>}
+      <div style={{ height: 260 }}>
+        <ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
 // --- value renderer ----------------------------------------------------------
 /** Open every markdown link in a new tab. */
 const mdComponents = {
@@ -67,6 +167,15 @@ const mdComponents = {
 
 function Value({ v, fieldKey }: { v: unknown; fieldKey?: string }) {
   if (v == null || v === '') return <Text c="dimmed" size="sm">—</Text>;
+  if (isChartSpec(v)) return <ChartSpecRender spec={v} />;
+  // A "match" field (strict vs relaxed criteria) renders as a badge.
+  if (fieldKey === 'match' && typeof v === 'string') {
+    return <Badge size="sm" variant="light" color={v === 'relaxed' ? 'orange' : 'teal'} tt="none">{v}</Badge>;
+  }
+  // A possible-duplicate warning stands out.
+  if (fieldKey === 'duplicateWarning' && typeof v === 'string') {
+    return <Text size="sm" c="orange">⚠ {v}</Text>;
+  }
   if (typeof v === 'string') {
     return (
       <TypographyStylesProvider>
@@ -78,6 +187,10 @@ function Value({ v, fieldKey }: { v: unknown; fieldKey?: string }) {
   if (typeof v === 'boolean') return <Text>{v ? 'Yes' : 'No'}</Text>;
   if (Array.isArray(v)) {
     if (v.length === 0) return <Text c="dimmed" size="sm">—</Text>;
+    // Agent-authored charts render as charts (each already has its own Card).
+    if (v.every(isChartSpec)) {
+      return <Stack gap="sm">{v.map((item, i) => <Value key={i} v={item} />)}</Stack>;
+    }
     const chart = chartFor(v);
     return (
       <Stack gap="sm">
@@ -89,9 +202,11 @@ function Value({ v, fieldKey }: { v: unknown; fieldKey?: string }) {
     );
   }
   if (typeof v === 'object') {
+    // Hide empty optional fields (null / '') to keep the report clean.
+    const entries = Object.entries(v as Record<string, unknown>).filter(([, val]) => val !== null && val !== undefined && val !== '');
     return (
       <Stack gap="xs">
-        {Object.entries(v as Record<string, unknown>).map(([k, val]) => (
+        {entries.map(([k, val]) => (
           <div key={k}>
             <Text fw={600} size="sm" c="dimmed">{humanizeKey(k)}</Text>
             <Value v={val} fieldKey={k} />
