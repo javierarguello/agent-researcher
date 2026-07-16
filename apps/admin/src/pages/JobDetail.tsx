@@ -6,9 +6,11 @@ import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
-import { useJob, useRetryJob } from '../api/hooks';
+import { ReportViewer } from '../components/ReportViewer';
+import { useJob, useJobReport, useRetryJob, useTemplate } from '../api/hooks';
 import { ApiError } from '../api/client';
 import { int, secs, shortDateTime, usd } from '../lib/format';
+import type { StepInfo } from '../api/types';
 
 const AGENT_COLOR: Record<string, string> = { ok: 'teal', failed: 'red', pending: 'yellow', running: 'blue' };
 
@@ -26,6 +28,8 @@ export function JobDetail() {
   const navigate = useNavigate();
   const { data: job, isLoading, error } = useJob(jobId);
   const retry = useRetryJob();
+  const template = useTemplate(job?.template ?? null);
+  const reportQ = useJobReport(jobId, job?.status === 'completed');
 
   async function onRetry() {
     try {
@@ -43,6 +47,10 @@ export function JobDetail() {
   const live = job.status === 'queued' || job.status === 'running' || job.status === 'incomplete';
   const canRetry = job.status === 'failed' || job.status === 'incomplete';
   const s = job.summary;
+  // Map a workflow phase/agent id → its localized label + description.
+  const stepsById: Record<string, StepInfo> = Object.fromEntries((template.data?.steps ?? []).map((st) => [st.id, st]));
+  const stepLabel = (id: string) => stepsById[id]?.label ?? id;
+  const currentStep = job.progress ? stepsById[job.progress.phase] : undefined;
 
   return (
     <Stack>
@@ -81,9 +89,10 @@ export function JobDetail() {
       {live && job.progress && (
         <Card padding="lg">
           <Group justify="space-between" mb="xs">
-            <Text fw={650}>{job.progress.phase}</Text>
+            <Text fw={650}>{currentStep?.label ?? stepLabel(job.progress.phase)}</Text>
             <Text size="sm" c="dimmed">{int(job.progress.sourcesFound)} sources · {int(job.progress.turnsUsed)} turns</Text>
           </Group>
+          {currentStep?.description && <Text size="sm" mb={4}>{currentStep.description}</Text>}
           <Text size="sm" c="dimmed" mb="sm">{job.progress.message}</Text>
           <Progress value={100} animated />
         </Card>
@@ -115,7 +124,10 @@ export function JobDetail() {
               <Table.Tbody>
                 {s.agents.map((a) => (
                   <Table.Tr key={a.id}>
-                    <Table.Td><Mono size="sm">{a.id}</Mono></Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{stepLabel(a.id)}</Text>
+                      <Mono size="xs" c="dimmed">{a.id}</Mono>
+                    </Table.Td>
                     <Table.Td ta="right"><Mono size="sm">{a.wave}</Mono></Table.Td>
                     <Table.Td><Badge size="sm" variant="light" color={AGENT_COLOR[a.status] ?? 'gray'} tt="none">{a.status}</Badge></Table.Td>
                     <Table.Td ta="right"><Mono size="sm">{secs(a.durationMs)}</Mono></Table.Td>
@@ -126,6 +138,15 @@ export function JobDetail() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+        </Card>
+      )}
+
+      {job.status === 'completed' && (
+        <Card padding="lg">
+          <Text fw={650} mb="sm">Report</Text>
+          {reportQ.isLoading && <Loader size="sm" />}
+          {reportQ.error && <Alert color="red">{(reportQ.error as Error).message}</Alert>}
+          {reportQ.data && <ReportViewer report={reportQ.data.report} sections={template.data?.sections} />}
         </Card>
       )}
 

@@ -60,6 +60,9 @@ export interface AgentSpec {
   model?: string;
   /** Model alias for the tool-calling research loop. Default: `config.llm.defaultGatherModel`. */
   gatherModel?: string;
+  /** Short human label for this step (e.g. 'Deal scout'), shown in a client's
+   *  progress view instead of the raw id. Falls back to a title-cased id. */
+  label?: string;
   /** Extra focus for this agent's research + writing (e.g. which sources to prefer). */
   focus?: string;
   /**
@@ -178,6 +181,16 @@ export interface TemplateI18n {
   modeLabels?: Partial<Record<ReportMode, string>>;
   /** paramsUi field overrides by param key. */
   fields?: Record<string, { help?: string; placeholder?: string }>;
+  /** Workflow step overrides by agent id (label + description). */
+  agentLabels?: Record<string, { label?: string; description?: string }>;
+}
+
+/** One workflow step surfaced to a client, so it can explain the current phase. */
+export interface StepInfo {
+  /** Phase id — an agent id, or a lifecycle phase ('planning'|'assembling'|'done'|…). */
+  id: string;
+  label: string;
+  description?: string;
 }
 
 /** The full report schema = every section's sub-schema composed into one object. */
@@ -215,6 +228,12 @@ export interface TemplateManifest {
   paramsUi?: ParamsUi;
   /** Report tiers the client picks from, with their credit cost. */
   modes: Array<{ key: ReportMode; label: string; credits: number }>;
+  /**
+   * Ordered workflow steps (localized), so a client can explain a job's current
+   * `progress.phase` with a label + description instead of a raw id. Covers the
+   * lifecycle phases and every agent, in run order.
+   */
+  steps: StepInfo[];
   /** JSON Schema of the report envelope's `report` object (consumer contract). */
   reportSchema: unknown;
 }

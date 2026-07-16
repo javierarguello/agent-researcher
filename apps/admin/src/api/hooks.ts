@@ -35,6 +35,15 @@ export function useTemplate(id: string | null) {
   });
 }
 
+export function useJobReport(jobId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['job-report', jobId],
+    enabled,
+    staleTime: Infinity,
+    queryFn: () => api<import('./types').JobReport>(`/research/${encodeURIComponent(jobId)}/report`),
+  });
+}
+
 export function useJob(jobId: string) {
   return useQuery({
     queryKey: ['job', jobId],

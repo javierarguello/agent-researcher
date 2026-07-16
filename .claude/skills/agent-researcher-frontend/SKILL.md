@@ -66,6 +66,8 @@ translation fall back to English. `manifest.lang` echoes the resolved language.
   },
   "modes": [ { "key": "essential", "label": "Esencial", "credits": 1 },        // report tiers + price
              { "key": "comprehensive", "label": "Completo", "credits": 2 } ],
+  "steps": [ { "id": "planning", "label": "Planificando", "description": "…" },  // workflow phases (localized)
+             { "id": "deal-scout", "label": "Explorador de negocios", "description": "…" }, … ],
   "reportSchema": { /* JSON Schema of the report envelope's `report` object */ }
 }
 ```
@@ -114,10 +116,15 @@ Reference implementation: `apps/admin/src/components/JsonSchemaForm.tsx` in the 
    params.)
 2. `GET /research/:jobId` → `{ status, progress, cost, summary, error, … }`. Poll
    while `status` is `queued`/`running`/`incomplete` (~3s). `progress` (`phase`,
-   `message`, `sourcesFound`, `turnsUsed`) drives a live view.
+   `message`, `sourcesFound`, `turnsUsed`) drives a live view — map `progress.phase`
+   to `manifest.steps[]` for a friendly **step label + description** (never show the
+   raw id).
 3. On `status:"completed"` the response adds `files[]` = `{ name, contentType,
    size, url, expiresAt }` with short-lived signed download URLs. `summary` has
-   per-agent timing + any `warnings`/`degradedSections`.
+   per-agent timing + any `warnings`/`degradedSections`. For an **in-app viewer**,
+   `GET /research/:jobId/report` returns the parsed `{ meta, report }` (proxied, no
+   CORS) — render each `sections[]` in order; a section value is Markdown (render
+   styled) or a nested object/array (render recursively).
 4. `status:"failed"` → show `error`. (Admins can re-run via `POST
    /admin/jobs/:jobId/retry`.)
 

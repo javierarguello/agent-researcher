@@ -119,6 +119,18 @@ verticals while still accepting anything.
   labels — e.g. the `language` param's options render as English/Español/… The
   default is in `paramsSchema.properties.<key>.default`.
 
+## Explaining the current step + viewing the report
+
+- **`manifest.steps`** — ordered workflow steps `{ id, label, description }`
+  (lifecycle phases + every agent), localized. Map a job's `progress.phase` (from
+  `GET /research/:jobId`) to a step to show a friendly label + description instead
+  of a raw id, and render a stepper from the list.
+- **Report viewer** — `GET /research/:jobId/report` returns the parsed
+  `{ meta, report }`. `report` is keyed by section; render each in `sections`
+  order. A value is either **Markdown** (render styled) or a structured
+  object/array (render recursively — strings inside are Markdown). Reference:
+  `apps/admin/src/components/ReportViewer.tsx`.
+
 ## Localization (`lang`)
 
 Pass `?lang=en|es|fr|pt` to `/templates` (default `en`) to get **all** manifest

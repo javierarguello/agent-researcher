@@ -105,6 +105,13 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
     expect((await app.inject({ method: 'POST', url: '/admin/jobs/nope/retry', headers: auth(admin) })).statusCode).toBe(404);
   });
 
+  it('GET /research/:jobId/report: 409 until completed, 404 if unknown', async () => {
+    await createJob({ jobId: 'r1', appId: 'appA', userId: 'a@x.com', template: 'florida-business-for-sale', params: {} });
+    const admin = await adminToken();
+    expect((await app.inject({ method: 'GET', url: '/research/r1/report', headers: auth(admin) })).statusCode).toBe(409); // queued
+    expect((await app.inject({ method: 'GET', url: '/research/nope/report', headers: auth(admin) })).statusCode).toBe(404);
+  });
+
   // --- Task 5: app CRUD (extra fields + delete) ----------------------------
   it('POST /admin/apps accepts allowedTemplates; DELETE removes an app but not your own', async () => {
     const admin = await adminToken();

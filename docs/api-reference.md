@@ -59,6 +59,8 @@ it. See [model-ui.md](model-ui.md).
   "paramsUi":     { /* rows, fields{help,suggestions,optionLabels,placeholder}, ranges, advanced, hidden */ },
   "modes":        [ { "key": "essential", "label": "Essential", "credits": 1 },
                     { "key": "comprehensive", "label": "Comprehensive", "credits": 2 } ],
+  "steps":        [ { "id": "planning", "label": "Planning", "description": "…" },
+                    { "id": "deal-scout", "label": "Deal scout", "description": "…" }, … ],
   "reportSchema": { /* JSON Schema of the report object */ } } ] }
 ```
 `modes[].credits` is the authoritative per-tier cost. Texts are localized to
@@ -116,6 +118,8 @@ While `queued`/`running`/`failed`:
   "status": "running",
   "progress": { "phase": "deal-scout", "message": "Searched: …",
                 "turnsUsed": 20, "sourcesFound": 73, "updatedAt": "…" },
+  // Map `progress.phase` → a localized label + description via the model
+  // manifest's `steps` (GET /templates/:id) to explain the current phase.
   "cost": { "usd": 1.42, "llmUsd": 1.10, "searchUsd": 0.32,
             "inputTokens": 1200000, "outputTokens": 40000, "searchCalls": 40 },
   "summary": null, "createdAt", "updatedAt", "error": null }
@@ -131,6 +135,13 @@ download URLs**:
     { "name": "sources.json",  … }, { "name": "metadata.json", … },
     { "name": "trace.json", … } ] }
 ```
+
+### `GET /research/:jobId/report` — structured report (for an in-app viewer)  · user
+Returns the parsed `report.json` → `{ meta, report }` so a client can render the
+report inline (proxied — no bucket CORS/signed-URL juggling). `report` is keyed by
+section; values are Markdown strings or structured objects. Pair with the model
+manifest's `sections` (titles + order). Owner or admin only. `409` until the job
+is `completed`, `404` if unknown/missing.
 When `failed`, `error` is set and `trace.json` remains available for diagnosis.
 
 ---

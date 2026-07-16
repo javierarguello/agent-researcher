@@ -190,6 +190,11 @@ export interface ModeInfo {
   label: string;
   credits: number;
 }
+export interface StepInfo {
+  id: string;
+  label: string;
+  description?: string;
+}
 export interface TemplateManifest {
   id: string;
   name: string;
@@ -200,5 +205,12 @@ export interface TemplateManifest {
   paramsSchema: unknown;
   paramsUi?: ParamsUi;
   modes: ModeInfo[];
+  steps: StepInfo[];
   reportSchema: unknown;
+}
+
+/** Parsed report.json from GET /research/:jobId/report. */
+export interface JobReport {
+  meta: Record<string, unknown>;
+  report: Record<string, unknown>;
 }

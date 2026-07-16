@@ -111,10 +111,15 @@ describe('API security — auth, credits gate, isolation', () => {
       { key: 'essential', label: 'Essential', credits: 1 },
       { key: 'comprehensive', label: 'Comprehensive', credits: 2 },
     ]);
+    // Workflow steps are exposed + localized (for explaining a job's current phase).
+    const enStep = en.steps.find((x: any) => x.id === 'deal-scout');
+    expect(enStep?.label).toBe('Deal scout');
     const es = (await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale?lang=es', headers: auth(t) })).json();
     expect(es.lang).toBe('es');
     expect(es.name).toContain('Negocios');
     expect(es.modes[0].label).toBe('Esencial');
+    expect(es.steps.find((x: any) => x.id === 'deal-scout')?.label).toBe('Explorador de negocios');
+    expect(es.steps.find((x: any) => x.id === 'planning')?.label).toBe('Planificando');
     // Unknown lang falls back to en.
     const xx = (await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale?lang=zz', headers: auth(t) }));
     expect(xx.statusCode).toBe(400); // enum-validated query rejects an unsupported lang

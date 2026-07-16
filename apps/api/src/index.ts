@@ -36,6 +36,7 @@ import {
   DEFAULT_LANG,
   logEvent,
   signJobFiles,
+  downloadObject,
   toManifest,
   toPublicApp,
   updateApp,
@@ -459,6 +460,34 @@ app.get(
         expiresAt: f.expiresAt,
       })),
     };
+  },
+);
+
+app.get(
+  '/research/:jobId/report',
+  {
+    schema: {
+      summary: 'Get the structured report of a completed job (for an in-app viewer)',
+      description:
+        'Returns the parsed `report.json` — `{ meta, report }` — so a client can render the report inline ' +
+        '(section values are Markdown strings or structured objects). Use `GET /templates/:id` `sections` for ' +
+        'titles + order. Owner or admin only.',
+      tags: ['research'],
+      security: sec,
+      params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
+    },
+  },
+  async (req, reply) => {
+    const { jobId } = req.params as { jobId: string };
+    const job = await getJob(jobId);
+    if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
+    if (req.auth!.role !== 'admin' && (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)) {
+      return reply.code(403).send({ error: 'Forbidden: not your report.' });
+    }
+    if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
+    const raw = await downloadObject(jobId, 'report.json');
+    if (!raw) return reply.code(404).send({ error: 'Report file not found.' });
+    return reply.type('application/json').send(raw);
   },
 );
 

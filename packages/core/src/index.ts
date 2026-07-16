@@ -14,6 +14,7 @@ export type {
   ParamFieldUi,
   ParamRangeUi,
   TemplateI18n,
+  StepInfo,
 } from './templates/types.js';
 export { validateTemplate, assertTemplatesValid } from './templates/validate.js';
 
@@ -39,7 +40,7 @@ export { generateHeadline } from './jobs/headline.js';
 export type { Headline } from './jobs/headline.js';
 
 // Storage
-export { uploadObject, listJobFiles, signRead, signJobFiles } from './storage/gcs.js';
+export { uploadObject, downloadObject, listJobFiles, signRead, signJobFiles } from './storage/gcs.js';
 export type { SignedFile } from './storage/gcs.js';
 
 // Apps (registry + rate limiting)
