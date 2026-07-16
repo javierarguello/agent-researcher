@@ -8,6 +8,9 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
 export const UNAUTHORIZED_EVENT = 'web:unauthorized';
 
+/** A plan the visitor picked on the landing before logging in; consumed post-login. */
+export const PENDING_PLAN_KEY = 'fbizlab_pending_plan';
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);

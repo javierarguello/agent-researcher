@@ -24,7 +24,7 @@ export function AppLayout() {
     <div>
       <header className="hdr">
         <div className="container">
-          <Link className="brand" to="/"><img className="brand-mark" src="/icons/favicon.svg" alt="" width="26" height="26" />{BRAND}</Link>
+          <Link className="brand" to={lang === 'en' ? '/' : `/${lang}`}><img className="brand-mark" src="/icons/favicon.svg" alt="" width="26" height="26" />{BRAND}</Link>
           <nav className="nav">
             <NavLink to="/app" end className={({ isActive }) => (isActive ? 'active' : '')}>{t.reports}</NavLink>
             <NavLink to="/app/new" className={({ isActive }) => (isActive ? 'active' : '')}>{t.newReport}</NavLink>

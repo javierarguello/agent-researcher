@@ -10,6 +10,8 @@ import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 // Bounded so a hostile client can't bloat the LLM prompt or the report cost:
 // every string is length-capped, every array item-capped, every number ceiling-capped.
 const PRICE_MAX = 1_000_000_000; // $1B ceiling — well above any lower-middle-market deal.
+/** When no industry is given, instructions must be at least this long for context. */
+export const MIN_INSTRUCTIONS_LEN = 40;
 
 const paramsSchema = z.object({
   location: z.string().trim().max(200).default('State of Florida, USA'),
@@ -26,7 +28,22 @@ const paramsSchema = z.object({
   language: z.enum(['en', 'es', 'fr', 'pt']).default('en'),
   /** Public cost/scope knob. 'essential' (~half cost, core sections) | 'comprehensive' (full report). */
   mode: modeParamSchema,
-});
+})
+  // Industry is not strictly required — but if it's omitted, the analysts need
+  // enough written context to know what to hunt for, so `instructions` becomes
+  // required with a meaningful minimum length. Enforced here so the API (not just
+  // the web forms) rejects an empty, contextless request.
+  .superRefine((v, ctx) => {
+    const hasIndustry = !!v.industry && v.industry.trim().length > 0;
+    const instr = v.instructions?.trim() ?? '';
+    if (!hasIndustry && instr.length < MIN_INSTRUCTIONS_LEN) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['instructions'],
+        message: `Specify an industry, or describe what to research in the instructions (at least ${MIN_INSTRUCTIONS_LEN} characters) so the analysts have enough context.`,
+      });
+    }
+  });
 
 export type FloridaBusinessParams = z.infer<typeof paramsSchema>;
 

@@ -48,6 +48,18 @@ export function LangProvider({ children }: { children: ReactNode }) {
     if (urlLang && urlLang !== stored) { localStorage.setItem(KEY, urlLang); setStored(urlLang); }
   }, [urlLang, stored]);
 
+  // First load only: at the bare root "/", send the visitor to their remembered
+  // language, or — on a brand-new visit — their browser's. English/x-default
+  // stays at "/". Runs once (mount); later navigation keeps the URL/stored choice.
+  useEffect(() => {
+    if (location.pathname !== '/') return;
+    const saved = localStorage.getItem(KEY);
+    const browser = navigator.language.slice(0, 2);
+    const pref: Lang = saved && isLang(saved) ? saved : isLang(browser) ? browser : 'en';
+    if (pref !== 'en') navigate(`/${pref}`, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const setLang = (l: Lang) => {
     localStorage.setItem(KEY, l);
     setStored(l);

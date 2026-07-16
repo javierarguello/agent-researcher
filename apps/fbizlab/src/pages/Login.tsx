@@ -5,7 +5,8 @@ import { pick, useLang } from '../i18n';
 import { config } from '../config';
 import { initGoogleAuth, renderGoogleButton } from '../auth/google';
 import { LangSwitcher } from '../components/LangSwitcher';
-import { ApiError } from '../api/client';
+import { useCheckout } from '../api/hooks';
+import { ApiError, PENDING_PLAN_KEY } from '../api/client';
 
 const BRAND = 'Florida Biz Labs';
 const MARK = '/icons/favicon.svg';
@@ -94,6 +95,7 @@ export function Login() {
   const { lang } = useLang();
   const t = pick(T, lang);
   const nav = useNavigate();
+  const checkout = useCheckout();
   const btnRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -110,6 +112,22 @@ export function Login() {
       setError(null);
       try {
         await loginWithGoogle(idToken);
+        // Resume a plan the visitor picked on the landing before logging in.
+        // Credits are granted only by the backend webhook after payment — this
+        // just kicks off Stripe Checkout; it never credits the user itself.
+        const pending = localStorage.getItem(PENDING_PLAN_KEY);
+        if (pending) {
+          localStorage.removeItem(PENDING_PLAN_KEY);
+          try {
+            const base = `${window.location.origin}/app/credits`;
+            const res = await checkout.mutateAsync({ planId: pending, successUrl: `${base}?ok=1`, cancelUrl: base });
+            window.location.href = res.url;
+            return;
+          } catch {
+            nav('/app/credits', { replace: true });
+            return;
+          }
+        }
         nav('/app', { replace: true });
       } catch (err) {
         setError(err instanceof ApiError && err.status === 403 ? t.denied : err instanceof ApiError ? err.message : 'Login failed.');
@@ -129,7 +147,7 @@ export function Login() {
       <div className="auth-split">
         <section className="auth-left">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <Link className="brand" to="/"><img className="brand-mark" src={MARK} alt="" width="26" height="26" />{BRAND}</Link>
+            <Link className="brand" to={lang === 'en' ? '/' : `/${lang}`}><img className="brand-mark" src={MARK} alt="" width="26" height="26" />{BRAND}</Link>
             <LangSwitcher />
           </div>
           <div className="auth-left__body">
@@ -173,7 +191,7 @@ export function Login() {
               {mode === 'signin' ? t.noAccount : t.haveAccount}{' '}
               <button className="link-ink" onClick={toggleMode}>{mode === 'signin' ? t.createOne : t.signInLink}</button>
             </p>
-            <Link to="/" className="mono muted" style={{ fontSize: 11, display: 'inline-block', marginTop: 16 }}>{t.back}</Link>
+            <Link to={lang === 'en' ? '/' : `/${lang}`} className="mono muted" style={{ fontSize: 11, display: 'inline-block', marginTop: 16 }}>{t.back}</Link>
           </div>
         </section>
       </div>

@@ -241,6 +241,17 @@ async function withPricing<T extends { id: string; modes: Array<{ key: string; c
   return manifest;
 }
 
+/**
+ * A model's manifest with its pricing overlaid, cached per (model, lang) for the
+ * user front (30min). The admin/manager always gets fresh pricing so a price or
+ * mode-cost change shows immediately. Scoping (allowedTemplates) is applied by the
+ * caller, fresh — only the varying pricing overlay is cached.
+ */
+function manifestWithPricing(t: Parameters<typeof toManifest>[0], lang: string, isAdmin: boolean) {
+  const build = () => withPricing(toManifest(t, lang));
+  return isAdmin ? build() : cached(`manifest:${t.id}:${lang}`, PUBLIC_TTL_MS, build);
+}
+
 app.get(
   '/templates',
   {
@@ -256,13 +267,16 @@ app.get(
       querystring: { type: 'object', additionalProperties: false, properties: { ...langQuery } },
     },
   },
-  async (req) => {
+  async (req, reply) => {
     const lang = reqLang(req);
+    const isAdmin = req.auth!.role === 'admin';
     const allowed = req.appRecord?.allowedTemplates;
-    const restrict = req.auth!.role !== 'admin' && allowed && allowed.length ? new Set(allowed) : null;
+    // Scoping stays FRESH (allowedTemplates can change any time); only the pricing
+    // overlay — the Firestore read that can vary — is cached per (model, lang).
+    const restrict = !isAdmin && allowed && allowed.length ? new Set(allowed) : null;
     const list = listTemplates().filter((t) => !restrict || restrict.has(t.id));
-    const templates = await Promise.all(list.map((t) => withPricing(toManifest(t, lang))));
-    return { templates };
+    reply.header('Cache-Control', isAdmin ? 'no-store' : `private, max-age=${PUBLIC_BROWSER_MAX_AGE}, stale-while-revalidate=${PUBLIC_BROWSER_SWR}`);
+    return { templates: await Promise.all(list.map((t) => manifestWithPricing(t, lang, isAdmin))) };
   },
 );
 
@@ -286,11 +300,14 @@ app.get(
     const { id } = req.params as { id: string };
     const t = getTemplate(id);
     if (!t) return reply.code(404).send({ error: `Unknown template: ${id}` });
+    const isAdmin = req.auth!.role === 'admin';
     const allowed = req.appRecord?.allowedTemplates;
-    if (req.auth!.role !== 'admin' && allowed && allowed.length && !allowed.includes(id)) {
+    if (!isAdmin && allowed && allowed.length && !allowed.includes(id)) {
       return reply.code(403).send({ error: `App "${req.auth!.appId}" is not allowed to use model "${id}".` });
     }
-    return withPricing(toManifest(t, reqLang(req)));
+    const lang = reqLang(req);
+    reply.header('Cache-Control', isAdmin ? 'no-store' : `private, max-age=${PUBLIC_BROWSER_MAX_AGE}, stale-while-revalidate=${PUBLIC_BROWSER_SWR}`);
+    return manifestWithPricing(t, lang, isAdmin);
   },
 );
 
@@ -1150,6 +1167,9 @@ app.put(
       ? Object.fromEntries(Object.entries(body.addons).filter(([k]) => validAddons.has(k)))
       : undefined;
     await setModelPricing(templateId, { modes: body.modes as ModelPricing['modes'], addons });
+    // Drop the cached manifest for this model so the user front picks up the new
+    // mode costs (the admin itself already reads uncached).
+    bustPublicCache(`manifest:${templateId}:`);
     logEvent({ jobId: '-', appId: 'admin', userId: req.auth!.email }, 'INFO', 'pricing.updated', { templateId, modes: body.modes, addons });
     return pricingView(templateId, await getModelPricing(templateId));
   },

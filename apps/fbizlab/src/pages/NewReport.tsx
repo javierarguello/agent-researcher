@@ -14,11 +14,12 @@ const T = {
     s2: 'Report mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
     s4: 'Instructions for the analyst', s4h: "Free-form guidance for the analysts (lower authority than the model's base rules).",
-    s5: 'Advanced', show: '+ Show', hide: '− Hide',
+    s5: 'Advanced', show: '+ Show', hide: '− Hide', step: 'Step', of: 'of', back: 'Back', next: 'Next',
     reportLanguage: 'Report language', reportLangHelp: 'The language the final dossier is written in.',
     f: { industry: 'Industry', location: 'Location', askingPriceMin: 'Asking price · Min', askingPriceMax: 'Asking price · Max', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', keywords: 'Keywords', preferredSources: 'Preferred sources' } as Record<string, string>,
     sba: 'SBA friendly', realEstate: 'Include real estate',
     optionalUseful: 'Optional but very useful', add: 'Add and press Enter',
+    industryWarn: 'No industry set — tell the analysts what to research in the Instructions below (at least 40 characters).', instrReq: 'Required — no industry set', charsToGo: 'more characters needed',
     summary: 'Summary', pickIndustry: 'Pick an industry', mode: 'Mode', language: 'Language',
     cost: 'Cost', credits: 'credits', generate: 'Generate report', delivered: 'Delivered in 2–8 min',
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
@@ -32,11 +33,12 @@ const T = {
     s2: 'Modo del reporte', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
     s4: 'Instrucciones para el analista', s4h: 'Guía libre para los analistas (menor autoridad que las reglas base del modelo).',
-    s5: 'Avanzado', show: '+ Mostrar', hide: '− Ocultar',
+    s5: 'Avanzado', show: '+ Mostrar', hide: '− Ocultar', step: 'Paso', of: 'de', back: 'Atrás', next: 'Siguiente',
     reportLanguage: 'Idioma del reporte', reportLangHelp: 'El idioma en que se escribe el dossier final.',
     f: { industry: 'Industria', location: 'Ubicación', askingPriceMin: 'Precio · Mín', askingPriceMax: 'Precio · Máx', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas' } as Record<string, string>,
     sba: 'Apto SBA', realEstate: 'Incluir inmueble',
     optionalUseful: 'Opcional pero muy útil', add: 'Escribe y presiona Enter',
+    industryWarn: 'Sin industria — dile a los analistas qué investigar en las Instrucciones abajo (al menos 40 caracteres).', instrReq: 'Requerido — sin industria', charsToGo: 'caracteres más',
     summary: 'Resumen', pickIndustry: 'Elige una industria', mode: 'Modo', language: 'Idioma',
     cost: 'Costo', credits: 'créditos', generate: 'Generar reporte', delivered: 'Listo en 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
@@ -50,11 +52,12 @@ const T = {
     s2: 'Mode du rapport', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
     s4: "Instructions pour l'analyste", s4h: "Consignes libres pour les analystes (autorité inférieure aux règles de base du modèle).",
-    s5: 'Avancé', show: '+ Afficher', hide: '− Masquer',
+    s5: 'Avancé', show: '+ Afficher', hide: '− Masquer', step: 'Étape', of: 'de', back: 'Retour', next: 'Suivant',
     reportLanguage: 'Langue du rapport', reportLangHelp: 'La langue de rédaction du dossier final.',
     f: { industry: 'Secteur', location: 'Localisation', askingPriceMin: 'Prix · Min', askingPriceMax: 'Prix · Max', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', keywords: 'Mots-clés', preferredSources: 'Sources préférées' } as Record<string, string>,
     sba: 'Compatible SBA', realEstate: "Inclure l'immobilier",
     optionalUseful: 'Optionnel mais très utile', add: 'Saisissez et appuyez sur Entrée',
+    industryWarn: 'Aucun secteur — indiquez aux analystes quoi rechercher dans les Instructions ci-dessous (au moins 40 caractères).', instrReq: 'Requis — aucun secteur', charsToGo: 'caractères manquants',
     summary: 'Résumé', pickIndustry: 'Choisissez un secteur', mode: 'Mode', language: 'Langue',
     cost: 'Coût', credits: 'crédits', generate: 'Générer le rapport', delivered: 'Livré en 2–8 min',
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
@@ -68,11 +71,12 @@ const T = {
     s2: 'Modo do relatório', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
     s4: 'Instruções para o analista', s4h: 'Orientação livre para os analistas (autoridade menor que as regras base do modelo).',
-    s5: 'Avançado', show: '+ Mostrar', hide: '− Ocultar',
+    s5: 'Avançado', show: '+ Mostrar', hide: '− Ocultar', step: 'Passo', of: 'de', back: 'Voltar', next: 'Próximo',
     reportLanguage: 'Idioma do relatório', reportLangHelp: 'O idioma em que o dossiê final é escrito.',
     f: { industry: 'Setor', location: 'Localização', askingPriceMin: 'Preço · Mín', askingPriceMax: 'Preço · Máx', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas' } as Record<string, string>,
     sba: 'Compatível SBA', realEstate: 'Incluir imóvel',
     optionalUseful: 'Opcional mas muito útil', add: 'Digite e pressione Enter',
+    industryWarn: 'Sem setor — diga aos analistas o que pesquisar nas Instruções abaixo (ao menos 40 caracteres).', instrReq: 'Obrigatório — sem setor', charsToGo: 'caracteres a mais',
     summary: 'Resumo', pickIndustry: 'Escolha um setor', mode: 'Modo', language: 'Idioma',
     cost: 'Custo', credits: 'créditos', generate: 'Gerar relatório', delivered: 'Pronto em 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
@@ -111,6 +115,22 @@ function Tags({ value, onChange, suggestions, placeholder }: { value: string[]; 
 interface Prop { type?: string; enum?: string[]; maxLength?: number; default?: unknown; }
 type Schema = { properties?: Record<string, Prop>; required?: string[] };
 
+/** When no industry is given, instructions must be at least this long (mirrors the API). */
+const MIN_INSTR = 40;
+/** On mobile the long form becomes a step-by-step wizard. */
+const WIZARD_STEPS = 4;
+
+function useIsMobile(query = '(max-width: 860px)'): boolean {
+  const [m, setM] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setM(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [query]);
+  return m;
+}
+
 export function NewReport() {
   const { lang } = useLang();
   const t = pick(T, lang);
@@ -122,6 +142,11 @@ export function NewReport() {
   const [advOpen, setAdvOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMobile = useIsMobile();
+  const [step, setStep] = useState(0);
+  // On mobile, only the current wizard step's section(s) are shown. Groups:
+  // 0=What&where, 1=Report mode, 2=Deal filters, 3=Instructions+Advanced.
+  const stepOf = (g: number) => (!isMobile || g === step ? undefined : ({ display: 'none' } as const));
 
   const model = templates.data?.templates?.[0];
   const schema = model?.paramsSchema as Schema | undefined;
@@ -147,8 +172,12 @@ export function NewReport() {
   const help = (k: string) => ui?.fields?.[k]?.help;
   const ph = (k: string) => ui?.fields?.[k]?.placeholder;
   const industry = (params.industry as string) ?? '';
+  const instrText = ((params.instructions as string) ?? '').trim();
+  // Industry is optional; without it, instructions must carry enough context.
+  const needsInstr = !industry.trim();
+  const instrOk = !needsInstr || instrText.length >= MIN_INSTR;
   const bal = balance.data?.balance;
-  const canGo = !!industry.trim() && !create.isPending;
+  const canGo = instrOk && !create.isPending;
 
   const numField = (key: string) => {
     const v = params[key];
@@ -200,12 +229,19 @@ export function NewReport() {
 
       <div className="nr-grid">
           <div className="nr-form">
+            {isMobile && (
+              <div className="wiz-top">
+                <span className="mono muted" style={{ fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase' }}>{t.step} {step + 1} {t.of} {WIZARD_STEPS}</span>
+                <div className="wiz-bar"><span style={{ width: `${((step + 1) / WIZARD_STEPS) * 100}%` }} /></div>
+              </div>
+            )}
+
             {/* 01 What & where */}
-            <section className="nr-sec">
+            <section className="nr-sec" style={stepOf(0)}>
               <SecHead n="01" title={t.s1} hint={t.s1h} />
               <div className="nr-row">
                 <div className="field">
-                  <label>{t.f.industry} <span style={{ color: 'var(--accent)' }}>*</span></label>
+                  <label>{t.f.industry}</label>
                   <input className="input" maxLength={props.industry?.maxLength ?? 120} placeholder={ph('industry')} value={industry} onChange={(e) => set('industry', e.target.value)} />
                   <div className="chips">
                     {(ui?.fields?.industry?.suggestions ?? []).map((s) => (
@@ -213,6 +249,7 @@ export function NewReport() {
                     ))}
                   </div>
                   {help('industry') && <div className="desc">{help('industry')}</div>}
+                  {needsInstr && <div className="nr-warn">{t.industryWarn}</div>}
                 </div>
                 <div className="field">
                   <label>{t.f.location}</label>
@@ -223,7 +260,7 @@ export function NewReport() {
             </section>
 
             {/* 02 Report mode */}
-            <section className="nr-sec">
+            <section className="nr-sec" style={stepOf(1)}>
               <SecHead n="02" title={t.s2} hint={t.s2h} />
               <div className="modecards">
                 {modes.map((m) => (
@@ -248,7 +285,7 @@ export function NewReport() {
             </section>
 
             {/* 03 Deal filters */}
-            <section className="nr-sec">
+            <section className="nr-sec" style={stepOf(2)}>
               <SecHead n="03" title={t.s3} hint={t.s3h} />
               <div className="nr-row">{numField('askingPriceMin')}{numField('askingPriceMax')}</div>
               <div className="nr-row">{numField('minRevenue')}{numField('minCashFlow')}</div>
@@ -256,17 +293,19 @@ export function NewReport() {
             </section>
 
             {/* 04 Instructions */}
-            <section className="nr-sec">
-              <SecHead n="04" title={t.s4} hint={t.s4h} />
+            <section className="nr-sec" style={stepOf(3)}>
+              <SecHead n="04" title={needsInstr ? `${t.s4} *` : t.s4} hint={t.s4h} />
               <textarea className="textarea" rows={6} maxLength={instrMax} placeholder={ph('instructions')} value={instr} onChange={(e) => set('instructions', e.target.value)} />
               <div className="between" style={{ marginTop: 6 }}>
-                <span className="mono muted" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase' }}>{t.optionalUseful}</span>
-                <span className="mono muted" style={{ fontSize: 10.5 }}>{instr.length} / {instrMax}</span>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: needsInstr && !instrOk ? 'var(--risk)' : 'var(--muted)' }}>{needsInstr ? t.instrReq : t.optionalUseful}</span>
+                <span className="mono muted" style={{ fontSize: 10.5 }}>
+                  {needsInstr && !instrOk ? `${MIN_INSTR - instrText.length} ${t.charsToGo}` : `${instr.length} / ${instrMax}`}
+                </span>
               </div>
             </section>
 
             {/* 05 Advanced */}
-            <section className="nr-sec">
+            <section className="nr-sec" style={stepOf(3)}>
               <SecHead n="05" title={t.s5} right={<button type="button" className="nr-hint" style={{ background: 'none', border: 0, cursor: 'pointer' }} onClick={() => setAdvOpen((o) => !o)}>{advOpen ? t.hide : t.show}</button>} />
               {advOpen && (
                 <div className="stack" style={{ gap: 16, paddingTop: 4 }}>
@@ -283,9 +322,21 @@ export function NewReport() {
                 </div>
               )}
             </section>
+
+            {isMobile && (
+              <div className="wiz-nav">
+                <button className="btn btn--outline" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>{t.back}</button>
+                {step < WIZARD_STEPS - 1 ? (
+                  <button className="btn btn--black" onClick={() => setStep((s) => Math.min(WIZARD_STEPS - 1, s + 1))}>{t.next}</button>
+                ) : (
+                  <button className="btn btn--black" disabled={!canGo} onClick={() => setConfirming(true)}>{t.generate}</button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Sticky summary */}
+          {/* Sticky summary — hidden on mobile; the confirm dialog reviews everything. */}
+          {!isMobile && (
           <aside className="nr-summary">
             <div className="nr-sumcard">
               <div className="eyebrow" style={{ color: 'var(--accent)' }}>{t.summary}</div>
@@ -311,6 +362,7 @@ export function NewReport() {
               <div className="mono muted" style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', textAlign: 'center', marginTop: 12 }}>{t.delivered}</div>
             </div>
           </aside>
+          )}
         </div>
 
       {confirming && (

@@ -1,7 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useLang } from '../i18n';
 import { useAuth } from '../auth/AuthContext';
-import { usePublicPlans } from '../api/hooks';
+import { usePublicPlans, useCheckout } from '../api/hooks';
+import { PENDING_PLAN_KEY } from '../api/client';
 import { config } from '../config';
 import { LangSwitcher } from '../components/LangSwitcher';
 import { PlanCard } from '../components/PlanCard';
@@ -213,9 +214,27 @@ export function Landing() {
   const nav = useNavigate();
   const c = COPY[lang];
   const go = () => nav(isAuthed ? '/app/new' : '/login');
+  const checkout = useCheckout();
   // Pricing comes straight from Stripe via the public API — never hardcoded here.
   const plansQuery = usePublicPlans(config.appId, lang);
   const plans = plansQuery.data?.plans ?? [];
+
+  // "Choose plan": if signed in, go straight to Stripe Checkout for that pack;
+  // otherwise log in first and resume the purchase right after (see Login).
+  async function choosePlan(planId: string) {
+    if (!isAuthed) {
+      localStorage.setItem(PENDING_PLAN_KEY, planId);
+      nav('/login');
+      return;
+    }
+    try {
+      const url = `${window.location.origin}/app/credits`;
+      const res = await checkout.mutateAsync({ planId, successUrl: `${url}?ok=1`, cancelUrl: url });
+      window.location.href = res.url;
+    } catch {
+      nav('/app/credits');
+    }
+  }
 
   return (
     <div>
@@ -315,7 +334,7 @@ export function Landing() {
           ) : (
             <div className="plans">
               {plans.map((p) => (
-                <PlanCard key={p.planId} plan={p} lang={lang} creditsWord={c.creditsWord} popularLabel={c.popular} buttonLabel={c.choose} onSelect={go} />
+                <PlanCard key={p.planId} plan={p} lang={lang} creditsWord={c.creditsWord} popularLabel={c.popular} buttonLabel={c.choose} onSelect={() => choosePlan(p.planId)} busy={checkout.isPending} />
               ))}
             </div>
           )}
