@@ -130,8 +130,9 @@ p { margin: 0; }
 /* --- header --- */
 .hdr { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line-soft); }
 .hdr .container { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-.brand { font-weight: 800; letter-spacing: -0.03em; font-size: 17px; }
+.brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -0.03em; font-size: 17px; color: var(--ink); text-decoration: none; }
 .brand .dot { color: var(--accent); }
+.brand-mark { display: block; width: 26px; height: 26px; border-radius: 7px; flex: none; }
 .nav { display: flex; gap: 26px; align-items: center; }
 .nav a { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .nav a:hover, .nav a.active { color: var(--ink); }

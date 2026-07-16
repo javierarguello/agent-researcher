@@ -14,7 +14,7 @@ export function Credits() {
   const { lang } = useLang();
   const t = pick(T, lang);
   const balance = useBalance();
-  const plans = usePlans();
+  const plans = usePlans(lang);
   const checkout = useCheckout();
   const [error, setError] = useState<string | null>(null);
 

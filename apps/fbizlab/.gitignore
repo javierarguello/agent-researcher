@@ -2,3 +2,6 @@ dist
 .env
 .env.local
 *.local
+
+# Firebase deploy cache
+.firebase/

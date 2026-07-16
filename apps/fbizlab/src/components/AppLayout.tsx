@@ -11,7 +11,7 @@ const T = {
   pt: { reports: 'Relatórios', newReport: 'Novo relatório', credits: 'Créditos', logout: 'Sair', credit: 'créditos' },
 };
 
-const BRAND = 'FloridaBizLab';
+const BRAND = 'Florida Biz Labs';
 
 export function AppLayout() {
   const { user, logout } = useAuth();
@@ -24,7 +24,7 @@ export function AppLayout() {
     <div>
       <header className="hdr">
         <div className="container">
-          <Link className="brand" to="/">{BRAND}<span className="dot">.</span></Link>
+          <Link className="brand" to="/"><img className="brand-mark" src="/icons/favicon.svg" alt="" width="26" height="26" />{BRAND}</Link>
           <nav className="nav">
             <NavLink to="/app" end className={({ isActive }) => (isActive ? 'active' : '')}>{t.reports}</NavLink>
             <NavLink to="/app/new" className={({ isActive }) => (isActive ? 'active' : '')}>{t.newReport}</NavLink>

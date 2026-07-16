@@ -33,12 +33,12 @@ export function useCreateJob() {
 export function useBalance() {
   return useQuery({ queryKey: ['balance'], queryFn: () => api<{ balance: number }>('/credits/balance') });
 }
-export function usePlans() {
-  return useQuery({ queryKey: ['plans'], queryFn: () => api<{ plans: CreditPlan[] }>('/credits/plans') });
+export function usePlans(lang: string) {
+  return useQuery({ queryKey: ['plans', lang], queryFn: () => api<{ plans: CreditPlan[] }>(`/credits/plans?lang=${lang}`) });
 }
-/** Public plans (no auth) for the landing pricing section — straight from Stripe via the API. */
-export function usePublicPlans(appId: string) {
-  return useQuery({ queryKey: ['public-plans', appId], staleTime: 30 * 60_000, gcTime: 30 * 60_000, queryFn: () => api<{ plans: CreditPlan[] }>(`/plans?appId=${encodeURIComponent(appId)}`, { anonymous: true }) });
+/** Public plans (no auth) for the landing pricing section — straight from Stripe via the API, localized. */
+export function usePublicPlans(appId: string, lang: string) {
+  return useQuery({ queryKey: ['public-plans', appId, lang], staleTime: 5 * 60_000, queryFn: () => api<{ plans: CreditPlan[] }>(`/plans?appId=${encodeURIComponent(appId)}&lang=${lang}`, { anonymous: true }) });
 }
 export function useCheckout() {
   return useMutation({

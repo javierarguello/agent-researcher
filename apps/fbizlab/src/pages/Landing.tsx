@@ -6,7 +6,7 @@ import { config } from '../config';
 import { LangSwitcher } from '../components/LangSwitcher';
 import { IconAI, IconArrow, IconBars, IconChart, IconFlorida, IconPin, IconShield, IconTag, IconTarget } from '../components/icons';
 
-const BRAND = 'FloridaBizLab';
+const BRAND = 'Florida Biz Labs';
 
 const COPY = {
   en: {
@@ -213,14 +213,14 @@ export function Landing() {
   const c = COPY[lang];
   const go = () => nav(isAuthed ? '/app/new' : '/login');
   // Pricing comes straight from Stripe via the public API — never hardcoded here.
-  const plansQuery = usePublicPlans(config.appId);
+  const plansQuery = usePublicPlans(config.appId, lang);
   const plans = plansQuery.data?.plans ?? [];
 
   return (
     <div>
       <header className="hdr">
         <div className="container">
-          <div className="brand">{BRAND}<span className="dot">.</span></div>
+          <div className="brand"><img className="brand-mark" src="/icons/favicon.svg" alt="" width="26" height="26" />{BRAND}</div>
           <nav className="nav">
             <a href="#workspace">{c.nav.discover}</a>
             <a href="#inside">{c.nav.inside}</a>
@@ -351,7 +351,7 @@ export function Landing() {
         <div className="container">
           <div className="cols">
             <div>
-              <div className="brand" style={{ marginBottom: 14 }}>{BRAND}<span className="dot">.</span></div>
+              <div className="brand" style={{ marginBottom: 14 }}><img className="brand-mark" src="/icons/favicon.svg" alt="" width="26" height="26" />{BRAND}</div>
               <p className="disclaimer">{c.footDisc}</p>
             </div>
             <div className="col">
