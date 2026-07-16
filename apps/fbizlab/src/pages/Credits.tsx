@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { useBalance, useCheckout, usePlans, useTemplates } from '../api/hooks';
-import { ApiError } from '../api/client';
+import { ApiError, DRAFT_KEY } from '../api/client';
 
 const T = {
   en: {
@@ -90,7 +90,10 @@ export function Credits() {
   async function buy(planId: string) {
     setError(null);
     setBusyId(planId);
-    const url = `${window.location.origin}/app/credits`;
+    // If the user came here mid-report (a saved draft exists), send them back to
+    // the new-report page after paying/cancelling — their inputs are restored there.
+    const back = localStorage.getItem(DRAFT_KEY) ? '/app/new' : '/app/credits';
+    const url = `${window.location.origin}${back}`;
     try {
       const res = await checkout.mutateAsync({ planId, successUrl: `${url}?ok=1`, cancelUrl: url });
       window.location.href = res.url;

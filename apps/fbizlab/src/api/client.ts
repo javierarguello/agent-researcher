@@ -11,6 +11,10 @@ export const UNAUTHORIZED_EVENT = 'web:unauthorized';
 /** A plan the visitor picked on the landing before logging in; consumed post-login. */
 export const PENDING_PLAN_KEY = 'fbizlab_pending_plan';
 
+/** A half-filled New-report form, saved before sending the user to buy credits so
+ *  they return to exactly the same inputs after paying (or cancelling). */
+export const DRAFT_KEY = 'fbizlab_newreport_draft';
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);

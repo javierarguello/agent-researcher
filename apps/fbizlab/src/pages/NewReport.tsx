@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { useBalance, useCreateJob, useTemplates } from '../api/hooks';
-import { ApiError } from '../api/client';
+import { ApiError, DRAFT_KEY } from '../api/client';
 import type { ParamsUi } from '../api/types';
 
 type Props = Record<string, unknown>;
@@ -24,6 +24,7 @@ const T = {
     cost: 'Cost', credits: 'credits', generate: 'Generate report', delivered: 'Delivered in 2–8 min',
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
     youHave: 'You have', creditsLeft: 'credits',
+    notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits',
     noCredits: 'Not enough credits — buy more first.', yes: 'Yes',
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
@@ -43,6 +44,7 @@ const T = {
     cost: 'Costo', credits: 'créditos', generate: 'Generar reporte', delivered: 'Listo en 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
     youHave: 'Tienes', creditsLeft: 'créditos',
+    notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos',
     noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí',
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -62,6 +64,7 @@ const T = {
     cost: 'Coût', credits: 'crédits', generate: 'Générer le rapport', delivered: 'Livré en 2–8 min',
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
     youHave: 'Vous avez', creditsLeft: 'crédits',
+    notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits',
     noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui',
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -81,6 +84,7 @@ const T = {
     cost: 'Custo', credits: 'créditos', generate: 'Gerar relatório', delivered: 'Pronto em 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
     youHave: 'Você tem', creditsLeft: 'créditos',
+    notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos',
     noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim',
     modeDesc: { essential: 'Seções principais. Cerca da metade do custo. Ótimo para triagem inicial.', comprehensive: 'Dossiê longo completo: valuations, comparáveis, due diligence, playbook.' } as Record<string, string>,
   },
@@ -154,9 +158,16 @@ export function NewReport() {
   const props = schema?.properties ?? {};
   const set = (k: string, v: unknown) => setParams((p) => ({ ...p, [k]: v }));
 
-  // Defaults from the schema, with report language pre-set to the UI language.
+  // Initialise once: restore a saved draft (returning from buying credits) so no
+  // input is lost; otherwise schema defaults with report language = UI language.
+  const inited = useRef(false);
   useEffect(() => {
-    if (!schema) return;
+    if (!schema || inited.current) return;
+    inited.current = true;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) { setParams(JSON.parse(raw)); return; }
+    } catch { /* ignore a corrupt draft */ }
     const d: Props = {};
     for (const [k, p] of Object.entries(schema.properties ?? {})) if (p.default !== undefined) d[k] = p.default;
     d.mode = d.mode ?? model?.modes?.[0]?.key ?? 'essential';
@@ -178,6 +189,11 @@ export function NewReport() {
   const instrOk = !needsInstr || instrText.length >= MIN_INSTR;
   const bal = balance.data?.balance;
   const canGo = instrOk && !create.isPending;
+  const insufficient = typeof bal === 'number' && bal < cost;
+  const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(params)); } catch { /* ignore */ } };
+  const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
+  // Not enough credits → keep every input and send them to buy; they come back here.
+  const goBuy = () => { saveDraft(); setConfirming(false); nav('/app/credits'); };
 
   const numField = (key: string) => {
     const v = params[key];
@@ -210,6 +226,7 @@ export function NewReport() {
       const clean: Props = { ...params };
       Object.keys(clean).forEach((k) => { if (clean[k] === undefined || clean[k] === '') delete clean[k]; });
       const res = await create.mutateAsync({ template: model!.id, params: clean });
+      clearDraft();
       nav(`/app/jobs/${res.jobId}`);
     } catch (err) {
       setError(err instanceof ApiError && err.status === 402 ? t.noCredits : err instanceof ApiError ? err.message : 'Failed.');
@@ -354,7 +371,14 @@ export function NewReport() {
                 <span className="mono muted" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase' }}>{t.cost}</span>
                 <span><b className="accent" style={{ fontSize: 30, fontWeight: 800 }}>{cost}</b> <span className="mono muted" style={{ fontSize: 12 }}>{t.credits}</span></span>
               </div>
-              {bal != null && <div className="mono muted" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', marginTop: 2 }}>{t.youHave} {bal} {t.creditsLeft}</div>}
+              {bal != null && <div className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', marginTop: 2, color: insufficient ? 'var(--risk)' : 'var(--muted)' }}>{t.youHave} {bal} {t.creditsLeft}</div>}
+
+              {insufficient && (
+                <>
+                  <div className="mono" style={{ fontSize: 11, color: 'var(--risk)', marginTop: 10, lineHeight: 1.5 }}>{t.notEnough}</div>
+                  <button className="btn btn--outline btn--block" style={{ marginTop: 10 }} onClick={goBuy}>{t.buyCredits}</button>
+                </>
+              )}
 
               {error && <div className="mono" style={{ fontSize: 12, color: 'var(--risk)', marginTop: 12 }}>{error}</div>}
 
@@ -388,10 +412,11 @@ export function NewReport() {
                 <span className="mono muted" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase' }}>{t.cost}</span>
                 <span><b className="accent" style={{ fontSize: 26, fontWeight: 800 }}>{cost}</b> <span className="mono muted" style={{ fontSize: 12 }}>{t.credits}</span></span>
               </div>
+              {insufficient && <div className="mono" style={{ fontSize: 12, color: 'var(--risk)', marginBottom: 12 }}>{t.notEnough}</div>}
               {error && <div className="mono" style={{ fontSize: 12, color: 'var(--risk)', marginBottom: 12 }}>{error}</div>}
               <div className="modal__actions">
                 <button className="btn btn--outline" disabled={create.isPending} onClick={() => setConfirming(false)}>{t.goBack}</button>
-                <button className="btn btn--black" disabled={create.isPending} onClick={submit}>{t.confirmGenerate}</button>
+                <button className="btn btn--black" disabled={create.isPending} onClick={insufficient ? goBuy : submit}>{insufficient ? t.buyCredits : t.confirmGenerate}</button>
               </div>
               <div className="mono muted" style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', textAlign: 'center', marginTop: 12 }}>{t.delivered}</div>
             </div>
