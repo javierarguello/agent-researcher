@@ -31,17 +31,17 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(await listJobs('fbizlab', 'poor@x.com')).toHaveLength(0);
   });
 
-  it('allows generation with credits and consumes exactly one (essential = 1)', async () => {
-    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 3 });
+  it('allows generation with credits and consumes the mode cost (essential = 5)', async () => {
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 12 });
     const t = await token('fbizlab', 'u@x.com');
     const r = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
     expect(r.statusCode).toBe(202);
-    expect(await getBalance('fbizlab', 'u@x.com')).toBe(2);
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(7); // 12 - 5
     expect(await listJobs('fbizlab', 'u@x.com')).toHaveLength(1);
   });
 
   it('identity comes from the token — body appId/userId are ignored (no spoofing)', async () => {
-    await grantCredits({ appId: 'fbizlab', userId: 'real@x.com', credits: 1 });
+    await grantCredits({ appId: 'fbizlab', userId: 'real@x.com', credits: 5 });
     const t = await token('fbizlab', 'real@x.com');
     // Attacker tries to bill another app/user and impersonate.
     const r = await app.inject({
@@ -58,7 +58,7 @@ describe('API security — auth, credits gate, isolation', () => {
   });
 
   it("a user cannot read another user's report (403)", async () => {
-    await grantCredits({ appId: 'fbizlab', userId: 'alice@x.com', credits: 1 });
+    await grantCredits({ appId: 'fbizlab', userId: 'alice@x.com', credits: 5 });
     const ta = await token('fbizlab', 'alice@x.com');
     const created = await app.inject({ method: 'POST', url: '/research', headers: auth(ta), payload: research });
     const { jobId } = created.json() as { jobId: string };
@@ -108,8 +108,8 @@ describe('API security — auth, credits gate, isolation', () => {
     const en = (await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale', headers: auth(t) })).json();
     expect(en.lang).toBe('en');
     expect(en.modes).toEqual([
-      { key: 'essential', label: 'Essential', credits: 1 },
-      { key: 'comprehensive', label: 'Comprehensive', credits: 2 },
+      { key: 'essential', label: 'Essential', credits: 5 },
+      { key: 'comprehensive', label: 'Comprehensive', credits: 18 },
     ]);
     // Workflow steps are exposed + localized (for explaining a job's current phase).
     const enStep = en.steps.find((x: any) => x.id === 'deal-scout');

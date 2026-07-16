@@ -220,6 +220,17 @@ Query: `appId`?, `userId`?, `status`? (`queued|running|completed|failed|incomple
 template, title, status, cost, attempts, createdAt, updatedAt, finishedAt } … ] }`
 newest-first. Use `GET /research/:jobId` for full status/summary/download URLs.
 
+### `GET /admin/pricing/:templateId` — a model's credit pricing
+→ `{ templateId, modes: [ { key, defaultCredits, credits } ], addons, updatedAt }`.
+`defaultCredits` = code/template default; `credits` = effective (Firestore override
+applied). `404` if the model is unknown.
+
+### `PUT /admin/pricing/:templateId` — set a model's credit pricing
+Body: `{ modes?: { essential?, comprehensive? }, addons?: { <key>: n } }` (integers
+≥1). Overrides the code default **without a deploy**; omit a mode to keep its
+default. → same shape as GET. The override flows into the manifest `modes[].credits`
+and what `POST /research` charges.
+
 ### `GET /admin/settings` — default rate limits
 → `{ settings: { appRateLimitPerHour, userRateLimitPerHour, updatedAt } }`.
 

@@ -10,17 +10,17 @@ describe('report modes', () => {
     expect(resolveMode(t.modes, 'nope').key).toBe('essential');
   });
 
-  it('essential is cheaper: fewer sections, half budget, 1 credit', () => {
+  it('essential is cheaper: fewer sections, half budget, default 5 credits', () => {
     const m = resolveMode(t.modes, 'essential');
     expect(m.config.budgetScale).toBe(0.5);
-    expect(creditsForMode(m.config, 'essential')).toBe(1);
+    expect(creditsForMode(m.config, 'essential')).toBe(5);
     expect(m.config.exclude?.length).toBeGreaterThan(0);
   });
 
-  it('comprehensive is full: no exclusions, full budget, 2 credits', () => {
+  it('comprehensive is full: no exclusions, full budget, default 18 credits', () => {
     const m = resolveMode(t.modes, 'comprehensive');
     expect(m.config.budgetScale).toBe(1);
-    expect(creditsForMode(m.config, 'comprehensive')).toBe(2);
+    expect(creditsForMode(m.config, 'comprehensive')).toBe(18);
   });
 
   it('falls back to DEFAULT_MODES when a template has none', () => {

@@ -101,6 +101,8 @@ export {
 } from './credits/store.js';
 export { InsufficientCreditsError } from './credits/types.js';
 export type { CreditLedgerEntry, CreditBalance, LedgerEntryType } from './credits/types.js';
+export { getModelPricing, setModelPricing, resolveModeCredits } from './credits/pricing.js';
+export type { ModelPricing } from './credits/pricing.js';
 
 // Per-app analytics (write-only for now; read helpers for later)
 export {

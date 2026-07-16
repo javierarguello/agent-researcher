@@ -43,7 +43,9 @@ import {
   updateSettings,
   validateRequest,
   resolveMode,
-  creditsForMode,
+  getModelPricing,
+  setModelPricing,
+  resolveModeCredits,
   consumeCredits,
   getBalance,
   listTransactions,
@@ -212,6 +214,18 @@ function reqLang(req: { query?: unknown }): string {
   return l && SUPPORTED_LANGS.includes(l) ? l : DEFAULT_LANG;
 }
 
+/** Overlay the Firestore per-model credit pricing onto a manifest's mode costs. */
+async function withPricing<T extends { id: string; modes: Array<{ key: string; credits: number }> }>(manifest: T): Promise<T> {
+  const pricing = await getModelPricing(manifest.id);
+  if (pricing?.modes) {
+    for (const m of manifest.modes) {
+      const o = pricing.modes[m.key as 'essential' | 'comprehensive'];
+      if (o != null) m.credits = o;
+    }
+  }
+  return manifest;
+}
+
 app.get(
   '/templates',
   {
@@ -232,7 +246,8 @@ app.get(
     const allowed = req.appRecord?.allowedTemplates;
     const restrict = req.auth!.role !== 'admin' && allowed && allowed.length ? new Set(allowed) : null;
     const list = listTemplates().filter((t) => !restrict || restrict.has(t.id));
-    return { templates: list.map((t) => toManifest(t, lang)) };
+    const templates = await Promise.all(list.map((t) => withPricing(toManifest(t, lang))));
+    return { templates };
   },
 );
 
@@ -260,7 +275,7 @@ app.get(
     if (req.auth!.role !== 'admin' && allowed && allowed.length && !allowed.includes(id)) {
       return reply.code(403).send({ error: `App "${req.auth!.appId}" is not allowed to use model "${id}".` });
     }
-    return toManifest(t, reqLang(req));
+    return withPricing(toManifest(t, reqLang(req)));
   },
 );
 
@@ -333,7 +348,9 @@ app.post(
     if (config.server.appEnv !== 'local') {
       const tmpl = getTemplate(validated.template);
       const mode = resolveMode(tmpl?.modes, (validated.params as Record<string, unknown>).mode);
-      const cost = creditsForMode(mode.config, mode.key);
+      // Firestore pricing override for this model → template/code default.
+      const pricing = await getModelPricing(validated.template);
+      const cost = resolveModeCredits(pricing, mode.config, mode.key);
       try {
         await consumeCredits(appId, userId, cost, jobId);
         logEvent(logCtx, 'INFO', 'credits.consumed', { credits: cost, mode: mode.key });
@@ -959,6 +976,76 @@ app.post(
     await enqueueJob(jobId, { unique: true });
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'INFO', 'job.retry', { by: req.auth!.email });
     return reply.code(202).send({ jobId, status: 'queued' });
+  },
+);
+
+// --- Admin: per-model credit pricing (Firestore overrides) ------------------
+function pricingView(templateId: string, override: import('@agent-researcher/core').ModelPricing | null) {
+  const base = toManifest(getTemplate(templateId)!); // code/template default credits
+  return {
+    templateId,
+    modes: base.modes.map((m) => ({
+      key: m.key,
+      defaultCredits: m.credits,
+      credits: override?.modes?.[m.key as 'essential' | 'comprehensive'] ?? m.credits,
+    })),
+    addons: override?.addons ?? {},
+    updatedAt: override?.updatedAt ?? null,
+  };
+}
+
+app.get(
+  '/admin/pricing/:templateId',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Get a model’s credit pricing (code default + Firestore override)',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', properties: { templateId: { type: 'string', maxLength: 128 } }, required: ['templateId'] },
+    },
+  },
+  async (req, reply) => {
+    const { templateId } = req.params as { templateId: string };
+    if (!getTemplate(templateId)) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
+    return pricingView(templateId, await getModelPricing(templateId));
+  },
+);
+
+app.put(
+  '/admin/pricing/:templateId',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Set a model’s credit pricing override (per mode + add-ons)',
+      description: 'Overrides the code default without a deploy. Omit a mode to keep its default.',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', properties: { templateId: { type: 'string', maxLength: 128 } }, required: ['templateId'] },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          modes: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              essential: { type: 'integer', minimum: 1, maximum: 1_000_000 },
+              comprehensive: { type: 'integer', minimum: 1, maximum: 1_000_000 },
+            },
+          },
+          addons: { type: 'object', additionalProperties: { type: 'integer', minimum: 1, maximum: 1_000_000 } },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const { templateId } = req.params as { templateId: string };
+    if (!getTemplate(templateId)) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
+    const body = (req.body ?? {}) as { modes?: Record<string, number>; addons?: Record<string, number> };
+    await setModelPricing(templateId, body);
+    logEvent({ jobId: '-', appId: 'admin', userId: req.auth!.email }, 'INFO', 'pricing.updated', { templateId, ...body });
+    return pricingView(templateId, await getModelPricing(templateId));
   },
 );
 

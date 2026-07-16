@@ -18,6 +18,8 @@ import {
   getJob,
   listTransactions,
   getApp,
+  grantCredits,
+  getBalance,
 } from '@agent-researcher/core';
 import { seedApp, seedAdmin, token, auth } from './helpers.js';
 
@@ -85,6 +87,42 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
 
     const byTemplate = await app.inject({ method: 'GET', url: '/admin/jobs?template=other', headers: auth(admin) });
     expect((byTemplate.json() as any).jobs.map((j: any) => j.jobId)).toEqual(['j3']);
+  });
+
+  // --- Per-model credit pricing (Firestore override, code default) ---------
+  it('pricing: code default (5/18), PUT override, applied to manifest + charge', async () => {
+    const admin = await adminToken();
+    const model = 'florida-business-for-sale';
+
+    const g0 = await app.inject({ method: 'GET', url: `/admin/pricing/${model}`, headers: auth(admin) });
+    expect(g0.json().modes).toEqual([
+      { key: 'essential', defaultCredits: 5, credits: 5 },
+      { key: 'comprehensive', defaultCredits: 18, credits: 18 },
+    ]);
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/admin/pricing/${model}`,
+      headers: auth(admin),
+      payload: { modes: { comprehensive: 25 }, addons: { deck: 10 } },
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().modes.find((m: any) => m.key === 'comprehensive').credits).toBe(25);
+    expect(put.json().addons).toEqual({ deck: 10 });
+
+    // The override flows into the manifest a client reads…
+    const t = await token('fbizlab', 'u@x.com');
+    const manifest = await app.inject({ method: 'GET', url: `/templates/${model}`, headers: auth(t) });
+    expect(manifest.json().modes.find((m: any) => m.key === 'comprehensive').credits).toBe(25);
+
+    // …and into what a comprehensive job actually charges.
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 30 });
+    const r = await app.inject({
+      method: 'POST', url: '/research', headers: auth(t),
+      payload: { template: model, params: { industry: 'laundromats', mode: 'comprehensive' } },
+    });
+    expect(r.statusCode).toBe(202);
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(5); // 30 - 25
   });
 
   // --- Manual retry of a failed job ----------------------------------------
@@ -207,6 +245,8 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
       ['GET', '/admin/users'],
       ['GET', '/admin/jobs'],
       ['POST', '/admin/jobs/x/retry'],
+      ['GET', '/admin/pricing/florida-business-for-sale'],
+      ['PUT', '/admin/pricing/florida-business-for-sale', {}],
       ['GET', '/admin/settings'],
       ['PATCH', '/admin/settings', {}],
       ['GET', '/admin/apps'],

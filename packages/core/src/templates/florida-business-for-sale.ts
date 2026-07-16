@@ -542,14 +542,14 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       label: 'Comprehensive',
       budgetScale: 1,
       depth: 'standard',
-      credits: 2,
+      credits: 18,
       params: { targetCount: 6 },
     },
     essential: {
       label: 'Essential',
       budgetScale: 0.5,
       depth: 'light',
-      credits: 1,
+      credits: 5,
       // Drop the heaviest analytical sections (~half the cost, core report kept).
       exclude: [
         'competitive_landscape',

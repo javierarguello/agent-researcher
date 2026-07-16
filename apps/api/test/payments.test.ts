@@ -86,7 +86,8 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
   });
 
   it('CONCURRENT report requests never over-spend credits (no double-spend)', async () => {
-    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 3 });
+    // Essential costs 5 → exactly 3 of 6 concurrent requests are affordable with 15.
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 15 });
     const t = await token('fbizlab', 'u@x.com');
     const results = await Promise.all(
       Array.from({ length: 6 }, () => app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research })),

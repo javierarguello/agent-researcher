@@ -40,13 +40,13 @@ export interface ModeConfig {
 
 /** Fallback when a template does not declare its own modes. */
 export const DEFAULT_MODES: Record<ReportMode, ModeConfig> = {
-  essential: { label: 'Essential', budgetScale: 0.5, depth: 'light', credits: 1 },
-  comprehensive: { label: 'Comprehensive', budgetScale: 1, depth: 'standard', credits: 2 },
+  essential: { label: 'Essential', budgetScale: 0.5, depth: 'light', credits: 5 },
+  comprehensive: { label: 'Comprehensive', budgetScale: 1, depth: 'standard', credits: 18 },
 };
 
-/** Credits a mode consumes (defaults: essential 1, comprehensive 2). */
+/** Credits a mode consumes (defaults: essential 5, comprehensive 18 — track real cost). */
 export function creditsForMode(config: ModeConfig, key: ReportMode): number {
-  return config.credits ?? (key === 'comprehensive' ? 2 : 1);
+  return config.credits ?? (key === 'comprehensive' ? 18 : 5);
 }
 
 /** Resolve a requested mode against a template's modes (or the defaults). */

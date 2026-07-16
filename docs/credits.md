@@ -44,12 +44,22 @@ diverge. Deterministic ledger ids make each operation replay-safe:
 already existed (idempotent replay). Absent optional fields are stripped before
 writing (Firestore rejects `undefined`).
 
-## How much a report costs — mode weighting
+## How much a report costs — per-model pricing
 
-The credit cost of a report is the **mode's** `credits` (`creditsForMode`):
-default **essential = 1, comprehensive = 2**, overridable per template in its
-`modes` config. This aligns spend with the relative compute cost of each mode (the
-essential mode excludes the heaviest sections and halves budgets). See
+The credit cost of a report is the chosen **mode's** `credits`, resolved in this
+order (`resolveModeCredits`):
+
+1. **Firestore override** — `model-pricing/{templateId}.modes[mode]`, editable
+   live via `PUT /admin/pricing/:templateId` (no deploy).
+2. **Template default** — the template's own `modes[mode].credits`.
+3. **Code default** — `DEFAULT_MODES` (`creditsForMode`): **essential = 5,
+   comprehensive = 18** (set to track the real ~1:3.6 compute-cost ratio).
+
+So pricing is **per model** and tunable without shipping code; the code values are
+just the fallback. The effective cost is what the client sees in the manifest's
+`modes[].credits` (the API overlays the override) and what `POST /research`
+charges. Add-on prices live in the same `model-pricing/{templateId}.addons` map.
+Purchasable packs still live entirely in Stripe. See
 [research-models.md](research-models.md) → Modes.
 
 ## Consumption & refund flow

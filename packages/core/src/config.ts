@@ -51,7 +51,10 @@ export const config = {
   credits: {
     ledgerCollection: str('CREDITS_LEDGER_COLLECTION', 'credit-ledger'),
     balancesCollection: str('CREDITS_BALANCES_COLLECTION', 'credit-balances'),
-    // Plans/catalog are NOT in Firestore — they live entirely in Stripe.
+    // Per-model credit pricing overrides (doc id = templateId). Code holds the
+    // defaults; a doc here overrides them without a deploy. Purchasable packs
+    // still live entirely in Stripe.
+    pricingCollection: str('MODEL_PRICING_COLLECTION', 'model-pricing'),
   },
   stats: {
     /** All-time per-app aggregates; daily buckets in a `daily` subcollection. */
