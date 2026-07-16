@@ -10,10 +10,17 @@ import { NewReport } from './pages/NewReport';
 import { JobView } from './pages/JobView';
 import { Credits } from './pages/Credits';
 
+const TITLES: Record<string, string> = {
+  en: 'Florida Biz Labs — Discover Florida business opportunities with AI',
+  es: 'Florida Biz Labs — Descubre oportunidades de negocio en Florida con IA',
+  fr: 'Florida Biz Labs — Découvrez des opportunités d’affaires en Floride avec l’IA',
+  pt: 'Florida Biz Labs — Descubra oportunidades de negócio na Flórida com IA',
+};
+
 export function App() {
   const { lang } = useLang();
   const { pathname } = useLocation();
-  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+  useEffect(() => { document.documentElement.lang = lang; if (TITLES[lang]) document.title = TITLES[lang]; }, [lang]);
   // Only the public landing is indexable; the authed app + login are noindex.
   useEffect(() => {
     const priv = pathname.startsWith('/app') || pathname.startsWith('/login');
@@ -25,6 +32,10 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      {/* Language in the URL for SEO (en = "/"); prerendered per-language at build. */}
+      <Route path="/es" element={<Landing />} />
+      <Route path="/fr" element={<Landing />} />
+      <Route path="/pt" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/app" element={<RequireAuth />}>
         <Route element={<AppLayout />}>

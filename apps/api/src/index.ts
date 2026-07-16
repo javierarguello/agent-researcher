@@ -26,6 +26,7 @@ import {
   getSettings,
   listApps,
   listJobs,
+  getUserJobStats,
   queryJobs,
   requeueJob,
   getAdminStats,
@@ -530,6 +531,19 @@ app.get(
     if (!raw) return reply.code(404).send({ error: 'Report file not found.' });
     return reply.type('application/json').send(raw);
   },
+);
+
+app.get(
+  '/me/stats',
+  {
+    schema: {
+      summary: "The current user's report counters (by status)",
+      description: 'Aggregate counts over ALL of the caller\'s jobs (computed server-side, not a tally of the paginated inbox): total, ready (completed/partial), inProgress (queued/running), failed. Scoped to the token\'s app + user.',
+      tags: ['research'],
+      security: sec,
+    },
+  },
+  async (req) => getUserJobStats(req.auth!.appId, req.auth!.email),
 );
 
 // --- Credits ----------------------------------------------------------------

@@ -63,6 +63,29 @@ export async function listJobs(appId: string, userId: string, limit = 50): Promi
   return snap.docs.map((d) => d.data() as ResearchJob);
 }
 
+export interface UserJobStats { total: number; ready: number; inProgress: number; failed: number; }
+
+/**
+ * Per-user report counters by status, computed with Firestore `count()`
+ * aggregations (no documents are read back). This is the source for the user
+ * dashboard's stat tiles — accurate over ALL of the user's jobs, not a tally of
+ * the (paginated) inbox list. Equality-only filters need only single-field
+ * indexes, so no composite index is required.
+ */
+export async function getUserJobStats(appId: string, userId: string): Promise<UserJobStats> {
+  const base = () => collection().where('appId', '==', appId).where('userId', '==', userId);
+  const countOf = async (status: JobStatus) => (await base().where('status', '==', status).count().get()).data().count;
+  const [queued = 0, running = 0, completed = 0, failed = 0, incomplete = 0] = await Promise.all(
+    (['queued', 'running', 'completed', 'failed', 'incomplete'] as JobStatus[]).map(countOf),
+  );
+  return {
+    total: queued + running + completed + failed + incomplete,
+    ready: completed + incomplete,
+    inProgress: queued + running,
+    failed,
+  };
+}
+
 /**
  * Admin cross-app job query: any combination of appId/userId/status/template,
  * newest first. Each filter combination needs a composite index in prod

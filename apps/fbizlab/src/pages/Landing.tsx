@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { usePublicPlans } from '../api/hooks';
 import { config } from '../config';
 import { LangSwitcher } from '../components/LangSwitcher';
+import { PlanCard } from '../components/PlanCard';
 import { IconAI, IconArrow, IconBars, IconChart, IconFlorida, IconPin, IconShield, IconTag, IconTarget } from '../components/icons';
 
 const BRAND = 'Florida Biz Labs';
@@ -314,21 +315,7 @@ export function Landing() {
           ) : (
             <div className="plans">
               {plans.map((p) => (
-                <div key={p.planId} className={`card plan ${p.popular ? 'dark' : ''}`}>
-                  <div className="between">
-                    <div><div style={{ fontWeight: 700, fontSize: 17 }}>{p.name}</div>{p.sub && <div className="mono muted" style={{ fontSize: 11 }}>{p.sub}</div>}</div>
-                    {p.popular && <span className="tag-popular">{c.popular}</span>}
-                  </div>
-                  <div className="price">${p.priceUsd.toLocaleString(lang)}</div>
-                  {p.credits > 0 && <div className="metric" style={{ marginTop: 14 }}><div className="num">{p.credits}</div><div className="lbl">{c.creditsWord}</div></div>}
-                  {p.features && p.features.length > 0 && (
-                    <>
-                      <hr className="divider" style={{ margin: '18px 0' }} />
-                      <div className="stack" style={{ gap: 9, flex: 1 }}>{p.features.map((f) => <div key={f} className="bullet">{f}</div>)}</div>
-                    </>
-                  )}
-                  <button className={`btn btn--block ${p.popular ? 'btn--accent' : 'btn--black'}`} style={{ marginTop: 22 }} onClick={go}>{c.choose}</button>
-                </div>
+                <PlanCard key={p.planId} plan={p} lang={lang} creditsWord={c.creditsWord} popularLabel={c.popular} buttonLabel={c.choose} onSelect={go} />
               ))}
             </div>
           )}

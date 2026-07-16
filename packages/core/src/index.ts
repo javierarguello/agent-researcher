@@ -27,6 +27,7 @@ export {
   getJob,
   listJobs,
   queryJobs,
+  getUserJobStats,
   requeueJob,
   setJobAttempts,
   markRunning,
