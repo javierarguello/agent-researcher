@@ -1,18 +1,22 @@
-import { LANGS, LANG_LABELS, useLang, type Lang } from '../i18n';
+import { LANGS, LANG_LABELS, useLang } from '../i18n';
 
-/** Compact language switcher covering every API-supported language. */
+/** Compact segmented language switcher (EN · ES · FR · PT) covering every API language. */
 export function LangSwitcher() {
   const { lang, setLang } = useLang();
   return (
-    <select
-      className="langsel"
-      aria-label="Language"
-      value={lang}
-      onChange={(e) => setLang(e.target.value as Lang)}
-    >
+    <div className="langseg" role="group" aria-label="Language">
       {LANGS.map((l) => (
-        <option key={l} value={l}>{LANG_LABELS[l]}</option>
+        <button
+          key={l}
+          type="button"
+          className={lang === l ? 'on' : ''}
+          aria-pressed={lang === l}
+          title={LANG_LABELS[l]}
+          onClick={() => setLang(l)}
+        >
+          {l.toUpperCase()}
+        </button>
       ))}
-    </select>
+    </div>
   );
 }
