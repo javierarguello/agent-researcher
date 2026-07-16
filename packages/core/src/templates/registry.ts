@@ -86,6 +86,15 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
       const cfg = t.modes?.[key] ?? DEFAULT_MODES[key];
       return { key, label: tr?.modeLabels?.[key] ?? cfg.label ?? key, credits: creditsForMode(cfg, key) };
     }),
+    addons: (t.addons ?? []).map((a) => {
+      const ov = tr?.addonLabels?.[a.key];
+      return {
+        key: a.key,
+        label: ov?.label ?? a.label,
+        ...(ov?.description ?? a.description ? { description: ov?.description ?? a.description } : {}),
+        credits: a.credits,
+      };
+    }),
     steps: buildSteps(t, tr, lang),
     reportSchema: z.toJSONSchema(reportSchemaOf(t)),
   };

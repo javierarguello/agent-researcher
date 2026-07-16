@@ -17,6 +17,7 @@ export type {
   ParamRangeUi,
   TemplateI18n,
   StepInfo,
+  AddonSpec,
 } from './templates/types.js';
 export { validateTemplate, assertTemplatesValid } from './templates/validate.js';
 

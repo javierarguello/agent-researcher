@@ -100,15 +100,18 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
       { key: 'comprehensive', defaultCredits: 18, credits: 18 },
     ]);
 
+    // Add-ons are the model's catalog; unknown keys are ignored (not free-form).
     const put = await app.inject({
       method: 'PUT',
       url: `/admin/pricing/${model}`,
       headers: auth(admin),
-      payload: { modes: { comprehensive: 25 }, addons: { deck: 10 } },
+      payload: { modes: { comprehensive: 25 }, addons: { deck: 15, bogus: 99 } },
     });
     expect(put.statusCode).toBe(200);
     expect(put.json().modes.find((m: any) => m.key === 'comprehensive').credits).toBe(25);
-    expect(put.json().addons).toEqual({ deck: 10 });
+    const deck = put.json().addons.find((a: any) => a.key === 'deck');
+    expect(deck).toMatchObject({ key: 'deck', defaultCredits: 10, credits: 15 });
+    expect(put.json().addons.find((a: any) => a.key === 'bogus')).toBeUndefined(); // unknown key rejected
 
     // The override flows into the manifest a client reads…
     const t = await token('fbizlab', 'u@x.com');

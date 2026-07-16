@@ -163,12 +163,27 @@ export interface ResearchTemplate<TParams = unknown> {
   instructionsField?: string;
   /** Presentation hints for rendering `paramsSchema` in a client UI. */
   paramsUi?: ParamsUi;
+  /** Paid post-report deliverables this model offers (the add-on catalog). */
+  addons?: AddonSpec[];
   /**
    * Translations of the client-facing manifest strings, keyed by language code
    * (e.g. 'es'). The template's own fields are the English ('en') base; any
    * string missing a translation falls back to English. See `toManifest(t, lang)`.
    */
   i18n?: Record<string, TemplateI18n>;
+}
+
+/**
+ * An optional post-report deliverable a model offers as a paid add-on (a pitch
+ * deck, an editable Word doc, …). Defined BY THE MODEL — clients/admins pick from
+ * this catalog, they don't invent keys. `credits` is the code default cost,
+ * overridable per model in Firestore (`model-pricing/{id}.addons[key]`).
+ */
+export interface AddonSpec {
+  key: string;
+  label: string;
+  description?: string;
+  credits: number;
 }
 
 /** Per-language overrides of a template's client-facing strings. */
@@ -183,6 +198,8 @@ export interface TemplateI18n {
   fields?: Record<string, { help?: string; placeholder?: string }>;
   /** Workflow step overrides by agent id (label + description). */
   agentLabels?: Record<string, { label?: string; description?: string }>;
+  /** Add-on label/description overrides by add-on key. */
+  addonLabels?: Record<string, { label?: string; description?: string }>;
 }
 
 /** One workflow step surfaced to a client, so it can explain the current phase. */
@@ -228,6 +245,8 @@ export interface TemplateManifest {
   paramsUi?: ParamsUi;
   /** Report tiers the client picks from, with their credit cost. */
   modes: Array<{ key: ReportMode; label: string; credits: number }>;
+  /** Paid add-on deliverables this model offers, with their credit cost. */
+  addons: Array<{ key: string; label: string; description?: string; credits: number }>;
   /**
    * Ordered workflow steps (localized), so a client can explain a job's current
    * `progress.phase` with a label + description instead of a raw id. Covers the

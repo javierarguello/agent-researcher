@@ -46,6 +46,7 @@ import {
   getModelPricing,
   setModelPricing,
   resolveModeCredits,
+  type ModelPricing,
   consumeCredits,
   getBalance,
   listTransactions,
@@ -214,13 +215,19 @@ function reqLang(req: { query?: unknown }): string {
   return l && SUPPORTED_LANGS.includes(l) ? l : DEFAULT_LANG;
 }
 
-/** Overlay the Firestore per-model credit pricing onto a manifest's mode costs. */
-async function withPricing<T extends { id: string; modes: Array<{ key: string; credits: number }> }>(manifest: T): Promise<T> {
+/** Overlay the Firestore per-model credit pricing onto a manifest's mode + add-on costs. */
+async function withPricing<T extends { id: string; modes: Array<{ key: string; credits: number }>; addons: Array<{ key: string; credits: number }> }>(manifest: T): Promise<T> {
   const pricing = await getModelPricing(manifest.id);
   if (pricing?.modes) {
     for (const m of manifest.modes) {
       const o = pricing.modes[m.key as 'essential' | 'comprehensive'];
       if (o != null) m.credits = o;
+    }
+  }
+  if (pricing?.addons) {
+    for (const a of manifest.addons) {
+      const o = pricing.addons[a.key];
+      if (o != null) a.credits = o;
     }
   }
   return manifest;
@@ -980,8 +987,8 @@ app.post(
 );
 
 // --- Admin: per-model credit pricing (Firestore overrides) ------------------
-function pricingView(templateId: string, override: import('@agent-researcher/core').ModelPricing | null) {
-  const base = toManifest(getTemplate(templateId)!); // code/template default credits
+function pricingView(templateId: string, override: ModelPricing | null) {
+  const base = toManifest(getTemplate(templateId)!); // code/template default credits + add-on catalog
   return {
     templateId,
     modes: base.modes.map((m) => ({
@@ -989,7 +996,14 @@ function pricingView(templateId: string, override: import('@agent-researcher/cor
       defaultCredits: m.credits,
       credits: override?.modes?.[m.key as 'essential' | 'comprehensive'] ?? m.credits,
     })),
-    addons: override?.addons ?? {},
+    // Add-ons are defined by the model; the admin only sets their price.
+    addons: base.addons.map((a) => ({
+      key: a.key,
+      label: a.label,
+      ...(a.description ? { description: a.description } : {}),
+      defaultCredits: a.credits,
+      credits: override?.addons?.[a.key] ?? a.credits,
+    })),
     updatedAt: override?.updatedAt ?? null,
   };
 }
@@ -1041,10 +1055,16 @@ app.put(
   },
   async (req, reply) => {
     const { templateId } = req.params as { templateId: string };
-    if (!getTemplate(templateId)) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
+    const tmpl = getTemplate(templateId);
+    if (!tmpl) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
     const body = (req.body ?? {}) as { modes?: Record<string, number>; addons?: Record<string, number> };
-    await setModelPricing(templateId, body);
-    logEvent({ jobId: '-', appId: 'admin', userId: req.auth!.email }, 'INFO', 'pricing.updated', { templateId, ...body });
+    // Add-on keys must exist in the model's catalog — the admin only prices them.
+    const validAddons = new Set((tmpl.addons ?? []).map((a) => a.key));
+    const addons = body.addons
+      ? Object.fromEntries(Object.entries(body.addons).filter(([k]) => validAddons.has(k)))
+      : undefined;
+    await setModelPricing(templateId, { modes: body.modes as ModelPricing['modes'], addons });
+    logEvent({ jobId: '-', appId: 'admin', userId: req.auth!.email }, 'INFO', 'pricing.updated', { templateId, modes: body.modes, addons });
     return pricingView(templateId, await getModelPricing(templateId));
   },
 );

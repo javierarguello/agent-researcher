@@ -563,6 +563,13 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     },
   },
   instructionsField: 'instructions',
+  // Paid post-report deliverables this model offers (credits are the code
+  // default; overridable per model in Firestore via /admin/pricing). Generators
+  // ship later — the catalog + prices are defined here.
+  addons: [
+    { key: 'deck', label: 'Pitch deck (PDF)', credits: 10, description: 'An investor-ready slide deck summarizing the opportunity.' },
+    { key: 'docx', label: 'Editable Word (.docx)', credits: 3, description: 'The full report as an editable Word document.' },
+  ],
   // How the admin form (and any model-specific web app) should render the params:
   // a condensed layout (paired min/max on one row), per-field help, and suggested
   // values that still allow manual entry. See docs/model-ui.md.
@@ -671,6 +678,10 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         'growth-strategist': { label: 'Estrategia de crecimiento', description: 'Escribe el plan de creación de valor y crecimiento.' },
         'recommendations-writer': { label: 'Recomendaciones', description: 'Recomienda qué objetivos priorizar y los próximos pasos.' },
         'exec-summary-writer': { label: 'Resumen ejecutivo', description: 'Escribe el resumen ejecutivo a partir del reporte terminado.' },
+      },
+      addonLabels: {
+        deck: { label: 'Pitch deck (PDF)', description: 'Un deck de slides listo para inversionistas resumiendo la oportunidad.' },
+        docx: { label: 'Word editable (.docx)', description: 'El reporte completo como documento Word editable.' },
       },
     },
   },

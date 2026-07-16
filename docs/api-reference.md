@@ -57,8 +57,9 @@ it. See [model-ui.md](model-ui.md).
   "sections":     [ { "key": "shortlist", "title": "Shortlist…" }, … ],
   "paramsSchema": { /* JSON Schema of accepted params (validate + build the form) */ },
   "paramsUi":     { /* rows, fields{help,suggestions,optionLabels,placeholder}, ranges, advanced, hidden */ },
-  "modes":        [ { "key": "essential", "label": "Essential", "credits": 1 },
-                    { "key": "comprehensive", "label": "Comprehensive", "credits": 2 } ],
+  "modes":        [ { "key": "essential", "label": "Essential", "credits": 5 },
+                    { "key": "comprehensive", "label": "Comprehensive", "credits": 18 } ],
+  "addons":       [ { "key": "deck", "label": "Pitch deck (PDF)", "description": "…", "credits": 10 } ],
   "steps":        [ { "id": "planning", "label": "Planning", "description": "…" },
                     { "id": "deal-scout", "label": "Deal scout", "description": "…" }, … ],
   "reportSchema": { /* JSON Schema of the report object */ } } ] }

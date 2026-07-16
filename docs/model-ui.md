@@ -118,6 +118,11 @@ verticals while still accepting anything.
 - **`paramsUi.fields[key].optionLabels`** maps an enum's raw values to display
   labels — e.g. the `language` param's options render as English/Español/… The
   default is in `paramsSchema.properties.<key>.default`.
+- **`addons`** is the model's catalog of paid post-report deliverables (pitch
+  deck, editable Word, …) — `{ key, label, description?, credits }`, localized,
+  with the effective per-model credit price. Clients pick from this list; keys are
+  defined by the model (not free-form). The price is overridable per model via
+  `PUT /admin/pricing/:templateId` (`addons` map).
 
 ## Explaining the current step + viewing the report
 

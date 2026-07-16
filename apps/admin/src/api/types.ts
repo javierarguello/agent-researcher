@@ -190,6 +190,12 @@ export interface ModeInfo {
   label: string;
   credits: number;
 }
+export interface AddonInfo {
+  key: string;
+  label: string;
+  description?: string;
+  credits: number;
+}
 export interface StepInfo {
   id: string;
   label: string;
@@ -205,6 +211,7 @@ export interface TemplateManifest {
   paramsSchema: unknown;
   paramsUi?: ParamsUi;
   modes: ModeInfo[];
+  addons: AddonInfo[];
   steps: StepInfo[];
   reportSchema: unknown;
 }
@@ -220,9 +227,16 @@ export interface PricingMode {
   defaultCredits: number;
   credits: number;
 }
+export interface PricingAddon {
+  key: string;
+  label: string;
+  description?: string;
+  defaultCredits: number;
+  credits: number;
+}
 export interface PricingView {
   templateId: string;
   modes: PricingMode[];
-  addons: Record<string, number>;
+  addons: PricingAddon[];
   updatedAt: string | null;
 }
