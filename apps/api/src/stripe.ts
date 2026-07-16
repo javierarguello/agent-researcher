@@ -21,10 +21,11 @@ export function stripe(): Stripe {
 
 /**
  * A plan resolved from Stripe (the catalog lives entirely in Stripe — no
- * Firestore). Convention: a Price/Product carries metadata `appId=<appId>`,
- * `planId=<planId>`, and `credits=<n>`. The app owns a Price when its metadata
- * `appId` matches; `planId` selects the specific pack. (lookup_key is no longer
- * used for resolution.)
+ * Firestore). Convention: **the catalog metadata always lives on the PRODUCT**
+ * (`appId=<appId>`, `credits=<n>`, optional `planId=<planId>` + marketing). A
+ * product may have several Prices but exactly one **default price**, which is the
+ * amount we charge and list. The app owns a product when its metadata `appId`
+ * matches; `planId` (or, if absent, the product id) selects the specific pack.
  */
 export interface StripePlan {
   planId: string;
@@ -32,23 +33,22 @@ export interface StripePlan {
   priceUsd: number;
   credits: number;
   priceId: string;
-  /** Billing interval when the Price is recurring, e.g. 'month'. */
+  /** Billing interval when the default price is recurring, e.g. 'month'. */
   interval?: string;
-  /** Marketing metadata (all optional, from Product/Price metadata). */
+  /** Marketing metadata (all optional, from Product metadata). */
   sub?: string;
   popular?: boolean;
   features?: string[];
 }
 
-function planFromPrice(price: Stripe.Price): StripePlan {
-  const productMd = typeof price.product === 'object' && 'metadata' in price.product ? price.product.metadata : {};
-  const md = { ...productMd, ...price.metadata }; // price metadata wins over product metadata
-  const planId = String(md.planId ?? price.lookup_key ?? price.id);
-  const name = typeof price.product === 'object' && 'name' in price.product ? String(price.product.name) : planId;
-  const description = typeof price.product === 'object' && 'description' in price.product ? (price.product.description ?? undefined) : undefined;
+/** Build a plan from a product + its resolved default price. */
+function planFromProduct(product: Stripe.Product, price: Stripe.Price): StripePlan {
+  const md = product.metadata ?? {};
+  const planId = String(md.planId ?? product.id);
+  const description = product.description ?? undefined;
   return {
     planId,
-    name,
+    name: product.name,
     priceUsd: (price.unit_amount ?? 0) / 100,
     credits: Number(md.credits ?? 0),
     priceId: price.id,
@@ -60,23 +60,28 @@ function planFromPrice(price: Stripe.Price): StripePlan {
   };
 }
 
-/** All plans for an app — Stripe prices tagged with metadata.appId == appId. */
+/**
+ * All plans for an app — Stripe **products** tagged with metadata.appId == appId,
+ * each represented by its default price. Products without a default price are
+ * skipped (not purchasable).
+ */
 export async function listStripePlans(appId: string): Promise<StripePlan[]> {
-  const res = await stripe().prices.search({
+  const res = await stripe().products.search({
     query: `active:'true' AND metadata['appId']:'${appId}'`,
-    expand: ['data.product'],
-    limit: 20,
+    expand: ['data.default_price'],
+    limit: 50,
   });
-  return res.data.map(planFromPrice).sort((a, b) => a.priceUsd - b.priceUsd);
+  return res.data
+    .filter((p) => p.default_price && typeof p.default_price === 'object')
+    .map((p) => planFromProduct(p, p.default_price as Stripe.Price))
+    .sort((a, b) => a.priceUsd - b.priceUsd);
 }
 
-/** Resolve one plan by its metadata `appId` + `planId`. */
+/**
+ * Resolve one plan by its `planId` (product metadata `planId`, or the product id
+ * as fallback). Reuses the product search so resolution and listing never drift.
+ */
 export async function resolveStripePlan(appId: string, planId: string): Promise<StripePlan | undefined> {
-  const res = await stripe().prices.search({
-    query: `active:'true' AND metadata['appId']:'${appId}' AND metadata['planId']:'${planId}'`,
-    expand: ['data.product'],
-    limit: 1,
-  });
-  const price = res.data[0];
-  return price ? planFromPrice(price) : undefined;
+  const plans = await listStripePlans(appId);
+  return plans.find((p) => p.planId === planId);
 }
