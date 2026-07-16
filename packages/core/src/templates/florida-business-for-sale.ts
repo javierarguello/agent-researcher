@@ -3,6 +3,7 @@ import { modeParamSchema } from '../mode.js';
 import { LANGUAGE_LABELS } from '../languages.js';
 import { dedupeSources } from '../tools/sources.js';
 import { chartSchema } from './chart.js';
+import { metricSchema, riskItemSchema, projectionTableSchema } from './blocks.js';
 import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
@@ -80,7 +81,7 @@ const deepDive = z.object({
   leaseTerms: z.string().describe(md('Lease / real-estate terms in detail')),
   reasonForSale: z.string().describe(md('Stated reason for sale + analysis of what it signals')),
   growthOpportunities: z.string().describe(md('Concrete growth opportunities with reasoning')),
-  risks: z.array(z.string()).min(3).describe('At least 3 specific risks / red flags (Markdown bullets).'),
+  risks: z.array(riskItemSchema).min(3).describe('At least 3 specific prioritised risks (severity + title + detail), most-severe first.'),
   sourceUrl: z.string(),
 });
 
@@ -101,6 +102,7 @@ const sections: ReportSection[] = [
       'headline prices/valuations, market signals), one top recommendation (a full paragraph), and ' +
       'immediate next steps. Derive strictly from the other finished sections.',
     schema: z.object({
+      metrics: z.array(metricSchema).min(3).describe('4-6 headline deal numbers as badges (e.g. targets found, price range, combined revenue/SDE, best ROI).'),
       overview: z.string().describe(md('2-3 paragraph overview')),
       keyFindings: z.array(z.string()).min(6).describe('≥6 findings (Markdown bullets).'),
       topRecommendation: z.string().describe(md('The single top recommendation, a full paragraph')),
@@ -131,8 +133,13 @@ const sections: ReportSection[] = [
       'A thorough market analysis (≥600 words, several paragraphs): the small-business-for-sale climate in ' +
       'Florida for the target industry — demand, buyer competition, seasonality, typical deal sizes, sector ' +
       'unit economics, and Florida-specific tailwinds/headwinds (tourism, population growth, no state income ' +
-      'tax, hurricane/insurance exposure). Use concrete figures and cite sources inline.',
-    schema: z.string().describe(md('Market overview prose, ≥600 words')),
+      'tax, hurricane/insurance exposure). Use concrete figures and cite sources inline. ALSO pull out the 4-6 ' +
+      'most important headline numbers into `metrics` (badges) — e.g. market size, service season length, ' +
+      'YoY growth, typical ticket/deal size — so they can be shown at a glance.',
+    schema: z.object({
+      overview: z.string().describe(md('Market overview prose, ≥600 words')),
+      metrics: z.array(metricSchema).min(3).describe('4-6 headline market numbers as badges (size, seasonality, growth, typical ticket/deal size).'),
+    }),
   },
   {
     key: 'competitive_landscape',
@@ -196,6 +203,11 @@ const sections: ReportSection[] = [
         }),
       ),
       commentary: z.string().describe(md('Cross-target financial commentary, ≥200 words')),
+      projection: projectionTableSchema.nullable().describe(
+        'A consolidated NUMERIC 3-year projection for the leading target(s) — rows like Revenue, SDE, Cash flow, ' +
+        'SBA debt service — across Year 1/2/3, for a table + chart. Use best estimates with the stated assumptions; ' +
+        'null only if no figures are estimable.',
+      ),
     }),
   },
   {
@@ -272,10 +284,11 @@ const sections: ReportSection[] = [
     key: 'risks_red_flags',
     title: 'Risks & Red Flags',
     guidance:
-      'At least 8 cross-cutting diligence risks, each a substantial bullet (claim + why it matters + how to ' +
-      'test it): customer concentration, owner dependence, declining trends, lease risk, deferred capex, ' +
-      'litigation/regulatory exposure, insurance/hurricane exposure, and negative community signals.',
-    schema: z.array(z.string()).min(8).describe('≥8 risks (each a substantial Markdown bullet).'),
+      'At least 8 cross-cutting diligence risks. For EACH: a short `title`, a `severity` (high/medium/low) so it ' +
+      'can be colour-coded and prioritised, and `detail` (claim + why it matters + how to test it): customer ' +
+      'concentration, owner dependence, declining trends, lease risk, deferred capex, litigation/regulatory ' +
+      'exposure, insurance/hurricane exposure, negative community signals. Order most-severe first.',
+    schema: z.array(riskItemSchema).min(8).describe('≥8 prioritised risks (severity + title + detail), most-severe first.'),
   },
   {
     key: 'due_diligence_checklist',

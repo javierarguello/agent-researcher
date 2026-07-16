@@ -423,6 +423,18 @@ p { margin: 0; }
 .rv-tile { background: var(--bg-alt); border-left: 3px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0; padding: 14px 16px; }
 .rv-tile__v { font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .rv-tile__l { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+.rv-tile__h { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 3px; }
+
+.rv-risk { border: 1px solid var(--line); border-left: 3px solid var(--muted); border-radius: 0 var(--radius) var(--radius) 0; background: var(--card); padding: 14px 16px; }
+.rv-sev { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; border: 1px solid; padding: 2px 6px; border-radius: var(--radius); flex: none; }
+
+.rv-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.rv-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.rv-table th, .rv-table td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.rv-table th { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.rv-table th:first-child, .rv-table td:first-child { text-align: left; }
+.rv-table__m { font-weight: 600; }
+.rv-table tr:last-child td { border-bottom: 0; }
 
 .rv-snapgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .rv-snaptile { background: var(--bg-alt); border-left: 3px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0; padding: 12px 14px; }

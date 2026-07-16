@@ -51,7 +51,7 @@ describe('engine — runResearch with mocked LLM + search', () => {
     expect(reportSchemaOf(eff).safeParse(out.report).success).toBe(true);
 
     // Prose came from the mock (lorem ipsum), and cost was accounted.
-    expect(String(out.report.market_overview)).toMatch(/Lorem ipsum/);
+    expect(String((out.report.market_overview as { overview?: string }).overview)).toMatch(/Lorem ipsum/);
     expect(out.meta.cost.usd).toBeGreaterThan(0);
     expect(mock.calls).toBeGreaterThan(0);
   });

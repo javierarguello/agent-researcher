@@ -52,7 +52,7 @@ describe('run-job — a hard failure is recorded + credits refunded', () => {
     const l = vi.spyOn(console, 'log').mockImplementation((x) => void lines.push(String(x)));
     const e = vi.spyOn(console, 'error').mockImplementation((x) => void lines.push(String(x)));
 
-    const params = getTemplate('florida-business-for-sale')!.paramsSchema.parse({ mode: 'essential' }) as Record<string, unknown>;
+    const params = getTemplate('florida-business-for-sale')!.paramsSchema.parse({ mode: 'essential', industry: 'Laundromats' }) as Record<string, unknown>;
     const result = await runJob({ jobId: 'j2', appId: 'fbizlab', userId: 'u@x.com', template: 'florida-business-for-sale', params });
 
     l.mockRestore();

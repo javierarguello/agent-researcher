@@ -587,8 +587,12 @@ function emptyFromJsonSchema(node: Record<string, unknown>, note: string, usedNo
         }
         return out;
       }
-      case 'array':
-        return [];
+      case 'array': {
+        // Respect minItems so a degraded placeholder still satisfies `.min(N)`.
+        const min = typeof n.minItems === 'number' ? n.minItems : 0;
+        const items = (n.items ?? {}) as Record<string, unknown>;
+        return Array.from({ length: min }, () => build(items));
+      }
       case 'number':
       case 'integer':
         return 0;

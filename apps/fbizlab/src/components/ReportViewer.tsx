@@ -84,6 +84,53 @@ function Tiles({ items }: { items: Array<{ value: string; label: string }> }) {
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 type Obj = Record<string, unknown>;
 
+// ── Structured primitives (blocks.ts): metrics, prioritised risks, projections ──
+interface Metric { label: string; value: string; emphasis?: string; hint?: string | null }
+interface Risk { severity: 'high' | 'medium' | 'low'; title: string; detail: string }
+interface Projection { periods: string[]; rows: Array<{ metric: string; unit?: string; values: Array<number | null> }>; note?: string | null }
+const isMetric = (x: unknown): x is Metric => !!x && typeof x === 'object' && typeof (x as Metric).label === 'string' && typeof (x as Metric).value === 'string' && !('severity' in (x as Obj));
+const isRisk = (x: unknown): x is Risk => !!x && typeof x === 'object' && typeof (x as Risk).severity === 'string' && typeof (x as Risk).title === 'string';
+const isProjection = (v: unknown): v is Projection => !!v && typeof v === 'object' && Array.isArray((v as Projection).periods) && Array.isArray((v as Projection).rows) && !!(v as Projection).rows[0] && Array.isArray((v as Projection).rows[0]!.values);
+const RISK_COLOR: Record<string, string> = { high: 'var(--risk)', medium: '#a06a00', low: 'var(--muted)' };
+const rowVal = (unit: string | undefined, v: number) => (unit === '%' ? `${v}%` : unit === 'x' ? `${v}x` : unit === '#' ? String(v) : money(v));
+
+function MetricTiles({ items }: { items: Metric[] }) {
+  return <div className="rv-tiles">{items.map((m, i) => (
+    <div key={i} className="rv-tile">
+      <div className="rv-tile__v" style={{ color: m.emphasis === 'positive' ? 'var(--positive)' : m.emphasis === 'negative' ? 'var(--risk)' : undefined }}>{m.value}</div>
+      <div className="rv-tile__l">{m.label}</div>
+      {m.hint && <div className="rv-tile__h">{m.hint}</div>}
+    </div>
+  ))}</div>;
+}
+function RiskList({ items }: { items: Risk[] }) {
+  return <div className="stack" style={{ gap: 10 }}>{items.map((r, i) => (
+    <div key={i} className="rv-risk" style={{ borderLeftColor: RISK_COLOR[r.severity] ?? 'var(--muted)' }}>
+      <div className="between" style={{ alignItems: 'baseline' }}>
+        <div style={{ fontWeight: 700, fontSize: 14.5 }}>{r.title}</div>
+        <span className="rv-sev" style={{ color: RISK_COLOR[r.severity], borderColor: RISK_COLOR[r.severity] }}>{r.severity}</span>
+      </div>
+      {r.detail && <Prose md={r.detail} />}
+    </div>
+  ))}</div>;
+}
+function ProjectionView({ t }: { t: Projection }) {
+  const dollarRows = t.rows.filter((r) => (r.unit ?? '$') === '$');
+  const spec: ChartSpec = { type: 'bar', title: '', labels: t.periods, series: (dollarRows.length ? dollarRows : t.rows).map((r) => ({ name: r.metric, data: r.values })), unit: (dollarRows.length ? '$' : t.rows[0]?.unit) };
+  return (
+    <div>
+      <div className="rv-table-wrap"><table className="rv-table">
+        <thead><tr><th /><>{t.periods.map((p, i) => <th key={i}>{p}</th>)}</></tr></thead>
+        <tbody>{t.rows.map((r, i) => (
+          <tr key={i}><td className="rv-table__m">{r.metric}</td><>{r.values.map((v, j) => <td key={j}>{v == null ? '—' : rowVal(r.unit, v)}</td>)}</></tr>
+        ))}</tbody>
+      </table></div>
+      {t.note && <div className="mono muted" style={{ fontSize: 11, marginTop: 6 }}>{t.note}</div>}
+      {spec.series.length > 0 && <ChartSpecRender spec={spec} />}
+    </div>
+  );
+}
+
 /** A shortlisted / deep-dived business, rendered as a card with money tiles. */
 function DealCard({ d, l }: { d: Obj; l: Record<string, string> }) {
   const tiles: Array<{ value: string; label: string }> = [];
@@ -111,7 +158,9 @@ function DealCard({ d, l }: { d: Obj; l: Record<string, string> }) {
       {Array.isArray(d.risks) && d.risks.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <div className="rv-flabel">{humanizeKey('risks')}</div>
-          <ul className="rv-bullets">{(d.risks as string[]).map((r, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{r}</Markdown></li>)}</ul>
+          {(d.risks as unknown[]).every(isRisk)
+            ? <RiskList items={d.risks as Risk[]} />
+            : <ul className="rv-bullets">{(d.risks as string[]).map((r, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{r}</Markdown></li>)}</ul>}
         </div>
       )}
       {url && <a className="mono accent" style={{ fontSize: 11, display: 'inline-block', marginTop: 10 }} href={url} target="_blank" rel="noreferrer">source ↗</a>}
@@ -128,10 +177,15 @@ function Value({ v, k }: { v: unknown; k?: string }) {
   if (typeof v === 'boolean') return <span>{v ? 'Yes' : 'No'}</span>;
   if (Array.isArray(v)) {
     if (!v.length) return null;
+    if (v.every(isRisk)) return <RiskList items={v as Risk[]} />;
+    if (v.every(isMetric)) return <MetricTiles items={v as Metric[]} />;
     if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{x as string}</Markdown></li>)}</ul>;
     return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="card" style={{ padding: 14 }}><ObjectFields o={x as Obj} /></div>)}</div>;
   }
-  if (typeof v === 'object') return <ObjectFields o={v as Obj} />;
+  if (typeof v === 'object') {
+    if (isProjection(v)) return <ProjectionView t={v} />;
+    return <ObjectFields o={v as Obj} />;
+  }
   return null;
 }
 
