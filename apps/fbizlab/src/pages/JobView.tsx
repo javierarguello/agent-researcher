@@ -3,7 +3,7 @@ import { pick, useLang } from '../i18n';
 import { useJob, useJobReport, useTemplate } from '../api/hooks';
 import { ReportViewer } from '../components/ReportViewer';
 import { shortDate } from '../lib/format';
-import type { JobStatus, StepInfo } from '../api/types';
+import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
 
 const T = {
   en: { back: '← Reports', working: 'Generating your dossier…', failed: 'This report could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.' },
@@ -56,6 +56,8 @@ export function JobView() {
         </div>
       )}
 
+      {live && job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} />}
+
       {job.status === 'failed' && <div className="card" style={{ padding: 18, borderColor: '#e6c3bd' }}><span className="risk">{t.failed}</span></div>}
 
       {job.summary?.warnings && job.summary.warnings.length > 0 && (
@@ -78,6 +80,55 @@ export function JobView() {
             ))}
           </div>
           <p className="mono muted" style={{ fontSize: 10.5, marginTop: 10 }}>{shortDate(job.finishedAt)}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const PL: Record<string, Record<string, string>> = {
+  en: { title: 'What you asked for', industry: 'Industry', location: 'Location', mode: 'Mode', language: 'Report language', askingPrice: 'Asking price', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', sbaFriendly: 'SBA friendly', includeRealEstate: 'Include real estate', keywords: 'Keywords', preferredSources: 'Preferred sources', instructions: 'Instructions', yes: 'Yes' },
+  es: { title: 'Lo que pediste', industry: 'Industria', location: 'Ubicación', mode: 'Modo', language: 'Idioma del reporte', askingPrice: 'Precio', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', sbaFriendly: 'Apto SBA', includeRealEstate: 'Incluir inmueble', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas', instructions: 'Instrucciones', yes: 'Sí' },
+  fr: { title: 'Ce que vous avez demandé', industry: 'Secteur', location: 'Localisation', mode: 'Mode', language: 'Langue du rapport', askingPrice: 'Prix', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', sbaFriendly: 'Compatible SBA', includeRealEstate: "Inclure l'immobilier", keywords: 'Mots-clés', preferredSources: 'Sources préférées', instructions: 'Instructions', yes: 'Oui' },
+  pt: { title: 'O que você pediu', industry: 'Setor', location: 'Localização', mode: 'Modo', language: 'Idioma do relatório', askingPrice: 'Preço', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', sbaFriendly: 'Compatível SBA', includeRealEstate: 'Incluir imóvel', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas', instructions: 'Instruções', yes: 'Sim' },
+};
+
+function RequestParams({ params, manifest, lang }: { params: Record<string, unknown>; manifest?: TemplateManifest; lang: string }) {
+  const l = PL[lang] ?? PL.en!;
+  const p = params;
+  const money = (n: unknown) => (typeof n === 'number' ? `$${n.toLocaleString(lang)}` : null);
+  const modeLabel = manifest?.modes?.find((m) => m.key === p.mode)?.label ?? (p.mode as string | undefined);
+  const langLabel = (manifest?.paramsUi?.fields?.language?.optionLabels as Record<string, string> | undefined)?.[p.language as string] ?? (p.language as string | undefined);
+  const priceMin = money(p.askingPriceMin);
+  const priceMax = money(p.askingPriceMax);
+  const price = priceMin && priceMax ? `${priceMin} – ${priceMax}` : priceMin ? `≥ ${priceMin}` : priceMax ? `≤ ${priceMax}` : null;
+
+  const rows: Array<[string, string]> = [];
+  const push = (k: string, v: string | null | undefined) => { if (v) rows.push([l[k] ?? k, v]); };
+  push('industry', p.industry as string);
+  push('location', p.location as string);
+  push('mode', modeLabel);
+  push('language', langLabel);
+  push('askingPrice', price);
+  push('minRevenue', money(p.minRevenue));
+  push('minCashFlow', money(p.minCashFlow));
+  if (p.sbaFriendly) rows.push([l.sbaFriendly!, l.yes!]);
+  if (p.includeRealEstate) rows.push([l.includeRealEstate!, l.yes!]);
+  if (Array.isArray(p.keywords) && p.keywords.length) rows.push([l.keywords!, (p.keywords as string[]).join(', ')]);
+  if (Array.isArray(p.preferredSources) && p.preferredSources.length) rows.push([l.preferredSources!, (p.preferredSources as string[]).join(', ')]);
+  const instructions = typeof p.instructions === 'string' ? p.instructions : '';
+
+  if (!rows.length && !instructions) return null;
+  return (
+    <div className="card" style={{ padding: 20 }}>
+      <div className="eyebrow" style={{ color: 'var(--accent)', marginBottom: 12 }}>{l.title}</div>
+      <div className="nr-sumrows" style={{ margin: 0, borderTop: 0 }}>
+        {rows.map(([k, v]) => <div key={k}><span>{k}</span><b style={{ textAlign: 'right', maxWidth: '60%' }}>{v}</b></div>)}
+      </div>
+      {instructions && (
+        <div style={{ marginTop: 14 }}>
+          <div className="rv-flabel">{l.instructions}</div>
+          <p className="soft" style={{ fontSize: 13.5, lineHeight: 1.55 }}>{instructions}</p>
         </div>
       )}
     </div>

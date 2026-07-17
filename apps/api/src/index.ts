@@ -502,6 +502,9 @@ app.get(
       title: job.title ?? null,
       shortDescription: job.shortDescription ?? null,
       status: job.status,
+      // The caller's own request params — safe to echo (not internal), useful for
+      // showing what's being researched while the job runs.
+      params: job.params,
       progress,
       ...(isAdmin ? { cost: job.cost ?? null } : {}),
       summary,

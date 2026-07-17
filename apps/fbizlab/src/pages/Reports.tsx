@@ -14,7 +14,7 @@ const T = {
     readyLbl: 'Ready', readySub: 'Ready to review',
     progressLbl: 'In progress', progressSub: 'Processing or queued',
     yourBalance: 'Your balance', creditsAvailable: 'credits available', buyMore: 'Buy more',
-    yourReports: 'Your reports', total: 'total', empty: 'No reports yet — create your first dossier.',
+    yourReports: 'Your business opportunities', total: 'total', empty: 'No reports yet — create your first dossier.',
     open: 'Open', processing: 'Processing…', retry: 'Retry',
   },
   es: {
@@ -26,7 +26,7 @@ const T = {
     readyLbl: 'Listos', readySub: 'Listos para revisar',
     progressLbl: 'En proceso', progressSub: 'Procesando o en cola',
     yourBalance: 'Tu saldo', creditsAvailable: 'créditos disponibles', buyMore: 'Comprar más',
-    yourReports: 'Tus reportes', total: 'en total', empty: 'Aún no tienes reportes — crea tu primer dossier.',
+    yourReports: 'Tus oportunidades de negocio', total: 'en total', empty: 'Aún no tienes reportes — crea tu primer dossier.',
     open: 'Abrir', processing: 'Procesando…', retry: 'Reintentar',
   },
   fr: {
@@ -38,7 +38,7 @@ const T = {
     readyLbl: 'Prêts', readySub: 'Prêts à consulter',
     progressLbl: 'En cours', progressSub: 'En traitement ou en file',
     yourBalance: 'Votre solde', creditsAvailable: 'crédits disponibles', buyMore: 'Acheter plus',
-    yourReports: 'Vos rapports', total: 'au total', empty: 'Aucun rapport — créez votre premier dossier.',
+    yourReports: 'Vos opportunités d’affaires', total: 'au total', empty: 'Aucun rapport — créez votre premier dossier.',
     open: 'Ouvrir', processing: 'En cours…', retry: 'Réessayer',
   },
   pt: {
@@ -50,7 +50,7 @@ const T = {
     readyLbl: 'Prontos', readySub: 'Prontos para revisar',
     progressLbl: 'Em andamento', progressSub: 'Processando ou na fila',
     yourBalance: 'Seu saldo', creditsAvailable: 'créditos disponíveis', buyMore: 'Comprar mais',
-    yourReports: 'Seus relatórios', total: 'no total', empty: 'Nenhum relatório ainda — crie seu primeiro dossiê.',
+    yourReports: 'Suas oportunidades de negócio', total: 'no total', empty: 'Nenhum relatório ainda — crie seu primeiro dossiê.',
     open: 'Abrir', processing: 'Processando…', retry: 'Tentar de novo',
   },
 };

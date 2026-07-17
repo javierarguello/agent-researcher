@@ -43,6 +43,7 @@ export interface JobSummary { durationMs?: number; sourcesFound?: number; warnin
 export interface JobFileSigned { name: string; contentType: string; size: number | null; url: string; expiresAt: string; }
 export interface JobDetail {
   jobId: string; appId: string; userId: string; template: string;
+  params?: Record<string, unknown>;
   title: string | null; shortDescription: string | null;
   status: JobStatus; progress: JobProgress | null; cost: Cost | null; summary: JobSummary | null;
   createdAt: string; updatedAt: string; error: string | null;
