@@ -7,10 +7,10 @@ import { shortDate } from '../lib/format';
 import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
 
 const T = {
-  en: { back: '← Reports', working: 'Generating your dossier…', failed: 'This report could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.' },
-  es: { back: '← Reportes', working: 'Generando tu dossier…', failed: 'Este reporte no pudo completarse.', download: 'Descargar', files: 'Archivos', warnings: 'Notas', partial: 'Algunas secciones se entregaron parciales.' },
-  fr: { back: '← Rapports', working: 'Génération de votre dossier…', failed: 'Ce rapport n’a pas pu être terminé.', download: 'Télécharger', files: 'Fichiers', warnings: 'Notes', partial: 'Certaines sections ont été livrées partielles.' },
-  pt: { back: '← Relatórios', working: 'Gerando seu dossiê…', failed: 'Este relatório não pôde ser concluído.', download: 'Baixar', files: 'Arquivos', warnings: 'Notas', partial: 'Algumas seções foram entregues parciais.' },
+  en: { back: '← Reports', working: 'Generating your dossier…', loadingReport: 'Loading report…', failed: 'This report could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.' },
+  es: { back: '← Reportes', working: 'Generando tu dossier…', loadingReport: 'Cargando reporte…', failed: 'Este reporte no pudo completarse.', download: 'Descargar', files: 'Archivos', warnings: 'Notas', partial: 'Algunas secciones se entregaron parciales.' },
+  fr: { back: '← Rapports', working: 'Génération de votre dossier…', loadingReport: 'Chargement du rapport…', failed: 'Ce rapport n’a pas pu être terminé.', download: 'Télécharger', files: 'Fichiers', warnings: 'Notes', partial: 'Certaines sections ont été livrées partielles.' },
+  pt: { back: '← Relatórios', working: 'Gerando seu dossiê…', loadingReport: 'Carregando relatório…', failed: 'Este relatório não pôde ser concluído.', download: 'Baixar', files: 'Arquivos', warnings: 'Notas', partial: 'Algumas seções foram entregues parciais.' },
 };
 const STATUS_LABEL: Record<string, Record<JobStatus, string>> = {
   en: { queued: 'Queued', running: 'Running', completed: 'Ready', failed: 'Failed', incomplete: 'Paused' },
@@ -68,11 +68,20 @@ export function JobView() {
         </div>
       )}
 
+      {job.status === 'completed' && !report.data && (
+        <div className="card" style={{ padding: 22 }}>
+          <div className="row" style={{ gap: 10 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} className="rise" />
+            <span className="soft">{t.loadingReport}</span>
+          </div>
+        </div>
+      )}
+
       {job.status === 'completed' && report.data && (
         <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} meta={report.data.meta} />
       )}
 
-      {job.status === 'completed' && job.files && job.files.length > 0 && (
+      {job.status === 'completed' && report.data && job.files && job.files.length > 0 && (
         <div className="card" style={{ padding: 18 }}>
           <div className="eyebrow" style={{ color: 'var(--muted)', marginBottom: 10 }}>{t.files}</div>
           <div className="stack" style={{ gap: 8 }}>
