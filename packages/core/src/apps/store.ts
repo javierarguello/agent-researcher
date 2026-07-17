@@ -36,6 +36,8 @@ export interface CreateAppInput {
   googleClientId?: string;
   adminEmails?: string[];
   allowedTemplates?: string[];
+  emailFrom?: string;
+  webUrl?: string;
 }
 
 export async function createApp(input: CreateAppInput): Promise<AppRecord> {
@@ -50,6 +52,8 @@ export async function createApp(input: CreateAppInput): Promise<AppRecord> {
     ...(input.googleClientId ? { googleClientId: input.googleClientId } : {}),
     ...(input.adminEmails ? { adminEmails: input.adminEmails } : {}),
     ...(input.allowedTemplates ? { allowedTemplates: input.allowedTemplates } : {}),
+    ...(input.emailFrom ? { emailFrom: input.emailFrom } : {}),
+    ...(input.webUrl ? { webUrl: input.webUrl } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -87,6 +91,8 @@ export interface UpdateAppInput {
   googleClientId?: string;
   adminEmails?: string[];
   allowedTemplates?: string[];
+  emailFrom?: string;
+  webUrl?: string;
 }
 
 export async function updateApp(appId: string, patch: UpdateAppInput): Promise<AppRecord | undefined> {
@@ -101,6 +107,8 @@ export async function updateApp(appId: string, patch: UpdateAppInput): Promise<A
   if (patch.googleClientId != null) data.googleClientId = patch.googleClientId;
   if (patch.adminEmails != null) data.adminEmails = patch.adminEmails;
   if (patch.allowedTemplates != null) data.allowedTemplates = patch.allowedTemplates;
+  if (patch.emailFrom != null) data.emailFrom = patch.emailFrom;
+  if (patch.webUrl != null) data.webUrl = patch.webUrl;
   await ref.set(data, { merge: true });
   return (await ref.get()).data() as AppRecord;
 }

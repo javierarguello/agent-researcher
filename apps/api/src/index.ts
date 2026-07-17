@@ -57,7 +57,23 @@ import {
   recordLogin,
   signSession,
   signReadToken,
+  signActionToken,
   verifyGoogleIdToken,
+  verifySession,
+  hashPassword,
+  verifyPassword,
+  passwordProblem,
+  normalizeEmail,
+  getCredential,
+  createPasswordUser,
+  setEmailVerified,
+  setPassword,
+  upsertGoogleUser,
+  UserExistsError,
+  sendAppEmail,
+  EmailNotConfiguredError,
+  verifyEmailTemplate,
+  resetPasswordTemplate,
   InsufficientCreditsError,
   type RateLimitEntry,
   type LedgerEntryType,
@@ -146,10 +162,11 @@ app.post(
   '/auth/session',
   {
     schema: {
-      summary: 'Log in / sign up: verify a provider identity, return a session JWT',
+      summary: 'Log in: verify a provider identity, return a session JWT',
       description:
-        "Send { appId, provider, ...credentials }. provider='google' takes an `idToken`. " +
-        'Regular apps allow any Google account; the admin app only its whitelisted emails.',
+        "Send { appId, provider, ...credentials }. provider='google' takes an `idToken`; " +
+        "provider='password' takes `email` + `password` (the email must already be verified — " +
+        'register via POST /auth/register first). Regular apps allow any Google account; the admin app only whitelisted emails.',
       tags: ['auth'],
       body: {
         type: 'object',
@@ -159,29 +176,47 @@ app.post(
           appId: { type: 'string', minLength: 1, maxLength: 128 },
           provider: { type: 'string', enum: ['google', 'password'] },
           idToken: { type: 'string', maxLength: 8192, description: "Google id_token (provider='google')." },
+          email: { type: 'string', maxLength: 320, description: "Email (provider='password')." },
+          password: { type: 'string', maxLength: 200, description: "Password (provider='password')." },
         },
       },
     },
   },
   async (req, reply) => {
-    const b = req.body as { appId?: string; provider?: string; idToken?: string };
+    const b = req.body as { appId?: string; provider?: string; idToken?: string; email?: string; password?: string };
     if (!b.appId || !b.provider) return reply.code(400).send({ error: 'appId and provider are required.' });
 
     const appRec = await getApp(b.appId);
     if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
 
-    // Verify identity (dispatch on provider — add 'password' etc. here later).
-    let identity;
+    // Verify identity (dispatch on provider).
+    let identity: { email: string; name?: string };
     if (b.provider === 'google') {
       if (!appRec.googleClientId) return reply.code(400).send({ error: 'App has no googleClientId configured.' });
       if (!b.idToken) return reply.code(400).send({ error: 'idToken is required for provider "google".' });
       try {
-        identity = await verifyGoogleIdToken(b.idToken, appRec.googleClientId);
+        const verified = await verifyGoogleIdToken(b.idToken, appRec.googleClientId);
+        // Link Google to the app+email record and mark it verified (Google proves
+        // the address) — the same email used with a password is the SAME user.
+        await upsertGoogleUser({ appId: appRec.appId, email: verified.email, name: verified.name });
+        identity = { email: verified.email, name: verified.name };
       } catch (err) {
         return reply.code(401).send({ error: `Google verification failed: ${(err as Error).message}` });
       }
+    } else if (b.provider === 'password') {
+      const email = normalizeEmail(b.email ?? '');
+      if (!email || !b.password) return reply.code(400).send({ error: 'email and password are required.' });
+      const cred = await getCredential(appRec.appId, email);
+      // Same generic 401 whether the user is missing or the password is wrong (no enumeration).
+      if (!cred || !cred.passwordHash || !(await verifyPassword(b.password, cred.passwordHash))) {
+        return reply.code(401).send({ error: 'Invalid email or password.' });
+      }
+      if (!cred.emailVerified) {
+        return reply.code(403).send({ error: 'Please verify your email before signing in.', code: 'email_unverified' });
+      }
+      identity = { email: cred.email, name: cred.name };
     } else {
-      return reply.code(501).send({ error: `Auth provider "${b.provider}" is not enabled yet.` });
+      return reply.code(400).send({ error: `Unknown auth provider "${b.provider}".` });
     }
 
     // Authorization: admin app requires the email to be whitelisted.
@@ -206,6 +241,184 @@ app.post(
       user: { email: identity.email, name: identity.name ?? null, role, appId: appRec.appId },
       expiresInSeconds: config.auth.jwtTtlSeconds,
     };
+  },
+);
+
+// Mint a login session for a verified identity (shared by verify-email + reset).
+async function issueSession(appRec: { appId: string; role: string; adminEmails?: string[] }, email: string, name?: string) {
+  const role: 'user' | 'admin' =
+    appRec.role === 'admin' && (appRec.adminEmails ?? []).map((e) => e.toLowerCase()).includes(email) ? 'admin' : 'user';
+  const token = await signSession({ email, appId: appRec.appId, role, name });
+  await recordLogin(appRec.appId, email).catch(() => {});
+  return { token, user: { email, name: name ?? null, role, appId: appRec.appId }, expiresInSeconds: config.auth.jwtTtlSeconds };
+}
+
+app.post(
+  '/auth/register',
+  {
+    schema: {
+      summary: 'Register a password account and send an email-verification link',
+      description:
+        'Creates an unverified account and emails a verification link — the user cannot sign in until they verify. ' +
+        "If a verified account already exists for the email (password or Google), returns 409. Retrying an unverified " +
+        'registration re-sends the link.',
+      tags: ['auth'],
+      body: {
+        type: 'object',
+        required: ['appId', 'email', 'password'],
+        additionalProperties: false,
+        properties: {
+          appId: { type: 'string', minLength: 1, maxLength: 128 },
+          email: { type: 'string', minLength: 3, maxLength: 320 },
+          password: { type: 'string', maxLength: 200 },
+          name: { type: 'string', maxLength: 200 },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const b = req.body as { appId: string; email: string; password: string; name?: string };
+    const email = normalizeEmail(b.email);
+    if (!email.includes('@')) return reply.code(400).send({ error: 'A valid email is required.' });
+    const pwProblem = passwordProblem(b.password);
+    if (pwProblem) return reply.code(400).send({ error: pwProblem });
+
+    const appRec = await getApp(b.appId);
+    if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
+    if (!appRec.emailFrom || !appRec.webUrl) return reply.code(500).send({ error: 'Email is not configured for this app.' });
+
+    const existing = await getCredential(appRec.appId, email);
+    // An already-verified account (or a Google account) can't be re-registered.
+    if (existing && (existing.emailVerified || existing.providers.includes('google'))) {
+      return reply.code(409).send({ error: 'An account with this email already exists.', code: 'email_taken' });
+    }
+
+    const passwordHash = await hashPassword(b.password);
+    if (existing) {
+      await setPassword(appRec.appId, email, passwordHash); // stuck unverified → update + resend
+    } else {
+      try {
+        await createPasswordUser({ appId: appRec.appId, email, name: b.name, passwordHash });
+      } catch (err) {
+        if (err instanceof UserExistsError) return reply.code(409).send({ error: 'An account with this email already exists.', code: 'email_taken' });
+        throw err;
+      }
+    }
+
+    const token = await signActionToken({ email, appId: appRec.appId, scope: 'verify-email' }, config.auth.verifyTtlSeconds);
+    const link = `${appRec.webUrl}/verify?token=${encodeURIComponent(token)}`;
+    const tpl = verifyEmailTemplate(appRec.name, link);
+    try {
+      await sendAppEmail({ app: appRec, to: email, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text });
+    } catch (err) {
+      logEvent({ jobId: '-', appId: appRec.appId, userId: email }, 'ERROR', 'auth.verify_email_failed', { error: (err as Error).message });
+      if (err instanceof EmailNotConfiguredError) return reply.code(500).send({ error: 'Email is not configured for this app.' });
+      return reply.code(502).send({ error: 'Could not send the verification email. Please try again.' });
+    }
+    logEvent({ jobId: '-', appId: appRec.appId, userId: email }, 'INFO', 'auth.registered', {});
+    return reply.code(202).send({ status: 'verification_sent', email });
+  },
+);
+
+app.post(
+  '/auth/verify-email',
+  {
+    schema: {
+      summary: 'Verify an email address from the emailed link, then log in',
+      description: 'Consumes the `verify-email` token from the link, marks the address verified, and returns a login session.',
+      tags: ['auth'],
+      body: { type: 'object', required: ['token'], additionalProperties: false, properties: { token: { type: 'string', maxLength: 4096 } } },
+    },
+  },
+  async (req, reply) => {
+    const { token } = req.body as { token: string };
+    let claims;
+    try {
+      claims = await verifySession(token);
+    } catch {
+      return reply.code(400).send({ error: 'This verification link is invalid or has expired.' });
+    }
+    if (claims.scope !== 'verify-email') return reply.code(400).send({ error: 'This link is not a verification link.' });
+    const appRec = await getApp(claims.appId);
+    if (!appRec || !appRec.active) return reply.code(404).send({ error: 'Unknown or inactive app.' });
+    const cred = await getCredential(claims.appId, claims.email);
+    if (!cred) return reply.code(400).send({ error: 'Account not found.' });
+    await setEmailVerified(claims.appId, claims.email);
+    logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'INFO', 'auth.email_verified', {});
+    return issueSession(appRec, claims.email, cred.name);
+  },
+);
+
+app.post(
+  '/auth/request-password-reset',
+  {
+    schema: {
+      summary: 'Send a password-reset link (always 202, never reveals if the email exists)',
+      tags: ['auth'],
+      body: {
+        type: 'object',
+        required: ['appId', 'email'],
+        additionalProperties: false,
+        properties: { appId: { type: 'string', maxLength: 128 }, email: { type: 'string', maxLength: 320 } },
+      },
+    },
+  },
+  async (req, reply) => {
+    const b = req.body as { appId: string; email: string };
+    const email = normalizeEmail(b.email);
+    const appRec = await getApp(b.appId);
+    // Only send for an existing password account with email configured; but always
+    // return 202 so callers can't probe which emails are registered.
+    if (appRec && appRec.active && appRec.emailFrom && appRec.webUrl) {
+      const cred = await getCredential(appRec.appId, email);
+      if (cred && cred.passwordHash) {
+        const token = await signActionToken({ email, appId: appRec.appId, scope: 'reset-password' }, config.auth.resetTtlSeconds);
+        const link = `${appRec.webUrl}/reset?token=${encodeURIComponent(token)}`;
+        const tpl = resetPasswordTemplate(appRec.name, link);
+        await sendAppEmail({ app: appRec, to: email, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text }).catch((err) =>
+          logEvent({ jobId: '-', appId: appRec.appId, userId: email }, 'ERROR', 'auth.reset_email_failed', { error: (err as Error).message }),
+        );
+      }
+    }
+    return reply.code(202).send({ status: 'reset_sent' });
+  },
+);
+
+app.post(
+  '/auth/reset-password',
+  {
+    schema: {
+      summary: 'Set a new password from the emailed reset link, then log in',
+      tags: ['auth'],
+      body: {
+        type: 'object',
+        required: ['token', 'password'],
+        additionalProperties: false,
+        properties: { token: { type: 'string', maxLength: 4096 }, password: { type: 'string', maxLength: 200 } },
+      },
+    },
+  },
+  async (req, reply) => {
+    const b = req.body as { token: string; password: string };
+    const pwProblem = passwordProblem(b.password);
+    if (pwProblem) return reply.code(400).send({ error: pwProblem });
+    let claims;
+    try {
+      claims = await verifySession(b.token);
+    } catch {
+      return reply.code(400).send({ error: 'This reset link is invalid or has expired.' });
+    }
+    if (claims.scope !== 'reset-password') return reply.code(400).send({ error: 'This link is not a password-reset link.' });
+    const appRec = await getApp(claims.appId);
+    if (!appRec || !appRec.active) return reply.code(404).send({ error: 'Unknown or inactive app.' });
+    const cred = await getCredential(claims.appId, claims.email);
+    if (!cred) return reply.code(400).send({ error: 'Account not found.' });
+    const passwordHash = await hashPassword(b.password);
+    await setPassword(claims.appId, claims.email, passwordHash);
+    // Resetting via the emailed link proves ownership — verify the address too.
+    if (!cred.emailVerified) await setEmailVerified(claims.appId, claims.email);
+    logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'INFO', 'auth.password_reset', {});
+    return issueSession(appRec, claims.email, cred.name);
   },
 );
 
@@ -998,6 +1211,8 @@ app.post(
           allowedTemplates: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 128 }, description: 'If set, the only models this app may run (admin apps are exempt).' },
           googleClientId: { type: 'string', maxLength: 256 },
           adminEmails: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 320 } },
+          emailFrom: { type: 'string', maxLength: 320, description: 'Verified Postmark From address for this app\'s account emails.' },
+          webUrl: { type: 'string', maxLength: 512, description: 'Public web origin (for email links), no trailing slash.' },
         },
       },
     },
@@ -1011,6 +1226,8 @@ app.post(
       allowedTemplates?: string[];
       googleClientId?: string;
       adminEmails?: string[];
+      emailFrom?: string;
+      webUrl?: string;
     };
     if (!body.name) return reply.code(400).send({ error: 'Missing "name".' });
     const created = await createApp({
@@ -1021,6 +1238,8 @@ app.post(
       allowedTemplates: body.allowedTemplates,
       googleClientId: body.googleClientId,
       adminEmails: body.adminEmails,
+      emailFrom: body.emailFrom,
+      webUrl: body.webUrl,
     });
     // Return the full record (incl. apiKey) ONCE, at creation time.
     return reply.code(201).send({ app: created });
@@ -1046,6 +1265,8 @@ app.patch(
           allowedTemplates: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 128 }, description: 'Models this app may run (admin apps exempt).' },
           googleClientId: { type: 'string', maxLength: 256 },
           adminEmails: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 320 } },
+          emailFrom: { type: 'string', maxLength: 320 },
+          webUrl: { type: 'string', maxLength: 512 },
         },
       },
     },
@@ -1059,6 +1280,8 @@ app.patch(
       allowedTemplates?: string[];
       googleClientId?: string;
       adminEmails?: string[];
+      emailFrom?: string;
+      webUrl?: string;
     };
     const updated = await updateApp(appId, body);
     if (!updated) return reply.code(404).send({ error: `Unknown app: ${appId}` });

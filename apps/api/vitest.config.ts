@@ -13,6 +13,7 @@ export default defineConfig({
       AUTH_JWT_SECRET: 'test-jwt-secret-0123456789abcdef',
       STRIPE_SECRET_KEY: 'sk_test_x',
       STRIPE_WEBHOOK_SECRET: 'whsec_test',
+      POSTMARK_SERVER_TOKEN: 'test-postmark-token',
       LOG_LEVEL: 'silent',
     },
   },

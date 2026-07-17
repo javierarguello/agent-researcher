@@ -139,8 +139,26 @@ export { getProvider, resolveModel, getProviderFor, modelAliases } from './llm/i
 export type { LlmProvider, ResolvedModel } from './llm/index.js';
 
 // Auth (session JWTs + Google id_token verification)
-export { signSession, signReadToken, verifySession, verifyGoogleIdToken } from './auth/tokens.js';
+export { signSession, signReadToken, signActionToken, verifySession, verifyGoogleIdToken } from './auth/tokens.js';
 export type { SessionClaims, SessionRole, Identity, IdentityProvider } from './auth/tokens.js';
+
+// Auth (password credentials + email verification / reset)
+export { hashPassword, verifyPassword, passwordProblem, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN } from './auth/passwords.js';
+export {
+  getCredential,
+  createPasswordUser,
+  setEmailVerified,
+  setPassword,
+  upsertGoogleUser,
+  normalizeEmail,
+  UserExistsError,
+} from './auth/users.js';
+export type { UserCredential, AuthProvider } from './auth/users.js';
+
+// Transactional email (shared Postmark, per-app From)
+export { sendAppEmail, EmailNotConfiguredError } from './email/postmark.js';
+export type { SendEmailInput } from './email/postmark.js';
+export { verifyEmailTemplate, resetPasswordTemplate } from './email/templates.js';
 
 import { z } from 'zod';
 import { getTemplate } from './templates/registry.js';

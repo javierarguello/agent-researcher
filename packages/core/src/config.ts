@@ -75,6 +75,18 @@ export const config = {
     jwtIssuer: str('AUTH_JWT_ISSUER', 'agent-researcher'),
     /** Session token lifetime (default 7 days). */
     jwtTtlSeconds: int('AUTH_JWT_TTL_SECONDS', 604800),
+    /** Password-based user credentials (email verification, reset). */
+    credentialsCollection: str('CREDENTIALS_COLLECTION', 'user-credentials'),
+    /** Email-verification link lifetime (default 24h). */
+    verifyTtlSeconds: int('AUTH_VERIFY_TTL_SECONDS', 86400),
+    /** Password-reset link lifetime (default 1h). */
+    resetTtlSeconds: int('AUTH_RESET_TTL_SECONDS', 3600),
+  },
+  email: {
+    /** Shared Postmark server token — every app sends through the same account. */
+    postmarkToken: str('POSTMARK_SERVER_TOKEN'),
+    /** Postmark message stream (transactional). */
+    messageStream: str('POSTMARK_MESSAGE_STREAM', 'outbound'),
   },
   cors: {
     /** Comma-separated allowed origins for the static web frontends; "*" for dev. */

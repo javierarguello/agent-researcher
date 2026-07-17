@@ -1,4 +1,5 @@
 import { config } from '../config';
+import type { SessionResponse } from './types';
 
 const TOKEN_KEY = 'fbizlab_jwt';
 
@@ -93,6 +94,28 @@ export async function ensureReportPdf(
     await new Promise((r) => setTimeout(r, 3000));
   }
   throw new ApiError(504, 'The PDF is taking longer than expected. Please try again in a moment.');
+}
+
+// --- Password auth (register / verify email / reset) -----------------------
+/** Register a password account. 202 = verification email sent. Throws ApiError
+ *  (409 email_taken) if the email already belongs to a verified account. */
+export function register(email: string, password: string, name?: string): Promise<{ status: string; email: string }> {
+  return api('/auth/register', { method: 'POST', anonymous: true, body: { appId: config.appId, email, password, name } });
+}
+
+/** Verify an email from the emailed link → returns a login session. */
+export function verifyEmail(token: string): Promise<SessionResponse> {
+  return api('/auth/verify-email', { method: 'POST', anonymous: true, body: { token } });
+}
+
+/** Always resolves 202 (never reveals whether the email exists). */
+export function requestPasswordReset(email: string): Promise<{ status: string }> {
+  return api('/auth/request-password-reset', { method: 'POST', anonymous: true, body: { appId: config.appId, email } });
+}
+
+/** Set a new password from the emailed reset link → returns a login session. */
+export function resetPassword(token: string, password: string): Promise<SessionResponse> {
+  return api('/auth/reset-password', { method: 'POST', anonymous: true, body: { token, password } });
 }
 
 export function qs(params: Record<string, string | number | undefined | null>): string {

@@ -9,6 +9,9 @@ interface AuthState {
   user: SessionUser | null;
   isAuthed: boolean;
   loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithPassword: (email: string, password: string) => Promise<void>;
+  /** Persist a session returned by the API (verify-email / reset-password auto-login). */
+  applySession: (res: SessionResponse) => void;
   logout: () => void;
 }
 
@@ -27,16 +30,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.google?.accounts.id.disableAutoSelect();
   }, []);
 
-  const loginWithGoogle = useCallback(async (idToken: string) => {
-    const res = await api<SessionResponse>('/auth/session', {
-      method: 'POST',
-      anonymous: true,
-      body: { appId: config.appId, provider: 'google', idToken },
-    });
+  const applySession = useCallback((res: SessionResponse) => {
     setToken(res.token);
     localStorage.setItem(USER_KEY, JSON.stringify(res.user));
     setUser(res.user);
   }, []);
+
+  const loginWithGoogle = useCallback(
+    async (idToken: string) => {
+      const res = await api<SessionResponse>('/auth/session', {
+        method: 'POST',
+        anonymous: true,
+        body: { appId: config.appId, provider: 'google', idToken },
+      });
+      applySession(res);
+    },
+    [applySession],
+  );
+
+  const loginWithPassword = useCallback(
+    async (email: string, password: string) => {
+      const res = await api<SessionResponse>('/auth/session', {
+        method: 'POST',
+        anonymous: true,
+        body: { appId: config.appId, provider: 'password', email, password },
+      });
+      applySession(res);
+    },
+    [applySession],
+  );
 
   useEffect(() => {
     const onUnauthorized = () => logout();
@@ -44,7 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, [logout]);
 
-  const value = useMemo<AuthState>(() => ({ user, isAuthed: !!user, loginWithGoogle, logout }), [user, loginWithGoogle, logout]);
+  const value = useMemo<AuthState>(
+    () => ({ user, isAuthed: !!user, loginWithGoogle, loginWithPassword, applySession, logout }),
+    [user, loginWithGoogle, loginWithPassword, applySession, logout],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

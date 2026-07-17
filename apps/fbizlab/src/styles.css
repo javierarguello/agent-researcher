@@ -577,3 +577,7 @@ p { margin: 0; }
 @media (max-width: 560px) {
   .bgrid, .hiw, .sample__rows { grid-template-columns: 1fr; }
 }
+
+/* Verify-email / reset-password centered shells */
+.auth-mini { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); }
+.auth-mini__card { padding: 34px 32px; max-width: 420px; width: 100%; text-align: center; }

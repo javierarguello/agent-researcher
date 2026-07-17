@@ -19,9 +19,10 @@ export interface SessionClaims {
   appId: string;
   role: SessionRole;
   name?: string;
-  /** When set, a restricted token (see `signReadToken`) — the API caps it to
-   *  read-only access to a single report. */
-  scope?: 'report-read';
+  /** When set, a restricted token — the API caps its use to the matching action.
+   *  `report-read`: read one report. `verify-email`/`reset-password`: one-shot
+   *  account action from an email link (NOT a login session). */
+  scope?: 'report-read' | 'verify-email' | 'reset-password';
   /** The one job a `report-read` token may access. */
   jobId?: string;
 }
@@ -58,6 +59,18 @@ export async function signReadToken(input: { email: string; appId: string; jobId
   return signSession({ email: input.email, appId: input.appId, role: 'user', scope: 'report-read', jobId: input.jobId }, ttlSeconds);
 }
 
+/**
+ * A single-purpose token embedded in an account email link (verify address /
+ * reset password). It is NOT a login session — the API only accepts it for the
+ * matching action (checked via `scope`), then issues a real session.
+ */
+export async function signActionToken(
+  input: { email: string; appId: string; scope: 'verify-email' | 'reset-password' },
+  ttlSeconds: number,
+): Promise<string> {
+  return signSession({ email: input.email, appId: input.appId, role: 'user', scope: input.scope }, ttlSeconds);
+}
+
 /** Verify one of our session JWTs. Throws if invalid/expired. */
 export async function verifySession(token: string): Promise<SessionClaims> {
   const { payload } = await jwtVerify(token, secret(), { issuer: config.auth.jwtIssuer });
@@ -67,7 +80,10 @@ export async function verifySession(token: string): Promise<SessionClaims> {
     appId: String(payload.appId),
     role,
     name: payload.name as string | undefined,
-    scope: payload.scope === 'report-read' ? 'report-read' : undefined,
+    scope:
+      payload.scope === 'report-read' || payload.scope === 'verify-email' || payload.scope === 'reset-password'
+        ? payload.scope
+        : undefined,
     jobId: payload.jobId as string | undefined,
   };
 }

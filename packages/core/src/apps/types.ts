@@ -17,6 +17,12 @@ export interface AppRecord {
   rateLimitPerHour?: number;
   /** Google OAuth client id of this app's frontend (validates the id_token `aud`). */
   googleClientId?: string;
+  /** From address this app sends transactional email as (must be a verified
+   *  Postmark sender/domain), e.g. "Florida Biz Labs <no-reply@fbizlab.com>". */
+  emailFrom?: string;
+  /** The app's public web origin — used to build email links (verify/reset),
+   *  e.g. "https://agent-researcher-dev-fbizlab.web.app" (no trailing slash). */
+  webUrl?: string;
   /** For the admin/backoffice app: emails allowed to log in (get admin tokens). */
   adminEmails?: string[];
   /** Research model ids this app may use. If set, other models are rejected (admin apps are exempt). */
