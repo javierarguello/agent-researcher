@@ -39,10 +39,11 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
-/** Render (or reuse) a completed job's report.pdf and return its file descriptor. */
-export async function renderJobPdf(job: ResearchJob): Promise<JobFile> {
+/** Render (or reuse) a completed job's report.pdf and return its file descriptor.
+ *  `force` re-renders and overwrites even if a PDF already exists (design changes). */
+export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } = {}): Promise<JobFile> {
   const existing = (job.files ?? []).find((f) => f.name === PDF_NAME);
-  if (existing) return existing;
+  if (existing && !opts.force) return existing;
 
   const raw = await downloadObject(job.jobId, 'report.json');
   if (!raw) throw new Error('report.json not found — cannot render PDF.');
@@ -74,7 +75,15 @@ export async function renderJobPdf(job: ResearchJob): Promise<JobFile> {
     await page.evaluate('document.fonts.ready').catch(() => {});
     // preferCSSPageSize honors our `@page { size: letter; margin: 0 }`; the report's
     // own padding is the margin, so bleed backgrounds (cover) reach the page edge.
-    const out = await page.pdf({ printBackground: true, preferCSSPageSize: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
+    // tagged + outline → a navigable PDF bookmark tree built from the heading
+    // structure (cover h1 + section h2s), so readers get a clickable index.
+    const out = await page.pdf({
+      printBackground: true,
+      preferCSSPageSize: true,
+      tagged: true,
+      outline: true,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    });
     pdf = Buffer.from(out);
   } finally {
     await page.close();

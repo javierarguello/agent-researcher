@@ -56,7 +56,7 @@ export async function enqueueJob(jobId: string, opts: { unique?: boolean } = {})
  * task name so repeated download clicks don't spawn parallel renders (and the
  * retained task name after completion means the PDF isn't re-rendered).
  */
-export async function enqueuePdf(jobId: string): Promise<void> {
+export async function enqueuePdf(jobId: string, opts: { force?: boolean } = {}): Promise<void> {
   if (!config.worker.serviceUrl) throw new Error('WORKER_SERVICE_URL is not configured.');
   if (!config.tasks.invokerServiceAccount) throw new Error('TASKS_INVOKER_SA is not configured.');
 
@@ -67,13 +67,15 @@ export async function enqueuePdf(jobId: string): Promise<void> {
     await client.createTask({
       parent,
       task: {
-        name: `${parent}/tasks/${jobId}-pdf`,
+        // Deduped by jobId normally; a forced re-render (design change) always
+        // dispatches with an auto-generated name and overwrites report.pdf.
+        ...(opts.force ? {} : { name: `${parent}/tasks/${jobId}-pdf` }),
         dispatchDeadline: { seconds: config.tasks.dispatchDeadlineSeconds },
         httpRequest: {
           httpMethod: 'POST',
           url,
           headers: { 'Content-Type': 'application/json' },
-          body: Buffer.from(JSON.stringify({ jobId })).toString('base64'),
+          body: Buffer.from(JSON.stringify({ jobId, force: !!opts.force })).toString('base64'),
           oidcToken: {
             serviceAccountEmail: config.tasks.invokerServiceAccount,
             audience: config.worker.serviceUrl,

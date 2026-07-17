@@ -603,6 +603,7 @@ app.get(
       tags: ['research'],
       security: sec,
       params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
+      querystring: { type: 'object', properties: { force: { type: 'string', enum: ['1'] } } },
     },
   },
   async (req, reply) => {
@@ -618,10 +619,12 @@ app.get(
     }
     if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
     const name = 'report.pdf';
+    // Admins may force a re-render (e.g. after a PDF template/design change).
+    const force = req.auth!.role === 'admin' && (req.query as { force?: string }).force === '1';
     reply.header('Cache-Control', 'no-store');
-    if ((job.files ?? []).some((f) => f.name === name)) return { ready: true, name };
     const { enqueuePdf } = await import('./enqueue.js');
-    await enqueuePdf(jobId);
+    if (!force && (job.files ?? []).some((f) => f.name === name)) return { ready: true, name };
+    await enqueuePdf(jobId, { force });
     return reply.code(202).send({ ready: false, status: 'generating', name });
   },
 );

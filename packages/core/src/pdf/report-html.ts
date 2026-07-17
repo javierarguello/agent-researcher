@@ -67,10 +67,14 @@ function mdToHtml(md: string): string {
   return blocks
     .map((b) => {
       const lines = b.split('\n');
+      // Markdown headings (### Foo) → a styled sub-heading (never show the #s).
+      const h = lines[0]?.match(/^\s*(#{1,6})\s+(.*)$/);
+      if (h && lines.length === 1) return `<div class="mdh">${mdInline(h[2] ?? '')}</div>`;
       if (lines.every((l) => /^\s*[-*]\s+/.test(l))) {
         return `<ul>${lines.map((l) => `<li>${mdInline(l.replace(/^\s*[-*]\s+/, ''))}</li>`).join('')}</ul>`;
       }
-      return `<p>${mdInline(lines.join(' '))}</p>`;
+      // Strip any stray leading heading markers on a mixed block.
+      return `<p>${mdInline(lines.map((l) => l.replace(/^\s*#{1,6}\s+/, '')).join(' '))}</p>`;
     })
     .join('');
 }
@@ -78,10 +82,10 @@ function mdToHtml(md: string): string {
 // ── localized field labels (report content is already in its language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
 const RL: Record<Lang, Record<string, string>> = {
-  en: { contents: 'Contents', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.' },
-  es: { contents: 'Contenido', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.' },
-  fr: { contents: 'Sommaire', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.' },
-  pt: { contents: 'Conteúdo', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.' },
+  en: { contents: 'Contents', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.' },
+  es: { contents: 'Contenido', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.' },
+  fr: { contents: 'Sommaire', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', yes: 'Oui', no: 'Non', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.' },
+  pt: { contents: 'Conteúdo', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', yes: 'Sim', no: 'Não', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.' },
 };
 
 // ── structured-block detectors (mirror the on-screen viewer) ──
@@ -110,10 +114,10 @@ function metricsGrid(items: Metric[], t: PdfTheme): string {
     .map((m) => {
       const color = m.emphasis === 'positive' ? t.colors.positive : m.emphasis === 'negative' ? t.colors.negative : t.colors.inkStrong;
       const hint = m.hint ? `<div class="mlabel" style="margin-top:6px">${esc(m.hint)}</div>` : '';
-      return `<div class="mcell"><div class="mlabel">${esc(m.label)}</div><div class="mval" style="color:${color}">${esc(m.value)}</div>${hint}</div>`;
+      return `<div class="mtile"><div class="mlabel">${esc(m.label)}</div><div class="mval" style="color:${color}">${esc(m.value)}</div>${hint}</div>`;
     })
     .join('');
-  return `<div class="mgrid">${cells}</div>`;
+  return `<div class="mtiles">${cells}</div>`;
 }
 function riskRows(items: Risk[], t: PdfTheme): string {
   return `<div class="risks">${items
@@ -179,7 +183,7 @@ function sentimentHtml(v: { overview?: string; mentions: Mention[] }, l: Record<
   const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
   const net = pct(c.positive) - pct(c.negative);
   const S = SENT_COLOR(t);
-  const tiles = `<div class="mgrid two"><div class="mcell"><div class="mlabel">${esc(l.mentions)}</div><div class="mval">${total}</div></div><div class="mcell"><div class="mlabel">${esc(l.netSentiment)}</div><div class="mval" style="color:${net >= 0 ? t.colors.positive : t.colors.negative}">${net >= 0 ? '+' : ''}${net}</div></div></div>`;
+  const tiles = `<div class="mtiles"><div class="mtile"><div class="mlabel">${esc(l.mentions)}</div><div class="mval">${total}</div></div><div class="mtile"><div class="mlabel">${esc(l.netSentiment)}</div><div class="mval" style="color:${net >= 0 ? t.colors.positive : t.colors.negative}">${net >= 0 ? '+' : ''}${net}</div></div></div>`;
   const dist = total
     ? `<div class="sentblock"><div class="flabel">${esc(l.sentimentDist)}</div><div class="sentbar"><span style="width:${pct(c.positive)}%;background:${S.positive}"></span><span style="width:${pct(c.neutral)}%;background:${S.neutral}"></span><span style="width:${pct(c.negative)}%;background:${S.negative}"></span></div><div class="sentlegend"><span><i style="background:${S.positive}"></i>${esc(l.positive)} ${pct(c.positive)}%</span><span><i style="background:${S.neutral}"></i>${esc(l.neutral)} ${pct(c.neutral)}%</span><span><i style="background:${S.negative}"></i>${esc(l.negative)} ${pct(c.negative)}%</span></div></div>`
     : '';
@@ -198,7 +202,7 @@ function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme): string {
   if (isNum(d.revenue)) tiles.push([money(d.revenue), l.revenue!]);
   if (isNum(d.cashFlowSde)) tiles.push([money(d.cashFlowSde), l.sde!]);
   if (isNum(d.askingPrice)) tiles.push([money(d.askingPrice), l.asking!]);
-  const tileHtml = tiles.length ? `<div class="mgrid">${tiles.map(([v, lab]) => `<div class="mcell"><div class="mlabel">${esc(lab)}</div><div class="mval">${esc(v)}</div></div>`).join('')}</div>` : '';
+  const tileHtml = tiles.length ? `<div class="dtiles">${tiles.map(([v, lab]) => `<div class="dtile"><div class="mlabel">${esc(lab)}</div><div class="mval">${esc(v)}</div></div>`).join('')}</div>` : '';
   const prose = (['overview', 'financials', 'impliedMultiple', 'includedAssets', 'leaseTerms', 'reasonForSale', 'growthOpportunities'] as const)
     .map((k) => (typeof d[k] === 'string' && d[k] ? `<div class="field"><div class="flabel">${esc(humanizeKey(k))}</div>${mdToHtml(d[k] as string)}</div>` : ''))
     .join('');
@@ -215,7 +219,7 @@ function valueHtml(v: unknown, k: string | undefined, l: Record<string, string>,
   if (v == null || v === '') return '';
   if (typeof v === 'string') return mdToHtml(v);
   if (typeof v === 'number') return `<span>${esc(fmtNumber(k, v))}</span>`;
-  if (typeof v === 'boolean') return `<span>${v ? 'Yes' : 'No'}</span>`;
+  if (typeof v === 'boolean') return `<span>${v ? l.yes : l.no}</span>`;
   if (Array.isArray(v)) {
     if (!v.length) return '';
     if (v.every(isRisk)) return riskRows(v as Risk[], t);
@@ -292,7 +296,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
     ? Object.entries(mandate)
         .filter(([k, v]) => v != null && v !== '' && !/^(mode|language|instructions)$/.test(k) && !(Array.isArray(v) && v.length === 0))
         .slice(0, 8)
-        .map(([k, v]) => `<div class="mrow"><span>${esc(humanizeKey(k))}</span><b>${esc(Array.isArray(v) ? v.join(', ') : isNum(v) ? fmtNumber(k, v) : v)}</b></div>`)
+        .map(([k, v]) => `<div class="mrow"><span>${esc(humanizeKey(k))}</span><b>${esc(typeof v === 'boolean' ? (v ? l.yes : l.no) : Array.isArray(v) ? v.join(', ') : isNum(v) ? fmtNumber(k, v) : v)}</b></div>`)
         .join('')
     : '';
 
@@ -317,7 +321,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
     <div class="body">
       <div class="mono eyebrow muted">${esc((l.contents ?? '').toUpperCase())}</div>
       <h2 class="pagetitle">${esc(l.index)}</h2>
-      <ol class="toc">${ordered.map((s, i) => `<li><span class="mono tocn">${pad(i)}</span><span>${esc(s.title)}</span></li>`).join('')}</ol>
+      <ol class="toc">${ordered.map((s, i) => `<li><a href="#sec-${esc(s.key)}"><span class="mono tocn">${pad(i)}</span><span>${esc(s.title)}</span></a></li>`).join('')}</ol>
       ${mandateRows ? `<div class="mandate"><div class="mono flabel muted">${esc((l.mandate ?? '').toUpperCase())}</div><div class="mrows">${mandateRows}</div></div>` : ''}
       <div class="howto"><div class="mono flabel muted">${esc((l.howToRead ?? '').toUpperCase())}</div><p>${esc(l.howToReadBody)}</p></div>
     </div>
@@ -325,7 +329,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
 
   const sectionsHtml = ordered
     .map((s, i) => `
-  <section class="pg">
+  <section class="pg" id="sec-${esc(s.key)}">
     <div class="body">
       <div class="mono eyebrow accent">${pad(i)} · ${esc(s.title.toUpperCase())}</div>
       <h2 class="pagetitle">${esc(s.title)}</h2>
@@ -334,18 +338,19 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   </section>`)
     .join('');
 
-  const runfoot = `<div class="runfoot"><span>${esc(t.brand.toUpperCase())}</span><span>${esc(dossierId)}</span></div>`;
-
   return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8">
 <style>@import url('${t.fonts.fontImport}');</style>
 <style>${css(t)}</style>
-</head><body>${runfoot}${cover}${contents}${sectionsHtml}</body></html>`;
+</head><body>${cover}${contents}${sectionsHtml}</body></html>`;
 }
 
 function css(t: PdfTheme): string {
   const c = t.colors;
   return `
-  @page { size: letter; margin: 0; }
+  /* Content pages reserve top/bottom margins so the running footer never overlaps
+     text; the cover (first page) bleeds full with margin 0. */
+  @page { size: letter; margin: 0.7in 0; }
+  @page :first { margin: 0; }
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { background:${c.page}; }
   body { font-family:${t.fonts.body}; color:${c.ink}; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -353,16 +358,13 @@ function css(t: PdfTheme): string {
   .muted { color:${c.muted}; }
   .accent { color:${c.accent}; }
   a { color:${c.accent}; text-decoration:none; word-break:break-word; }
-  /* Block layout (NOT flex) so long sections fragment across pages cleanly — a
-     flex column + auto-margin footer orphans section headers under Chrome's
-     print pagination. Running footer is drawn per printed page via .runfoot. */
-  .pg { min-height:11in; background:${c.page}; }
+  /* Block layout everywhere content can span pages — flex containers orphan/blank
+     under Chrome's print pagination. @page margins reserve the header/footer band. */
+  .pg { background:${c.page}; }
   .pg + .pg { break-before:page; }
-  .body { padding:0.72in 0.78in 0.62in; }
-  /* Fixed → repeated by Chrome on every printed page. Hidden over the cover. */
-  .runfoot { position:fixed; bottom:0.34in; left:0.78in; right:0.78in; display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid ${c.border}; font-family:${t.fonts.mono}; font-size:8.5px; letter-spacing:0.1em; color:${c.muted}; }
+  .body { padding:0 0.78in; }
 
-  /* cover */
+  /* cover — full-bleed first page (own padding, @page:first margin 0) */
   .cover { min-height:11in; display:flex; flex-direction:column; justify-content:space-between; background:${c.accent}; color:${c.onAccent}; padding:0.9in 0.85in; position:relative; z-index:1; }
   .cover a { color:${c.onAccent}; }
   .cover-top { display:flex; justify-content:space-between; align-items:flex-start; }
@@ -383,33 +385,37 @@ function css(t: PdfTheme): string {
   .pagetitle { font-size:30px; font-weight:800; letter-spacing:-0.02em; margin-bottom:22px; color:${c.inkStrong}; break-after:avoid; }
   .seccontent > .stack > .field:first-child, .seccontent > .stack > *:first-child { break-before:avoid; }
   .seccontent { font-size:14px; }
-  .seccontent p { font-size:14px; line-height:1.75; color:${c.ink}; margin:0 0 16px; max-width:6.2in; }
+  .seccontent p { font-size:14px; line-height:1.75; color:${c.ink}; margin:0 0 16px; text-align:justify; hyphens:auto; }
   .seccontent strong { color:${c.inkStrong}; }
-  .stack { display:flex; flex-direction:column; gap:16px; }
-  .field { margin-bottom:4px; }
+  .mdh { font-weight:700; font-size:15.5px; color:${c.inkStrong}; margin:16px 0 8px; letter-spacing:-0.01em; }
+  /* Block (not flex) with margin gaps → clean page fragmentation. */
+  .stack > * + * { margin-top:16px; }
+  .field { margin-bottom:2px; }
   .flabel { font-family:${t.fonts.mono}; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:${c.muted}; margin-bottom:8px; }
-  ul.bullets { margin:0 0 16px 0; padding-left:18px; }
-  ul.bullets li { font-size:13.5px; line-height:1.65; color:${c.ink}; margin-bottom:8px; }
+  ul.bullets { margin:0 0 16px 0; padding-left:20px; }
+  ul.bullets li { font-size:13.5px; line-height:1.7; color:${c.ink}; margin-bottom:13px; text-align:justify; padding-left:4px; }
+  ul.bullets li:last-child { margin-bottom:0; }
 
-  /* metric grid */
-  .mgrid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:${c.border}; border:1px solid ${c.border}; border-radius:14px; overflow:hidden; margin:0 0 24px; break-inside:avoid; }
-  .mgrid.two { grid-template-columns:1fr 1fr; }
-  .mcell { background:${c.page}; padding:18px 20px; }
+  /* metric tiles — individually bordered + flex-wrap so there are NEVER empty grid
+     cells (a 3-col grid with 4 metrics left grey gaps). */
+  .mtiles { display:flex; flex-wrap:wrap; gap:10px; margin:0 0 24px; break-inside:avoid; }
+  .mtile { flex:1 1 150px; border:1px solid ${c.border}; border-radius:12px; padding:16px 18px; background:${c.page}; }
   .mlabel { font-family:${t.fonts.mono}; font-size:9px; letter-spacing:0.1em; color:${c.muted}; }
   .mval { font-size:22px; font-weight:800; margin-top:6px; letter-spacing:-0.01em; color:${c.inkStrong}; }
 
   /* risks */
-  .risks { display:flex; flex-direction:column; gap:12px; margin-bottom:20px; }
+  .risks { margin-bottom:20px; }
+  .risks > * + * { margin-top:12px; }
   .riskrow { display:flex; align-items:flex-start; gap:16px; border:1px solid ${c.border}; border-radius:11px; padding:16px 20px; break-inside:avoid; }
   .sev { font-family:${t.fonts.mono}; font-size:10px; font-weight:700; border:1px solid; border-radius:5px; padding:3px 9px; flex:none; margin-top:2px; }
   .risktitle { font-size:14px; font-weight:700; color:${c.inkStrong}; }
   .riskdetail { font-size:12.5px; line-height:1.6; color:${c.muted}; margin-top:4px; }
-  .riskdetail p { font-size:12.5px; line-height:1.6; margin:0 0 6px; }
+  .riskdetail p { font-size:12.5px; line-height:1.6; margin:0 0 6px; text-align:justify; }
 
   /* cards / charts / tables */
-  /* Large containers may split across a page (a huge deal/prose card taller than
-     the space under a header must NOT jump to the next page and orphan it). */
-  .card { border:1px solid ${c.border}; border-radius:14px; padding:24px 26px; margin-bottom:22px; }
+  /* Large containers may split across a page; box-decoration-break makes each
+     fragment render its own clean border/padding (a graceful "continued" look). */
+  .card { border:1px solid ${c.border}; border-radius:14px; padding:24px 26px; margin-bottom:22px; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
   .card.p0 { padding:0; overflow:hidden; }
   .chart { display:flex; align-items:flex-end; gap:14px; height:150px; margin-bottom:20px; }
   .bar { flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end; }
@@ -442,29 +448,31 @@ function css(t: PdfTheme): string {
   .sentbar span { display:block; height:100%; }
   .sentlegend { display:flex; gap:18px; margin-top:10px; font-family:${t.fonts.mono}; font-size:10px; color:${c.muted}; }
   .sentlegend i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; }
-  .mentions { display:flex; flex-direction:column; gap:12px; }
+  .mentions > * + * { margin-top:12px; }
   .mention { background:${c.tint}; border-radius:12px; padding:16px 18px; break-inside:avoid; }
   .mention-head { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
   .mention-head .dot { width:8px; height:8px; border-radius:50%; flex:none; }
   .mention-head .plat { font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:${c.muted}; }
   .mention-head .topic { font-size:12px; font-weight:600; color:${c.inkStrong}; }
-  .mention-body { font-size:12.5px; line-height:1.6; color:${c.ink}; }
+  .mention-body { font-size:12.5px; line-height:1.6; color:${c.ink}; text-align:justify; }
   .srclink { font-size:10.5px; display:inline-block; margin-top:8px; }
 
   /* deals */
-  .deal { background:${c.tint}; border-radius:14px; padding:24px 26px; margin-bottom:16px; }
+  .deal { background:${c.tint}; border-radius:14px; padding:24px 26px; margin-bottom:16px; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
   .dealname { font-size:16px; font-weight:800; color:${c.inkStrong}; }
   .dloc { font-size:11px; margin-top:3px; }
-  .deal .mgrid { margin-top:14px; background:${c.border}; }
-  .deal .mcell { background:${c.tint}; }
+  /* Individually-bordered tiles (no empty grey grid cells when there are <3). */
+  .dtiles { display:flex; flex-wrap:wrap; gap:12px; margin:14px 0 6px; }
+  .dtile { border:1px solid ${c.borderStrong}; border-radius:10px; padding:12px 18px; min-width:118px; }
 
   /* contents */
   ol.toc { list-style:none; margin:0 0 34px; padding:0; }
-  ol.toc li { display:flex; gap:16px; align-items:baseline; padding:12px 0; border-bottom:1px solid ${c.border}; font-size:16px; font-weight:600; color:${c.inkStrong}; }
+  ol.toc li { border-bottom:1px solid ${c.border}; }
+  ol.toc li a { display:flex; gap:16px; align-items:baseline; padding:12px 0; font-size:16px; font-weight:600; color:${c.inkStrong}; text-decoration:none; }
   .tocn { color:${c.accent}; font-size:12px; }
-  .mandate, .howto { background:${c.tint}; border-radius:14px; padding:22px 24px; margin-top:24px; }
-  .mrows { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
-  .mrow { display:flex; justify-content:space-between; font-size:13px; }
+  .mandate, .howto { background:${c.tint}; border-radius:14px; padding:22px 24px; margin-top:24px; break-inside:avoid; }
+  .mrows { margin-top:12px; }
+  .mrow { display:flex; justify-content:space-between; font-size:13px; margin-top:8px; }
   .mrow span { color:${c.muted}; }
   .mrow b { color:${c.inkStrong}; }
   .howto p { font-size:12.5px; line-height:1.65; color:${c.ink}; margin-top:10px; }
