@@ -219,11 +219,13 @@ p { margin: 0; }
 .badge.incomplete { color: #a06a00; border-color: #efdcb8; background: #fbf3e2; }
 
 /* report viewer prose */
-.prose { font-size: 15px; line-height: 1.7; color: var(--ink-soft); }
-.prose h1, .prose h2, .prose h3 { color: var(--ink); font-weight: 700; margin: 1.1em 0 .5em; letter-spacing: -0.01em; }
+.prose { font-size: 15px; line-height: 1.75; color: var(--ink-soft); }
+.prose p { margin: 0 0 1.1em; }
+.prose p:last-child { margin-bottom: 0; }
+.prose h1, .prose h2, .prose h3 { color: var(--ink); font-weight: 700; margin: 1.4em 0 .55em; letter-spacing: -0.01em; }
 .prose h1 { font-size: 22px; } .prose h2 { font-size: 19px; } .prose h3 { font-size: 16px; }
 .prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-.prose ul { padding-left: 20px; } .prose li { margin: 4px 0; }
+.prose ul { padding-left: 20px; margin: 0 0 1.1em; } .prose li { margin: 7px 0; }
 .prose table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; }
 .acc-item { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; background: var(--card); }
@@ -436,6 +438,28 @@ p { margin: 0; }
 .rv-table th:first-child, .rv-table td:first-child { text-align: left; }
 .rv-table__m { font-weight: 600; }
 .rv-table tr:last-child td { border-bottom: 0; }
+.rv-table__wrap { white-space: normal; max-width: 280px; }
+.rv-mult { color: var(--accent); font-weight: 700; }
+
+/* Sources — condensed ↗ links */
+.rv-sources { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.rv-sources a { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--ink-soft); text-decoration: none; line-height: 1.4; }
+.rv-sources a:hover { color: var(--accent); }
+.rv-src-arrow { color: var(--accent); font-size: 12px; flex: none; }
+
+/* Checklist with checkbox icons */
+.rv-check { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.rv-check li { display: flex; gap: 11px; align-items: flex-start; font-size: 14px; line-height: 1.5; }
+.rv-check li p { margin: 0; }
+.rv-checkbox { width: 15px; height: 15px; border: 1.5px solid var(--accent); border-radius: 3px; margin-top: 3px; flex: none; }
+
+/* Sentiment (community reviews) */
+.rv-sentbar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 8px; background: var(--line); }
+.rv-sentbar > span { display: block; height: 100%; }
+.rv-sentlegend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.rv-sentlegend span { display: inline-flex; align-items: center; gap: 6px; }
+.rv-sentlegend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.rv-mention { border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--card); padding: 12px 14px; }
 
 .rv-snapgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .rv-snaptile { background: var(--bg-alt); border-left: 3px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0; padding: 12px 14px; }

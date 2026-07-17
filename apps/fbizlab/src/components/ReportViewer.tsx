@@ -21,10 +21,10 @@ function fmtNumber(key: string | undefined, n: number): string {
 // ── Localised UI labels (report content itself is already in the report language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
 const RL: Record<Lang, Record<string, string>> = {
-  en: { sections: 'Report sections', snapshot: 'Snapshot', aiReport: 'AI analysis report', dossier: 'Generated dossier', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', criteria: 'Mandate', revenue: 'Revenue', sde: 'SDE', asking: 'Asking', location: 'Location', industry: 'Industry', priceBand: 'Price band', revenueFloor: 'Min revenue', cashFlowFloor: 'Min cash flow', financingPreference: 'Financing', realEstatePreference: 'Real estate' },
-  es: { sections: 'Secciones', snapshot: 'Resumen', aiReport: 'Reporte de análisis IA', dossier: 'Dossier generado', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Ingresos', sde: 'SDE', asking: 'Precio', location: 'Ubicación', industry: 'Industria', priceBand: 'Rango de precio', revenueFloor: 'Ingreso mín', cashFlowFloor: 'Flujo mín', financingPreference: 'Financiamiento', realEstatePreference: 'Inmueble' },
-  fr: { sections: 'Sections', snapshot: 'Aperçu', aiReport: 'Rapport d’analyse IA', dossier: 'Dossier généré', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu combiné', combinedSde: 'SDE combiné', criteria: 'Mandat', revenue: 'Revenu', sde: 'SDE', asking: 'Prix', location: 'Localisation', industry: 'Secteur', priceBand: 'Fourchette de prix', revenueFloor: 'Revenu min', cashFlowFloor: 'Cash-flow min', financingPreference: 'Financement', realEstatePreference: 'Immobilier' },
-  pt: { sections: 'Seções', snapshot: 'Resumo', aiReport: 'Relatório de análise IA', dossier: 'Dossiê gerado', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Receita', sde: 'SDE', asking: 'Preço', location: 'Localização', industry: 'Setor', priceBand: 'Faixa de preço', revenueFloor: 'Receita mín', cashFlowFloor: 'Fluxo mín', financingPreference: 'Financiamento', realEstatePreference: 'Imóvel' },
+  en: { sections: 'Report sections', snapshot: 'Snapshot', aiReport: 'AI analysis report', dossier: 'Generated dossier', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', criteria: 'Mandate', revenue: 'Revenue', sde: 'SDE', asking: 'Asking', location: 'Location', industry: 'Industry', priceBand: 'Price band', revenueFloor: 'Min revenue', cashFlowFloor: 'Min cash flow', financingPreference: 'Financing', realEstatePreference: 'Real estate', business: 'Transaction', salePrice: 'Sale price', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative' },
+  es: { sections: 'Secciones', snapshot: 'Resumen', aiReport: 'Reporte de análisis IA', dossier: 'Dossier generado', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Ingresos', sde: 'SDE', asking: 'Precio', location: 'Ubicación', industry: 'Industria', priceBand: 'Rango de precio', revenueFloor: 'Ingreso mín', cashFlowFloor: 'Flujo mín', financingPreference: 'Financiamiento', realEstatePreference: 'Inmueble', business: 'Transacción', salePrice: 'Precio de venta', multiple: 'Múltiplo', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' },
+  fr: { sections: 'Sections', snapshot: 'Aperçu', aiReport: 'Rapport d’analyse IA', dossier: 'Dossier généré', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu combiné', combinedSde: 'SDE combiné', criteria: 'Mandat', revenue: 'Revenu', sde: 'SDE', asking: 'Prix', location: 'Localisation', industry: 'Secteur', priceBand: 'Fourchette de prix', revenueFloor: 'Revenu min', cashFlowFloor: 'Cash-flow min', financingPreference: 'Financement', realEstatePreference: 'Immobilier', business: 'Transaction', salePrice: 'Prix de vente', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif' },
+  pt: { sections: 'Seções', snapshot: 'Resumo', aiReport: 'Relatório de análise IA', dossier: 'Dossiê gerado', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Receita', sde: 'SDE', asking: 'Preço', location: 'Localização', industry: 'Setor', priceBand: 'Faixa de preço', revenueFloor: 'Receita mín', cashFlowFloor: 'Fluxo mín', financingPreference: 'Financiamento', realEstatePreference: 'Imóvel', business: 'Transação', salePrice: 'Preço de venda', multiple: 'Múltiplo', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo' },
 };
 
 // ── Charts ──
@@ -168,8 +168,108 @@ function DealCard({ d, l }: { d: Obj; l: Record<string, string> }) {
   );
 }
 
+// ── Sources → condensed ↗ link list ──
+interface Source { url: string; label?: string; id?: number }
+const isSourceList = (v: unknown): v is { items: Source[] } => !!v && typeof v === 'object' && Array.isArray((v as { items?: unknown }).items) && typeof ((v as { items: Source[] }).items[0]?.url) === 'string';
+function SourceList({ items }: { items: Source[] }) {
+  return <ul className="rv-sources">{items.map((s, i) => (
+    <li key={i}><a href={s.url} target="_blank" rel="noreferrer"><span className="rv-src-arrow">↗</span>{s.label || s.url}</a></li>
+  ))}</ul>;
+}
+
+// ── Checklist → checkbox-icon items ──
+const isChecklist = (v: unknown): v is { categories: Array<{ category: string; items: string[] }> } => !!v && typeof v === 'object' && Array.isArray((v as { categories?: unknown }).categories) && Array.isArray((v as { categories: Array<{ items?: unknown }> }).categories[0]?.items);
+function Checklist({ categories }: { categories: Array<{ category: string; items: string[] }> }) {
+  return <div className="stack" style={{ gap: 20 }}>{categories.map((c, i) => (
+    <div key={i}>
+      <div className="rv-flabel">{c.category}</div>
+      <ul className="rv-check">{c.items.map((it, j) => (
+        <li key={j}><span className="rv-checkbox" /><span><Markdown remarkPlugins={[remarkGfm]} components={MD}>{it}</Markdown></span></li>
+      ))}</ul>
+    </div>
+  ))}</div>;
+}
+
+// ── Comparable transactions → table ──
+const isTransactions = (v: unknown): v is Obj[] => Array.isArray(v) && v.length > 0 && typeof v[0] === 'object' && !!v[0] && 'description' in (v[0] as Obj) && ('multiple' in (v[0] as Obj) || 'salePrice' in (v[0] as Obj) || 'revenue' in (v[0] as Obj));
+const multipleNum = (m: unknown): string | null => { const x = String(m ?? '').match(/([\d.]+)\s*x/i); return x ? `${x[1]}x` : null; };
+const clip = (s: unknown, n = 64): string => { const t = String(s ?? '').replace(/[*_#]/g, ''); return t.length > n ? `${t.slice(0, n).trim()}…` : t; };
+function TransactionsTable({ rows, l }: { rows: Obj[]; l: Record<string, string> }) {
+  return (
+    <div className="rv-table-wrap"><table className="rv-table">
+      <thead><tr><th>{l.business}</th><th>{l.location}</th><th>{l.salePrice}</th><th>{l.revenue}</th><th>{l.multiple}</th></tr></thead>
+      <tbody>{rows.map((r, i) => {
+        const mult = multipleNum(r.multiple);
+        return (
+          <tr key={i}>
+            <td className="rv-table__m rv-table__wrap">{clip(r.business ?? r.description)}</td>
+            <td>{typeof r.location === 'string' ? r.location : '—'}</td>
+            <td>{isNum(r.salePrice) ? money(r.salePrice) : '—'}</td>
+            <td>{isNum(r.revenue) ? money(r.revenue) : '—'}</td>
+            <td className="rv-mult">{mult ?? '—'}</td>
+          </tr>
+        );
+      })}</tbody>
+    </table></div>
+  );
+}
+
+// ── Community reviews → sentiment indicators + condensed mentions ──
+const SENT: Record<string, string> = { positive: '#3d8b5a', neutral: '#c9bfa8', mixed: '#a06a00', negative: '#c0392b' };
+interface Mention { platform?: string; url?: string; topic?: string; summary?: string; sentiment?: string }
+const hasMentions = (v: unknown): v is { overview?: string; mentions: Mention[] } => !!v && typeof v === 'object' && Array.isArray((v as { mentions?: unknown }).mentions);
+function CommunitySentiment({ v, l }: { v: { overview?: string; mentions: Mention[] }; l: Record<string, string> }) {
+  const mentions = v.mentions ?? [];
+  const total = mentions.length;
+  const c = { positive: 0, neutral: 0, negative: 0 };
+  for (const m of mentions) {
+    if (m.sentiment === 'positive') c.positive++;
+    else if (m.sentiment === 'negative') c.negative++;
+    else c.neutral++;
+  }
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  const net = pct(c.positive) - pct(c.negative);
+  return (
+    <div>
+      <div className="rv-tiles">
+        <div className="rv-tile"><div className="rv-tile__v">{total}</div><div className="rv-tile__l">{l.mentions}</div></div>
+        <div className="rv-tile"><div className="rv-tile__v" style={{ color: net >= 0 ? 'var(--positive)' : 'var(--risk)' }}>{net >= 0 ? '+' : ''}{net}</div><div className="rv-tile__l">{l.netSentiment}</div></div>
+      </div>
+      {total > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div className="rv-flabel">{l.sentimentDist}</div>
+          <div className="rv-sentbar">
+            <span style={{ width: `${pct(c.positive)}%`, background: SENT.positive }} />
+            <span style={{ width: `${pct(c.neutral)}%`, background: SENT.neutral }} />
+            <span style={{ width: `${pct(c.negative)}%`, background: SENT.negative }} />
+          </div>
+          <div className="rv-sentlegend">
+            <span><i style={{ background: SENT.positive }} />{l.positive} {pct(c.positive)}%</span>
+            <span><i style={{ background: SENT.neutral }} />{l.neutral} {pct(c.neutral)}%</span>
+            <span><i style={{ background: SENT.negative }} />{l.negative} {pct(c.negative)}%</span>
+          </div>
+        </div>
+      )}
+      {v.overview && <div style={{ marginTop: 18 }}><Prose md={v.overview} /></div>}
+      {mentions.length > 0 && (
+        <div className="stack" style={{ gap: 12, marginTop: 16 }}>{mentions.map((m, i) => (
+          <div key={i} className="rv-mention">
+            <div className="between" style={{ alignItems: 'center' }}>
+              <span className="mono muted" style={{ fontSize: 11 }}>{m.platform}</span>
+              {m.sentiment && <span style={{ color: SENT[m.sentiment] ?? 'var(--muted)', fontSize: 12 }}>●</span>}
+            </div>
+            {m.topic && <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{m.topic}</div>}
+            {m.summary && <Prose md={m.summary} />}
+            {m.url && <a className="mono accent" style={{ fontSize: 11 }} href={m.url} target="_blank" rel="noreferrer">↗</a>}
+          </div>
+        ))}</div>
+      )}
+    </div>
+  );
+}
+
 /** Generic value renderer for arbitrary nested report fields. */
-function Value({ v, k }: { v: unknown; k?: string }) {
+function Value({ v, k, l }: { v: unknown; k?: string; l: Record<string, string> }) {
   if (v == null || v === '') return null;
   if (isChartSpec(v)) return <ChartSpecRender spec={v} />;
   if (typeof v === 'string') return <Prose md={v} />;
@@ -179,25 +279,29 @@ function Value({ v, k }: { v: unknown; k?: string }) {
     if (!v.length) return null;
     if (v.every(isRisk)) return <RiskList items={v as Risk[]} />;
     if (v.every(isMetric)) return <MetricTiles items={v as Metric[]} />;
+    if (isTransactions(v)) return <TransactionsTable rows={v} l={l} />;
     if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{x as string}</Markdown></li>)}</ul>;
-    return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="card" style={{ padding: 14 }}><ObjectFields o={x as Obj} /></div>)}</div>;
+    return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="card" style={{ padding: 14 }}><ObjectFields o={x as Obj} l={l} /></div>)}</div>;
   }
   if (typeof v === 'object') {
+    if (isSourceList(v)) return <SourceList items={v.items} />;
+    if (isChecklist(v)) return <Checklist categories={v.categories} />;
+    if (hasMentions(v)) return <CommunitySentiment v={v} l={l} />;
     if (isProjection(v)) return <ProjectionView t={v} />;
-    return <ObjectFields o={v as Obj} />;
+    return <ObjectFields o={v as Obj} l={l} />;
   }
   return null;
 }
 
 /** Object → labelled field blocks. */
-function ObjectFields({ o }: { o: Obj }) {
+function ObjectFields({ o, l }: { o: Obj; l: Record<string, string> }) {
   const entries = Object.entries(o).filter(([, val]) => val != null && val !== '');
   return (
     <div className="stack" style={{ gap: 12 }}>
       {entries.map(([k, val]) => (
         <div key={k}>
           <div className="rv-flabel">{humanizeKey(k)}</div>
-          <Value v={val} k={k} />
+          <Value v={val} k={k} l={l} />
         </div>
       ))}
     </div>
@@ -211,9 +315,9 @@ function SectionBody({ v, l }: { v: unknown; l: Record<string, string> }) {
     if (v.length && typeof v[0] === 'object' && v[0] && 'business' in (v[0] as Obj)) {
       return <div className="stack" style={{ gap: 14 }}>{(v as Obj[]).map((d, i) => <DealCard key={i} d={d} l={l} />)}</div>;
     }
-    return <Value v={v} />;
+    return <Value v={v} l={l} />;
   }
-  return <Value v={v} />;
+  return <Value v={v} l={l} />;
 }
 
 // ── Snapshot (right rail) ──
