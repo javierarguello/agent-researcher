@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { pick, useLang, type Lang } from '../i18n';
 import { useAuth } from '../auth/AuthContext';
-import { useBalance, useJobs, useMyStats } from '../api/hooks';
+import { useBalance, useJobs, useMyStats, useTemplates } from '../api/hooks';
 import type { JobStatus } from '../api/types';
 
 const T = {
@@ -85,7 +85,10 @@ export function Reports() {
   const jobs = useJobs();
   const balance = useBalance();
   const stats = useMyStats();
+  const templates = useTemplates(lang);
   const nav = useNavigate();
+  // Map a live job's progress phase → its localized step label (from the manifest).
+  const stepMap: Record<string, string> = Object.fromEntries((templates.data?.templates?.[0]?.steps ?? []).map((s) => [s.id, s.label]));
 
   const list = jobs.data?.jobs ?? [];
   // Stat tiles come from the server-side per-user aggregate (accurate over ALL
@@ -172,7 +175,12 @@ export function Reports() {
                   </div>
                   <div className="dash-row__title">{j.title ?? j.jobId.slice(0, 8)}</div>
                   {meta && <div className="dash-row__meta mono">{meta}</div>}
-                  {j.status === 'running' && <div className="dash-row__bar"><span /></div>}
+                  {LIVE.includes(j.status) && (
+                    <>
+                      {j.progress && <div className="dash-row__step">{stepMap[j.progress.phase] ?? j.progress.phase}</div>}
+                      <div className="dash-row__bar"><span /></div>
+                    </>
+                  )}
                 </div>
                 <div onClick={(e) => e.stopPropagation()}>
                   {TERMINAL.includes(j.status) && <button className="btn btn--black btn--sm" onClick={open}>{t.open}</button>}

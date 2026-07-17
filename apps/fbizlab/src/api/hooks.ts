@@ -11,7 +11,12 @@ export function useTemplate(id: string | null, lang: string) {
   return useQuery({ queryKey: ['template', id, lang], enabled: !!id, queryFn: () => api<TemplateManifest>(`/templates/${encodeURIComponent(id!)}?lang=${lang}`), staleTime: 5 * 60_000 });
 }
 export function useJobs() {
-  return useQuery({ queryKey: ['jobs'], queryFn: () => api<{ jobs: JobListItem[] }>('/research') });
+  return useQuery({
+    queryKey: ['jobs'],
+    queryFn: () => api<{ jobs: JobListItem[] }>('/research'),
+    // Poll while any job is live so the dashboard shows the current step in real time.
+    refetchInterval: (q) => ((q.state.data as { jobs: JobListItem[] } | undefined)?.jobs.some((j) => LIVE.has(j.status)) ? 5000 : false),
+  });
 }
 export function useJob(jobId: string) {
   return useQuery({

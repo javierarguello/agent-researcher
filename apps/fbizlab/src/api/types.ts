@@ -32,6 +32,7 @@ export interface JobListItem {
   title: string | null;
   shortDescription: string | null;
   status: JobStatus;
+  progress?: { phase: string; message: string } | null;
   cost: Cost | null;
   createdAt: string;
   updatedAt: string;

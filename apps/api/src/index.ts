@@ -448,6 +448,8 @@ app.get(
         title: j.title ?? null,
         shortDescription: j.shortDescription ?? null,
         status: j.status,
+        // Client-facing progress so the inbox can show the live step (no internals).
+        progress: j.progress ? { phase: j.progress.phase, message: j.progress.message } : null,
         // Cost is internal — only admins see it.
         ...(isAdmin ? { cost: j.cost ?? null } : {}),
         createdAt: j.createdAt,

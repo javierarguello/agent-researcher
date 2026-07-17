@@ -306,7 +306,8 @@ p { margin: 0; }
 .dash-row__id { display: flex; align-items: center; gap: 10px; font-size: 11px; }
 .dash-row__title { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; margin: 6px 0 4px; }
 .dash-row__meta { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.dash-row__bar { height: 4px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 10px; max-width: 320px; }
+.dash-row__step { font-family: var(--mono); font-size: 11px; color: var(--accent); margin-top: 6px; }
+.dash-row__bar { height: 4px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 8px; max-width: 320px; }
 .dash-row__bar > span { display: block; height: 100%; width: 38%; background: var(--accent); border-radius: 3px; animation: dashbar 1.5s ease-in-out infinite; }
 @keyframes dashbar { 0% { margin-left: -38%; } 100% { margin-left: 100%; } }
 
