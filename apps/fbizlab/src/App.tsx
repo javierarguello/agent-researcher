@@ -12,10 +12,10 @@ import { Credits } from './pages/Credits';
 import { ReadReport } from './pages/ReadReport';
 
 const TITLES: Record<string, string> = {
-  en: 'Florida Biz Labs — Discover Florida business opportunities with AI',
-  es: 'Florida Biz Labs — Descubre oportunidades de negocio en Florida con IA',
-  fr: 'Florida Biz Labs — Découvrez des opportunités d’affaires en Floride avec l’IA',
-  pt: 'Florida Biz Labs — Descubra oportunidades de negócio na Flórida com IA',
+  en: 'Florida Biz Labs — Research businesses for sale in Florida',
+  es: 'Florida Biz Labs — Investiga negocios en venta en Florida',
+  fr: 'Florida Biz Labs — Recherchez des entreprises à vendre en Floride',
+  pt: 'Florida Biz Labs — Pesquise negócios à venda na Flórida',
 };
 
 export function App() {
