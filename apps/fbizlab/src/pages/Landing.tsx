@@ -264,11 +264,11 @@ export function Landing() {
               <h5>{c.foot.productL}</h5>
               <a href="#top" onClick={(e) => { e.preventDefault(); go(); }}>{c.foot.product[0]}</a>
               <a href="#inside" onClick={scrollTo('inside')}>{c.foot.product[1]}</a>
-              <a href="#pricing" onClick={scrollTo('pricing')}>{c.foot.product[2]}</a>
+              <Link to="/api-access">{c.foot.product[2]}</Link>
             </div>
             <div className="col">
               <h5>{c.foot.companyL}</h5>
-              {c.foot.company.map((x) => <a key={x} href="#top">{x}</a>)}
+              {['/privacy', '/legal', '/support'].map((href, i) => <Link key={href} to={href}>{c.foot.company[i]}</Link>)}
             </div>
           </div>
         </div>

@@ -85,8 +85,8 @@ export function renderLandingStatic(lang) {
 
   const footer = `<footer class="foot"><div class="container"><div class="cols">
     <div><div class="brand" style="margin-bottom:14px">${logo}${esc(BRAND)}</div><p class="disclaimer">${esc(c.foot.disclaimer)}</p></div>
-    <div class="col"><h5>${esc(c.foot.productL)}</h5><a href="/login">${esc(c.foot.product[0])}</a><a href="#inside">${esc(c.foot.product[1])}</a><a href="#pricing">${esc(c.foot.product[2])}</a></div>
-    <div class="col"><h5>${esc(c.foot.companyL)}</h5>${c.foot.company.map((x) => `<a href="#top">${esc(x)}</a>`).join('')}</div>
+    <div class="col"><h5>${esc(c.foot.productL)}</h5><a href="/login">${esc(c.foot.product[0])}</a><a href="#inside">${esc(c.foot.product[1])}</a><a href="/api-access">${esc(c.foot.product[2])}</a></div>
+    <div class="col"><h5>${esc(c.foot.companyL)}</h5>${['/privacy', '/legal', '/support'].map((href, i) => `<a href="${href}">${esc(c.foot.company[i])}</a>`).join('')}</div>
   </div></div></footer>`;
 
   return `<div>${header}${hero}${wwd}${benefits}${hiw}${insum}${pricing}${usage}${faq}${cta}${footer}</div>`;

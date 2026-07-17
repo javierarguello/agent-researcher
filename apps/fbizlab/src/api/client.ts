@@ -118,6 +118,12 @@ export function resetPassword(token: string, password: string): Promise<SessionR
   return api('/auth/reset-password', { method: 'POST', anonymous: true, body: { token, password } });
 }
 
+/** Send a contact / API-access request. If the user is logged in, the stored
+ *  session token is included so the server can note their account. */
+export function contactRequest(payload: { subject?: string; name: string; email: string; message: string }): Promise<{ status: string }> {
+  return api('/contact', { method: 'POST', body: { appId: config.appId, ...payload } });
+}
+
 export function qs(params: Record<string, string | number | undefined | null>): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');
   return entries.length ? `?${entries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&')}` : '';

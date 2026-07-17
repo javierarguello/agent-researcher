@@ -158,7 +158,7 @@ export type { UserCredential, AuthProvider } from './auth/users.js';
 // Transactional email (shared Postmark, per-app From)
 export { sendAppEmail, EmailNotConfiguredError } from './email/postmark.js';
 export type { SendEmailInput } from './email/postmark.js';
-export { verifyEmailTemplate, resetPasswordTemplate } from './email/templates.js';
+export { verifyEmailTemplate, resetPasswordTemplate, reportReadyTemplate } from './email/templates.js';
 
 import { z } from 'zod';
 import { getTemplate } from './templates/registry.js';

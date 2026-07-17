@@ -422,6 +422,75 @@ app.post(
   },
 );
 
+app.post(
+  '/contact',
+  {
+    schema: {
+      summary: 'Contact / API-access request — emails the internal team from the app',
+      description:
+        "Sends a contact request to the app's internal inbox (configured server-side, never exposed) from the app's " +
+        'own From address, with reply-to set to the requester. If a valid session token is sent, the account email is ' +
+        'included. Generic across apps.',
+      tags: ['contact'],
+      body: {
+        type: 'object',
+        required: ['appId', 'name', 'email', 'message'],
+        additionalProperties: false,
+        properties: {
+          appId: { type: 'string', minLength: 1, maxLength: 128 },
+          subject: { type: 'string', maxLength: 200 },
+          name: { type: 'string', minLength: 1, maxLength: 200 },
+          email: { type: 'string', minLength: 3, maxLength: 320 },
+          message: { type: 'string', minLength: 1, maxLength: 5000 },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const b = req.body as { appId: string; subject?: string; name: string; email: string; message: string };
+    const appRec = await getApp(b.appId);
+    if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
+    if (!appRec.emailFrom) return reply.code(500).send({ error: 'Contact is not configured for this app.' });
+
+    // Optional: if a valid session token came along, note the logged-in account.
+    let account = '';
+    const authz = req.headers.authorization;
+    if (typeof authz === 'string' && authz.startsWith('Bearer ')) {
+      try {
+        const c = await verifySession(authz.slice(7).trim());
+        account = `${c.email} · role ${c.role}`;
+      } catch {
+        /* ignore invalid token — treat as anonymous */
+      }
+    }
+
+    const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const row = (k: string, v: string) => `<tr><td style="padding:4px 12px 4px 0;color:#6b6860;font-size:13px;vertical-align:top">${k}</td><td style="padding:4px 0;font-size:14px;color:#2a2824"><b>${esc(v)}</b></td></tr>`;
+    const html =
+      `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#2a2824">` +
+      `<h2 style="font-size:18px;margin:0 0 14px">Solicitud de información — ${esc(appRec.name)}</h2>` +
+      `<table style="border-collapse:collapse">${row('Asunto', b.subject || '—')}${row('Nombre', b.name)}${row('Email', b.email)}${account ? row('Cuenta', account) : ''}</table>` +
+      `<div style="margin-top:16px;padding-top:14px;border-top:1px solid #e5dfd4;font-size:14px;line-height:1.6;white-space:pre-wrap">${esc(b.message)}</div></div>`;
+    const text = `Solicitud de información — ${appRec.name}\n\nAsunto: ${b.subject || '—'}\nNombre: ${b.name}\nEmail: ${b.email}${account ? `\nCuenta: ${account}` : ''}\n\n${b.message}`;
+
+    try {
+      await sendAppEmail({
+        app: appRec,
+        to: config.email.contactInbox,
+        subject: `Solicitud de Info ${appRec.name}`,
+        htmlBody: html,
+        textBody: text,
+        replyTo: b.email,
+      });
+    } catch (err) {
+      logEvent({ jobId: '-', appId: appRec.appId, userId: b.email }, 'ERROR', 'contact.send_failed', { error: (err as Error).message });
+      return reply.code(502).send({ error: 'Could not send your message. Please try again.' });
+    }
+    logEvent({ jobId: '-', appId: appRec.appId, userId: b.email }, 'INFO', 'contact.request', { subject: b.subject ?? '' });
+    return reply.code(202).send({ status: 'sent' });
+  },
+);
+
 // --- Templates --------------------------------------------------------------
 const langQuery = {
   lang: {

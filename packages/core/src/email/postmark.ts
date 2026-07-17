@@ -16,6 +16,7 @@ export interface SendEmailInput {
   htmlBody: string;
   textBody?: string;
   replyTo?: string;
+  cc?: string;
 }
 
 export class EmailNotConfiguredError extends Error {
@@ -50,6 +51,7 @@ export async function sendAppEmail(input: SendEmailInput): Promise<void> {
       HtmlBody: input.htmlBody,
       ...(input.textBody ? { TextBody: input.textBody } : {}),
       ...(input.replyTo ? { ReplyTo: input.replyTo } : {}),
+      ...(input.cc ? { Cc: input.cc } : {}),
       MessageStream: config.email.messageStream,
     }),
   });

@@ -12,6 +12,8 @@ import { Credits } from './pages/Credits';
 import { ReadReport } from './pages/ReadReport';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { ResetPassword } from './pages/ResetPassword';
+import { Privacy, Terms, Support } from './pages/Legal';
+import { ApiAccess } from './pages/ApiAccess';
 
 const TITLES: Record<string, string> = {
   en: 'Florida Biz Labs — Research businesses for sale in Florida',
@@ -42,6 +44,10 @@ export function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/verify" element={<VerifyEmail />} />
       <Route path="/reset" element={<ResetPassword />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/legal" element={<Terms />} />
+      <Route path="/support" element={<Support />} />
+      <Route path="/api-access" element={<ApiAccess />} />
       {/* Admin read-only report link (?rt=token) — auth is the token itself. */}
       <Route path="/report/:jobId" element={<ReadReport />} />
       <Route path="/app" element={<RequireAuth />}>

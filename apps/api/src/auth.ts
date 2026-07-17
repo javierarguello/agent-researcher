@@ -20,7 +20,7 @@ declare module 'fastify' {
   }
 }
 
-const PUBLIC_PREFIXES = ['/health', '/docs', '/credits/webhook', '/auth', '/plans'];
+const PUBLIC_PREFIXES = ['/health', '/docs', '/credits/webhook', '/auth', '/plans', '/contact'];
 
 function isPublic(url: string): boolean {
   const path = url.split('?')[0] ?? url;

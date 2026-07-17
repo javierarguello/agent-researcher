@@ -87,6 +87,9 @@ export const config = {
     postmarkToken: str('POSTMARK_SERVER_TOKEN'),
     /** Postmark message stream (transactional). */
     messageStream: str('POSTMARK_MESSAGE_STREAM', 'outbound'),
+    /** Internal inbox that contact-form / API-access requests are delivered to.
+     *  Never exposed to the frontend. Shared across all apps. */
+    contactInbox: str('CONTACT_INBOX', 'management@specialtyperks.com'),
   },
   cors: {
     /** Comma-separated allowed origins for the static web frontends; "*" for dev. */

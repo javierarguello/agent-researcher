@@ -49,6 +49,21 @@ export function verifyEmailTemplate(appName: string, url: string): AccountEmail 
   };
 }
 
+export function reportReadyTemplate(appName: string, reportTitle: string, url: string): AccountEmail {
+  const title = reportTitle?.trim() || 'Your research summary';
+  return {
+    subject: `Your ${appName} report is ready — ${title}`,
+    html: shell(
+      appName,
+      'Your report is ready',
+      `Your research summary <strong>${title.replace(/[<>&]/g, '')}</strong> has finished generating and is ready to view.`,
+      { label: 'View report', url },
+      `AI-generated research for informational purposes. Always refer to the original listings and verify figures independently before acting.`,
+    ),
+    text: `Your ${appName} report is ready\n\n${title} has finished generating. View it: ${url}\n\nAI-generated research — verify independently before acting.`,
+  };
+}
+
 export function resetPasswordTemplate(appName: string, url: string): AccountEmail {
   return {
     subject: `Reset your ${appName} password`,

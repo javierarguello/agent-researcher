@@ -306,13 +306,13 @@ export function Login() {
               <h5>{t.footProduct}</h5>
               <a href="/#benefits">{t.footLinks.discovery}</a>
               <a href="/#inside">{t.footLinks.reports}</a>
-              <a href="/#pricing">{t.footLinks.api}</a>
+              <Link to="/api-access">{t.footLinks.api}</Link>
             </div>
             <div className="col">
               <h5>{t.footCompany}</h5>
-              <a href="/#">{t.footLinks.privacy}</a>
-              <a href="/#">{t.footLinks.legal}</a>
-              <a href="/#">{t.footLinks.support}</a>
+              <Link to="/privacy">{t.footLinks.privacy}</Link>
+              <Link to="/legal">{t.footLinks.legal}</Link>
+              <Link to="/support">{t.footLinks.support}</Link>
             </div>
           </div>
         </div>

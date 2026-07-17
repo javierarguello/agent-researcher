@@ -11,8 +11,19 @@
  * instances up to the queue's cap.
  */
 import Fastify from 'fastify';
-import { config, getJob, runJob } from '@agent-researcher/core';
+import { config, getApp, getJob, runJob, sendAppEmail, reportReadyTemplate } from '@agent-researcher/core';
 import { renderJobPdf } from './pdf.js';
+
+/** Notify the user by email that their report is ready (best-effort). */
+async function notifyReportReady(jobId: string): Promise<void> {
+  const job = await getJob(jobId);
+  if (!job) return;
+  const app = await getApp(job.appId);
+  if (!app?.emailFrom || !app.webUrl) return; // email not configured for this app
+  const link = `${app.webUrl}/app/jobs/${jobId}`;
+  const tpl = reportReadyTemplate(app.name, job.title ?? '', link);
+  await sendAppEmail({ app, to: job.userId, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text });
+}
 
 const app = Fastify({ logger: { level: config.server.logLevel } });
 
@@ -67,6 +78,10 @@ app.post('/run', async (req, reply) => {
     // Tasks re-dispatches with backoff and runJob resumes from its checkpoint.
     if (result.status === 'incomplete') {
       return reply.code(503).send({ status: 'incomplete' });
+    }
+    // Email the user their report is ready (best-effort — never fail the job on it).
+    if (result.status === 'completed') {
+      await notifyReportReady(jobId).catch((err) => app.log.warn({ err, jobId }, 'worker: report-ready email failed'));
     }
     // Ack (200) on completed/failed — runJob already recorded the outcome. Retrying
     // a finished job would just burn tokens.
