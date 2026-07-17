@@ -588,3 +588,37 @@ p { margin: 0; }
 .legal .legal-sec h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 8px; }
 .legal .legal-sec p { font-size: 14.5px; line-height: 1.7; color: var(--ink-soft); margin: 0 0 10px; max-width: 46rem; }
 @media (max-width: 640px) { .legal { padding: 40px 20px 60px; } }
+
+/* Landing/legal/contact header on small screens: keep brand + lang + button on
+   one line (the .row was wrapping the lang switcher above the button). */
+@media (max-width: 560px) {
+  .hdr .container { padding: 0 12px; gap: 8px; }
+  .hdr .brand { font-size: 13px; gap: 6px; letter-spacing: -0.02em; }
+  .hdr .brand .brand-mark { width: 20px; height: 20px; }
+  .hdr .row { flex-wrap: nowrap; gap: 6px; flex: none; }
+  .hdr .langseg button { padding: 3px 5px; font-size: 8.5px; letter-spacing: 0; }
+  .hdr .btn--sm { padding: 7px 10px; font-size: 9px; }
+}
+
+/* ---- Mobile landing polish: bigger headings, roomier sections, no h-scroll ---- */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; max-width: 100%; }   /* stop stray h-overflow pushing the header off */
+  .container { padding: 0 20px; }
+  /* Let flex/grid children shrink instead of forcing the page wider than the
+     viewport (min-width:auto is the usual cause of mobile h-scroll). */
+  .hero { grid-template-columns: 1fr; }
+  .stack, .hero > div, .split > div, .row, .between > * { min-width: 0; }
+  .h-xl, .h-lg, .lead, .eyebrow, p { overflow-wrap: break-word; }
+  .section { padding: 66px 0; }                      /* more air between sections */
+  .h-xl { font-size: clamp(40px, 11vw, 52px); line-height: 1.02; }
+  .h-lg { font-size: 30px; line-height: 1.12; }      /* section headings a touch larger */
+  .lead { font-size: 15.5px; line-height: 1.68; max-width: 100%; }
+  .eyebrow { letter-spacing: 0.14em; }               /* long eyebrows wrap cleanly */
+  .hero { gap: 32px; padding-top: 40px; padding-bottom: 56px; }
+  .split { gap: 28px; }
+  .bcell h4, .hcard h4 { font-size: 16.5px; }
+  .bcell p, .hcell p, .hcard p { font-size: 14px; }
+  .sumitem { font-size: 14.5px; padding: 16px 0; }
+  .faqq { font-size: 15.5px; padding: 20px 0; }
+  .sample { max-width: 100%; }
+}

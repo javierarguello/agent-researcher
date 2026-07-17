@@ -110,16 +110,16 @@ export function Reports() {
           <p className="soft" style={{ fontSize: 14.5, maxWidth: 470 }}>{t.sub}</p>
         </div>
         <div className="row" style={{ gap: 12 }}>
-          <Link className="btn btn--outline" to="/app/credits">{t.buyCredits}</Link>
           <Link className="btn btn--black" to="/app/new">+ {t.newReport}</Link>
         </div>
       </div>
 
       <div className="dash-stats">
-        <div>
+        <div className="dash-stat--credits">
           <div className="dash-stat__lbl">{t.creditsLbl}</div>
           <div className="dash-stat__val accent">{bal ?? '…'}</div>
           <div className="dash-stat__sub">{t.creditsSub}</div>
+          <Link className="btn btn--black btn--sm" to="/app/credits" style={{ marginTop: 14 }}>{t.buyMore}</Link>
         </div>
         <div>
           <div className="dash-stat__lbl">{t.totalLbl}</div>
@@ -136,17 +136,6 @@ export function Reports() {
           <div className="dash-stat__val">{inProgress}</div>
           <div className="dash-stat__sub">{t.progressSub}</div>
         </div>
-      </div>
-
-      <div className="card dash-balance">
-        <div>
-          <div className="eyebrow" style={{ color: 'var(--accent)' }}>{t.yourBalance}</div>
-          <div style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.02em' }}>{bal ?? '…'}</span>{' '}
-            <span className="soft" style={{ fontSize: 14 }}>{t.creditsAvailable}</span>
-          </div>
-        </div>
-        <Link className="btn btn--black" to="/app/credits">{t.buyMore}</Link>
       </div>
 
       <div className="stack" style={{ gap: 4 }}>

@@ -25,6 +25,7 @@ const T = {
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
     youHave: 'You have', creditsLeft: 'credits',
     notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits', alreadyRunning: 'You already have a report in progress — wait for it to finish before starting another.',
+    rejected: 'Your request couldn’t be submitted:', emailNotice: 'We’ll email you when your report is ready.',
     noCredits: 'Not enough credits — buy more first.', yes: 'Yes',
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
@@ -45,6 +46,7 @@ const T = {
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
     youHave: 'Tienes', creditsLeft: 'créditos',
     notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos', alreadyRunning: 'Ya tienes un reporte en progreso — espera a que termine antes de iniciar otro.',
+    rejected: 'No pudimos enviar tu solicitud:', emailNotice: 'Te enviaremos un email cuando tu reporte esté listo.',
     noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí',
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -65,6 +67,7 @@ const T = {
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
     youHave: 'Vous avez', creditsLeft: 'crédits',
     notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits', alreadyRunning: 'Vous avez déjà un rapport en cours — attendez qu’il se termine avant d’en lancer un autre.',
+    rejected: 'Votre demande n’a pas pu être envoyée :', emailNotice: 'Nous vous enverrons un email quand votre rapport sera prêt.',
     noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui',
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -85,6 +88,7 @@ const T = {
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
     youHave: 'Você tem', creditsLeft: 'créditos',
     notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos', alreadyRunning: 'Você já tem um relatório em andamento — aguarde ele terminar antes de iniciar outro.',
+    rejected: 'Não foi possível enviar sua solicitação:', emailNotice: 'Enviaremos um email quando seu relatório estiver pronto.',
     noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim',
     modeDesc: { essential: 'Seções principais. Cerca da metade do custo. Ótimo para triagem inicial.', comprehensive: 'Dossiê longo completo: valuations, comparáveis, due diligence, playbook.' } as Record<string, string>,
   },
@@ -232,10 +236,12 @@ export function NewReport() {
       clearDraft();
       nav(`/app/jobs/${res.jobId}`);
     } catch (err) {
+      setConfirming(false); // surface the error on the form, not the dialog
       setError(
         err instanceof ApiError && err.status === 402 ? t.noCredits
           : err instanceof ApiError && err.status === 409 ? t.alreadyRunning
-            : err instanceof ApiError ? err.message : 'Failed.',
+            : err instanceof ApiError && err.status === 422 ? `${t.rejected} ${err.message}`
+              : err instanceof ApiError ? err.message : 'Failed.',
       );
     }
   }
@@ -432,6 +438,7 @@ export function NewReport() {
                 <button className="btn btn--black" disabled={create.isPending} onClick={insufficient ? goBuy : submit}>{insufficient ? t.buyCredits : t.confirmGenerate}</button>
               </div>
               <div className="mono muted" style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', textAlign: 'center', marginTop: 12 }}>{t.delivered}</div>
+              <div className="soft" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 10, lineHeight: 1.5 }}>✉ {t.emailNotice}</div>
             </div>
           </div>
         </div>

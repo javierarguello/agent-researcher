@@ -160,6 +160,10 @@ export { sendAppEmail, EmailNotConfiguredError } from './email/postmark.js';
 export type { SendEmailInput } from './email/postmark.js';
 export { verifyEmailTemplate, resetPasswordTemplate, reportReadyTemplate } from './email/templates.js';
 
+// Pre-submission moderation of research params (prompt-injection + profanity gate)
+export { moderateResearchParams, preScreen, collectFreeText } from './moderation/moderate.js';
+export type { ModerationVerdict } from './moderation/moderate.js';
+
 import { z } from 'zod';
 import { getTemplate } from './templates/registry.js';
 

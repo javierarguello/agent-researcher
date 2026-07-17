@@ -14,6 +14,7 @@ export default defineConfig({
       STRIPE_SECRET_KEY: 'sk_test_x',
       STRIPE_WEBHOOK_SECRET: 'whsec_test',
       POSTMARK_SERVER_TOKEN: 'test-postmark-token',
+      MODERATION_LLM: 'false',
       LOG_LEVEL: 'silent',
     },
   },

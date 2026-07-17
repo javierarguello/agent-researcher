@@ -43,6 +43,7 @@ import {
   updateApp,
   updateSettings,
   validateRequest,
+  moderateResearchParams,
   resolveMode,
   getModelPricing,
   setModelPricing,
@@ -672,6 +673,21 @@ app.post(
           scope: rl.violation.scope,
           limit: rl.violation.limit,
           used: rl.violation.count,
+        });
+      }
+    }
+
+    // Content moderation: reject prompt-injection / profanity / off-topic params
+    // BEFORE spending credits or creating a job. Cheapest model; fails open on an
+    // LLM outage (the engine still fences user instructions as low-authority).
+    if (req.auth!.role !== 'admin') {
+      const verdict = await moderateResearchParams(validated.params);
+      if (!verdict.ok) {
+        logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories ?? [] });
+        return reply.code(422).send({
+          error: verdict.reason ?? 'Your request was rejected by our content filter. Please review and re-enter your details.',
+          code: 'params_rejected',
+          categories: verdict.categories,
         });
       }
     }

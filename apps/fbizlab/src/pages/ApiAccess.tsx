@@ -11,6 +11,7 @@ const MARK = '/icons/favicon.svg';
 const T = {
   en: {
     eyebrow: 'API & MCP', title: 'API & MCP access', login: 'Log In', home: '← Home',
+    eyebrowInfo: 'Contact', titleInfo: 'Request information', leadInfo: 'Have a question or want more information? Send us a message and we’ll get back to you.',
     lead: `Contact us for more information about API or MCP access to ${BRAND}.`,
     subject: 'Subject', subjectPh: 'What do you need?', name: 'Name', namePh: 'Your name',
     email: 'Contact email', emailPh: 'you@company.com', message: 'Message', messagePh: 'Tell us a bit about your use case…',
@@ -20,6 +21,7 @@ const T = {
   },
   es: {
     eyebrow: 'API y MCP', title: 'Acceso a API y MCP', login: 'Ingresar', home: '← Inicio',
+    eyebrowInfo: 'Contacto', titleInfo: 'Solicitar información', leadInfo: '¿Tienes una pregunta o quieres más información? Envíanos un mensaje y te respondemos.',
     lead: `Contáctanos para más información sobre acceso a API o MCP de ${BRAND}.`,
     subject: 'Asunto', subjectPh: '¿Qué necesitas?', name: 'Nombre', namePh: 'Tu nombre',
     email: 'Email de contacto', emailPh: 'tú@empresa.com', message: 'Mensaje', messagePh: 'Cuéntanos un poco sobre tu caso de uso…',
@@ -29,6 +31,7 @@ const T = {
   },
   fr: {
     eyebrow: 'API et MCP', title: 'Accès API et MCP', login: 'Se connecter', home: '← Accueil',
+    eyebrowInfo: 'Contact', titleInfo: 'Demander des informations', leadInfo: 'Une question ou besoin d’informations ? Envoyez-nous un message et nous vous répondrons.',
     lead: `Contactez-nous pour plus d’informations sur l’accès API ou MCP à ${BRAND}.`,
     subject: 'Objet', subjectPh: 'De quoi avez-vous besoin ?', name: 'Nom', namePh: 'Votre nom',
     email: 'Email de contact', emailPh: 'vous@entreprise.com', message: 'Message', messagePh: 'Parlez-nous de votre cas d’usage…',
@@ -38,6 +41,7 @@ const T = {
   },
   pt: {
     eyebrow: 'API e MCP', title: 'Acesso a API e MCP', login: 'Entrar', home: '← Início',
+    eyebrowInfo: 'Contato', titleInfo: 'Solicitar informações', leadInfo: 'Tem uma pergunta ou quer mais informações? Envie uma mensagem e retornaremos.',
     lead: `Fale conosco para mais informações sobre acesso a API ou MCP da ${BRAND}.`,
     subject: 'Assunto', subjectPh: 'Do que você precisa?', name: 'Nome', namePh: 'Seu nome',
     email: 'Email de contato', emailPh: 'voce@empresa.com', message: 'Mensagem', messagePh: 'Conte um pouco sobre seu caso de uso…',
@@ -47,11 +51,14 @@ const T = {
   },
 };
 
-export function ApiAccess() {
+function ContactForm({ variant }: { variant: 'api' | 'info' }) {
   const { lang } = useLang();
   const t = pick(T, lang);
   const { user } = useAuth();
   const homeHref = lang === 'en' ? '/' : `/${lang}`;
+  const eyebrow = variant === 'info' ? t.eyebrowInfo : t.eyebrow;
+  const heading = variant === 'info' ? t.titleInfo : t.title;
+  const lead = variant === 'info' ? t.leadInfo : t.lead;
   const [subject, setSubject] = useState('');
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -87,9 +94,9 @@ export function ApiAccess() {
       </header>
 
       <main className="container legal">
-        <span className="eyebrow">{t.eyebrow}</span>
-        <h1 className="h-lg" style={{ margin: '10px 0 10px' }}>{t.title}</h1>
-        <p className="lead" style={{ maxWidth: '42rem', marginBottom: 30 }}>{t.lead}</p>
+        <span className="eyebrow">{eyebrow}</span>
+        <h1 className="h-lg" style={{ margin: '10px 0 10px' }}>{heading}</h1>
+        <p className="lead" style={{ maxWidth: '42rem', marginBottom: 30 }}>{lead}</p>
 
         {sent ? (
           <div className="card" style={{ padding: 26, maxWidth: 460 }}>
@@ -126,3 +133,6 @@ export function ApiAccess() {
     </div>
   );
 }
+
+export const ApiAccess = () => <ContactForm variant="api" />;
+export const ContactInfo = () => <ContactForm variant="info" />;

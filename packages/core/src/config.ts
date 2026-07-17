@@ -91,6 +91,11 @@ export const config = {
      *  Never exposed to the frontend. Shared across all apps. */
     contactInbox: str('CONTACT_INBOX', 'management@specialtyperks.com'),
   },
+  moderation: {
+    /** Run the LLM classifier on research params (in addition to the free
+     *  deterministic pre-screen). Disable in tests to avoid live LLM calls. */
+    llm: str('MODERATION_LLM', 'true') !== 'false',
+  },
   cors: {
     /** Comma-separated allowed origins for the static web frontends; "*" for dev. */
     origins: str('CORS_ORIGINS', '*'),

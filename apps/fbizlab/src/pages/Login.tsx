@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { pick, useLang } from '../i18n';
 import { config } from '../config';
@@ -117,7 +117,14 @@ export function Login() {
   const { lang } = useLang();
   const t = pick(T, lang);
   const nav = useNavigate();
+  const location = useLocation();
   const checkout = useCheckout();
+  // Where to land after login: the page the user was sent to (e.g. a report link
+  // from an email that bounced through /login), falling back to the app home.
+  const dest = () => {
+    const from = (location.state as { from?: string } | null)?.from;
+    return from && from.startsWith('/app') ? from : '/app';
+  };
   const btnRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('signin');
@@ -128,7 +135,8 @@ export function Login() {
   const [unverified, setUnverified] = useState(false);
   const [sent, setSent] = useState<'verify' | 'reset' | null>(null);
 
-  useEffect(() => { if (isAuthed) nav('/app', { replace: true }); }, [isAuthed, nav]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isAuthed) nav(dest(), { replace: true }); }, [isAuthed]);
 
   // Shared post-login step: resume a plan the visitor picked on the landing
   // (Stripe Checkout), else go to the app. Credits are granted by the backend
@@ -147,7 +155,7 @@ export function Login() {
         return;
       }
     }
-    nav('/app', { replace: true });
+    nav(dest(), { replace: true });
   }
 
   useEffect(() => {
