@@ -32,6 +32,17 @@ interface RequestOptions {
   anonymous?: boolean;
 }
 
+/** Fetch a report file's text (authenticated) — for the in-app formatted viewer. */
+export async function fetchFileText(path: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(`${config.apiBaseUrl}${path}`, { headers });
+  if (res.status === 401) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+  if (!res.ok) throw new ApiError(res.status, `Load failed (${res.status})`);
+  return res.text();
+}
+
 /** Download a report file through the authenticated proxy (no shareable link). */
 export async function downloadFile(path: string, filename: string): Promise<void> {
   const headers: Record<string, string> = {};

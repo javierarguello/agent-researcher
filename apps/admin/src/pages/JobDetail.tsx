@@ -1,13 +1,14 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Alert, Anchor, Badge, Button, Card, Group, Loader, SimpleGrid, Stack, Table, Text, Progress,
+  Alert, Anchor, Badge, Button, Card, Code, CopyButton, Group, Loader, Modal, ScrollArea, SimpleGrid, Stack, Table, Text, Progress,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
 import { useJob, useRetryJob, useTemplate } from '../api/hooks';
-import { ApiError, downloadFile } from '../api/client';
+import { ApiError, downloadFile, fetchFileText } from '../api/client';
 import { config } from '../config';
 import { int, secs, shortDateTime, usd } from '../lib/format';
 import type { StepInfo } from '../api/types';
@@ -31,6 +32,24 @@ export function JobDetail() {
   const { data: job, isLoading, error } = useJob(jobId);
   const retry = useRetryJob();
   const template = useTemplate(job?.template ?? null);
+  const [viewer, setViewer] = useState<{ name: string; url: string; content: string } | null>(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
+
+  async function openViewer(f: { name: string; url: string }) {
+    setViewerLoading(true);
+    try {
+      const text = await fetchFileText(f.url);
+      let content = text;
+      if (f.name.endsWith('.json')) {
+        try { content = JSON.stringify(JSON.parse(text), null, 2); } catch { /* show raw */ }
+      }
+      setViewer({ name: f.name, url: f.url, content });
+    } catch (err) {
+      notifications.show({ message: err instanceof ApiError ? err.message : 'Could not load file', color: 'red' });
+    } finally {
+      setViewerLoading(false);
+    }
+  }
 
   async function onRetry() {
     try {
@@ -173,13 +192,38 @@ export function JobDetail() {
                   <Mono size="sm">{f.name}</Mono>
                   <Text size="xs" c="dimmed">{f.contentType}{f.size != null ? ` · ${int(f.size)} B` : ''}</Text>
                 </Group>
-                <Anchor component="button" type="button" onClick={() => downloadFile(f.url, f.name).catch(() => {})} size="sm">Download</Anchor>
+                <Group gap="md">
+                  <Anchor component="button" type="button" onClick={() => openViewer(f)} size="sm">View</Anchor>
+                  <Anchor component="button" type="button" onClick={() => downloadFile(f.url, f.name).catch(() => {})} size="sm">Download</Anchor>
+                </Group>
               </Group>
             ))}
           </Stack>
           <Text size="xs" c="dimmed" mt="xs">Files are served only through your authenticated session — no shareable links.</Text>
         </Card>
       )}
+
+      <Modal
+        opened={viewerLoading || !!viewer}
+        onClose={() => setViewer(null)}
+        title={<Mono size="sm">{viewer?.name ?? 'Loading…'}</Mono>}
+        size="80rem"
+        scrollAreaComponent={ScrollArea.Autosize}
+      >
+        {viewerLoading ? (
+          <Group justify="center" py="xl"><Loader /></Group>
+        ) : viewer ? (
+          <>
+            <Group justify="flex-end" mb="sm" gap="xs">
+              <CopyButton value={viewer.content}>
+                {({ copied, copy }) => <Button size="xs" variant="default" onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>}
+              </CopyButton>
+              <Button size="xs" variant="default" onClick={() => downloadFile(viewer.url, viewer.name).catch(() => {})}>Download</Button>
+            </Group>
+            <Code block style={{ maxHeight: '65vh', overflow: 'auto', fontSize: 12, lineHeight: 1.5 }}>{viewer.content}</Code>
+          </>
+        ) : null}
+      </Modal>
     </Stack>
   );
 }

@@ -285,7 +285,7 @@ function Value({ v, k, l }: { v: unknown; k?: string; l: Record<string, string> 
     if (v.every(isMetric)) return <MetricTiles items={v as Metric[]} />;
     if (isTransactions(v)) return <TransactionsTable rows={v} l={l} />;
     if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{x as string}</Markdown></li>)}</ul>;
-    return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="card" style={{ padding: 14 }}><ObjectFields o={x as Obj} l={l} /></div>)}</div>;
+    return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="rv-card"><ObjectFields o={x as Obj} l={l} /></div>)}</div>;
   }
   if (typeof v === 'object') {
     if (isSourceList(v)) return <SourceList items={v.items} />;
