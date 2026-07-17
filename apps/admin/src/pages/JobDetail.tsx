@@ -8,7 +8,7 @@ import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
 import { ReportViewer } from '../components/ReportViewer';
 import { useJob, useJobReport, useRetryJob, useTemplate } from '../api/hooks';
-import { ApiError } from '../api/client';
+import { ApiError, downloadFile } from '../api/client';
 import { int, secs, shortDateTime, usd } from '../lib/format';
 import type { StepInfo } from '../api/types';
 
@@ -160,11 +160,11 @@ export function JobDetail() {
                   <Mono size="sm">{f.name}</Mono>
                   <Text size="xs" c="dimmed">{f.contentType}{f.size != null ? ` · ${int(f.size)} B` : ''}</Text>
                 </Group>
-                <Anchor href={f.url} target="_blank" rel="noreferrer" size="sm">Download</Anchor>
+                <Anchor component="button" type="button" onClick={() => downloadFile(f.url, f.name).catch(() => {})} size="sm">Download</Anchor>
               </Group>
             ))}
           </Stack>
-          <Text size="xs" c="dimmed" mt="xs">Links expire {shortDateTime(job.files[0]?.expiresAt)}.</Text>
+          <Text size="xs" c="dimmed" mt="xs">Files are served only through your authenticated session — no shareable links.</Text>
         </Card>
       )}
     </Stack>

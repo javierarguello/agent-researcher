@@ -252,15 +252,19 @@ function CommunitySentiment({ v, l }: { v: { overview?: string; mentions: Mentio
       )}
       {v.overview && <div style={{ marginTop: 18 }}><Prose md={v.overview} /></div>}
       {mentions.length > 0 && (
-        <div className="stack" style={{ gap: 12, marginTop: 16 }}>{mentions.map((m, i) => (
+        <div className="stack" style={{ gap: 14, marginTop: 16 }}>{mentions.map((m, i) => (
           <div key={i} className="rv-mention">
-            <div className="between" style={{ alignItems: 'center' }}>
-              <span className="mono muted" style={{ fontSize: 11 }}>{m.platform}</span>
-              {m.sentiment && <span style={{ color: SENT[m.sentiment] ?? 'var(--muted)', fontSize: 12 }}>●</span>}
+            <div className="rv-mention__head">
+              {m.topic && <div className="rv-mention__title">{m.topic}</div>}
+              {m.platform && (
+                <span className="rv-mention__src">
+                  {m.sentiment && <i style={{ background: SENT[m.sentiment] ?? 'var(--muted)' }} />}
+                  {m.platform}
+                </span>
+              )}
             </div>
-            {m.topic && <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{m.topic}</div>}
             {m.summary && <Prose md={m.summary} />}
-            {m.url && <a className="mono accent" style={{ fontSize: 11 }} href={m.url} target="_blank" rel="noreferrer">↗</a>}
+            {m.url && <a className="mono accent" style={{ fontSize: 11, display: 'inline-block', marginTop: 10 }} href={m.url} target="_blank" rel="noreferrer">↗ source</a>}
           </div>
         ))}</div>
       )}

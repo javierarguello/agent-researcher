@@ -36,7 +36,6 @@ import {
   SUPPORTED_LANGS,
   DEFAULT_LANG,
   logEvent,
-  signJobFiles,
   downloadObject,
   toManifest,
   toPublicApp,
@@ -537,17 +536,17 @@ app.get(
 
     if (job.status !== 'completed') return base;
 
-    const files = await signJobFiles(job.files);
+    // Files are served ONLY through the authenticated proxy below (no public/shareable
+    // signed URLs). `url` is a relative API path the client fetches WITH its token.
     return {
       ...base,
       finishedAt: job.finishedAt ?? null,
       bucketPath: job.bucketPath,
-      files: files.map((f) => ({
+      files: (job.files ?? []).map((f) => ({
         name: f.name,
         contentType: f.contentType,
         size: f.size ?? null,
-        url: f.url,
-        expiresAt: f.expiresAt,
+        url: `/research/${job.jobId}/files/${encodeURIComponent(f.name)}`,
       })),
     };
   },
@@ -577,7 +576,38 @@ app.get(
     if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
     const raw = await downloadObject(jobId, 'report.json');
     if (!raw) return reply.code(404).send({ error: 'Report file not found.' });
-    return reply.type('application/json').send(raw);
+    return reply.type('application/json').header('Cache-Control', 'no-store').send(raw);
+  },
+);
+
+app.get(
+  '/research/:jobId/files/:name',
+  {
+    schema: {
+      summary: 'Download a report file — owner/admin only, auth-gated (no shareable link)',
+      description:
+        'Streams a generated report file (report.json, *.md) straight from storage, behind the same session ' +
+        'JWT + ownership check. There is no public/signed URL, so the "link" only works for the authenticated ' +
+        'session — sharing it does nothing.',
+      tags: ['research'],
+      security: sec,
+      params: { type: 'object', required: ['jobId', 'name'], properties: { jobId: { type: 'string', maxLength: 128 }, name: { type: 'string', maxLength: 256 } } },
+    },
+  },
+  async (req, reply) => {
+    const { jobId, name } = req.params as { jobId: string; name: string };
+    const job = await getJob(jobId);
+    if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
+    if (req.auth!.role !== 'admin' && (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)) {
+      return reply.code(403).send({ error: 'Forbidden: not your report.' });
+    }
+    if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
+    // Only files the job actually produced — no arbitrary reads / path traversal.
+    if (!(job.files ?? []).some((f) => f.name === name)) return reply.code(404).send({ error: 'File not found.' });
+    const raw = await downloadObject(jobId, name);
+    if (!raw) return reply.code(404).send({ error: 'File not found.' });
+    const ct = name.endsWith('.json') ? 'application/json' : name.endsWith('.md') ? 'text/markdown; charset=utf-8' : 'application/octet-stream';
+    return reply.type(ct).header('Content-Disposition', `attachment; filename="${name}"`).header('Cache-Control', 'no-store').send(raw);
   },
 );
 

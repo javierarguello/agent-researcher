@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { useJob, useJobReport, useTemplate } from '../api/hooks';
+import { downloadFile } from '../api/client';
 import { ReportViewer } from '../components/ReportViewer';
 import { shortDate } from '../lib/format';
 import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
@@ -76,7 +77,7 @@ export function JobView() {
           <div className="eyebrow" style={{ color: 'var(--muted)', marginBottom: 10 }}>{t.files}</div>
           <div className="stack" style={{ gap: 8 }}>
             {job.files.filter((f) => f.name.endsWith('.md') || f.name === 'report.json').map((f) => (
-              <div key={f.name} className="between"><span className="mono" style={{ fontSize: 13 }}>{f.name}</span><a className="mono accent" style={{ fontSize: 12 }} href={f.url} target="_blank" rel="noreferrer">{t.download} ↓</a></div>
+              <div key={f.name} className="between"><span className="mono" style={{ fontSize: 13 }}>{f.name}</span><button className="mono accent" style={{ fontSize: 12, background: 'none', border: 0, cursor: 'pointer' }} onClick={() => downloadFile(f.url, f.name).catch(() => {})}>{t.download} ↓</button></div>
             ))}
           </div>
           <p className="mono muted" style={{ fontSize: 10.5, marginTop: 10 }}>{shortDate(job.finishedAt)}</p>

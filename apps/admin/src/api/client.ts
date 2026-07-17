@@ -32,6 +32,24 @@ interface RequestOptions {
   anonymous?: boolean;
 }
 
+/** Download a report file through the authenticated proxy (no shareable link). */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(`${config.apiBaseUrl}${path}`, { headers });
+  if (res.status === 401) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+  if (!res.ok) throw new ApiError(res.status, `Download failed (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (!opts.anonymous) {

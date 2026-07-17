@@ -41,7 +41,8 @@ export interface JobListItem {
 
 export interface JobProgress { phase: string; message: string; turnsUsed: number; sourcesFound: number; updatedAt: string; }
 export interface JobSummary { durationMs?: number; sourcesFound?: number; warnings?: string[]; degradedSections?: string[]; }
-export interface JobFileSigned { name: string; contentType: string; size: number | null; url: string; expiresAt: string; }
+/** `url` is a relative API path fetched WITH the session token (no shareable link). */
+export interface JobFileSigned { name: string; contentType: string; size: number | null; url: string; }
 export interface JobDetail {
   jobId: string; appId: string; userId: string; template: string;
   params?: Record<string, unknown>;

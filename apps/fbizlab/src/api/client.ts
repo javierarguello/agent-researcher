@@ -46,6 +46,25 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   return data as T;
 }
 
+/** Fetch a report file through the authenticated proxy (with the session token) and
+ *  trigger a browser download — there is no shareable link. */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(`${config.apiBaseUrl}${path}`, { headers });
+  if (res.status === 401) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+  if (!res.ok) throw new ApiError(res.status, `Download failed (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function qs(params: Record<string, string | number | undefined | null>): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');
   return entries.length ? `?${entries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&')}` : '';
