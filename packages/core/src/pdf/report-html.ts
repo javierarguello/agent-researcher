@@ -95,6 +95,12 @@ interface Projection { periods: string[]; rows: Array<{ metric: string; unit?: s
 interface Source { url: string; label?: string }
 interface Mention { platform?: string; url?: string; topic?: string; summary?: string; sentiment?: string }
 
+interface ChartSpec { type: string; title?: string; description?: string; labels: string[]; series: Array<{ name: string; data: Array<number | null> }>; unit?: string }
+const CHART_TYPES = new Set(['bar', 'line', 'pie', 'area']);
+const isChartSpec = (v: unknown): v is ChartSpec => {
+  const o = v as ChartSpec;
+  return !!o && typeof o === 'object' && !Array.isArray(o) && CHART_TYPES.has(o.type) && Array.isArray(o.labels) && Array.isArray(o.series);
+};
 const isMetric = (x: unknown): x is Metric => !!x && typeof x === 'object' && typeof (x as Metric).label === 'string' && typeof (x as Metric).value === 'string' && !('severity' in (x as Obj));
 const isRisk = (x: unknown): x is Risk => !!x && typeof x === 'object' && typeof (x as Risk).severity === 'string' && typeof (x as Risk).title === 'string';
 const isProjection = (v: unknown): v is Projection => !!v && typeof v === 'object' && Array.isArray((v as Projection).periods) && Array.isArray((v as Projection).rows) && !!(v as Projection).rows[0] && Array.isArray((v as Projection).rows[0]!.values);
@@ -152,6 +158,26 @@ function projectionHtml(p: Projection, t: PdfTheme): string {
     .join('');
   const note = p.note ? `<div class="mono muted note">${esc(p.note)}</div>` : '';
   return `<div class="card">${chart}<table class="ptable"><thead>${head}</thead><tbody>${body}</tbody></table>${note}</div>`;
+}
+function chartVal(unit: string | undefined, v: number | null): string {
+  if (v == null) return '—';
+  return unit ? rowVal(unit, v) : abbr(v);
+}
+function chartSpecHtml(spec: ChartSpec, t: PdfTheme): string {
+  const series = spec.series ?? [];
+  const s0 = series[0];
+  const header = `${spec.title ? `<div class="chart-title">${esc(spec.title)}</div>` : ''}${spec.description ? `<div class="chart-desc">${esc(spec.description)}</div>` : ''}`;
+  // Bar/line/area → CSS bars of the first series. Pie or multi-series → the table
+  // below carries the rest (grouped bars in print add little over a clean table).
+  const chart = (spec.type === 'bar' || spec.type === 'line' || spec.type === 'area') && s0 && s0.data?.some((v) => isNum(v))
+    ? barsHtml(spec.labels ?? [], s0.data ?? [], spec.unit, t)
+    : '';
+  const head = `<tr><th></th>${series.map((s) => `<th>${esc(s.name)}</th>`).join('')}</tr>`;
+  const body = (spec.labels ?? [])
+    .map((lab, i) => `<tr><td class="tm">${esc(lab)}</td>${series.map((s) => `<td>${esc(chartVal(spec.unit, s.data?.[i] ?? null))}</td>`).join('')}</tr>`)
+    .join('');
+  const table = series.length ? `<table class="ptable"><thead>${head}</thead><tbody>${body}</tbody></table>` : '';
+  return `<div class="card">${header}${chart}${table}</div>`;
 }
 function sourceListHtml(items: Source[], t: PdfTheme): string {
   return `<ul class="sources">${items.map((s) => `<li><a href="${esc(s.url)}"><span class="arw" style="color:${t.colors.accent}">↗</span>${esc(s.label || s.url)}</a></li>`).join('')}</ul>`;
@@ -220,8 +246,10 @@ function valueHtml(v: unknown, k: string | undefined, l: Record<string, string>,
   if (typeof v === 'string') return mdToHtml(v);
   if (typeof v === 'number') return `<span>${esc(fmtNumber(k, v))}</span>`;
   if (typeof v === 'boolean') return `<span>${v ? l.yes : l.no}</span>`;
+  if (isChartSpec(v)) return chartSpecHtml(v, t);
   if (Array.isArray(v)) {
     if (!v.length) return '';
+    if (v.every(isChartSpec)) return v.map((cspec) => chartSpecHtml(cspec as ChartSpec, t)).join('');
     if (v.every(isRisk)) return riskRows(v as Risk[], t);
     if (v.every(isMetric)) return metricsGrid(v as Metric[], t);
     if (isTransactions(v)) return transactionsHtml(v, l);
@@ -392,9 +420,10 @@ function css(t: PdfTheme): string {
   .stack > * + * { margin-top:16px; }
   .field { margin-bottom:2px; }
   .flabel { font-family:${t.fonts.mono}; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:${c.muted}; margin-bottom:8px; }
-  ul.bullets { margin:0 0 16px 0; padding-left:20px; }
-  ul.bullets li { font-size:13.5px; line-height:1.7; color:${c.ink}; margin-bottom:13px; text-align:justify; padding-left:4px; }
+  ul.bullets { margin:0 0 18px 0; padding-left:20px; }
+  ul.bullets li { font-size:13.5px; line-height:1.75; color:${c.ink}; margin-bottom:18px; text-align:justify; padding-left:6px; }
   ul.bullets li:last-child { margin-bottom:0; }
+  ul.bullets li::marker { color:${c.accent}; }
 
   /* metric tiles — individually bordered + flex-wrap so there are NEVER empty grid
      cells (a 3-col grid with 4 metrics left grey gaps). */
@@ -417,6 +446,8 @@ function css(t: PdfTheme): string {
      fragment render its own clean border/padding (a graceful "continued" look). */
   .card { border:1px solid ${c.border}; border-radius:14px; padding:24px 26px; margin-bottom:22px; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
   .card.p0 { padding:0; overflow:hidden; }
+  .chart-title { font-size:14px; font-weight:700; color:${c.inkStrong}; margin-bottom:4px; }
+  .chart-desc { font-size:12.5px; color:${c.muted}; line-height:1.5; margin-bottom:18px; text-align:justify; }
   .chart { display:flex; align-items:flex-end; gap:14px; height:150px; margin-bottom:20px; }
   .bar { flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end; }
   .barval { font-family:${t.fonts.mono}; font-size:10px; color:${c.muted}; }

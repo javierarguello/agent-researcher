@@ -57,7 +57,7 @@ gcloud run deploy "${WORKER_SERVICE}" \
   --concurrency 1 \
   --timeout 1800 \
   --min-instances 0 --max-instances "${JOB_MAX_CONCURRENCY}" \
-  --memory 1Gi --cpu 1 \
+  --memory 2Gi --cpu 1 \
   --set-env-vars "${COMMON_ENV}"
 
 WORKER_URL="$(gcloud run services describe "${WORKER_SERVICE}" --region "${REGION}" --format='value(status.url)')"

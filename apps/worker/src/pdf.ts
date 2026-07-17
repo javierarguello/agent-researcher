@@ -54,31 +54,45 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
   const manifest = template ? toManifest(template, lang) : undefined;
   const sections = manifest?.sections.map((s) => ({ key: s.key, title: s.title }));
 
-  const html = buildReportHtml({
-    report: parsed.report,
-    meta: parsed.meta,
-    sections,
-    title: job.title ?? undefined,
-    params: job.params,
-    lang,
-    theme: getPdfTheme(job.appId),
-    generatedAt: job.finishedAt ?? job.updatedAt,
-  });
+  const theme = getPdfTheme(job.appId);
+  const generatedAt = job.finishedAt ?? job.updatedAt;
+  const html = buildReportHtml({ report: parsed.report, meta: parsed.meta, sections, title: job.title ?? undefined, params: job.params, lang, theme, generatedAt });
+
+  // Running footer (brand · dossier · page N / M) — drawn by Chromium in each page's
+  // bottom margin. @page:first { margin: 0 } keeps the cover full-bleed.
+  const year = generatedAt ? new Date(generatedAt).getFullYear() : '';
+  const dossierId = `${theme.dossierPrefix}-${year}`;
+  const brand = theme.brand.toUpperCase().replace(/[<>&]/g, '');
+  const footerTemplate =
+    `<div style="width:100%;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:0.1em;color:${theme.colors.muted};padding:0 0.78in;display:flex;justify-content:space-between;-webkit-print-color-adjust:exact;">` +
+    `<span>${brand}</span><span>${dossierId} &nbsp;·&nbsp; <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
 
   const browser = await getBrowser();
   const page = await browser.newPage();
   let pdf: Buffer;
   try {
     await page.setContent(html, { waitUntil: 'load', timeout: 60_000 });
-    // Wait for the web fonts (@import Inter/JetBrains Mono) to load so the PDF uses
-    // them instead of a fallback face.
+    // Wait for the web fonts (@import Inter/JetBrains Mono) so the PDF uses them.
     await page.evaluate('document.fonts.ready').catch(() => {});
-    // preferCSSPageSize honors our `@page` size/margins so the cover bleeds full.
-    // NOTE: deliberately NOT tagged/outline — tagged-PDF generation can OOM the
-    // worker on large docs (uncatchable process kill). The clickable table of
-    // contents still works: Chromium turns the in-page `<a href="#sec-…">` anchors
-    // into internal PDF links regardless. (Only the sidebar bookmark tree is lost.)
-    const out = await page.pdf({ printBackground: true, preferCSSPageSize: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
+    // preferCSSPageSize honors our `@page` size/margins so the cover bleeds full and
+    // content pages leave room for the footer. tagged + outline build the sidebar
+    // bookmark tree from the headings — but tagged-PDF gen can crash/OOM on large
+    // docs, so fall back to the same render WITHOUT bookmarks rather than fail.
+    const base = {
+      printBackground: true,
+      preferCSSPageSize: true,
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate,
+      margin: { top: '0.7in', right: '0', bottom: '0.7in', left: '0' },
+    } as const;
+    let out: Uint8Array;
+    try {
+      out = await page.pdf({ ...base, tagged: true, outline: true });
+    } catch (err) {
+      console.warn(JSON.stringify({ severity: 'WARNING', event: 'pdf.outline_failed', jobId: job.jobId, message: (err as Error).message }));
+      out = await page.pdf(base);
+    }
     pdf = Buffer.from(out);
   } finally {
     await page.close();
