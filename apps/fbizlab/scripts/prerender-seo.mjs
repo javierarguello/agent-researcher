@@ -7,6 +7,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { renderLandingStatic } from './landing-static.mjs';
 
 const SITE = 'https://fbizlab.web.app';
 const DIST = join(process.cwd(), 'dist');
@@ -128,11 +129,15 @@ function localize(base, loc) {
   return html;
 }
 
+// Bake the static landing content into #root so crawlers see the real H1 /
+// sections / FAQ without running JS. React (createRoot) replaces it on mount.
+const injectStatic = (html, lang) => html.replace('<div id="root"></div>', `<div id="root">${renderLandingStatic(lang)}</div>`);
+
 const indexPath = join(DIST, 'index.html');
 const base = withHreflang(readFileSync(indexPath, 'utf8'));
-writeFileSync(indexPath, base); // en / x-default, now with hreflang
+writeFileSync(indexPath, injectStatic(base, 'en')); // en / x-default
 for (const [lang, loc] of Object.entries(LOCALES)) {
-  writeFileSync(join(DIST, `${lang}.html`), localize(base, loc));
+  writeFileSync(join(DIST, `${lang}.html`), injectStatic(localize(base, loc), lang));
   console.log(`✓ dist/${lang}.html — ${loc.path}`);
 }
-console.log('✓ SEO prerender done (en + es/fr/pt)');
+console.log('✓ SEO prerender done (en + es/fr/pt, static content baked)');
