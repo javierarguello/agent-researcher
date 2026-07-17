@@ -16,9 +16,9 @@ const COPY = {
     hero: {
       kicker: 'AI-assisted research for Florida business opportunities',
       title: 'Explore Florida business opportunities with greater clarity.',
-      lead: `${BRAND} helps you organize available listing information, compare key details and identify questions worth investigating — so you can decide where to focus your time.`,
+      lead: `${BRAND} is a specialized research digest for exploring Florida business opportunities at scale and intelligently, based on your own criteria — it organizes available listing information, compares key details and highlights questions worth investigating.`,
       cta1: 'Explore opportunities', cta2: 'See a sample summary',
-      disclaimer: 'AI-generated research for informational purposes. Results may be incomplete or inaccurate and are not reviewed by industry specialists.',
+      disclaimer: 'AI-generated research for informational purposes. Always refer to the original listings for complete, up-to-date details.',
       tagline: 'Research faster. Ask better questions. Decide what to investigate next.',
     },
     sample: {
@@ -71,7 +71,8 @@ const COPY = {
     faq: {
       kicker: 'FAQ', title: 'Common questions',
       items: [
-        ['What does Florida Biz Labs do?', 'It organizes available listing information into a structured summary and highlights details worth investigating, so you can research opportunities more efficiently.'],
+        ['What does Florida Biz Labs do?', 'It is a specialized digest that helps you search Florida business opportunities at scale and intelligently, based on your own criteria. It organizes available listing information into a structured summary and highlights details worth investigating.'],
+        ['Does Florida Biz Labs replace business listing portals?', 'No. It complements them — it does not replace them. Florida Biz Labs organizes information available across listings and always references the original sources, so you can go back to them for complete, up-to-date details.'],
         ['Does Florida Biz Labs recommend which business I should buy?', 'No. It does not tell you whether to buy. It organizes information and raises questions to support your own evaluation.'],
         ['Is the information verified?', 'No. Figures come from listings and third-party sources and are not independently verified. Always confirm them yourself.'],
         ['Are summaries reviewed by professionals?', 'No. Summaries are generated automatically and are not routinely reviewed by industry specialists.'],
@@ -97,9 +98,9 @@ const COPY = {
     hero: {
       kicker: 'Investigación asistida por IA para oportunidades de negocio en Florida',
       title: 'Explora oportunidades de negocio en Florida con mayor claridad.',
-      lead: `${BRAND} te ayuda a organizar la información disponible de los avisos, comparar detalles clave e identificar preguntas que vale la pena investigar — para que decidas dónde enfocar tu tiempo.`,
+      lead: `${BRAND} es un digest de investigación especializado para explorar oportunidades de negocio en Florida de forma masiva e inteligente, según tus propios criterios — organiza la información disponible de los avisos, compara detalles clave y resalta preguntas que vale la pena investigar.`,
       cta1: 'Explorar oportunidades', cta2: 'Ver un resumen de ejemplo',
-      disclaimer: 'Investigación generada por IA con fines informativos. Los resultados pueden estar incompletos o ser inexactos y no son revisados por especialistas del sector.',
+      disclaimer: 'Investigación generada por IA con fines informativos. Consulta siempre los avisos originales para ver los detalles completos y actualizados.',
       tagline: 'Investiga más rápido. Haz mejores preguntas. Decide qué investigar después.',
     },
     sample: {
@@ -152,7 +153,8 @@ const COPY = {
     faq: {
       kicker: 'FAQ', title: 'Preguntas frecuentes',
       items: [
-        ['¿Qué hace Florida Biz Labs?', 'Organiza la información disponible de los avisos en un resumen estructurado y resalta detalles que vale la pena investigar, para que investigues oportunidades de forma más eficiente.'],
+        ['¿Qué hace Florida Biz Labs?', 'Es un digest especializado que te ayuda a buscar oportunidades de negocio en Florida de forma masiva e inteligente, según tus propios criterios. Organiza la información disponible de los avisos en un resumen estructurado y resalta detalles que vale la pena investigar.'],
+        ['¿Florida Biz Labs reemplaza los portales de avisos?', 'No. Los complementa, no los reemplaza. Florida Biz Labs organiza la información disponible en los avisos y siempre hace referencia a las fuentes originales, para que acudas a ellas por los detalles completos y actualizados.'],
         ['¿Florida Biz Labs recomienda qué negocio debo comprar?', 'No. No te dice si comprar o no. Organiza la información y plantea preguntas para apoyar tu propia evaluación.'],
         ['¿La información está verificada?', 'No. Las cifras provienen de avisos y fuentes de terceros y no se verifican de forma independiente. Confírmalas siempre tú mismo.'],
         ['¿Los resúmenes son revisados por profesionales?', 'No. Los resúmenes se generan automáticamente y no son revisados de forma rutinaria por especialistas del sector.'],
@@ -178,9 +180,9 @@ const COPY = {
     hero: {
       kicker: 'Recherche assistée par IA pour les opportunités d’affaires en Floride',
       title: 'Explorez les opportunités d’affaires en Floride avec plus de clarté.',
-      lead: `${BRAND} vous aide à organiser les informations disponibles des annonces, à comparer les détails clés et à identifier les questions à approfondir — pour décider où concentrer votre temps.`,
+      lead: `${BRAND} est un digest de recherche spécialisé pour explorer les opportunités d’affaires en Floride à grande échelle et intelligemment, selon vos propres critères — il organise les informations disponibles des annonces, compare les détails clés et met en évidence les questions à approfondir.`,
       cta1: 'Explorer les opportunités', cta2: 'Voir un exemple de résumé',
-      disclaimer: 'Recherche générée par IA à titre informatif. Les résultats peuvent être incomplets ou inexacts et ne sont pas examinés par des spécialistes du secteur.',
+      disclaimer: 'Recherche générée par IA à titre informatif. Reportez-vous toujours aux annonces d’origine pour les détails complets et à jour.',
       tagline: 'Recherchez plus vite. Posez de meilleures questions. Décidez quoi approfondir.',
     },
     sample: {
@@ -233,7 +235,8 @@ const COPY = {
     faq: {
       kicker: 'FAQ', title: 'Questions fréquentes',
       items: [
-        ['Que fait Florida Biz Labs ?', 'Il organise l’information disponible des annonces dans un résumé structuré et met en évidence les détails à approfondir, pour rechercher des opportunités plus efficacement.'],
+        ['Que fait Florida Biz Labs ?', 'C’est un digest spécialisé qui vous aide à rechercher des opportunités d’affaires en Floride à grande échelle et intelligemment, selon vos propres critères. Il organise l’information disponible des annonces dans un résumé structuré et met en évidence les détails à approfondir.'],
+        ['Florida Biz Labs remplace-t-il les portails d’annonces ?', 'Non. Il les complète, il ne les remplace pas. Florida Biz Labs organise l’information disponible dans les annonces et renvoie toujours aux sources d’origine, pour que vous y trouviez les détails complets et à jour.'],
         ['Florida Biz Labs recommande-t-il quelle entreprise acheter ?', 'Non. Il ne vous dit pas s’il faut acheter. Il organise l’information et soulève des questions pour appuyer votre propre évaluation.'],
         ['L’information est-elle vérifiée ?', 'Non. Les chiffres proviennent des annonces et de sources tierces et ne sont pas vérifiés de façon indépendante. Confirmez-les toujours vous-même.'],
         ['Les résumés sont-ils examinés par des professionnels ?', 'Non. Les résumés sont générés automatiquement et ne sont pas examinés régulièrement par des spécialistes du secteur.'],
@@ -259,9 +262,9 @@ const COPY = {
     hero: {
       kicker: 'Pesquisa assistida por IA para oportunidades de negócio na Flórida',
       title: 'Explore oportunidades de negócio na Flórida com mais clareza.',
-      lead: `${BRAND} ajuda você a organizar as informações disponíveis dos anúncios, comparar detalhes-chave e identificar perguntas que valem a pena investigar — para decidir onde focar seu tempo.`,
+      lead: `${BRAND} é um digest de pesquisa especializado para explorar oportunidades de negócio na Flórida em escala e de forma inteligente, com base nos seus próprios critérios — organiza as informações disponíveis dos anúncios, compara detalhes-chave e destaca perguntas que valem a pena investigar.`,
       cta1: 'Explorar oportunidades', cta2: 'Ver um resumo de exemplo',
-      disclaimer: 'Pesquisa gerada por IA para fins informativos. Os resultados podem estar incompletos ou imprecisos e não são revisados por especialistas do setor.',
+      disclaimer: 'Pesquisa gerada por IA para fins informativos. Consulte sempre os anúncios originais para ver os detalhes completos e atualizados.',
       tagline: 'Pesquise mais rápido. Faça perguntas melhores. Decida o que investigar a seguir.',
     },
     sample: {
@@ -314,7 +317,8 @@ const COPY = {
     faq: {
       kicker: 'FAQ', title: 'Perguntas comuns',
       items: [
-        ['O que a Florida Biz Labs faz?', 'Organiza as informações disponíveis dos anúncios em um resumo estruturado e destaca detalhes que valem a pena investigar, para você pesquisar oportunidades de forma mais eficiente.'],
+        ['O que a Florida Biz Labs faz?', 'É um digest especializado que ajuda você a buscar oportunidades de negócio na Flórida em escala e de forma inteligente, com base nos seus próprios critérios. Organiza as informações disponíveis dos anúncios em um resumo estruturado e destaca detalhes que valem a pena investigar.'],
+        ['A Florida Biz Labs substitui os portais de anúncios?', 'Não. Ela os complementa, não os substitui. A Florida Biz Labs organiza as informações disponíveis nos anúncios e sempre faz referência às fontes originais, para você acessá-las e ver os detalhes completos e atualizados.'],
         ['A Florida Biz Labs recomenda qual negócio devo comprar?', 'Não. Não diz se você deve comprar. Organiza a informação e levanta perguntas para apoiar sua própria avaliação.'],
         ['A informação é verificada?', 'Não. Os números vêm de anúncios e fontes de terceiros e não são verificados de forma independente. Confirme sempre você mesmo.'],
         ['Os resumos são revisados por profissionais?', 'Não. Os resumos são gerados automaticamente e não são revisados rotineiramente por especialistas do setor.'],
