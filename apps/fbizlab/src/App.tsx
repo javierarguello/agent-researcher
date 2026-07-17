@@ -9,6 +9,7 @@ import { Reports } from './pages/Reports';
 import { NewReport } from './pages/NewReport';
 import { JobView } from './pages/JobView';
 import { Credits } from './pages/Credits';
+import { ReadReport } from './pages/ReadReport';
 
 const TITLES: Record<string, string> = {
   en: 'Florida Biz Labs — Discover Florida business opportunities with AI',
@@ -23,7 +24,7 @@ export function App() {
   useEffect(() => { document.documentElement.lang = lang; if (TITLES[lang]) document.title = TITLES[lang]; }, [lang]);
   // Only the public landing is indexable; the authed app + login are noindex.
   useEffect(() => {
-    const priv = pathname.startsWith('/app') || pathname.startsWith('/login');
+    const priv = pathname.startsWith('/app') || pathname.startsWith('/login') || pathname.startsWith('/report');
     let m = document.querySelector('meta[name="robots"]');
     if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'robots'); document.head.appendChild(m); }
     m.setAttribute('content', priv ? 'noindex, nofollow' : 'index, follow');
@@ -37,6 +38,8 @@ export function App() {
       <Route path="/fr" element={<Landing />} />
       <Route path="/pt" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      {/* Admin read-only report link (?rt=token) — auth is the token itself. */}
+      <Route path="/report/:jobId" element={<ReadReport />} />
       <Route path="/app" element={<RequireAuth />}>
         <Route element={<AppLayout />}>
           <Route index element={<Reports />} />

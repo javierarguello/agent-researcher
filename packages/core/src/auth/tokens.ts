@@ -19,6 +19,11 @@ export interface SessionClaims {
   appId: string;
   role: SessionRole;
   name?: string;
+  /** When set, a restricted token (see `signReadToken`) — the API caps it to
+   *  read-only access to a single report. */
+  scope?: 'report-read';
+  /** The one job a `report-read` token may access. */
+  jobId?: string;
 }
 
 const secret = () => {
@@ -27,21 +32,44 @@ const secret = () => {
 };
 
 /** Sign one of our session JWTs. */
-export async function signSession(claims: SessionClaims): Promise<string> {
-  return new SignJWT({ appId: claims.appId, role: claims.role, ...(claims.name ? { name: claims.name } : {}) })
+export async function signSession(claims: SessionClaims, ttlSeconds = config.auth.jwtTtlSeconds): Promise<string> {
+  return new SignJWT({
+    appId: claims.appId,
+    role: claims.role,
+    ...(claims.name ? { name: claims.name } : {}),
+    ...(claims.scope ? { scope: claims.scope } : {}),
+    ...(claims.jobId ? { jobId: claims.jobId } : {}),
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.email)
     .setIssuer(config.auth.jwtIssuer)
     .setIssuedAt()
-    .setExpirationTime(Math.floor(Date.now() / 1000) + config.auth.jwtTtlSeconds)
+    .setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds)
     .sign(secret());
+}
+
+/**
+ * A short-lived, restricted token that lets its holder ONLY read one report — for
+ * admin "view in app" impersonation. Role stays `user` (never admin) and the API
+ * caps a `report-read` token to that job's read endpoints; it can't launch jobs,
+ * spend credits, or see anything else.
+ */
+export async function signReadToken(input: { email: string; appId: string; jobId: string }, ttlSeconds = 15 * 60): Promise<string> {
+  return signSession({ email: input.email, appId: input.appId, role: 'user', scope: 'report-read', jobId: input.jobId }, ttlSeconds);
 }
 
 /** Verify one of our session JWTs. Throws if invalid/expired. */
 export async function verifySession(token: string): Promise<SessionClaims> {
   const { payload } = await jwtVerify(token, secret(), { issuer: config.auth.jwtIssuer });
   const role = payload.role === 'admin' ? 'admin' : 'user';
-  return { email: String(payload.sub), appId: String(payload.appId), role, name: payload.name as string | undefined };
+  return {
+    email: String(payload.sub),
+    appId: String(payload.appId),
+    role,
+    name: payload.name as string | undefined,
+    scope: payload.scope === 'report-read' ? 'report-read' : undefined,
+    jobId: payload.jobId as string | undefined,
+  };
 }
 
 /** Identity providers the API can authenticate with. Add 'password', etc. here. */

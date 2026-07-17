@@ -153,6 +153,30 @@ export function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
 }
 
 /**
+ * Append files to a completed job WITHOUT touching status/finishedAt — used for
+ * artifacts generated after the fact (e.g. an on-demand report.pdf). Transactional
+ * and idempotent: a file whose name already exists is not duplicated, so a repeated
+ * render is a no-op.
+ */
+export async function addJobFiles(jobId: string, files: JobFile[]): Promise<ResearchJob | undefined> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return undefined;
+    const job = snap.data() as ResearchJob;
+    const existing = job.files ?? [];
+    const merged = [...existing];
+    for (const f of files) {
+      const at = merged.findIndex((e) => e.name === f.name);
+      if (at >= 0) merged[at] = f;
+      else merged.push(f);
+    }
+    tx.set(ref, { files: merged, updatedAt: nowIso() }, { merge: true });
+    return { ...job, files: merged };
+  });
+}
+
+/**
  * Reset a terminal job for a manual retry: back to `queued`, attempt count
  * cleared (fresh retry budget), and the prior error/finish time removed. The
  * caller re-enqueues it. Credits are NOT re-charged (consumption is idempotent

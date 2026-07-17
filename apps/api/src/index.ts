@@ -37,6 +37,7 @@ import {
   DEFAULT_LANG,
   logEvent,
   downloadObject,
+  downloadObjectBytes,
   toManifest,
   toPublicApp,
   updateApp,
@@ -55,6 +56,7 @@ import {
   recordPurchaseStats,
   recordLogin,
   signSession,
+  signReadToken,
   verifyGoogleIdToken,
   InsufficientCreditsError,
   type RateLimitEntry,
@@ -496,7 +498,11 @@ app.get(
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
 
     // Admins can read any job; a regular user only their own (same app + email).
-    if (req.auth!.role !== 'admin' && (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)) {
+    if (
+      req.auth!.role !== 'admin' &&
+      req.auth!.scope !== 'report-read' &&
+      (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)
+    ) {
       return reply.code(403).send({ error: 'Forbidden: not your report.' });
     }
 
@@ -570,13 +576,53 @@ app.get(
     const { jobId } = req.params as { jobId: string };
     const job = await getJob(jobId);
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
-    if (req.auth!.role !== 'admin' && (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)) {
+    if (
+      req.auth!.role !== 'admin' &&
+      req.auth!.scope !== 'report-read' &&
+      (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)
+    ) {
       return reply.code(403).send({ error: 'Forbidden: not your report.' });
     }
     if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
     const raw = await downloadObject(jobId, 'report.json');
     if (!raw) return reply.code(404).send({ error: 'Report file not found.' });
     return reply.type('application/json').header('Cache-Control', 'no-store').send(raw);
+  },
+);
+
+app.get(
+  '/research/:jobId/pdf',
+  {
+    schema: {
+      summary: 'Get (or start generating) the report PDF — generated once, then served from files',
+      description:
+        'The report PDF is rendered on demand the FIRST time it is requested: if `report.pdf` already exists this ' +
+        'returns `{ ready: true }` (download it via `GET /research/:jobId/files/report.pdf`); otherwise it enqueues ' +
+        'a one-off render and returns 202 `{ ready: false }`. Poll until ready. Owner, admin, or a read-only report ' +
+        'token. The PDF is never regenerated once it exists.',
+      tags: ['research'],
+      security: sec,
+      params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
+    },
+  },
+  async (req, reply) => {
+    const { jobId } = req.params as { jobId: string };
+    const job = await getJob(jobId);
+    if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
+    if (
+      req.auth!.role !== 'admin' &&
+      req.auth!.scope !== 'report-read' &&
+      (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)
+    ) {
+      return reply.code(403).send({ error: 'Forbidden: not your report.' });
+    }
+    if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
+    const name = 'report.pdf';
+    reply.header('Cache-Control', 'no-store');
+    if ((job.files ?? []).some((f) => f.name === name)) return { ready: true, name };
+    const { enqueuePdf } = await import('./enqueue.js');
+    await enqueuePdf(jobId);
+    return reply.code(202).send({ ready: false, status: 'generating', name });
   },
 );
 
@@ -598,12 +644,22 @@ app.get(
     const { jobId, name } = req.params as { jobId: string; name: string };
     const job = await getJob(jobId);
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
-    if (req.auth!.role !== 'admin' && (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)) {
+    if (
+      req.auth!.role !== 'admin' &&
+      req.auth!.scope !== 'report-read' &&
+      (job.appId !== req.auth!.appId || job.userId !== req.auth!.email)
+    ) {
       return reply.code(403).send({ error: 'Forbidden: not your report.' });
     }
     if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
     // Only files the job actually produced — no arbitrary reads / path traversal.
     if (!(job.files ?? []).some((f) => f.name === name)) return reply.code(404).send({ error: 'File not found.' });
+    // Binary files (PDF) must be streamed as bytes, not decoded as UTF-8 text.
+    if (name.endsWith('.pdf')) {
+      const bytes = await downloadObjectBytes(jobId, name);
+      if (!bytes) return reply.code(404).send({ error: 'File not found.' });
+      return reply.type('application/pdf').header('Content-Disposition', `attachment; filename="${name}"`).header('Cache-Control', 'no-store').send(bytes);
+    }
     const raw = await downloadObject(jobId, name);
     if (!raw) return reply.code(404).send({ error: 'File not found.' });
     const ct = name.endsWith('.json') ? 'application/json' : name.endsWith('.md') ? 'text/markdown; charset=utf-8' : 'application/octet-stream';
@@ -1141,6 +1197,32 @@ app.post(
     await enqueueJob(jobId, { unique: true });
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'INFO', 'job.retry', { by: req.auth!.email });
     return reply.code(202).send({ jobId, status: 'queued' });
+  },
+);
+
+app.post(
+  '/admin/jobs/:jobId/read-token',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Mint a read-only link to view a report in its app',
+      description:
+        'Returns a short-lived (15 min) token scoped to reading ONLY this one report, plus the ' +
+        "job's appId. The admin front opens the app at /report/:jobId?rt=<token> so the report can " +
+        'be viewed rendered, exactly as the user sees it. The token cannot launch jobs, spend ' +
+        'credits, or read anything else, and expires quickly — leaking it does nothing lasting.',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
+    },
+  },
+  async (req, reply) => {
+    const { jobId } = req.params as { jobId: string };
+    const job = await getJob(jobId);
+    if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
+    const token = await signReadToken({ email: job.userId, appId: job.appId, jobId });
+    logEvent({ jobId, appId: job.appId, userId: job.userId }, 'INFO', 'job.read_token', { by: req.auth!.email });
+    return { token, appId: job.appId, jobId, expiresInSeconds: 15 * 60 };
   },
 );
 

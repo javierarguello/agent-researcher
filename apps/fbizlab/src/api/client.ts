@@ -26,11 +26,16 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   anonymous?: boolean;
+  /** Use this bearer token instead of the stored session (e.g. an admin read-only
+   *  report link). A 401 here does not log the real user out. */
+  token?: string;
 }
 
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (!opts.anonymous) {
+  if (opts.token) {
+    headers.authorization = `Bearer ${opts.token}`;
+  } else if (!opts.anonymous) {
     const token = getToken();
     if (token) headers.authorization = `Bearer ${token}`;
   }
@@ -39,7 +44,7 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
     headers,
     body: opts.body != null ? JSON.stringify(opts.body) : undefined,
   });
-  if (res.status === 401 && !opts.anonymous) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+  if (res.status === 401 && !opts.anonymous && !opts.token) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? `Request failed (${res.status})`);
@@ -48,9 +53,9 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
 
 /** Fetch a report file through the authenticated proxy (with the session token) and
  *  trigger a browser download — there is no shareable link. */
-export async function downloadFile(path: string, filename: string): Promise<void> {
+export async function downloadFile(path: string, filename: string, override?: string): Promise<void> {
   const headers: Record<string, string> = {};
-  const token = getToken();
+  const token = override ?? getToken();
   if (token) headers.authorization = `Bearer ${token}`;
   const res = await fetch(`${config.apiBaseUrl}${path}`, { headers });
   if (res.status === 401) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
@@ -63,6 +68,31 @@ export async function downloadFile(path: string, filename: string): Promise<void
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Ensure a report PDF exists (generated once, server-side) and download it. The
+ * first call enqueues the render and returns `{ ready:false }`; we poll until it's
+ * ready, then stream it through the authenticated file proxy. `token` routes an
+ * admin read-only link; `onProgress(true)` lets the caller show "Preparing…".
+ */
+export async function ensureReportPdf(
+  jobId: string,
+  filename: string,
+  opts: { token?: string; onProgress?: (generating: boolean) => void } = {},
+): Promise<void> {
+  const id = encodeURIComponent(jobId);
+  for (let i = 0; i < 40; i++) {
+    const res = await api<{ ready: boolean; name: string }>(`/research/${id}/pdf`, { token: opts.token });
+    if (res.ready) {
+      opts.onProgress?.(false);
+      await downloadFile(`/research/${id}/files/${res.name}`, filename, opts.token);
+      return;
+    }
+    opts.onProgress?.(true);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  throw new ApiError(504, 'The PDF is taking longer than expected. Please try again in a moment.');
 }
 
 export function qs(params: Record<string, string | number | undefined | null>): string {

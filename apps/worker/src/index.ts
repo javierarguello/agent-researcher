@@ -12,10 +12,34 @@
  */
 import Fastify from 'fastify';
 import { config, getJob, runJob } from '@agent-researcher/core';
+import { renderJobPdf } from './pdf.js';
 
 const app = Fastify({ logger: { level: config.server.logLevel } });
 
 app.get('/health', async () => ({ ok: true }));
+
+// On-demand PDF: the API enqueues this the first time a user downloads the report
+// PDF. Renders `report.pdf` (idempotent — a second request for an existing PDF is a
+// no-op) and appends it to the job's files so the API can serve it like any file.
+app.post('/render-pdf', async (req, reply) => {
+  const body = (req.body ?? {}) as { jobId?: string };
+  const jobId = body.jobId?.trim();
+  if (!jobId) return reply.code(400).send({ error: 'Missing jobId.' }); // 4xx = no retry
+
+  const job = await getJob(jobId);
+  if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
+  if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` }); // no retry
+
+  try {
+    const file = await renderJobPdf(job);
+    app.log.info({ jobId, size: file.size }, 'worker: pdf ready');
+    return reply.code(200).send({ status: 'ready', name: file.name });
+  } catch (err) {
+    // Retryable — Cloud Tasks re-dispatches with backoff (transient Chromium/GCS error).
+    app.log.error({ err, jobId }, 'worker: pdf render failed');
+    return reply.code(503).send({ error: (err as Error).message });
+  }
+});
 
 app.post('/run', async (req, reply) => {
   const body = (req.body ?? {}) as { jobId?: string };

@@ -66,6 +66,26 @@ export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise
   }
   req.auth = claims;
   req.appRecord = app;
+
+  // A restricted read-only report token (admin "view in app") may ONLY GET that one
+  // report (+ templates for section titles). Anything else is forbidden, so leaking
+  // the link does nothing beyond viewing that single report until it expires.
+  if (claims.scope === 'report-read') {
+    const path = req.url.split('?')[0] ?? req.url;
+    const jid = claims.jobId ?? '';
+    const allowed =
+      req.method === 'GET' &&
+      !!jid &&
+      (path === `/research/${jid}` ||
+        path === `/research/${jid}/report` ||
+        path === `/research/${jid}/pdf` ||
+        path.startsWith(`/research/${jid}/files/`) ||
+        path === '/templates' ||
+        path.startsWith('/templates/'));
+    if (!allowed) {
+      await reply.code(403).send({ error: 'This link is read-only for a single report.' });
+    }
+  }
 }
 
 /** Guards admin-only routes. Must run after jwtAuth. */

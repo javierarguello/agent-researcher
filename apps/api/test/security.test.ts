@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}) }));
+vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
 vi.mock('../src/stripe.js', () => ({
   stripeConfigured: () => true,
   stripe: () => ({ checkout: { sessions: { create: async () => ({ id: 'cs', url: 'https://x' }) } } }),
@@ -9,7 +9,7 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { grantCredits, getBalance, listJobs, updateApp } from '@agent-researcher/core';
+import { grantCredits, getBalance, listJobs, updateApp, signReadToken, markCompleted } from '@agent-researcher/core';
 import { seedApp, seedAdmin, token, auth } from './helpers.js';
 
 const research = { template: 'florida-business-for-sale', params: { industry: 'laundromats', mode: 'essential' } };
@@ -144,6 +144,47 @@ describe('API security — auth, credits gate, isolation', () => {
     const admin = await token('admin', 'boss@x.com', 'admin');
     const ra = await app.inject({ method: 'POST', url: '/research', headers: auth(admin), payload: research });
     expect(ra.statusCode).not.toBe(403); // passes the model check (then 402 for no credits)
+  });
+
+  it('a read-only report token can ONLY read its one report, nothing else', async () => {
+    await grantCredits({ appId: 'fbizlab', userId: 'owner@x.com', credits: 10 });
+    const owner = await token('fbizlab', 'owner@x.com');
+    const created = await app.inject({ method: 'POST', url: '/research', headers: auth(owner), payload: research });
+    const { jobId } = created.json() as { jobId: string };
+
+    // Admin mints a read-only link for that job (role stays 'user').
+    const rt = await signReadToken({ email: 'owner@x.com', appId: 'fbizlab', jobId });
+    const rh = auth(rt);
+
+    // ALLOWED: read that one report's detail + the template it uses.
+    expect((await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: rh })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/templates', headers: rh })).statusCode).toBe(200);
+
+    // FORBIDDEN: anything else — list all jobs, launch a job, spend credits, read another job.
+    expect((await app.inject({ method: 'GET', url: '/research', headers: rh })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/research', headers: rh, payload: research })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/credits/balance', headers: rh })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/research/some-other-job', headers: rh })).statusCode).toBe(403);
+  });
+
+  it('PDF is on-demand: 409 before ready, 202 (enqueue) once completed, reachable by a read token', async () => {
+    await grantCredits({ appId: 'fbizlab', userId: 'owner@x.com', credits: 10 });
+    const owner = await token('fbizlab', 'owner@x.com');
+    const created = await app.inject({ method: 'POST', url: '/research', headers: auth(owner), payload: research });
+    const { jobId } = created.json() as { jobId: string };
+
+    // Not completed yet → 409.
+    expect((await app.inject({ method: 'GET', url: `/research/${jobId}/pdf`, headers: auth(owner) })).statusCode).toBe(409);
+
+    // Completed but no report.pdf file yet → 202 { ready:false } (render enqueued).
+    await markCompleted(jobId, []);
+    const gen = await app.inject({ method: 'GET', url: `/research/${jobId}/pdf`, headers: auth(owner) });
+    expect(gen.statusCode).toBe(202);
+    expect(gen.json()).toMatchObject({ ready: false });
+
+    // A read-only report token may reach the PDF endpoint (scope gate allows it).
+    const rt = await signReadToken({ email: 'owner@x.com', appId: 'fbizlab', jobId });
+    expect((await app.inject({ method: 'GET', url: `/research/${jobId}/pdf`, headers: auth(rt) })).statusCode).toBe(202);
   });
 
   it('admin-only endpoints reject non-admin tokens (403) and allow admin', async () => {

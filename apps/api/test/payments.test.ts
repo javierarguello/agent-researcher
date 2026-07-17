@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}) }));
+vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
 
 // Stripe mock: constructEvent trusts the signature header 'valid' and parses the
 // raw body; checkout returns a session; resolveStripePlan returns a fixed plan.

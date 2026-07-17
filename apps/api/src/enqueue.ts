@@ -50,3 +50,40 @@ export async function enqueueJob(jobId: string, opts: { unique?: boolean } = {})
     throw err;
   }
 }
+
+/**
+ * Enqueue an on-demand PDF render for a completed job. Deduped by a `${jobId}-pdf`
+ * task name so repeated download clicks don't spawn parallel renders (and the
+ * retained task name after completion means the PDF isn't re-rendered).
+ */
+export async function enqueuePdf(jobId: string): Promise<void> {
+  if (!config.worker.serviceUrl) throw new Error('WORKER_SERVICE_URL is not configured.');
+  if (!config.tasks.invokerServiceAccount) throw new Error('TASKS_INVOKER_SA is not configured.');
+
+  const parent = client.queuePath(config.gcp.projectId, config.tasks.region, config.tasks.queue);
+  const url = `${config.worker.serviceUrl}${config.worker.pdfPath}`;
+
+  try {
+    await client.createTask({
+      parent,
+      task: {
+        name: `${parent}/tasks/${jobId}-pdf`,
+        dispatchDeadline: { seconds: config.tasks.dispatchDeadlineSeconds },
+        httpRequest: {
+          httpMethod: 'POST',
+          url,
+          headers: { 'Content-Type': 'application/json' },
+          body: Buffer.from(JSON.stringify({ jobId })).toString('base64'),
+          oidcToken: {
+            serviceAccountEmail: config.tasks.invokerServiceAccount,
+            audience: config.worker.serviceUrl,
+          },
+        },
+      },
+    });
+  } catch (err) {
+    // ALREADY_EXISTS (gRPC code 6) — a render is already queued/in flight; no-op.
+    if ((err as { code?: number }).code === 6) return;
+    throw err;
+  }
+}

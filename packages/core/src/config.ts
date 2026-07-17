@@ -134,6 +134,8 @@ export const config = {
     serviceUrl: str('WORKER_SERVICE_URL', ''),
     /** Endpoint the queue POSTs a job to. */
     runPath: '/run',
+    /** Endpoint the queue POSTs an on-demand PDF render to. */
+    pdfPath: '/render-pdf',
   },
   tasks: {
     /** Cloud Tasks queue that gates job execution concurrency. */

@@ -56,6 +56,18 @@ export async function downloadObject(jobId: string, name: string): Promise<strin
   }
 }
 
+/** Downloads one object's raw bytes (for binary files like PDFs), or undefined if missing. */
+export async function downloadObjectBytes(jobId: string, name: string): Promise<Buffer | undefined> {
+  const file = client().bucket(config.storage.bucket).file(`${jobPrefix(jobId)}/${name}`);
+  try {
+    const [buf] = await file.download();
+    return buf;
+  } catch (err) {
+    if ((err as { code?: number }).code === 404) return undefined;
+    throw err;
+  }
+}
+
 /** Deletes one object (best-effort; ignores 404). */
 export async function deleteObject(jobId: string, name: string): Promise<void> {
   try {

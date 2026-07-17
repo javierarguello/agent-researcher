@@ -29,6 +29,7 @@ export {
   queryJobs,
   getUserJobStats,
   requeueJob,
+  addJobFiles,
   setJobAttempts,
   markRunning,
   markCompleted,
@@ -44,8 +45,14 @@ export { generateHeadline } from './jobs/headline.js';
 export type { Headline } from './jobs/headline.js';
 
 // Storage
-export { uploadObject, downloadObject, listJobFiles, signRead, signJobFiles } from './storage/gcs.js';
+export { uploadObject, downloadObject, downloadObjectBytes, listJobFiles, signRead, signJobFiles } from './storage/gcs.js';
 export type { SignedFile } from './storage/gcs.js';
+
+// PDF report generation (shared HTML/layout + per-app theme; rendered by the worker)
+export { buildReportHtml } from './pdf/report-html.js';
+export type { BuildReportHtmlInput } from './pdf/report-html.js';
+export { getPdfTheme } from './pdf/theme.js';
+export type { PdfTheme } from './pdf/theme.js';
 
 // Apps (registry + rate limiting)
 export {
@@ -132,7 +139,7 @@ export { getProvider, resolveModel, getProviderFor, modelAliases } from './llm/i
 export type { LlmProvider, ResolvedModel } from './llm/index.js';
 
 // Auth (session JWTs + Google id_token verification)
-export { signSession, verifySession, verifyGoogleIdToken } from './auth/tokens.js';
+export { signSession, signReadToken, verifySession, verifyGoogleIdToken } from './auth/tokens.js';
 export type { SessionClaims, SessionRole, Identity, IdentityProvider } from './auth/tokens.js';
 
 import { z } from 'zod';

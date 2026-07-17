@@ -8,7 +8,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
 import { useJob, useRetryJob, useTemplate } from '../api/hooks';
-import { ApiError, downloadFile, fetchFileText } from '../api/client';
+import { api, ApiError, downloadFile, ensureReportPdf, fetchFileText } from '../api/client';
 import { config } from '../config';
 import { int, secs, shortDateTime, usd } from '../lib/format';
 import type { StepInfo } from '../api/types';
@@ -34,6 +34,36 @@ export function JobDetail() {
   const template = useTemplate(job?.template ?? null);
   const [viewer, setViewer] = useState<{ name: string; url: string; content: string } | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [pdfState, setPdfState] = useState<'idle' | 'working'>('idle');
+
+  async function downloadPdf() {
+    if (pdfState === 'working') return;
+    setPdfState('working');
+    try {
+      const name = `${(job?.title ?? 'report').replace(/[^\w\- ]+/g, '').trim() || 'report'}.pdf`;
+      await ensureReportPdf(jobId, name);
+    } catch (err) {
+      notifications.show({ message: err instanceof ApiError ? err.message : 'Could not download PDF', color: 'red' });
+    } finally {
+      setPdfState('idle');
+    }
+  }
+
+  /** Mint a short-lived read-only token for this report, then open the app's
+   *  /report/:jobId page with it so the admin sees the report exactly as the user. */
+  async function openInApp() {
+    setOpening(true);
+    try {
+      const { token, appId } = await api<{ token: string; appId: string }>(`/admin/jobs/${jobId}/read-token`, { method: 'POST' });
+      const base = config.appUrlPattern.replace('{appId}', appId);
+      window.open(`${base}/report/${jobId}?rt=${encodeURIComponent(token)}`, '_blank', 'noopener');
+    } catch (err) {
+      notifications.show({ message: err instanceof ApiError ? err.message : 'Could not open report', color: 'red' });
+    } finally {
+      setOpening(false);
+    }
+  }
 
   async function openViewer(f: { name: string; url: string }) {
     setViewerLoading(true);
@@ -175,10 +205,18 @@ export function JobDetail() {
       {job.status === 'completed' && (
         <Card padding="lg">
           <Text fw={650} mb="sm">Report</Text>
-          <Anchor href={`${config.appUrlPattern.replace('{appId}', job.appId)}/app/jobs/${jobId}`} target="_blank" rel="noreferrer" fw={600}>
-            View report in the app ↗
-          </Anchor>
-          <Text size="xs" c="dimmed" mt="xs">Opens the fully-rendered report in the product app (owner/admin access).</Text>
+          <Group gap="sm">
+            <Button variant="light" loading={opening} onClick={openInApp}>
+              View report in the app ↗
+            </Button>
+            <Button variant="default" loading={pdfState === 'working'} onClick={downloadPdf}>
+              {pdfState === 'working' ? 'Preparing PDF…' : 'Download PDF ↓'}
+            </Button>
+          </Group>
+          <Text size="xs" c="dimmed" mt="xs">
+            View opens a read-only preview in the product app (scoped to this report, expires in 15 min).
+            The PDF is generated once on first download, then reused.
+          </Text>
         </Card>
       )}
 

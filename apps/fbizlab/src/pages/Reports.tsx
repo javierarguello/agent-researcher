@@ -3,6 +3,7 @@ import { pick, useLang, type Lang } from '../i18n';
 import { useAuth } from '../auth/AuthContext';
 import { useBalance, useJobs, useMyStats, useTemplates } from '../api/hooks';
 import type { JobStatus } from '../api/types';
+import { DownloadPdf } from '../components/DownloadPdf';
 
 const T = {
   en: {
@@ -182,10 +183,13 @@ export function Reports() {
                     </>
                   )}
                 </div>
-                <div onClick={(e) => e.stopPropagation()}>
+                <div className="dash-row__actions" onClick={(e) => e.stopPropagation()}>
                   {TERMINAL.includes(j.status) && <button className="btn btn--black btn--sm" onClick={open}>{t.open}</button>}
                   {LIVE.includes(j.status) && <button className="btn btn--outline btn--sm" onClick={open}>{t.processing}</button>}
                   {j.status === 'failed' && <button className="btn btn--outline btn--sm" onClick={() => nav('/app/new')}>{t.retry}</button>}
+                  {j.status === 'completed' && (
+                    <DownloadPdf jobId={j.jobId} filename={`${(j.title ?? 'report').replace(/[^\w\- ]+/g, '').trim() || 'report'}.pdf`} variant="link" />
+                  )}
                 </div>
               </div>
             );

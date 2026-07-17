@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}) }));
+vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
 vi.mock('../src/stripe.js', () => ({
   stripeConfigured: () => true,
   stripe: () => ({}),

@@ -3,6 +3,7 @@ import { pick, useLang } from '../i18n';
 import { useJob, useJobReport, useTemplate } from '../api/hooks';
 import { downloadFile } from '../api/client';
 import { ReportViewer } from '../components/ReportViewer';
+import { DownloadPdf } from '../components/DownloadPdf';
 import { shortDate } from '../lib/format';
 import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
 
@@ -78,7 +79,13 @@ export function JobView() {
       )}
 
       {job.status === 'completed' && report.data && (
-        <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} meta={report.data.meta} />
+        <>
+          <div className="between" style={{ alignItems: 'center' }}>
+            <span className="badge completed">{sl.completed}</span>
+            <DownloadPdf jobId={jobId} filename={`${(job.title ?? 'report').replace(/[^\w\- ]+/g, '').trim() || 'report'}.pdf`} />
+          </div>
+          <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} meta={report.data.meta} />
+        </>
       )}
 
       {job.status === 'completed' && report.data && job.files && job.files.length > 0 && (

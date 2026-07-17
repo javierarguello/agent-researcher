@@ -61,6 +61,26 @@ export async function downloadFile(path: string, filename: string): Promise<void
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Ensure a report PDF exists (generated once, server-side) and download it. Polls
+ * the on-demand endpoint until the render is ready, then streams the file. Admins
+ * can download any app's report.
+ */
+export async function ensureReportPdf(jobId: string, filename: string, onProgress?: (generating: boolean) => void): Promise<void> {
+  const id = encodeURIComponent(jobId);
+  for (let i = 0; i < 40; i++) {
+    const res = await api<{ ready: boolean; name: string }>(`/research/${id}/pdf`);
+    if (res.ready) {
+      onProgress?.(false);
+      await downloadFile(`/research/${id}/files/${res.name}`, filename);
+      return;
+    }
+    onProgress?.(true);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  throw new ApiError(504, 'The PDF is taking longer than expected. Please try again in a moment.');
+}
+
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (!opts.anonymous) {

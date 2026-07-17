@@ -499,3 +499,17 @@ p { margin: 0; }
 .rev__k { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .rev__v { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 @media (max-width: 560px) { .rev, .modal__actions { grid-template-columns: 1fr; } }
+
+/* Admin read-only report view (?rt= token). A slim banner + the report, nothing else. */
+.read-shell { min-height: 100vh; background: var(--bg); }
+.read-banner { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; justify-content: space-between; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-tint); border-bottom: 1px solid #efdcb8; padding: 9px 20px; }
+.read-banner .pdf-link { text-transform: none; letter-spacing: 0; }
+.read-body { max-width: 1120px; margin: 0 auto; padding: 28px 20px 64px; }
+
+/* Download-PDF control (on-demand render → download; shows a spinner while generating) */
+.pdf-link { background: none; border: 0; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 0; }
+.pdf-link:disabled { cursor: default; opacity: .7; }
+.pdf-btn { display: inline-flex; align-items: center; gap: 8px; }
+.pdf-spin { width: 12px; height: 12px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: pdf-rot .7s linear infinite; flex: none; }
+@keyframes pdf-rot { to { transform: rotate(360deg); } }
+.dash-row__actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
