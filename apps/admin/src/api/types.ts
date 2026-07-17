@@ -120,6 +120,7 @@ export interface JobDetail {
   appId: string;
   userId: string;
   template: string;
+  params?: Record<string, unknown>;
   title: string | null;
   shortDescription: string | null;
   status: JobStatus;

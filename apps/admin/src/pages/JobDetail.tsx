@@ -6,13 +6,15 @@ import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { JobStatusBadge } from '../components/StatusBadge';
-import { ReportViewer } from '../components/ReportViewer';
-import { useJob, useJobReport, useRetryJob, useTemplate } from '../api/hooks';
+import { useJob, useRetryJob, useTemplate } from '../api/hooks';
 import { ApiError, downloadFile } from '../api/client';
+import { config } from '../config';
 import { int, secs, shortDateTime, usd } from '../lib/format';
 import type { StepInfo } from '../api/types';
 
 const AGENT_COLOR: Record<string, string> = { ok: 'teal', failed: 'red', pending: 'yellow', running: 'blue' };
+const fmtParam = (v: unknown): string =>
+  Array.isArray(v) ? (v.length ? v.join(', ') : '—') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : v == null || v === '' ? '—' : String(v);
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -29,7 +31,6 @@ export function JobDetail() {
   const { data: job, isLoading, error } = useJob(jobId);
   const retry = useRetryJob();
   const template = useTemplate(job?.template ?? null);
-  const reportQ = useJobReport(jobId, job?.status === 'completed');
 
   async function onRetry() {
     try {
@@ -85,6 +86,17 @@ export function JobDetail() {
           {s?.turnsUsed != null && <Meta label="Search turns">{int(s.turnsUsed)}</Meta>}
         </SimpleGrid>
       </Card>
+
+      {job.params && Object.keys(job.params).length > 0 && (
+        <Card padding="lg">
+          <Text fw={650} mb="sm">Request params</Text>
+          <SimpleGrid cols={{ base: 2, sm: 3 }}>
+            {Object.entries(job.params).map(([k, v]) => (
+              <Meta key={k} label={k}>{fmtParam(v)}</Meta>
+            ))}
+          </SimpleGrid>
+        </Card>
+      )}
 
       {live && job.progress && (
         <Card padding="lg">
@@ -144,9 +156,10 @@ export function JobDetail() {
       {job.status === 'completed' && (
         <Card padding="lg">
           <Text fw={650} mb="sm">Report</Text>
-          {reportQ.isLoading && <Loader size="sm" />}
-          {reportQ.error && <Alert color="red">{(reportQ.error as Error).message}</Alert>}
-          {reportQ.data && <ReportViewer report={reportQ.data.report} sections={template.data?.sections} />}
+          <Anchor href={`${config.appUrlPattern.replace('{appId}', job.appId)}/app/jobs/${jobId}`} target="_blank" rel="noreferrer" fw={600}>
+            View report in the app ↗
+          </Anchor>
+          <Text size="xs" c="dimmed" mt="xs">Opens the fully-rendered report in the product app (owner/admin access).</Text>
         </Card>
       )}
 
