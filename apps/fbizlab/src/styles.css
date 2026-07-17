@@ -513,3 +513,67 @@ p { margin: 0; }
 .pdf-spin { width: 12px; height: 12px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: pdf-rot .7s linear infinite; flex: none; }
 @keyframes pdf-rot { to { transform: rotate(360deg); } }
 .dash-row__actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+
+/* ============ Landing redesign (research-summary positioning) ============ */
+.fineprint { font-size: 11.5px; line-height: 1.55; color: var(--muted); max-width: 46ch; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+
+/* hero sample card */
+.sample { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; box-shadow: 0 1px 0 var(--line-soft); }
+.sample__top { display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.sample__label { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.sample__id { font-size: 10px; letter-spacing: .12em; color: var(--muted); }
+.sample__rows { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.sample__row span { display: block; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+.sample__row b { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.sample__block { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.sample__block:last-child { border-bottom: 0; padding-bottom: 2px; }
+.sample__blabel { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.sample__miss { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--ink-soft); padding: 3px 0; }
+.sample__miss i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.sample__q { display: flex; gap: 10px; font-size: 13px; color: var(--ink-soft); line-height: 1.5; padding: 5px 0; }
+.sample__q span { color: var(--accent); font-size: 10px; flex: none; padding-top: 2px; }
+
+/* benefits grid (numbered, row dividers) */
+.bgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 44px; }
+.bcell { padding: 26px 0 24px; border-top: 1px solid var(--line); }
+.bcell__n { font-size: 11px; letter-spacing: .1em; color: var(--accent); }
+.bcell h4 { font-size: 16px; font-weight: 700; margin: 12px 0 8px; letter-spacing: -0.01em; }
+.bcell p { color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+/* how it works (4 numbered cards) */
+.hiw { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.hcard { border: 1px solid var(--line); border-radius: var(--radius); padding: 24px 22px; background: var(--card); }
+.hcard__n { font-size: 22px; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
+.hcard h4 { font-size: 15.5px; font-weight: 700; margin: 14px 0 8px; letter-spacing: -0.01em; }
+.hcard p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+/* inside-a-summary 2-col numbered list */
+.sumlist { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-self: stretch; }
+.sumitem { display: flex; gap: 12px; align-items: baseline; padding: 15px 0; border-top: 1px solid var(--line); font-size: 14px; font-weight: 600; color: var(--ink); }
+.sumitem span { color: var(--accent); font-size: 11px; flex: none; }
+
+/* dark section */
+.section--dark { background: var(--black); border-top: 0; }
+
+/* faq accordion */
+.faq-split { grid-template-columns: 0.7fr 1.3fr; }
+.faq { display: flex; flex-direction: column; }
+.faqitem { border-top: 1px solid var(--line); }
+.faqitem:last-child { border-bottom: 1px solid var(--line); }
+.faqq { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 20px; background: none; border: 0; cursor: pointer; text-align: left; padding: 20px 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.faqx { color: var(--accent); font-size: 20px; font-weight: 400; flex: none; line-height: 1; }
+.faqa { font-size: 14px; line-height: 1.65; color: var(--ink-soft); padding: 0 40px 22px 0; max-width: 60ch; margin-top: -4px; }
+
+/* get started */
+.gs-split { grid-template-columns: 1.4fr 1fr; align-items: end; }
+
+@media (max-width: 860px) {
+  .split, .faq-split, .gs-split { grid-template-columns: 1fr; gap: 28px; }
+  .bgrid { grid-template-columns: 1fr 1fr; gap: 0 28px; }
+  .hiw { grid-template-columns: 1fr 1fr; }
+  .sumlist { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .bgrid, .hiw, .sample__rows { grid-template-columns: 1fr; }
+}

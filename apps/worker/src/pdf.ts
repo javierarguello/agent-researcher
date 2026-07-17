@@ -73,17 +73,12 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
     // Wait for the web fonts (@import Inter/JetBrains Mono) to load so the PDF uses
     // them instead of a fallback face.
     await page.evaluate('document.fonts.ready').catch(() => {});
-    // preferCSSPageSize honors our `@page { size: letter; margin: 0 }`; the report's
-    // own padding is the margin, so bleed backgrounds (cover) reach the page edge.
-    // tagged + outline → a navigable PDF bookmark tree built from the heading
-    // structure (cover h1 + section h2s), so readers get a clickable index.
-    const out = await page.pdf({
-      printBackground: true,
-      preferCSSPageSize: true,
-      tagged: true,
-      outline: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-    });
+    // preferCSSPageSize honors our `@page` size/margins so the cover bleeds full.
+    // NOTE: deliberately NOT tagged/outline — tagged-PDF generation can OOM the
+    // worker on large docs (uncatchable process kill). The clickable table of
+    // contents still works: Chromium turns the in-page `<a href="#sec-…">` anchors
+    // into internal PDF links regardless. (Only the sidebar bookmark tree is lost.)
+    const out = await page.pdf({ printBackground: true, preferCSSPageSize: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
     pdf = Buffer.from(out);
   } finally {
     await page.close();
