@@ -147,6 +147,10 @@ class Query {
   limit(n: number): Query {
     return new Query(this.path, this.filters, this.order, n, this.group);
   }
+  /** Aggregation query — only `count()` is needed (matches the Firestore SDK shape). */
+  count(): { get(): Promise<{ data(): { count: number } }> } {
+    return { get: async () => { const { size } = await this.get(); return { data: () => ({ count: size }) }; } };
+  }
   async get(): Promise<{ docs: DocumentSnapshot[]; empty: boolean; size: number }> {
     let entries = [...DB.entries()].filter(([p]) => (this.group ? collectionId(p) === this.path : parentPath(p) === this.path));
     for (const f of this.filters) {

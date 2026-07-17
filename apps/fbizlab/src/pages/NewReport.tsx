@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
-import { useBalance, useCreateJob, useTemplates } from '../api/hooks';
+import { useBalance, useCreateJob, useMyStats, useTemplates } from '../api/hooks';
 import { ApiError, DRAFT_KEY } from '../api/client';
 import type { ParamsUi } from '../api/types';
 
@@ -24,7 +24,7 @@ const T = {
     cost: 'Cost', credits: 'credits', generate: 'Generate report', delivered: 'Delivered in 2–8 min',
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
     youHave: 'You have', creditsLeft: 'credits',
-    notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits',
+    notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits', alreadyRunning: 'You already have a report in progress — wait for it to finish before starting another.',
     noCredits: 'Not enough credits — buy more first.', yes: 'Yes',
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
@@ -44,7 +44,7 @@ const T = {
     cost: 'Costo', credits: 'créditos', generate: 'Generar reporte', delivered: 'Listo en 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
     youHave: 'Tienes', creditsLeft: 'créditos',
-    notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos',
+    notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos', alreadyRunning: 'Ya tienes un reporte en progreso — espera a que termine antes de iniciar otro.',
     noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí',
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -64,7 +64,7 @@ const T = {
     cost: 'Coût', credits: 'crédits', generate: 'Générer le rapport', delivered: 'Livré en 2–8 min',
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
     youHave: 'Vous avez', creditsLeft: 'crédits',
-    notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits',
+    notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits', alreadyRunning: 'Vous avez déjà un rapport en cours — attendez qu’il se termine avant d’en lancer un autre.',
     noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui',
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -84,7 +84,7 @@ const T = {
     cost: 'Custo', credits: 'créditos', generate: 'Gerar relatório', delivered: 'Pronto em 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
     youHave: 'Você tem', creditsLeft: 'créditos',
-    notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos',
+    notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos', alreadyRunning: 'Você já tem um relatório em andamento — aguarde ele terminar antes de iniciar outro.',
     noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim',
     modeDesc: { essential: 'Seções principais. Cerca da metade do custo. Ótimo para triagem inicial.', comprehensive: 'Dossiê longo completo: valuations, comparáveis, due diligence, playbook.' } as Record<string, string>,
   },
@@ -140,6 +140,7 @@ export function NewReport() {
   const t = pick(T, lang);
   const templates = useTemplates(lang);
   const balance = useBalance();
+  const stats = useMyStats();
   const create = useCreateJob();
   const nav = useNavigate();
   const [params, setParams] = useState<Props>({});
@@ -188,7 +189,9 @@ export function NewReport() {
   const needsInstr = !industry.trim();
   const instrOk = !needsInstr || instrText.length >= MIN_INSTR;
   const bal = balance.data?.balance;
-  const canGo = instrOk && !create.isPending;
+  // Only one report may be in flight per user (until it finishes or fails).
+  const hasLive = (stats.data?.inProgress ?? 0) >= 1;
+  const canGo = instrOk && !hasLive && !create.isPending;
   const insufficient = typeof bal === 'number' && bal < cost;
   const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(params)); } catch { /* ignore */ } };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
@@ -229,7 +232,11 @@ export function NewReport() {
       clearDraft();
       nav(`/app/jobs/${res.jobId}`);
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 402 ? t.noCredits : err instanceof ApiError ? err.message : 'Failed.');
+      setError(
+        err instanceof ApiError && err.status === 402 ? t.noCredits
+          : err instanceof ApiError && err.status === 409 ? t.alreadyRunning
+            : err instanceof ApiError ? err.message : 'Failed.',
+      );
     }
   }
 
@@ -378,6 +385,12 @@ export function NewReport() {
                   <div className="mono" style={{ fontSize: 11, color: 'var(--risk)', marginTop: 10, lineHeight: 1.5 }}>{t.notEnough}</div>
                   <button className="btn btn--outline btn--block" style={{ marginTop: 10 }} onClick={goBuy}>{t.buyCredits}</button>
                 </>
+              )}
+
+              {hasLive && (
+                <div className="mono" style={{ fontSize: 11, color: 'var(--risk)', marginTop: 12, lineHeight: 1.5 }}>
+                  {t.alreadyRunning} <Link to="/app" className="accent">→</Link>
+                </div>
               )}
 
               {error && <div className="mono" style={{ fontSize: 12, color: 'var(--risk)', marginTop: 12 }}>{error}</div>}

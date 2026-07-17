@@ -312,6 +312,12 @@ app.get(
 );
 
 // --- Research ---------------------------------------------------------------
+/**
+ * Max reports a user may have in flight (queued/running) at once. 1 for everyone
+ * for now; will become a per-plan entitlement (higher tiers → more concurrency).
+ */
+const MAX_CONCURRENT_JOBS_PER_USER = 1;
+
 app.post(
   '/research',
   {
@@ -351,6 +357,20 @@ app.post(
     const allowed = req.appRecord?.allowedTemplates;
     if (req.auth!.role !== 'admin' && allowed && allowed.length && !allowed.includes(validated.template)) {
       return reply.code(403).send({ error: `App "${appId}" is not allowed to use model "${validated.template}".` });
+    }
+
+    // Concurrency: at most N reports in flight per user (queued/running). Enforced
+    // before consuming credits so a rejected request costs nothing. Admins exempt.
+    if (req.auth!.role !== 'admin') {
+      const { inProgress } = await getUserJobStats(appId, userId);
+      if (inProgress >= MAX_CONCURRENT_JOBS_PER_USER) {
+        return reply.code(409).send({
+          error: 'You already have a report in progress. Please wait for it to finish before starting another.',
+          code: 'concurrency_limit',
+          limit: MAX_CONCURRENT_JOBS_PER_USER,
+          inProgress,
+        });
+      }
     }
 
     // Rate limits (reports per hour) — per app and per user. Skipped in local dev.

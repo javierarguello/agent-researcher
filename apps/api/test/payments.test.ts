@@ -95,11 +95,25 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     const results = await Promise.all(
       Array.from({ length: 6 }, () => app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research })),
     );
+    // With the 1-in-flight-per-user concurrency limit + credit gate, the exact
+    // number that slip through is bounded; the INVARIANT is what matters — the
+    // ledger is charged exactly once per accepted job and never goes negative.
     const ok = results.filter((r) => r.statusCode === 202).length;
-    const denied = results.filter((r) => r.statusCode === 402).length;
-    expect(ok).toBe(3); // exactly the affordable number
-    expect(denied).toBe(3);
-    expect(await getBalance('fbizlab', 'u@x.com')).toBe(0); // never negative
+    expect(ok).toBeGreaterThanOrEqual(1);
+    expect(ok).toBeLessThanOrEqual(3); // never more than credits (15/5) allow
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(15 - ok * 5); // spent exactly, no double-spend
+  });
+
+  it('allows only ONE report in flight per user (409 while one is queued/running)', async () => {
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 20 });
+    const t = await token('fbizlab', 'u@x.com');
+    const first = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
+    expect(first.statusCode).toBe(202);
+    const second = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().code).toBe('concurrency_limit');
+    // The blocked request cost nothing — only the first job was charged (20 − 5).
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(15);
   });
 
   it('GET /plans is public (no auth), Stripe-sourced, filtered by appId; empty catalog is never cached', async () => {
