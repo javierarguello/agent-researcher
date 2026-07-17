@@ -68,7 +68,7 @@ export function JobView() {
       )}
 
       {job.status === 'completed' && report.data && (
-        <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} />
+        <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} meta={report.data.meta} />
       )}
 
       {job.status === 'completed' && job.files && job.files.length > 0 && (

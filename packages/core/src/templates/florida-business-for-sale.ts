@@ -561,7 +561,13 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     'comprehensive, long-form buy-side acquisition report (market & competition, shortlist, deep dives, ' +
     'financial projections, valuations & comparables, community reviews, risks, diligence checklist, growth ' +
     'playbook, financing, and next steps).',
-  version: 2, // v2: added the `charts` section (chart-analyst + chart-refiner agents).
+  // Bump on any change to the report SHAPE — it flows to meta.templateVersion +
+  // meta.schemaVersion ("<id>@<version>") so the front can identify a report's
+  // version and render it safely.
+  //   v2: added the `charts` section (chart-analyst + chart-refiner agents).
+  //   v3: structured primitives (blocks.ts) — metric[] badges, projectionTable,
+  //       prioritised riskItem[] replace plain prose/strings in several sections.
+  version: 3,
   basePrompt,
   paramsSchema,
   sections,

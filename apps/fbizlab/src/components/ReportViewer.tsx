@@ -229,10 +229,19 @@ function collectDeals(report: Obj): Obj[] {
   return [...byName.values()];
 }
 
-export function ReportViewer({ report, sections, title, lang = 'en' }: {
-  report: Obj; sections?: Array<{ key: string; title: string }>; title?: string; lang?: string;
+/**
+ * Renders a report defensively: every section is drawn by FEATURE-DETECTING its
+ * shape (isMetric/isRisk/isProjection/string/…), so it never fails across report
+ * versions — old prose-only reports and new structured ones both render, and an
+ * unknown future field just renders generically. `meta.schemaVersion`
+ * ("<template>@<version>") is exposed (data-report-version) so components can
+ * identify a report's version for analytics or explicit version branching later.
+ */
+export function ReportViewer({ report, sections, title, lang = 'en', meta }: {
+  report: Obj; sections?: Array<{ key: string; title: string }>; title?: string; lang?: string; meta?: Obj;
 }) {
   const l = RL[(lang as Lang)] ?? RL.en;
+  const reportVersion = String(meta?.schemaVersion ?? '');
   const HIDE = new Set(['search_criteria']); // shown in the right rail instead
   const ordered = (sections?.length ? sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))
     .filter((s) => report[s.key] != null && !HIDE.has(s.key));
@@ -255,7 +264,7 @@ export function ReportViewer({ report, sections, title, lang = 'en' }: {
   const metaLine = [crit?.location, crit?.industry].filter(Boolean).join(' · ');
 
   return (
-    <div className="rv">
+    <div className="rv" data-report-version={reportVersion}>
       <aside className="rv-nav">
         <div className="eyebrow" style={{ color: 'var(--accent)', marginBottom: 14 }}>{l.sections}</div>
         <ol>
