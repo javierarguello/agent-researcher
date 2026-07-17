@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import {
-  Badge, Button, Divider, Group, Loader, NumberInput, Popover, SegmentedControl,
+  Alert, Badge, Button, Divider, Group, Loader, NumberInput, Popover, SegmentedControl,
   Stack, Table, Text, TextInput, Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Mono } from './Mono';
 import { JobStatusBadge, LedgerTypeBadge } from './StatusBadge';
-import { useBalance, useGrantCredits, useJobs, useTransactions } from '../api/hooks';
+import { useBalance, useBlockUser, useGrantCredits, useJobs, useTransactions } from '../api/hooks';
 import { ApiError } from '../api/client';
 import { int, relative, shortDateTime, usd } from '../lib/format';
-import type { LedgerEntry } from '../api/types';
+import type { AdminUser, LedgerEntry } from '../api/types';
 
 /** The provenance of a ledger entry, rendered per its source. */
 function Provenance({ e }: { e: LedgerEntry }) {
@@ -66,7 +66,41 @@ function GrantCredits({ appId, userId }: { appId: string; userId: string }) {
   );
 }
 
-export function UserDetail({ appId, userId }: { appId: string; userId: string }) {
+function BlockControl({ appId, userId, blocked }: { appId: string; userId: string; blocked: boolean }) {
+  const block = useBlockUser();
+  const [opened, setOpened] = useState(false);
+  const [reason, setReason] = useState('');
+
+  async function submit(next: boolean) {
+    try {
+      await block.mutateAsync({ appId, userId, blocked: next, reason: next ? reason.trim() || undefined : undefined });
+      notifications.show({ message: next ? 'User blocked' : 'User unblocked', color: next ? 'red' : 'teal' });
+      setOpened(false);
+      setReason('');
+    } catch (err) {
+      notifications.show({ message: err instanceof ApiError ? err.message : 'Failed', color: 'red' });
+    }
+  }
+
+  if (blocked) {
+    return <Button size="compact-sm" variant="light" color="teal" loading={block.isPending} onClick={() => submit(false)}>Unblock</Button>;
+  }
+  return (
+    <Popover opened={opened} onChange={setOpened} position="bottom-end" withArrow trapFocus>
+      <Popover.Target>
+        <Button size="compact-sm" variant="light" color="red" onClick={() => setOpened((o) => !o)}>Block</Button>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Stack gap="xs" w={260}>
+          <TextInput label="Reason" placeholder="policy violation…" maxLength={500} value={reason} onChange={(e) => setReason(e.currentTarget.value)} />
+          <Button color="red" onClick={() => submit(true)} loading={block.isPending}>Block user</Button>
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
+
+export function UserDetail({ appId, userId, user }: { appId: string; userId: string; user?: AdminUser }) {
   const balance = useBalance(appId, userId);
   const [type, setType] = useState('all');
   const tx = useTransactions(appId, userId, type === 'all' ? undefined : type);
@@ -82,8 +116,21 @@ export function UserDetail({ appId, userId }: { appId: string; userId: string })
         <Group gap="sm" align="center">
           <Badge size="lg" variant="light" color="violet">{balance.data ? int(balance.data.balance) : '…'} credits</Badge>
           <GrantCredits appId={appId} userId={userId} />
+          <BlockControl appId={appId} userId={userId} blocked={user?.blocked ?? false} />
         </Group>
       </Group>
+
+      {user?.blocked && (
+        <Alert color="red" variant="light" title="Blocked from generating reports">
+          <Text size="sm">{user.blockedReason ?? 'No reason recorded.'}</Text>
+          {(user.moderationStrikes != null || user.blockedAt) && (
+            <Text size="xs" c="dimmed" mt={4}>
+              {user.moderationStrikes != null && <>{int(user.moderationStrikes)} moderation strikes</>}
+              {user.blockedAt && <> · {relative(user.blockedAt)}</>}
+            </Text>
+          )}
+        </Alert>
+      )}
 
       <Divider label="Credit audit trail" labelPosition="left" />
       <SegmentedControl

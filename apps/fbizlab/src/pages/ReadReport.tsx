@@ -14,10 +14,10 @@ import type { JobDetail, JobReport, TemplateManifest } from '../api/types';
  * show an expired-link notice instead of the report.
  */
 const T = {
-  en: { banner: 'Read-only preview', missing: 'This link is missing its access token.', expired: 'This read-only link has expired or is no longer valid.', loading: 'Loading report…' },
-  es: { banner: 'Vista de solo lectura', missing: 'Este enlace no tiene su token de acceso.', expired: 'Este enlace de solo lectura expiró o ya no es válido.', loading: 'Cargando reporte…' },
-  fr: { banner: 'Aperçu en lecture seule', missing: "Ce lien n'a pas son jeton d'accès.", expired: "Ce lien en lecture seule a expiré ou n'est plus valide.", loading: 'Chargement du rapport…' },
-  pt: { banner: 'Prévia somente leitura', missing: 'Este link não tem seu token de acesso.', expired: 'Este link somente leitura expirou ou não é mais válido.', loading: 'Carregando relatório…' },
+  en: { banner: 'Read-only preview', missing: 'This link is missing its access token.', expired: 'This read-only link has expired or is no longer valid.', loading: 'Loading dossier…' },
+  es: { banner: 'Vista de solo lectura', missing: 'Este enlace no tiene su token de acceso.', expired: 'Este enlace de solo lectura expiró o ya no es válido.', loading: 'Cargando dossier…' },
+  fr: { banner: 'Aperçu en lecture seule', missing: "Ce lien n'a pas son jeton d'accès.", expired: "Ce lien en lecture seule a expiré ou n'est plus valide.", loading: 'Chargement du dossier…' },
+  pt: { banner: 'Prévia somente leitura', missing: 'Este link não tem seu token de acesso.', expired: 'Este link somente leitura expirou ou não é mais válido.', loading: 'Carregando dossiê…' },
 };
 
 export function ReadReport() {

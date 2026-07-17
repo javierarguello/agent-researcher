@@ -78,10 +78,10 @@ export function useSetPricing() {
   });
 }
 
-export function useUsers(filter: { appId?: string; q?: string; neverPurchased?: boolean }) {
+export function useUsers(filter: { appId?: string; q?: string; neverPurchased?: boolean; blocked?: boolean }) {
   return useQuery({
-    queryKey: ['users', filter.appId ?? '', filter.q ?? '', filter.neverPurchased ? 'np' : ''],
-    queryFn: () => api<{ users: AdminUser[] }>(`/admin/users${qs({ appId: filter.appId, q: filter.q, neverPurchased: filter.neverPurchased ? 'true' : undefined })}`),
+    queryKey: ['users', filter.appId ?? '', filter.q ?? '', filter.neverPurchased ? 'np' : '', filter.blocked ? 'bl' : ''],
+    queryFn: () => api<{ users: AdminUser[] }>(`/admin/users${qs({ appId: filter.appId, q: filter.q, neverPurchased: filter.neverPurchased ? 'true' : undefined, blocked: filter.blocked ? 'true' : undefined })}`),
   });
 }
 
@@ -153,6 +153,15 @@ export function useRetryJob() {
       qc.invalidateQueries({ queryKey: ['job', jobId] });
       qc.invalidateQueries({ queryKey: ['jobs'] });
     },
+  });
+}
+
+export function useBlockUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { appId: string; userId: string; blocked: boolean; reason?: string }) =>
+      api<{ appId: string; userId: string; blocked: boolean }>('/admin/users/block', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }
 

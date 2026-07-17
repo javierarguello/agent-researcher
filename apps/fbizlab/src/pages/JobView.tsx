@@ -8,10 +8,10 @@ import { shortDate } from '../lib/format';
 import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
 
 const T = {
-  en: { back: '← Reports', working: 'Generating your dossier…', loadingReport: 'Loading report…', failed: 'This report could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.' },
-  es: { back: '← Reportes', working: 'Generando tu dossier…', loadingReport: 'Cargando reporte…', failed: 'Este reporte no pudo completarse.', download: 'Descargar', files: 'Archivos', warnings: 'Notas', partial: 'Algunas secciones se entregaron parciales.' },
-  fr: { back: '← Rapports', working: 'Génération de votre dossier…', loadingReport: 'Chargement du rapport…', failed: 'Ce rapport n’a pas pu être terminé.', download: 'Télécharger', files: 'Fichiers', warnings: 'Notes', partial: 'Certaines sections ont été livrées partielles.' },
-  pt: { back: '← Relatórios', working: 'Gerando seu dossiê…', loadingReport: 'Carregando relatório…', failed: 'Este relatório não pôde ser concluído.', download: 'Baixar', files: 'Arquivos', warnings: 'Notas', partial: 'Algumas seções foram entregues parciais.' },
+  en: { back: '← Dossiers', working: 'Generating your dossier…', loadingReport: 'Loading dossier…', failed: 'This dossier could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.' },
+  es: { back: '← Dossiers', working: 'Generando tu dossier…', loadingReport: 'Cargando dossier…', failed: 'Este dossier no pudo completarse.', download: 'Descargar', files: 'Archivos', warnings: 'Notas', partial: 'Algunas secciones se entregaron parciales.' },
+  fr: { back: '← Dossiers', working: 'Génération de votre dossier…', loadingReport: 'Chargement du dossier…', failed: 'Ce dossier n’a pas pu être terminé.', download: 'Télécharger', files: 'Fichiers', warnings: 'Notes', partial: 'Certaines sections ont été livrées partielles.' },
+  pt: { back: '← Dossiês', working: 'Gerando seu dossiê…', loadingReport: 'Carregando dossiê…', failed: 'Este dossiê não pôde ser concluído.', download: 'Baixar', files: 'Arquivos', warnings: 'Notas', partial: 'Algumas seções foram entregues parciais.' },
 };
 const STATUS_LABEL: Record<string, Record<JobStatus, string>> = {
   en: { queued: 'Queued', running: 'Running', completed: 'Ready', failed: 'Failed', incomplete: 'Paused' },
@@ -58,7 +58,7 @@ export function JobView() {
         </div>
       )}
 
-      {live && job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} />}
+      {job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} creditsSpent={job.creditsSpent} />}
 
       {job.status === 'failed' && <div className="card" style={{ padding: 18, borderColor: '#e6c3bd' }}><span className="risk">{t.failed}</span></div>}
 
@@ -104,13 +104,13 @@ export function JobView() {
 }
 
 const PL: Record<string, Record<string, string>> = {
-  en: { title: 'What you asked for', industry: 'Industry', location: 'Location', mode: 'Mode', language: 'Report language', askingPrice: 'Asking price', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', sbaFriendly: 'SBA friendly', includeRealEstate: 'Include real estate', keywords: 'Keywords', preferredSources: 'Preferred sources', instructions: 'Instructions', yes: 'Yes' },
-  es: { title: 'Lo que pediste', industry: 'Industria', location: 'Ubicación', mode: 'Modo', language: 'Idioma del reporte', askingPrice: 'Precio', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', sbaFriendly: 'Apto SBA', includeRealEstate: 'Incluir inmueble', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas', instructions: 'Instrucciones', yes: 'Sí' },
-  fr: { title: 'Ce que vous avez demandé', industry: 'Secteur', location: 'Localisation', mode: 'Mode', language: 'Langue du rapport', askingPrice: 'Prix', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', sbaFriendly: 'Compatible SBA', includeRealEstate: "Inclure l'immobilier", keywords: 'Mots-clés', preferredSources: 'Sources préférées', instructions: 'Instructions', yes: 'Oui' },
-  pt: { title: 'O que você pediu', industry: 'Setor', location: 'Localização', mode: 'Modo', language: 'Idioma do relatório', askingPrice: 'Preço', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', sbaFriendly: 'Compatível SBA', includeRealEstate: 'Incluir imóvel', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas', instructions: 'Instruções', yes: 'Sim' },
+  en: { title: 'What you asked for', industry: 'Industry', location: 'Location', mode: 'Mode', creditsSpent: 'Credits spent', language: 'Dossier language', askingPrice: 'Asking price', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', sbaFriendly: 'SBA friendly', includeRealEstate: 'Include real estate', keywords: 'Keywords', preferredSources: 'Preferred sources', instructions: 'Instructions', yes: 'Yes' },
+  es: { title: 'Lo que pediste', industry: 'Industria', location: 'Ubicación', mode: 'Modo', creditsSpent: 'Créditos gastados', language: 'Idioma del dossier', askingPrice: 'Precio', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', sbaFriendly: 'Apto SBA', includeRealEstate: 'Incluir inmueble', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas', instructions: 'Instrucciones', yes: 'Sí' },
+  fr: { title: 'Ce que vous avez demandé', industry: 'Secteur', location: 'Localisation', mode: 'Mode', creditsSpent: 'Crédits dépensés', language: 'Langue du dossier', askingPrice: 'Prix', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', sbaFriendly: 'Compatible SBA', includeRealEstate: "Inclure l'immobilier", keywords: 'Mots-clés', preferredSources: 'Sources préférées', instructions: 'Instructions', yes: 'Oui' },
+  pt: { title: 'O que você pediu', industry: 'Setor', location: 'Localização', mode: 'Modo', creditsSpent: 'Créditos gastos', language: 'Idioma do dossiê', askingPrice: 'Preço', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', sbaFriendly: 'Compatível SBA', includeRealEstate: 'Incluir imóvel', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas', instructions: 'Instruções', yes: 'Sim' },
 };
 
-function RequestParams({ params, manifest, lang }: { params: Record<string, unknown>; manifest?: TemplateManifest; lang: string }) {
+function RequestParams({ params, manifest, lang, creditsSpent }: { params: Record<string, unknown>; manifest?: TemplateManifest; lang: string; creditsSpent?: number | null }) {
   const l = PL[lang] ?? PL.en!;
   const p = params;
   const money = (n: unknown) => (typeof n === 'number' ? `$${n.toLocaleString(lang)}` : null);
@@ -125,6 +125,7 @@ function RequestParams({ params, manifest, lang }: { params: Record<string, unkn
   push('industry', p.industry as string);
   push('location', p.location as string);
   push('mode', modeLabel);
+  if (typeof creditsSpent === 'number') rows.push([l.creditsSpent!, `◆ ${creditsSpent}`]);
   push('language', langLabel);
   push('askingPrice', price);
   push('minRevenue', money(p.minRevenue));

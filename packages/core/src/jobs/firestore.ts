@@ -26,6 +26,8 @@ export interface CreateJobInput {
   userId: string;
   template: string;
   params: Record<string, unknown>;
+  mode?: string;
+  creditsSpent?: number;
 }
 
 export async function createJob(input: CreateJobInput): Promise<ResearchJob> {
@@ -36,6 +38,8 @@ export async function createJob(input: CreateJobInput): Promise<ResearchJob> {
     userId: input.userId,
     template: input.template,
     params: input.params,
+    ...(input.mode ? { mode: input.mode } : {}),
+    ...(input.creditsSpent != null ? { creditsSpent: input.creditsSpent } : {}),
     status: 'queued',
     files: [],
     bucketPath: `${config.storage.rootPrefix}/${input.jobId}`,

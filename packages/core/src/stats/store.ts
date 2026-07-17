@@ -327,6 +327,13 @@ export interface UserRecord {
   lastSeenAt?: string;
   lastLoginAt?: string;
   logins?: number;
+  /** Blocked users can still log in and read past reports, but can't generate
+   *  reports or buy credits. Set after repeated moderation rejections or by an admin. */
+  blocked?: boolean;
+  blockedReason?: string;
+  blockedAt?: string;
+  /** How many times this user's params were rejected by moderation. */
+  moderationStrikes?: number;
 }
 
 function toUserRecord(d: Record<string, unknown>): UserRecord {
@@ -344,7 +351,64 @@ function toUserRecord(d: Record<string, unknown>): UserRecord {
     lastSeenAt: d.lastSeenAt as string | undefined,
     lastLoginAt: d.lastLoginAt as string | undefined,
     logins: typeof d.logins === 'number' ? (d.logins as number) : undefined,
+    blocked: d.blocked === true,
+    blockedReason: d.blockedReason as string | undefined,
+    blockedAt: d.blockedAt as string | undefined,
+    moderationStrikes: typeof d.moderationStrikes === 'number' ? (d.moderationStrikes as number) : undefined,
   };
+}
+
+/** A user is blocked from generating reports / buying credits after this many
+ *  moderation rejections. */
+export const MODERATION_STRIKE_LIMIT = 4;
+
+/** Quick block-state read for enforcing the gate (report generation / checkout). */
+export async function getUserFlags(appId: string, userId: string): Promise<{ blocked: boolean; blockedReason?: string }> {
+  const snap = await appUsers().doc(userKey(appId, userId)).get();
+  const d = snap.exists ? (snap.data() as Record<string, unknown>) : {};
+  return { blocked: d.blocked === true, blockedReason: d.blockedReason as string | undefined };
+}
+
+/**
+ * Record a moderation rejection. Increments the strike counter and, on reaching
+ * `MODERATION_STRIKE_LIMIT`, blocks the user (storing the moderation explanation +
+ * what was detected as `blockedReason`). Returns the new state.
+ */
+export async function recordModerationStrike(
+  appId: string,
+  userId: string,
+  detail: { reason?: string; categories?: string[] },
+): Promise<{ blocked: boolean; strikes: number; blockedReason?: string }> {
+  const uref = appUsers().doc(userKey(appId, userId));
+  const now = nowIso();
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(uref);
+    const cur = (snap.exists ? snap.data() : {}) as { moderationStrikes?: number; blocked?: boolean; blockedReason?: string };
+    if (cur.blocked) return { blocked: true, strikes: cur.moderationStrikes ?? MODERATION_STRIKE_LIMIT, blockedReason: cur.blockedReason };
+    const strikes = (cur.moderationStrikes ?? 0) + 1;
+    const detected = detail.categories?.length ? ` (detected: ${detail.categories.join(', ')})` : '';
+    const blockedReason = `${detail.reason ?? 'Repeated policy violations in report requests.'}${detected}`;
+    const willBlock = strikes >= MODERATION_STRIKE_LIMIT;
+    tx.set(
+      uref,
+      { appId, userId, moderationStrikes: strikes, updatedAt: now, ...(willBlock ? { blocked: true, blockedReason, blockedAt: now } : {}) },
+      { merge: true },
+    );
+    return { blocked: willBlock, strikes, blockedReason: willBlock ? blockedReason : undefined };
+  });
+}
+
+/** Admin block/unblock. Unblocking clears the reason and resets the strike count. */
+export async function setUserBlocked(appId: string, userId: string, blocked: boolean, reason?: string): Promise<void> {
+  const now = nowIso();
+  await appUsers()
+    .doc(userKey(appId, userId))
+    .set(
+      blocked
+        ? { appId, userId, blocked: true, blockedReason: reason ?? 'Blocked by an administrator.', blockedAt: now, updatedAt: now }
+        : { blocked: false, blockedReason: FieldValue.delete(), blockedAt: FieldValue.delete(), moderationStrikes: 0, updatedAt: now },
+      { merge: true },
+    );
 }
 
 /**
@@ -353,7 +417,7 @@ function toUserRecord(d: Record<string, unknown>): UserRecord {
  * prod: (appId, userId) for the prefix path, (appId, lastSeenAt desc) otherwise.
  */
 export async function queryUsers(
-  opts: { appId?: string; emailPrefix?: string; limit?: number; neverPurchased?: boolean } = {},
+  opts: { appId?: string; emailPrefix?: string; limit?: number; neverPurchased?: boolean; blocked?: boolean } = {},
 ): Promise<UserRecord[]> {
   let q: Query = appUsers();
   if (opts.appId) q = q.where('appId', '==', opts.appId);
@@ -362,10 +426,12 @@ export async function queryUsers(
   } else {
     q = q.orderBy('lastSeenAt', 'desc');
   }
+  const inMemoryFilter = opts.neverPurchased || opts.blocked;
   const limit = opts.limit ?? 50;
   // When filtering in memory, over-fetch so the page can still fill up.
-  const snap = await q.limit(opts.neverPurchased ? Math.max(limit, 300) : limit).get();
+  const snap = await q.limit(inMemoryFilter ? Math.max(limit, 300) : limit).get();
   let users = snap.docs.map((d) => toUserRecord(d.data() as Record<string, unknown>));
   if (opts.neverPurchased) users = users.filter((u) => !u.hasPurchased);
+  if (opts.blocked) users = users.filter((u) => u.blocked);
   return users.slice(0, limit);
 }

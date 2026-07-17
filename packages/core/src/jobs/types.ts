@@ -54,6 +54,10 @@ export interface ResearchJob {
   template: string;
   /** Validated params the client passed. */
   params: Record<string, unknown>;
+  /** Report mode key (essential/comprehensive) — denormalized for list rendering. */
+  mode?: string;
+  /** Credits charged for this report (the mode cost at generation time). */
+  creditsSpent?: number;
   /** Auto-generated short title (for dashboards / report lists). */
   title?: string;
   /** Auto-generated one-line description of the report. */

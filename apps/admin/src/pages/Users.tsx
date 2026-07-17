@@ -18,8 +18,10 @@ export function Users() {
   const [q, setQ] = useState('');
   const [debouncedQ] = useDebouncedValue(q, 300);
   const [neverPurchased, setNeverPurchased] = useState(false);
-  const users = useUsers({ appId: appId ?? undefined, q: debouncedQ || undefined, neverPurchased: neverPurchased || undefined });
+  const [onlyBlocked, setOnlyBlocked] = useState(false);
+  const users = useUsers({ appId: appId ?? undefined, q: debouncedQ || undefined, neverPurchased: neverPurchased || undefined, blocked: onlyBlocked || undefined });
   const [selected, setSelected] = useState<{ appId: string; userId: string } | null>(null);
+  const selectedUser = selected ? users.data?.users.find((u) => u.appId === selected.appId && u.userId === selected.userId) : undefined;
 
   // Grant-to-anyone tool (works for users not yet in the list — e.g. the admin).
   const [grantOpen, setGrantOpen] = useState(false);
@@ -66,6 +68,7 @@ export function Users() {
         <Select placeholder="All apps" data={appOptions} value={appId} onChange={setAppId} clearable w={220} />
         <TextInput placeholder="Search email prefix…" value={q} onChange={(e) => setQ(e.currentTarget.value)} w={280} />
         <Switch label="Only never-purchased" checked={neverPurchased} onChange={(e) => setNeverPurchased(e.currentTarget.checked)} />
+        <Switch label="Only blocked" checked={onlyBlocked} onChange={(e) => setOnlyBlocked(e.currentTarget.checked)} />
       </Group>
 
       {users.isLoading && <Loader />}
@@ -93,7 +96,12 @@ export function Users() {
                 >
                   <Table.Td><Mono size="sm">{u.userId}</Mono></Table.Td>
                   <Table.Td><Mono size="xs" c="dimmed">{u.appId}</Mono></Table.Td>
-                  <Table.Td>{u.hasPurchased ? <Badge color="teal" variant="light">Paying</Badge> : <Badge color="orange" variant="light">No credits</Badge>}</Table.Td>
+                  <Table.Td>
+                    <Group gap={6}>
+                      {u.blocked && <Badge color="red" variant="filled">Blocked</Badge>}
+                      {u.hasPurchased ? <Badge color="teal" variant="light">Paying</Badge> : <Badge color="orange" variant="light">No credits</Badge>}
+                    </Group>
+                  </Table.Td>
                   <Table.Td><Mono size="sm">{int(u.reports)}</Mono></Table.Td>
                   <Table.Td><Mono size="sm">{usd(u.spentUsd)}</Mono></Table.Td>
                   <Table.Td><Mono size="sm">{int(u.creditsPurchased)}</Mono></Table.Td>
@@ -116,7 +124,7 @@ export function Users() {
         title="User"
         padding="lg"
       >
-        {selected && <UserDetail appId={selected.appId} userId={selected.userId} />}
+        {selected && <UserDetail appId={selected.appId} userId={selected.userId} user={selectedUser} />}
       </Drawer>
 
       <Modal opened={grantOpen} onClose={() => setGrantOpen(false)} title="Grant credits" size="md">

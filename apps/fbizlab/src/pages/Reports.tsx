@@ -9,49 +9,49 @@ const T = {
   en: {
     dashboard: 'Dashboard', hi: 'Hi, ',
     sub: 'Generate new dossiers, track running ones, and manage your credits.',
-    buyCredits: 'Buy credits', newReport: 'New report',
+    buyCredits: 'Buy credits', newReport: 'New dossier',
     creditsLbl: 'Credits', creditsSub: 'Available',
-    totalLbl: 'Total reports', totalSub: 'All-time',
+    totalLbl: 'Total dossiers', totalSub: 'All-time',
     readyLbl: 'Ready', readySub: 'Ready to review',
     progressLbl: 'In progress', progressSub: 'Processing or queued',
-    yourBalance: 'Your balance', creditsAvailable: 'credits available', buyMore: 'Buy more',
-    yourReports: 'Your business opportunities', total: 'total', empty: 'No reports yet — create your first dossier.',
+    yourBalance: 'Your balance', creditsAvailable: 'credits available', buyMore: 'Buy more', blockedTitle: 'Account blocked', blockedBody: 'Your account has been blocked by content moderation for inappropriate requests. You can still view your previous dossiers, but you can’t generate new ones.',
+    yourReports: 'Your business opportunities', total: 'total', empty: 'No dossiers yet — create your first one.',
     open: 'Open', processing: 'Processing…', retry: 'Retry',
   },
   es: {
     dashboard: 'Panel', hi: 'Hola, ',
     sub: 'Genera nuevos dossiers, sigue los que están corriendo y administra tus créditos.',
-    buyCredits: 'Comprar créditos', newReport: 'Nuevo reporte',
+    buyCredits: 'Comprar créditos', newReport: 'Nuevo dossier',
     creditsLbl: 'Créditos', creditsSub: 'Disponibles',
-    totalLbl: 'Reportes totales', totalSub: 'Histórico',
+    totalLbl: 'Dossiers totales', totalSub: 'Histórico',
     readyLbl: 'Listos', readySub: 'Listos para revisar',
     progressLbl: 'En proceso', progressSub: 'Procesando o en cola',
-    yourBalance: 'Tu saldo', creditsAvailable: 'créditos disponibles', buyMore: 'Comprar más',
-    yourReports: 'Tus oportunidades de negocio', total: 'en total', empty: 'Aún no tienes reportes — crea tu primer dossier.',
+    yourBalance: 'Tu saldo', creditsAvailable: 'créditos disponibles', buyMore: 'Comprar más', blockedTitle: 'Cuenta bloqueada', blockedBody: 'Tu cuenta fue bloqueada por moderación de contenido por solicitudes inapropiadas. Puedes ver tus dossiers anteriores, pero no generar nuevos.',
+    yourReports: 'Tus oportunidades de negocio', total: 'en total', empty: 'Aún no tienes dossiers — crea el primero.',
     open: 'Abrir', processing: 'Procesando…', retry: 'Reintentar',
   },
   fr: {
     dashboard: 'Tableau de bord', hi: 'Bonjour, ',
     sub: 'Générez de nouveaux dossiers, suivez ceux en cours et gérez vos crédits.',
-    buyCredits: 'Acheter des crédits', newReport: 'Nouveau rapport',
+    buyCredits: 'Acheter des crédits', newReport: 'Nouveau dossier',
     creditsLbl: 'Crédits', creditsSub: 'Disponibles',
-    totalLbl: 'Rapports au total', totalSub: 'Depuis le début',
+    totalLbl: 'Dossiers au total', totalSub: 'Depuis le début',
     readyLbl: 'Prêts', readySub: 'Prêts à consulter',
     progressLbl: 'En cours', progressSub: 'En traitement ou en file',
-    yourBalance: 'Votre solde', creditsAvailable: 'crédits disponibles', buyMore: 'Acheter plus',
-    yourReports: 'Vos opportunités d’affaires', total: 'au total', empty: 'Aucun rapport — créez votre premier dossier.',
+    yourBalance: 'Votre solde', creditsAvailable: 'crédits disponibles', buyMore: 'Acheter plus', blockedTitle: 'Compte bloqué', blockedBody: 'Votre compte a été bloqué par la modération de contenu pour des demandes inappropriées. Vous pouvez consulter vos dossiers précédents, mais pas en générer de nouveaux.',
+    yourReports: 'Vos opportunités d’affaires', total: 'au total', empty: 'Aucun dossier — créez le premier.',
     open: 'Ouvrir', processing: 'En cours…', retry: 'Réessayer',
   },
   pt: {
     dashboard: 'Painel', hi: 'Olá, ',
     sub: 'Gere novos dossiês, acompanhe os que estão rodando e administre seus créditos.',
-    buyCredits: 'Comprar créditos', newReport: 'Novo relatório',
+    buyCredits: 'Comprar créditos', newReport: 'Novo dossiê',
     creditsLbl: 'Créditos', creditsSub: 'Disponíveis',
-    totalLbl: 'Relatórios no total', totalSub: 'Desde o início',
+    totalLbl: 'Dossiês no total', totalSub: 'Desde o início',
     readyLbl: 'Prontos', readySub: 'Prontos para revisar',
     progressLbl: 'Em andamento', progressSub: 'Processando ou na fila',
-    yourBalance: 'Seu saldo', creditsAvailable: 'créditos disponíveis', buyMore: 'Comprar mais',
-    yourReports: 'Suas oportunidades de negócio', total: 'no total', empty: 'Nenhum relatório ainda — crie seu primeiro dossiê.',
+    yourBalance: 'Seu saldo', creditsAvailable: 'créditos disponíveis', buyMore: 'Comprar mais', blockedTitle: 'Conta bloqueada', blockedBody: 'Sua conta foi bloqueada pela moderação de conteúdo por solicitações inadequadas. Você pode ver seus dossiês anteriores, mas não gerar novos.',
+    yourReports: 'Suas oportunidades de negócio', total: 'no total', empty: 'Nenhum dossiê ainda — crie o primeiro.',
     open: 'Abrir', processing: 'Processando…', retry: 'Tentar de novo',
   },
 };
@@ -90,6 +90,8 @@ export function Reports() {
   const nav = useNavigate();
   // Map a live job's progress phase → its localized step label (from the manifest).
   const stepMap: Record<string, string> = Object.fromEntries((templates.data?.templates?.[0]?.steps ?? []).map((s) => [s.id, s.label]));
+  const modeLabels: Record<string, string> = Object.fromEntries((templates.data?.templates?.[0]?.modes ?? []).map((m) => [m.key, m.label]));
+  const blocked = stats.data?.blocked ?? false;
 
   const list = jobs.data?.jobs ?? [];
   // Stat tiles come from the server-side per-user aggregate (accurate over ALL
@@ -110,16 +112,24 @@ export function Reports() {
           <p className="soft" style={{ fontSize: 14.5, maxWidth: 470 }}>{t.sub}</p>
         </div>
         <div className="row" style={{ gap: 12 }}>
-          <Link className="btn btn--black" to="/app/new">+ {t.newReport}</Link>
+          {!blocked && <Link className="btn btn--black" to="/app/new">+ {t.newReport}</Link>}
         </div>
       </div>
+
+      {blocked && (
+        <div className="card blocked-banner">
+          <div className="blocked-banner__t">⚠ {t.blockedTitle}</div>
+          <p>{t.blockedBody}</p>
+          {stats.data?.blockedReason && <p className="mono muted" style={{ fontSize: 11.5, marginTop: 8 }}>{stats.data.blockedReason}</p>}
+        </div>
+      )}
 
       <div className="dash-stats">
         <div className="dash-stat--credits">
           <div className="dash-stat__lbl">{t.creditsLbl}</div>
           <div className="dash-stat__val accent">{bal ?? '…'}</div>
           <div className="dash-stat__sub">{t.creditsSub}</div>
-          <Link className="btn btn--black btn--sm" to="/app/credits" style={{ marginTop: 14 }}>{t.buyMore}</Link>
+          {!blocked && <Link className="btn btn--black btn--sm" to="/app/credits" style={{ marginTop: 14 }}>{t.buyMore}</Link>}
         </div>
         <div>
           <div className="dash-stat__lbl">{t.totalLbl}</div>
@@ -162,6 +172,8 @@ export function Reports() {
                   <div className="dash-row__id">
                     <span className="mono muted">{shortId(j.jobId)}</span>
                     <span className={`badge ${j.status}`}>{sl[j.status] ?? j.status}</span>
+                    {j.mode && <span className="rtag">{modeLabels[j.mode] ?? j.mode}</span>}
+                    {j.creditsSpent != null && <span className="rtag rtag--cr">◆ {j.creditsSpent}</span>}
                   </div>
                   <div className="dash-row__title">{j.title ?? j.jobId.slice(0, 8)}</div>
                   {meta && <div className="dash-row__meta mono">{meta}</div>}

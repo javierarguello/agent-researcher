@@ -44,6 +44,10 @@ import {
   updateSettings,
   validateRequest,
   moderateResearchParams,
+  getUserFlags,
+  recordModerationStrike,
+  setUserBlocked,
+  MODERATION_STRIKE_LIMIT,
   resolveMode,
   getModelPricing,
   setModelPricing,
@@ -643,6 +647,19 @@ app.post(
       return reply.code(403).send({ error: `App "${appId}" is not allowed to use model "${validated.template}".` });
     }
 
+    // Blocked users (repeated moderation rejections / admin action) can still read
+    // their past reports, but cannot generate new ones.
+    if (req.auth!.role !== 'admin') {
+      const flags = await getUserFlags(appId, userId);
+      if (flags.blocked) {
+        return reply.code(403).send({
+          error: flags.blockedReason ?? 'Your account is blocked from generating reports.',
+          code: 'account_blocked',
+          reason: flags.blockedReason,
+        });
+      }
+    }
+
     // Concurrency: at most N reports in flight per user (queued/running). Enforced
     // before consuming credits so a rejected request costs nothing. Admins exempt.
     if (req.auth!.role !== 'admin') {
@@ -683,11 +700,18 @@ app.post(
     if (req.auth!.role !== 'admin') {
       const verdict = await moderateResearchParams(validated.params);
       if (!verdict.ok) {
-        logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories ?? [] });
+        // Each rejection is a strike; the Nth blocks the account (read-only from then on).
+        const strike = await recordModerationStrike(appId, userId, { reason: verdict.reason, categories: verdict.categories });
+        logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories ?? [], strikes: strike.strikes, blocked: strike.blocked });
+        if (strike.blocked) {
+          return reply.code(403).send({ error: strike.blockedReason ?? 'Your account has been blocked for repeated policy violations.', code: 'account_blocked', reason: strike.blockedReason });
+        }
         return reply.code(422).send({
           error: verdict.reason ?? 'Your request was rejected by our content filter. Please review and re-enter your details.',
           code: 'params_rejected',
           categories: verdict.categories,
+          strikes: strike.strikes,
+          strikeLimit: MODERATION_STRIKE_LIMIT,
         });
       }
     }
@@ -695,16 +719,18 @@ app.post(
     const jobId = randomUUID();
     const logCtx = { jobId, appId, userId, template: validated.template };
 
+    // Resolve the mode + its credit cost (stored on the job so the UI can show
+    // "X credits · Comprehensive" per report).
+    const tmpl = getTemplate(validated.template);
+    const mode = resolveMode(tmpl?.modes, (validated.params as Record<string, unknown>).mode);
+    const pricing = await getModelPricing(validated.template); // Firestore override → code default
+    const creditsSpent = resolveModeCredits(pricing, mode.config, mode.key);
+
     // Credits gate: consume the mode's credit cost up front (refunded if the job fails).
     if (config.server.appEnv !== 'local') {
-      const tmpl = getTemplate(validated.template);
-      const mode = resolveMode(tmpl?.modes, (validated.params as Record<string, unknown>).mode);
-      // Firestore pricing override for this model → template/code default.
-      const pricing = await getModelPricing(validated.template);
-      const cost = resolveModeCredits(pricing, mode.config, mode.key);
       try {
-        await consumeCredits(appId, userId, cost, jobId);
-        logEvent(logCtx, 'INFO', 'credits.consumed', { credits: cost, mode: mode.key });
+        await consumeCredits(appId, userId, creditsSpent, jobId);
+        logEvent(logCtx, 'INFO', 'credits.consumed', { credits: creditsSpent, mode: mode.key });
       } catch (err) {
         if (err instanceof InsufficientCreditsError) {
           return reply.code(402).send({ error: 'Insufficient credits.', required: err.required, balance: err.balance });
@@ -713,7 +739,7 @@ app.post(
       }
     }
 
-    await createJob({ jobId, appId, userId, template: validated.template, params: validated.params });
+    await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent });
     logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
 
     try {
@@ -767,6 +793,9 @@ app.get(
         title: j.title ?? null,
         shortDescription: j.shortDescription ?? null,
         status: j.status,
+        // Report mode + credits charged — shown as a per-report tag in the inbox.
+        mode: j.mode ?? ((j.params as Record<string, unknown>)?.mode as string | undefined) ?? null,
+        creditsSpent: j.creditsSpent ?? null,
         // Client-facing progress so the inbox can show the live step (no internals).
         progress: j.progress ? { phase: j.progress.phase, message: j.progress.message } : null,
         // Cost is internal — only admins see it.
@@ -827,6 +856,8 @@ app.get(
       title: job.title ?? null,
       shortDescription: job.shortDescription ?? null,
       status: job.status,
+      mode: job.mode ?? ((job.params as Record<string, unknown>)?.mode as string | undefined) ?? null,
+      creditsSpent: job.creditsSpent ?? null,
       // The caller's own request params — safe to echo (not internal), useful for
       // showing what's being researched while the job runs.
       params: job.params,
@@ -978,7 +1009,13 @@ app.get(
       security: sec,
     },
   },
-  async (req) => getUserJobStats(req.auth!.appId, req.auth!.email),
+  async (req) => {
+    const [stats, flags] = await Promise.all([
+      getUserJobStats(req.auth!.appId, req.auth!.email),
+      getUserFlags(req.auth!.appId, req.auth!.email),
+    ]);
+    return { ...stats, blocked: flags.blocked, blockedReason: flags.blockedReason ?? null };
+  },
 );
 
 // --- Credits ----------------------------------------------------------------
@@ -1111,6 +1148,14 @@ app.post(
     const b = req.body as { planId: string; successUrl: string; cancelUrl: string };
     const appId = req.auth!.appId;
     const userId = req.auth!.email;
+
+    // Blocked users cannot buy more credits.
+    if (req.auth!.role !== 'admin') {
+      const flags = await getUserFlags(appId, userId);
+      if (flags.blocked) {
+        return reply.code(403).send({ error: flags.blockedReason ?? 'Your account is blocked.', code: 'account_blocked', reason: flags.blockedReason });
+      }
+    }
 
     // Catalog is entirely in Stripe: resolve by Price metadata appId + planId.
     const plan = await resolveStripePlan(appId, b.planId);
@@ -1429,14 +1474,45 @@ app.get(
           appId: { type: 'string', maxLength: 128, description: 'Filter to one app.' },
           q: { type: 'string', maxLength: 320, description: 'Email/userId prefix match.' },
           neverPurchased: { type: 'boolean', description: 'Only users who signed up but never bought credits.' },
+          blocked: { type: 'boolean', description: 'Only blocked users.' },
           limit: { type: 'integer', minimum: 1, maximum: 200 },
         },
       },
     },
   },
   async (req) => {
-    const { appId, q, neverPurchased, limit } = req.query as { appId?: string; q?: string; neverPurchased?: boolean; limit?: number };
-    return { users: await queryUsers({ appId, emailPrefix: q, neverPurchased, limit: limit ?? 50 }) };
+    const { appId, q, neverPurchased, blocked, limit } = req.query as { appId?: string; q?: string; neverPurchased?: boolean; blocked?: boolean; limit?: number };
+    return { users: await queryUsers({ appId, emailPrefix: q, neverPurchased, blocked, limit: limit ?? 50 }) };
+  },
+);
+
+app.post(
+  '/admin/users/block',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Block or unblock a user (report generation + credit purchases)',
+      description: 'A blocked user can still log in and read past reports, but cannot generate new reports or buy credits. Unblocking also resets the moderation strike count.',
+      tags: ['admin'],
+      security: sec,
+      body: {
+        type: 'object',
+        required: ['appId', 'userId', 'blocked'],
+        additionalProperties: false,
+        properties: {
+          appId: { type: 'string', maxLength: 128 },
+          userId: { type: 'string', maxLength: 320 },
+          blocked: { type: 'boolean' },
+          reason: { type: 'string', maxLength: 500 },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const b = req.body as { appId: string; userId: string; blocked: boolean; reason?: string };
+    await setUserBlocked(b.appId, b.userId, b.blocked, b.reason);
+    logEvent({ jobId: '-', appId: b.appId, userId: b.userId }, 'INFO', 'admin.user_block', { blocked: b.blocked, by: req.auth!.email });
+    return { appId: b.appId, userId: b.userId, blocked: b.blocked };
   },
 );
 

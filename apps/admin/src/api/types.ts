@@ -50,6 +50,10 @@ export interface AdminUser {
   spentUsd: number;
   creditsPurchased: number;
   hasPurchased: boolean;
+  blocked?: boolean;
+  blockedReason?: string | null;
+  blockedAt?: string | null;
+  moderationStrikes?: number;
   firstSeenAt?: string;
   lastSeenAt?: string;
   lastLoginAt?: string;

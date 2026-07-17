@@ -34,7 +34,7 @@ const T = {
     resetHint: 'you’ll get a link to reset your password. It expires in 1 hour.',
     footDisc: 'AI-generated research. Not investment or legal advice. Verify all figures independently before purchasing.',
     footProduct: 'Product', footCompany: 'Company',
-    footLinks: { discovery: 'Search', reports: 'AI reports', api: 'Pricing', privacy: 'Privacy', legal: 'Legal', support: 'Support' },
+    footLinks: { discovery: 'Search', reports: 'AI dossiers', api: 'Pricing', privacy: 'Privacy', legal: 'Legal', support: 'Support' },
   },
   es: {
     eyebrowL: 'Digest de investigación · Florida', heroL: 'Ingresa para investigar oportunidades de negocio en Florida.',
@@ -58,7 +58,7 @@ const T = {
     resetHint: 'recibirás un enlace para restablecer tu contraseña. Expira en 1 hora.',
     footDisc: 'Investigación generada por IA. No es asesoría de inversión ni legal. Verifica todas las cifras de forma independiente antes de comprar.',
     footProduct: 'Producto', footCompany: 'Empresa',
-    footLinks: { discovery: 'Buscar', reports: 'Reportes IA', api: 'Precios', privacy: 'Privacidad', legal: 'Legal', support: 'Soporte' },
+    footLinks: { discovery: 'Buscar', reports: 'Dossiers IA', api: 'Precios', privacy: 'Privacidad', legal: 'Legal', support: 'Soporte' },
   },
   fr: {
     eyebrowL: 'Digest de recherche · Floride', heroL: 'Connectez-vous pour rechercher des opportunités en Floride.',
@@ -82,7 +82,7 @@ const T = {
     resetHint: 'vous recevrez un lien pour réinitialiser votre mot de passe. Il expire dans 1 heure.',
     footDisc: 'Recherche générée par IA. Pas un conseil en investissement ni juridique. Vérifiez tous les chiffres avant d’acheter.',
     footProduct: 'Produit', footCompany: 'Entreprise',
-    footLinks: { discovery: 'Recherche', reports: 'Rapports IA', api: 'Tarifs', privacy: 'Confidentialité', legal: 'Mentions légales', support: 'Support' },
+    footLinks: { discovery: 'Recherche', reports: 'Dossiers IA', api: 'Tarifs', privacy: 'Confidentialité', legal: 'Mentions légales', support: 'Support' },
   },
   pt: {
     eyebrowL: 'Digest de pesquisa · Flórida', heroL: 'Entre para pesquisar oportunidades de negócio na Flórida.',
@@ -106,7 +106,7 @@ const T = {
     resetHint: 'você receberá um link para redefinir a senha. Expira em 1 hora.',
     footDisc: 'Pesquisa gerada por IA. Não é aconselhamento de investimento ou jurídico. Verifique todos os números antes de comprar.',
     footProduct: 'Produto', footCompany: 'Empresa',
-    footLinks: { discovery: 'Buscar', reports: 'Relatórios IA', api: 'Preços', privacy: 'Privacidade', legal: 'Jurídico', support: 'Suporte' },
+    footLinks: { discovery: 'Buscar', reports: 'Dossiês IA', api: 'Preços', privacy: 'Privacidade', legal: 'Jurídico', support: 'Suporte' },
   },
 };
 

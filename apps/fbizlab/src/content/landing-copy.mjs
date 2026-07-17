@@ -69,7 +69,7 @@ export const LANDING_COPY = {
         ['Does Florida Biz Labs recommend which business I should buy?', 'No. It does not tell you whether to buy. It organizes information and raises questions to support your own evaluation.'],
         ['Is the information verified?', 'No. Figures come from listings and third-party sources and are not independently verified. Always confirm them yourself.'],
         ['Are summaries reviewed by professionals?', 'No. Summaries are generated automatically and are not routinely reviewed by industry specialists.'],
-        ['Is this a due diligence report?', 'No. It is an early-stage research aid, not due diligence. Consult qualified professionals before any decision.'],
+        ['Is this a due diligence dossier?', 'No. It is an early-stage research aid, not due diligence. Consult qualified professionals before any decision.'],
         ['Is Florida Biz Labs a business broker?', 'No. Florida Biz Labs is not a broker and is not involved in any transaction.'],
       ],
     },
@@ -82,7 +82,7 @@ export const LANDING_COPY = {
     foot: {
       disclaimer: 'AI-generated research. Not investment or legal advice. Verify all figures independently before purchasing.',
       productL: 'Product', companyL: 'Company',
-      product: ['Search', 'AI reports', 'API access'], company: ['Privacy', 'Legal', 'Support'],
+      product: ['Search', 'AI dossiers', 'API access'], company: ['Privacy', 'Legal', 'Support'],
     },
   },
 
@@ -151,7 +151,7 @@ export const LANDING_COPY = {
         ['¿Florida Biz Labs recomienda qué negocio debo comprar?', 'No. No te dice si comprar o no. Organiza la información y plantea preguntas para apoyar tu propia evaluación.'],
         ['¿La información está verificada?', 'No. Las cifras provienen de avisos y fuentes de terceros y no se verifican de forma independiente. Confírmalas siempre tú mismo.'],
         ['¿Los resúmenes son revisados por profesionales?', 'No. Los resúmenes se generan automáticamente y no son revisados de forma rutinaria por especialistas del sector.'],
-        ['¿Esto es un reporte de debida diligencia?', 'No. Es una ayuda de investigación en etapa temprana, no debida diligencia. Consulta a profesionales calificados antes de cualquier decisión.'],
+        ['¿Esto es un dossier de debida diligencia?', 'No. Es una ayuda de investigación en etapa temprana, no debida diligencia. Consulta a profesionales calificados antes de cualquier decisión.'],
         ['¿Florida Biz Labs es un broker de negocios?', 'No. Florida Biz Labs no es un broker y no participa en ninguna transacción.'],
       ],
     },
@@ -164,7 +164,7 @@ export const LANDING_COPY = {
     foot: {
       disclaimer: 'Investigación generada por IA. No es asesoría de inversión ni legal. Verifica todas las cifras de forma independiente antes de comprar.',
       productL: 'Producto', companyL: 'Empresa',
-      product: ['Buscar', 'Reportes IA', 'Acceso API'], company: ['Privacidad', 'Legal', 'Soporte'],
+      product: ['Buscar', 'Dossiers IA', 'Acceso API'], company: ['Privacidad', 'Legal', 'Soporte'],
     },
   },
 
@@ -233,7 +233,7 @@ export const LANDING_COPY = {
         ['Florida Biz Labs recommande-t-il quelle entreprise acheter ?', 'Non. Il ne vous dit pas s’il faut acheter. Il organise l’information et soulève des questions pour appuyer votre propre évaluation.'],
         ['L’information est-elle vérifiée ?', 'Non. Les chiffres proviennent des annonces et de sources tierces et ne sont pas vérifiés de façon indépendante. Confirmez-les toujours vous-même.'],
         ['Les résumés sont-ils examinés par des professionnels ?', 'Non. Les résumés sont générés automatiquement et ne sont pas examinés régulièrement par des spécialistes du secteur.'],
-        ['S’agit-il d’un rapport de due diligence ?', 'Non. C’est une aide à la recherche en phase initiale, pas une due diligence. Consultez des professionnels qualifiés avant toute décision.'],
+        ['S’agit-il d’un dossier de due diligence ?', 'Non. C’est une aide à la recherche en phase initiale, pas une due diligence. Consultez des professionnels qualifiés avant toute décision.'],
         ['Florida Biz Labs est-il un courtier ?', 'Non. Florida Biz Labs n’est pas un courtier et n’intervient dans aucune transaction.'],
       ],
     },
@@ -246,7 +246,7 @@ export const LANDING_COPY = {
     foot: {
       disclaimer: 'Recherche générée par IA. Pas un conseil en investissement ni juridique. Vérifiez tous les chiffres de façon indépendante avant d’acheter.',
       productL: 'Produit', companyL: 'Entreprise',
-      product: ['Recherche', 'Rapports IA', 'Accès API'], company: ['Confidentialité', 'Mentions légales', 'Support'],
+      product: ['Recherche', 'Dossiers IA', 'Accès API'], company: ['Confidentialité', 'Mentions légales', 'Support'],
     },
   },
 
@@ -315,7 +315,7 @@ export const LANDING_COPY = {
         ['A Florida Biz Labs recomenda qual negócio devo comprar?', 'Não. Não diz se você deve comprar. Organiza a informação e levanta perguntas para apoiar sua própria avaliação.'],
         ['A informação é verificada?', 'Não. Os números vêm de anúncios e fontes de terceiros e não são verificados de forma independente. Confirme sempre você mesmo.'],
         ['Os resumos são revisados por profissionais?', 'Não. Os resumos são gerados automaticamente e não são revisados rotineiramente por especialistas do setor.'],
-        ['Isto é um relatório de due diligence?', 'Não. É um auxílio de pesquisa em estágio inicial, não due diligence. Consulte profissionais qualificados antes de qualquer decisão.'],
+        ['Isto é um dossiê de due diligence?', 'Não. É um auxílio de pesquisa em estágio inicial, não due diligence. Consulte profissionais qualificados antes de qualquer decisão.'],
         ['A Florida Biz Labs é uma corretora de negócios?', 'Não. A Florida Biz Labs não é corretora e não participa de nenhuma transação.'],
       ],
     },
@@ -328,7 +328,7 @@ export const LANDING_COPY = {
     foot: {
       disclaimer: 'Pesquisa gerada por IA. Não é aconselhamento de investimento ou jurídico. Verifique todos os números de forma independente antes de comprar.',
       productL: 'Produto', companyL: 'Empresa',
-      product: ['Buscar', 'Relatórios IA', 'Acesso API'], company: ['Privacidade', 'Jurídico', 'Suporte'],
+      product: ['Buscar', 'Dossiês IA', 'Acesso API'], company: ['Privacidade', 'Jurídico', 'Suporte'],
     },
   },
 };

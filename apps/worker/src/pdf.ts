@@ -65,7 +65,8 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
   const brand = theme.brand.toUpperCase().replace(/[<>&]/g, '');
   const footerTemplate =
     `<div style="width:100%;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:0.1em;color:${theme.colors.muted};padding:0 0.78in;display:flex;justify-content:space-between;-webkit-print-color-adjust:exact;">` +
-    `<span>${brand}</span><span>${dossierId} &nbsp;·&nbsp; <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
+    `<span>${brand} &nbsp;·&nbsp; AI-GENERATED — VERIFY RESULTS</span>` +
+    `<span>${dossierId} &nbsp;·&nbsp; <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
 
   const browser = await getBrowser();
   const page = await browser.newPage();

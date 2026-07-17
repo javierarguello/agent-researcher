@@ -9,86 +9,86 @@ type Props = Record<string, unknown>;
 
 const T = {
   en: {
-    dash: 'Dashboard', crumb: 'New report', title: 'New AI dossier.',
+    dash: 'Dashboard', crumb: 'New dossier', title: 'New AI dossier.',
     s1: 'What & where', s1h: "Define what you're hunting for.",
-    s2: 'Report mode', s2h: 'How deep you want it.',
+    s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
     s4: 'Instructions for the analyst', s4h: "Free-form guidance for the analysts (lower authority than the model's base rules).",
     s5: 'Advanced', show: '+ Show', hide: '− Hide', step: 'Step', of: 'of', back: 'Back', next: 'Next',
-    reportLanguage: 'Report language', reportLangHelp: 'The language the final dossier is written in.',
+    reportLanguage: 'Dossier language', reportLangHelp: 'The language the final dossier is written in.',
     f: { industry: 'Industry', location: 'Location', askingPriceMin: 'Asking price · Min', askingPriceMax: 'Asking price · Max', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', keywords: 'Keywords', preferredSources: 'Preferred sources' } as Record<string, string>,
     sba: 'SBA friendly', realEstate: 'Include real estate',
     optionalUseful: 'Optional but very useful', add: 'Add and press Enter',
     industryWarn: 'No industry set — tell the analysts what to research in the Instructions below (at least 40 characters).', instrReq: 'Required — no industry set', charsToGo: 'more characters needed',
     summary: 'Summary', pickIndustry: 'Pick an industry', mode: 'Mode', language: 'Language',
-    cost: 'Cost', credits: 'credits', generate: 'Generate report', delivered: 'Delivered in 2–8 min',
+    cost: 'Cost', credits: 'credits', generate: 'Generate dossier', delivered: 'Delivered in 2–8 min',
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
     youHave: 'You have', creditsLeft: 'credits',
-    notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits', alreadyRunning: 'You already have a report in progress — wait for it to finish before starting another.',
-    rejected: 'Your request couldn’t be submitted:', emailNotice: 'We’ll email you when your report is ready.',
+    notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits', alreadyRunning: 'You already have a dossier in progress — wait for it to finish before starting another.',
+    rejected: 'Your request couldn’t be submitted:', blockedNote: 'Your account is blocked:', emailNotice: 'We’ll email you when your dossier is ready.',
     noCredits: 'Not enough credits — buy more first.', yes: 'Yes',
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
   es: {
-    dash: 'Panel', crumb: 'Nuevo reporte', title: 'Nuevo dossier con IA.',
+    dash: 'Panel', crumb: 'Nuevo dossier', title: 'Nuevo dossier con IA.',
     s1: 'Qué y dónde', s1h: 'Define qué estás buscando.',
-    s2: 'Modo del reporte', s2h: 'Qué tan a fondo lo quieres.',
+    s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
     s4: 'Instrucciones para el analista', s4h: 'Guía libre para los analistas (menor autoridad que las reglas base del modelo).',
     s5: 'Avanzado', show: '+ Mostrar', hide: '− Ocultar', step: 'Paso', of: 'de', back: 'Atrás', next: 'Siguiente',
-    reportLanguage: 'Idioma del reporte', reportLangHelp: 'El idioma en que se escribe el dossier final.',
+    reportLanguage: 'Idioma del dossier', reportLangHelp: 'El idioma en que se escribe el dossier final.',
     f: { industry: 'Industria', location: 'Ubicación', askingPriceMin: 'Precio · Mín', askingPriceMax: 'Precio · Máx', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas' } as Record<string, string>,
     sba: 'Apto SBA', realEstate: 'Incluir inmueble',
     optionalUseful: 'Opcional pero muy útil', add: 'Escribe y presiona Enter',
     industryWarn: 'Sin industria — dile a los analistas qué investigar en las Instrucciones abajo (al menos 40 caracteres).', instrReq: 'Requerido — sin industria', charsToGo: 'caracteres más',
     summary: 'Resumen', pickIndustry: 'Elige una industria', mode: 'Modo', language: 'Idioma',
-    cost: 'Costo', credits: 'créditos', generate: 'Generar reporte', delivered: 'Listo en 2–8 min',
+    cost: 'Costo', credits: 'créditos', generate: 'Generar dossier', delivered: 'Listo en 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
     youHave: 'Tienes', creditsLeft: 'créditos',
-    notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos', alreadyRunning: 'Ya tienes un reporte en progreso — espera a que termine antes de iniciar otro.',
-    rejected: 'No pudimos enviar tu solicitud:', emailNotice: 'Te enviaremos un email cuando tu reporte esté listo.',
+    notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos', alreadyRunning: 'Ya tienes un dossier en progreso — espera a que termine antes de iniciar otro.',
+    rejected: 'No pudimos enviar tu solicitud:', blockedNote: 'Tu cuenta está bloqueada:', emailNotice: 'Te enviaremos un email cuando tu dossier esté listo.',
     noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí',
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   fr: {
-    dash: 'Tableau de bord', crumb: 'Nouveau rapport', title: 'Nouveau dossier IA.',
+    dash: 'Tableau de bord', crumb: 'Nouveau dossier', title: 'Nouveau dossier IA.',
     s1: 'Quoi et où', s1h: 'Définissez ce que vous cherchez.',
-    s2: 'Mode du rapport', s2h: 'Le niveau de profondeur.',
+    s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
     s4: "Instructions pour l'analyste", s4h: "Consignes libres pour les analystes (autorité inférieure aux règles de base du modèle).",
     s5: 'Avancé', show: '+ Afficher', hide: '− Masquer', step: 'Étape', of: 'de', back: 'Retour', next: 'Suivant',
-    reportLanguage: 'Langue du rapport', reportLangHelp: 'La langue de rédaction du dossier final.',
+    reportLanguage: 'Langue du dossier', reportLangHelp: 'La langue de rédaction du dossier final.',
     f: { industry: 'Secteur', location: 'Localisation', askingPriceMin: 'Prix · Min', askingPriceMax: 'Prix · Max', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', keywords: 'Mots-clés', preferredSources: 'Sources préférées' } as Record<string, string>,
     sba: 'Compatible SBA', realEstate: "Inclure l'immobilier",
     optionalUseful: 'Optionnel mais très utile', add: 'Saisissez et appuyez sur Entrée',
     industryWarn: 'Aucun secteur — indiquez aux analystes quoi rechercher dans les Instructions ci-dessous (au moins 40 caractères).', instrReq: 'Requis — aucun secteur', charsToGo: 'caractères manquants',
     summary: 'Résumé', pickIndustry: 'Choisissez un secteur', mode: 'Mode', language: 'Langue',
-    cost: 'Coût', credits: 'crédits', generate: 'Générer le rapport', delivered: 'Livré en 2–8 min',
+    cost: 'Coût', credits: 'crédits', generate: 'Générer le dossier', delivered: 'Livré en 2–8 min',
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
     youHave: 'Vous avez', creditsLeft: 'crédits',
-    notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits', alreadyRunning: 'Vous avez déjà un rapport en cours — attendez qu’il se termine avant d’en lancer un autre.',
-    rejected: 'Votre demande n’a pas pu être envoyée :', emailNotice: 'Nous vous enverrons un email quand votre rapport sera prêt.',
+    notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits', alreadyRunning: 'Vous avez déjà un dossier en cours — attendez qu’il se termine avant d’en lancer un autre.',
+    rejected: 'Votre demande n’a pas pu être envoyée :', blockedNote: 'Votre compte est bloqué :', emailNotice: 'Nous vous enverrons un email quand votre dossier sera prêt.',
     noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui',
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   pt: {
-    dash: 'Painel', crumb: 'Novo relatório', title: 'Novo dossiê com IA.',
+    dash: 'Painel', crumb: 'Novo dossiê', title: 'Novo dossiê com IA.',
     s1: 'O quê e onde', s1h: 'Defina o que você procura.',
-    s2: 'Modo do relatório', s2h: 'O quão a fundo você quer.',
+    s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
     s4: 'Instruções para o analista', s4h: 'Orientação livre para os analistas (autoridade menor que as regras base do modelo).',
     s5: 'Avançado', show: '+ Mostrar', hide: '− Ocultar', step: 'Passo', of: 'de', back: 'Voltar', next: 'Próximo',
-    reportLanguage: 'Idioma do relatório', reportLangHelp: 'O idioma em que o dossiê final é escrito.',
+    reportLanguage: 'Idioma do dossiê', reportLangHelp: 'O idioma em que o dossiê final é escrito.',
     f: { industry: 'Setor', location: 'Localização', askingPriceMin: 'Preço · Mín', askingPriceMax: 'Preço · Máx', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas' } as Record<string, string>,
     sba: 'Compatível SBA', realEstate: 'Incluir imóvel',
     optionalUseful: 'Opcional mas muito útil', add: 'Digite e pressione Enter',
     industryWarn: 'Sem setor — diga aos analistas o que pesquisar nas Instruções abaixo (ao menos 40 caracteres).', instrReq: 'Obrigatório — sem setor', charsToGo: 'caracteres a mais',
     summary: 'Resumo', pickIndustry: 'Escolha um setor', mode: 'Modo', language: 'Idioma',
-    cost: 'Custo', credits: 'créditos', generate: 'Gerar relatório', delivered: 'Pronto em 2–8 min',
+    cost: 'Custo', credits: 'créditos', generate: 'Gerar dossiê', delivered: 'Pronto em 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
     youHave: 'Você tem', creditsLeft: 'créditos',
-    notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos', alreadyRunning: 'Você já tem um relatório em andamento — aguarde ele terminar antes de iniciar outro.',
-    rejected: 'Não foi possível enviar sua solicitação:', emailNotice: 'Enviaremos um email quando seu relatório estiver pronto.',
+    notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos', alreadyRunning: 'Você já tem um dossiê em andamento — aguarde ele terminar antes de iniciar outro.',
+    rejected: 'Não foi possível enviar sua solicitação:', blockedNote: 'Sua conta está bloqueada:', emailNotice: 'Enviaremos um email quando seu dossiê estiver pronto.',
     noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim',
     modeDesc: { essential: 'Seções principais. Cerca da metade do custo. Ótimo para triagem inicial.', comprehensive: 'Dossiê longo completo: valuations, comparáveis, due diligence, playbook.' } as Record<string, string>,
   },
@@ -195,7 +195,8 @@ export function NewReport() {
   const bal = balance.data?.balance;
   // Only one report may be in flight per user (until it finishes or fails).
   const hasLive = (stats.data?.inProgress ?? 0) >= 1;
-  const canGo = instrOk && !hasLive && !create.isPending;
+  const blocked = stats.data?.blocked ?? false;
+  const canGo = instrOk && !hasLive && !blocked && !create.isPending;
   const insufficient = typeof bal === 'number' && bal < cost;
   const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(params)); } catch { /* ignore */ } };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
@@ -241,8 +242,10 @@ export function NewReport() {
         err instanceof ApiError && err.status === 402 ? t.noCredits
           : err instanceof ApiError && err.status === 409 ? t.alreadyRunning
             : err instanceof ApiError && err.status === 422 ? `${t.rejected} ${err.message}`
-              : err instanceof ApiError ? err.message : 'Failed.',
+              : err instanceof ApiError && err.status === 403 ? `${t.blockedNote} ${err.message}`
+                : err instanceof ApiError ? err.message : 'Failed.',
       );
+      if (err instanceof ApiError && err.status === 403) stats.refetch();
     }
   }
 

@@ -123,6 +123,10 @@ export {
   listAllAppStats,
   getAdminStats,
   queryUsers,
+  getUserFlags,
+  recordModerationStrike,
+  setUserBlocked,
+  MODERATION_STRIKE_LIMIT,
 } from './stats/store.js';
 export type { ReportStatsInput, PurchaseStatsInput, AdminStats, AppStatsRollup, UserRecord } from './stats/store.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';

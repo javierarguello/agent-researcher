@@ -6,10 +6,10 @@ import { LangSwitcher } from './LangSwitcher';
 import { useBalance } from '../api/hooks';
 
 const T = {
-  en: { reports: 'Reports', newReport: 'New report', credits: 'Credits', logout: 'Log out', credit: 'credits' },
-  es: { reports: 'Reportes', newReport: 'Nuevo reporte', credits: 'Créditos', logout: 'Salir', credit: 'créditos' },
-  fr: { reports: 'Rapports', newReport: 'Nouveau rapport', credits: 'Crédits', logout: 'Déconnexion', credit: 'crédits' },
-  pt: { reports: 'Relatórios', newReport: 'Novo relatório', credits: 'Créditos', logout: 'Sair', credit: 'créditos' },
+  en: { reports: 'Dossiers', newReport: 'New dossier', credits: 'Credits', logout: 'Log out', credit: 'credits' },
+  es: { reports: 'Dossiers', newReport: 'Nuevo dossier', credits: 'Créditos', logout: 'Salir', credit: 'créditos' },
+  fr: { reports: 'Dossiers', newReport: 'Nouveau dossier', credits: 'Crédits', logout: 'Déconnexion', credit: 'crédits' },
+  pt: { reports: 'Dossiês', newReport: 'Novo dossiê', credits: 'Créditos', logout: 'Sair', credit: 'créditos' },
 };
 
 const BRAND = 'Florida Biz Labs';

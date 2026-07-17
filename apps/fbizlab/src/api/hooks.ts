@@ -38,7 +38,7 @@ export function useCreateJob() {
 export function useBalance() {
   return useQuery({ queryKey: ['balance'], queryFn: () => api<{ balance: number }>('/credits/balance') });
 }
-export interface MyStats { total: number; ready: number; inProgress: number; failed: number }
+export interface MyStats { total: number; ready: number; inProgress: number; failed: number; blocked?: boolean; blockedReason?: string | null }
 /** Per-user report counters (server-side aggregate over ALL jobs), for the dashboard tiles. */
 export function useMyStats() {
   return useQuery({ queryKey: ['my-stats'], queryFn: () => api<MyStats>('/me/stats'), refetchInterval: 15000 });
