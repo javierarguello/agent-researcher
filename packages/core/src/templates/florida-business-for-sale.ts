@@ -557,8 +557,8 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
   id: 'florida-business-for-sale',
   name: 'Florida Businesses for Sale — Buy-Side Research',
   description:
-    'Scans the market for specific businesses for sale in Florida matching your criteria and produces a ' +
-    'comprehensive, long-form buy-side acquisition report (market & competition, shortlist, deep dives, ' +
+    'Scans the market for specific businesses for sale in Florida matching your criteria and produces an ' +
+    'essential or comprehensive long-form buy-side acquisition report (market & competition, shortlist, deep dives, ' +
     'financial projections, valuations & comparables, community reviews, risks, diligence checklist, growth ' +
     'playbook, financing, and next steps).',
   // Bump on any change to the report SHAPE — it flows to meta.templateVersion +
@@ -659,7 +659,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       name: 'Negocios en Venta en Florida — Investigación de Compra',
       description:
         'Rastrea el mercado en busca de negocios específicos en venta en Florida según tus criterios y produce ' +
-        'un reporte de compra extenso y detallado (mercado y competencia, lista corta, perfiles a fondo, ' +
+        'un reporte de compra essential o comprehensive, extenso y detallado (mercado y competencia, lista corta, perfiles a fondo, ' +
         'proyecciones financieras, valoraciones y comparables, reseñas de la comunidad, riesgos, checklist de ' +
         'debida diligencia, plan de crecimiento, financiamiento y próximos pasos).',
       modeLabels: { essential: 'Esencial', comprehensive: 'Completo' },

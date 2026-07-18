@@ -840,9 +840,14 @@ app.post(
       if (rej) return reply.code(rej.code).send(rej.body);
     }
 
-    // Advisory AI validation — summary + suggestions (fails open internally).
+    // Advisory AI validation — summary + suggestions (fails open internally). The
+    // template ("model") supplies the domain context (its internal validationPrompt,
+    // or its name/description/sections) so validation is generic across report types.
     const lang = String((validated.params as Record<string, unknown>).language ?? 'en');
-    const result = await validateResearchParams(validated.params, lang);
+    const tpl = getTemplate(validated.template);
+    const result = await validateResearchParams(validated.params, lang, tpl
+      ? { name: tpl.name, description: tpl.description, validationPrompt: tpl.validationPrompt, sections: tpl.sections }
+      : {});
     logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { quality: result.quality, suggestions: result.suggestions.length, summaryLen: result.summary.length });
     return reply.send({ ok: true, ...result });
   },

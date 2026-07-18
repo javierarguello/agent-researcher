@@ -81,6 +81,15 @@ describe('auth — password register / verify / login / reset', () => {
     expect(await getCredential('fbizlab', 'throwaway@mailinator.com')).toBeUndefined();
   });
 
+  it('rejects weak passwords (requires a letter+number; blocks common ones)', async () => {
+    const noNum = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'weak1@x.com', password: 'onlyletters' } });
+    expect(noNum.statusCode).toBe(400);
+    const common = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'weak2@x.com', password: 'password123' } });
+    expect(common.statusCode).toBe(400);
+    const strong = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'strong@x.com', password: 'g00dpassword' } });
+    expect(strong.statusCode).toBe(202);
+  });
+
   it('+subaddressing cannot spawn a duplicate account (normalized identity)', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
     await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });

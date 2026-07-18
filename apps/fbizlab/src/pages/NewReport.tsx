@@ -9,7 +9,7 @@ type Props = Record<string, unknown>;
 
 const T = {
   en: {
-    dash: 'Dashboard', crumb: 'New dossier', title: 'New AI dossier.',
+    dash: 'Dashboard', crumb: 'New dossier', title: 'New dossier.',
     s1: 'What & where', s1h: "Define what you're hunting for.",
     s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
@@ -31,7 +31,7 @@ const T = {
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
   es: {
-    dash: 'Panel', crumb: 'Nuevo dossier', title: 'Nuevo dossier con IA.',
+    dash: 'Panel', crumb: 'Nuevo dossier', title: 'Nuevo dossier.',
     s1: 'Qué y dónde', s1h: 'Define qué estás buscando.',
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
@@ -53,7 +53,7 @@ const T = {
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   fr: {
-    dash: 'Tableau de bord', crumb: 'Nouveau dossier', title: 'Nouveau dossier IA.',
+    dash: 'Tableau de bord', crumb: 'Nouveau dossier', title: 'Nouveau dossier.',
     s1: 'Quoi et où', s1h: 'Définissez ce que vous cherchez.',
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
@@ -75,7 +75,7 @@ const T = {
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   pt: {
-    dash: 'Painel', crumb: 'Novo dossiê', title: 'Novo dossiê com IA.',
+    dash: 'Painel', crumb: 'Novo dossiê', title: 'Novo dossiê.',
     s1: 'O quê e onde', s1h: 'Defina o que você procura.',
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',

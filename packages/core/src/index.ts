@@ -173,7 +173,7 @@ export { moderateResearchParams, preScreen, collectFreeText } from './moderation
 export type { ModerationVerdict } from './moderation/moderate.js';
 // Pre-flight AI validation (advisory summary + suggestions before generating)
 export { validateResearchParams } from './moderation/validate.js';
-export type { ValidationResult, ValidationQuality } from './moderation/validate.js';
+export type { ValidationResult, ValidationQuality, ValidationTemplate } from './moderation/validate.js';
 
 import { z } from 'zod';
 import { getTemplate } from './templates/registry.js';

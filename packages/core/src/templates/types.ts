@@ -139,6 +139,13 @@ export interface ResearchTemplate<TParams = unknown> {
    * but never override it. Never exposed verbatim to clients.
    */
   basePrompt: string;
+  /**
+   * Internal (admin-only; never in the public manifest): an optional template-authored
+   * brief for the pre-flight validation LLM — what the generated report is meant to
+   * produce and how to judge/refine a request. Falls back to name + description +
+   * section titles when omitted, so validation is generic across templates.
+   */
+  validationPrompt?: string;
   /** Zod schema validating the client-supplied params. */
   paramsSchema: z.ZodType<TParams>;
   /** Ordered, typed report sections. */
