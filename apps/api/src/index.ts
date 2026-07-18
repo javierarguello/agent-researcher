@@ -845,9 +845,15 @@ app.post(
     // or its name/description/sections) so validation is generic across report types.
     const lang = String((validated.params as Record<string, unknown>).language ?? 'en');
     const tpl = getTemplate(validated.template);
-    const result = await validateResearchParams(validated.params, lang, tpl
-      ? { name: tpl.name, description: tpl.description, validationPrompt: tpl.validationPrompt, sections: tpl.sections }
-      : {});
+    // Describe only the sections this mode will actually produce (essential drops some),
+    // so the preview doesn't over-promise.
+    let ctx = {};
+    if (tpl) {
+      const m = resolveMode(tpl.modes, (validated.params as Record<string, unknown>).mode);
+      const exclude = new Set(m.config.exclude ?? []);
+      ctx = { name: tpl.name, description: tpl.description, validationPrompt: tpl.validationPrompt, sections: tpl.sections.filter((s) => !exclude.has(s.key)) };
+    }
+    const result = await validateResearchParams(validated.params, lang, ctx);
     logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { quality: result.quality, suggestions: result.suggestions.length, summaryLen: result.summary.length });
     return reply.send({ ok: true, ...result });
   },

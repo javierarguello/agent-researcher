@@ -99,7 +99,8 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
     model: model.model,
     temperature: 0,
     responseSchema: VERDICT_SCHEMA,
-    maxOutputTokens: 200,
+    thinkingBudget: 0, // disable thinking so the short JSON verdict isn't truncated
+    maxOutputTokens: 256,
   }));
   const parsed = JSON.parse(res.text) as { allowed?: boolean; categories?: string[]; reason?: string };
   return {

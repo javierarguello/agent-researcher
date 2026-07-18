@@ -63,6 +63,13 @@ export interface GenerateOptions {
   responseSchema?: Record<string, unknown>;
   /** Cap on generated tokens (important for long structured JSON). */
   maxOutputTokens?: number;
+  /**
+   * Thinking-token budget for reasoning models (Gemini 2.5). 0 disables "thinking"
+   * so the whole output budget goes to the answer — important for short structured
+   * JSON calls, where thinking would otherwise eat maxOutputTokens and truncate the
+   * JSON. Omit to use the model default.
+   */
+  thinkingBudget?: number;
 }
 
 export interface TokenUsage {

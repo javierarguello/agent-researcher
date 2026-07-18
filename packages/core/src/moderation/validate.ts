@@ -112,7 +112,10 @@ export async function validateResearchParams(
       model: model.model,
       temperature: 0.2,
       responseSchema: RESULT_SCHEMA,
-      maxOutputTokens: 700,
+      // Disable thinking so the whole budget goes to the JSON (2.5-flash is a thinking
+      // model; thinking tokens would otherwise eat maxOutputTokens and truncate output).
+      thinkingBudget: 0,
+      maxOutputTokens: 1024,
     }));
     const parsed = JSON.parse(res.text) as Partial<ValidationResult>;
     const quality: ValidationQuality = parsed.quality === 'broad' || parsed.quality === 'ambiguous' ? parsed.quality : 'ok';
