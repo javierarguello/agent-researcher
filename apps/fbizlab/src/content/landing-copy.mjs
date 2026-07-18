@@ -58,7 +58,7 @@ export const LANDING_COPY = {
     },
     pricing: {
       kicker: 'Pricing', title: 'Credit packs. No subscription.',
-      lead: 'Buy credits once and use them whenever you research. Each summary spends credits — a more thorough one spends more. Credits never expire.',
+      lead: 'Buy a pack of credits — no subscription — then spend them whenever you want a dossier. Each dossier shows its exact credit cost before you confirm: an essential dossier costs fewer credits, a comprehensive one costs more. Credits are valid for one year from purchase.',
       creditsWord: 'credits', popular: 'Most popular', choose: 'Choose pack', noPlans: 'Packs are being set up.',
     },
     faq: {
@@ -140,7 +140,7 @@ export const LANDING_COPY = {
     },
     pricing: {
       kicker: 'Precios', title: 'Paquetes de créditos. Sin suscripción.',
-      lead: 'Compra créditos una vez y úsalos cuando investigues. Cada resumen gasta créditos — uno más completo gasta más. Los créditos no expiran.',
+      lead: 'Compra un paquete de créditos — sin suscripción — y gástalos cuando quieras generar un dossier. Cada dossier muestra su costo exacto en créditos antes de confirmar: un dossier essential cuesta menos créditos y uno comprehensive cuesta más. Los créditos son válidos por un año desde la compra.',
       creditsWord: 'créditos', popular: 'Más popular', choose: 'Elegir paquete', noPlans: 'Estamos configurando los paquetes.',
     },
     faq: {
@@ -222,7 +222,7 @@ export const LANDING_COPY = {
     },
     pricing: {
       kicker: 'Tarifs', title: 'Packs de crédits. Sans abonnement.',
-      lead: 'Achetez des crédits une fois et utilisez-les quand vous faites vos recherches. Chaque résumé consomme des crédits — un plus complet en consomme plus. Les crédits n’expirent pas.',
+      lead: 'Achetez un pack de crédits — sans abonnement — puis dépensez-les quand vous voulez un dossier. Chaque dossier affiche son coût exact en crédits avant confirmation : un dossier essential coûte moins de crédits, un comprehensive coûte plus. Les crédits sont valables un an à compter de l’achat.',
       creditsWord: 'crédits', popular: 'Le plus populaire', choose: 'Choisir le pack', noPlans: 'Les packs sont en cours de configuration.',
     },
     faq: {
@@ -304,7 +304,7 @@ export const LANDING_COPY = {
     },
     pricing: {
       kicker: 'Preços', title: 'Pacotes de créditos. Sem assinatura.',
-      lead: 'Compre créditos uma vez e use quando pesquisar. Cada resumo gasta créditos — um mais completo gasta mais. Os créditos não expiram.',
+      lead: 'Compre um pacote de créditos — sem assinatura — e gaste-os quando quiser gerar um dossiê. Cada dossiê mostra seu custo exato em créditos antes de confirmar: um dossiê essential custa menos créditos e um comprehensive custa mais. Os créditos são válidos por um ano a partir da compra.',
       creditsWord: 'créditos', popular: 'Mais popular', choose: 'Escolher pacote', noPlans: 'Os pacotes estão sendo configurados.',
     },
     faq: {

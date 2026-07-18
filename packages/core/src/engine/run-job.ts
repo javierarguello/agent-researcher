@@ -18,7 +18,7 @@ import {
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
-import { addCost, emptyCost } from '../cost.js';
+import { emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
 import { refundForJob } from '../credits/store.js';
 import { recordReportStats } from '../stats/store.js';
@@ -109,6 +109,9 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       generatedAt,
       resume,
       finalize,
+      // Fold headline cost into the trace so it's checkpointed and survives resumes
+      // (nonzero only on the first dispatch; already carried in `resume.cost` after).
+      baseCost: headlineCost,
       onCheckpoint: async (cp) => {
         try {
           await uploadJson(CHECKPOINT, cp);
@@ -141,7 +144,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       },
     });
 
-    output.meta.cost = addCost(output.meta.cost, headlineCost);
+    // headlineCost is folded into the trace via `baseCost`, so meta.cost already includes it.
     await setJobCost(input.jobId, output.meta.cost);
 
     // --- Incomplete: some steps still pending → resume on the next dispatch. ---

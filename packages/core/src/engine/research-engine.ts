@@ -122,6 +122,12 @@ export interface Checkpoint {
   /** Agent ids already completed — skipped on resume. */
   doneAgentIds: string[];
   degraded: string[];
+  /** Traces of agents already completed on prior dispatches — restored so the final
+   *  trace/summary reflects the WHOLE run, not just the last resumed dispatch. */
+  agentTraces?: AgentTrace[];
+  /** Accumulated cost across prior dispatches (agents + headline) — restored so the
+   *  final job cost isn't undercounted to just the last dispatch's steps. */
+  cost?: Cost;
 }
 
 export interface ResearchOutput {
@@ -151,6 +157,9 @@ export interface RunResearchInput {
   finalize?: boolean;
   /** Called after each agent completes, to persist the resumable checkpoint. */
   onCheckpoint?: (cp: Checkpoint) => void | Promise<void>;
+  /** Cost incurred outside the engine (e.g. headline) folded into the trace on the
+   *  first dispatch, so it's carried in the checkpoint and not lost across resumes. */
+  baseCost?: Cost;
 }
 
 /** Max notes kept per agent (bounds trace size). */
@@ -209,8 +218,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     language,
     brief,
     waves: waves.map((w) => w.map((a) => a.id)),
-    agents: [],
-    cost: emptyCost(),
+    // Restore prior dispatches' agent traces + accumulated cost so the final trace,
+    // summary, and job cost reflect the WHOLE run — not just this resumed dispatch.
+    agents: [...(input.resume?.agentTraces ?? [])],
+    cost: addCost(input.resume?.cost ?? emptyCost(), input.baseCost ?? emptyCost()),
     status: 'running',
     startedAt: new Date().toISOString(),
   };
@@ -219,8 +230,11 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   const emit = async (phase: string, message: string) =>
     onProgress?.({ phase, message, turnsUsed: counter.turns, sourcesFound: evidence.sources.length });
   const persistTrace = async () => onTrace?.(trace);
+  // Slim agent traces for the checkpoint: drop `output` (already in `report`) and
+  // `notes` to keep checkpoint.json small; keep status/cost/timing for the summary.
+  const slimAgents = (): AgentTrace[] => trace.agents.map((a) => ({ ...a, output: undefined, notes: [] }));
   const saveCheckpoint = async () =>
-    input.onCheckpoint?.({ report, sources: evidence.sources, doneAgentIds: [...done], degraded });
+    input.onCheckpoint?.({ report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost });
 
   await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents (${done.size} already done).`);
 
@@ -306,7 +320,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     cost: trace.cost,
     ...(degraded.length ? { degradedSections: degraded } : {}),
   });
-  const checkpoint: Checkpoint = { report, sources: evidence.sources, doneAgentIds: [...done], degraded };
+  const checkpoint: Checkpoint = { report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost };
 
   // Not finalizing yet → return 'incomplete' so a re-dispatch resumes the rest.
   if (pending.length && !finalize) {
@@ -362,7 +376,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     language,
     turnsUsed: counter.turns,
     trace,
-    checkpoint: { report, sources: evidence.sources, doneAgentIds: [...done], degraded },
+    checkpoint: { report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost },
   };
 }
 

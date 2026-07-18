@@ -34,6 +34,12 @@ export function JobView() {
   const stepsById: Record<string, StepInfo> = Object.fromEntries((template.data?.steps ?? []).map((s) => [s.id, s]));
   const step = job.progress ? stepsById[job.progress.phase] : undefined;
 
+  // Request context folded into the report's right-rail Mandate card (no duplicate top card).
+  const p = job.params ?? {};
+  const modeLabel = template.data?.modes?.find((m) => m.key === p.mode)?.label ?? (p.mode as string | undefined) ?? null;
+  const langLabel = (template.data?.paramsUi?.fields?.language?.optionLabels as Record<string, string> | undefined)?.[p.language as string] ?? (p.language as string | undefined) ?? null;
+  const requestCtx = { modeLabel, languageLabel: langLabel, sourcesFound: job.summary?.sourcesFound ?? null, creditsSpent: job.creditsSpent ?? null };
+
   return (
     <div className="stack" style={{ gap: 22 }}>
       <Link to="/app" className="mono muted" style={{ fontSize: 11 }}>{t.back}</Link>
@@ -58,7 +64,7 @@ export function JobView() {
         </div>
       )}
 
-      {job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} creditsSpent={job.creditsSpent} />}
+      {job.status !== 'completed' && job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} creditsSpent={job.creditsSpent} />}
 
       {job.status === 'failed' && <div className="card" style={{ padding: 18, borderColor: '#e6c3bd' }}><span className="risk">{t.failed}</span></div>}
 
@@ -84,7 +90,7 @@ export function JobView() {
             <span className="badge completed">{sl.completed}</span>
             <DownloadPdf jobId={jobId} filename={`${(job.title ?? 'report').replace(/[^\w\- ]+/g, '').trim() || 'report'}.pdf`} />
           </div>
-          <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} meta={report.data.meta} />
+          <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} meta={report.data.meta} request={requestCtx} />
         </>
       )}
 

@@ -21,10 +21,10 @@ function fmtNumber(key: string | undefined, n: number): string {
 // ── Localised UI labels (report content itself is already in the report language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
 const RL: Record<Lang, Record<string, string>> = {
-  en: { aiDisclaimer: 'AI-generated — can make mistakes. Always verify results before acting.', sections: 'Sections', snapshot: 'Snapshot', aiReport: 'AI analysis dossier', dossier: 'Generated dossier', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', criteria: 'Mandate', revenue: 'Revenue', sde: 'SDE', asking: 'Asking', location: 'Location', industry: 'Industry', priceBand: 'Price band', revenueFloor: 'Min revenue', cashFlowFloor: 'Min cash flow', financingPreference: 'Financing', realEstatePreference: 'Real estate', business: 'Transaction', salePrice: 'Sale price', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative' },
-  es: { aiDisclaimer: 'Generado por IA — puede cometer errores. Verifica siempre los resultados antes de actuar.', sections: 'Secciones', snapshot: 'Resumen', aiReport: 'Dossier de análisis IA', dossier: 'Dossier generado', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Ingresos', sde: 'SDE', asking: 'Precio', location: 'Ubicación', industry: 'Industria', priceBand: 'Rango de precio', revenueFloor: 'Ingreso mín', cashFlowFloor: 'Flujo mín', financingPreference: 'Financiamiento', realEstatePreference: 'Inmueble', business: 'Transacción', salePrice: 'Precio de venta', multiple: 'Múltiplo', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' },
-  fr: { aiDisclaimer: 'Généré par IA — peut faire des erreurs. Vérifiez toujours les résultats avant d’agir.', sections: 'Sections', snapshot: 'Aperçu', aiReport: 'Dossier d’analyse IA', dossier: 'Dossier généré', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu combiné', combinedSde: 'SDE combiné', criteria: 'Mandat', revenue: 'Revenu', sde: 'SDE', asking: 'Prix', location: 'Localisation', industry: 'Secteur', priceBand: 'Fourchette de prix', revenueFloor: 'Revenu min', cashFlowFloor: 'Cash-flow min', financingPreference: 'Financement', realEstatePreference: 'Immobilier', business: 'Transaction', salePrice: 'Prix de vente', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif' },
-  pt: { aiDisclaimer: 'Gerado por IA — pode cometer erros. Verifique sempre os resultados antes de agir.', sections: 'Seções', snapshot: 'Resumo', aiReport: 'Dossiê de análise IA', dossier: 'Dossiê gerado', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Receita', sde: 'SDE', asking: 'Preço', location: 'Localização', industry: 'Setor', priceBand: 'Faixa de preço', revenueFloor: 'Receita mín', cashFlowFloor: 'Fluxo mín', financingPreference: 'Financiamento', realEstatePreference: 'Imóvel', business: 'Transação', salePrice: 'Preço de venda', multiple: 'Múltiplo', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo' },
+  en: { aiDisclaimer: 'AI-generated — can make mistakes. Always verify results before acting.', sections: 'Sections', snapshot: 'Snapshot', aiReport: 'AI analysis dossier', dossier: 'Generated dossier', reqMode: 'Mode', reqLang: 'Dossier language', reqSources: 'Sources consulted', reqCredits: 'Credits spent', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', criteria: 'Mandate', revenue: 'Revenue', sde: 'SDE', asking: 'Asking', location: 'Location', industry: 'Industry', priceBand: 'Price band', revenueFloor: 'Min revenue', cashFlowFloor: 'Min cash flow', financingPreference: 'Financing', realEstatePreference: 'Real estate', business: 'Transaction', salePrice: 'Sale price', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative' },
+  es: { aiDisclaimer: 'Generado por IA — puede cometer errores. Verifica siempre los resultados antes de actuar.', sections: 'Secciones', snapshot: 'Resumen', aiReport: 'Dossier de análisis IA', dossier: 'Dossier generado', reqMode: 'Modo', reqLang: 'Idioma del dossier', reqSources: 'Fuentes consultadas', reqCredits: 'Créditos gastados', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Ingresos', sde: 'SDE', asking: 'Precio', location: 'Ubicación', industry: 'Industria', priceBand: 'Rango de precio', revenueFloor: 'Ingreso mín', cashFlowFloor: 'Flujo mín', financingPreference: 'Financiamiento', realEstatePreference: 'Inmueble', business: 'Transacción', salePrice: 'Precio de venta', multiple: 'Múltiplo', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' },
+  fr: { aiDisclaimer: 'Généré par IA — peut faire des erreurs. Vérifiez toujours les résultats avant d’agir.', sections: 'Sections', snapshot: 'Aperçu', aiReport: 'Dossier d’analyse IA', dossier: 'Dossier généré', reqMode: 'Mode', reqLang: 'Langue du dossier', reqSources: 'Sources consultées', reqCredits: 'Crédits dépensés', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu combiné', combinedSde: 'SDE combiné', criteria: 'Mandat', revenue: 'Revenu', sde: 'SDE', asking: 'Prix', location: 'Localisation', industry: 'Secteur', priceBand: 'Fourchette de prix', revenueFloor: 'Revenu min', cashFlowFloor: 'Cash-flow min', financingPreference: 'Financement', realEstatePreference: 'Immobilier', business: 'Transaction', salePrice: 'Prix de vente', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif' },
+  pt: { aiDisclaimer: 'Gerado por IA — pode cometer erros. Verifique sempre os resultados antes de agir.', sections: 'Seções', snapshot: 'Resumo', aiReport: 'Dossiê de análise IA', dossier: 'Dossiê gerado', reqMode: 'Modo', reqLang: 'Idioma do dossiê', reqSources: 'Fontes consultadas', reqCredits: 'Créditos gastos', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Receita', sde: 'SDE', asking: 'Preço', location: 'Localização', industry: 'Setor', priceBand: 'Faixa de preço', revenueFloor: 'Receita mín', cashFlowFloor: 'Fluxo mín', financingPreference: 'Financiamento', realEstatePreference: 'Imóvel', business: 'Transação', salePrice: 'Preço de venda', multiple: 'Múltiplo', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo' },
 };
 
 // ── Charts ──
@@ -345,8 +345,10 @@ function collectDeals(report: Obj): Obj[] {
  * ("<template>@<version>") is exposed (data-report-version) so components can
  * identify a report's version for analytics or explicit version branching later.
  */
-export function ReportViewer({ report, sections, title, lang = 'en', meta }: {
+export function ReportViewer({ report, sections, title, lang = 'en', meta, request }: {
   report: Obj; sections?: Array<{ key: string; title: string }>; title?: string; lang?: string; meta?: Obj;
+  /** Request context appended to the right-rail Mandate card (mode, language, sources, credits). */
+  request?: { modeLabel?: string | null; languageLabel?: string | null; sourcesFound?: number | null; creditsSpent?: number | null };
 }) {
   const l = RL[(lang as Lang)] ?? RL.en;
   const reportVersion = String(meta?.schemaVersion ?? '');
@@ -370,6 +372,13 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta }: {
   const CRIT_KEYS = ['location', 'industry', 'priceBand', 'revenueFloor', 'cashFlowFloor', 'financingPreference', 'realEstatePreference'];
   const critRows = crit ? CRIT_KEYS.filter((k) => crit[k] != null && crit[k] !== '') : [];
   const metaLine = [crit?.location, crit?.industry].filter(Boolean).join(' · ');
+
+  // Request context (mode, language, sources consulted, credits) — appended to the Mandate card.
+  const reqRows: Array<[string, string]> = [];
+  if (request?.modeLabel) reqRows.push([l.reqMode!, request.modeLabel]);
+  if (request?.languageLabel) reqRows.push([l.reqLang!, request.languageLabel]);
+  if (request?.sourcesFound != null) reqRows.push([l.reqSources!, String(request.sourcesFound)]);
+  if (request?.creditsSpent != null) reqRows.push([l.reqCredits!, `◆ ${request.creditsSpent}`]);
 
   return (
     <div className="rv" data-report-version={reportVersion}>
@@ -405,13 +414,19 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta }: {
             </div>
           </>
         )}
-        {critRows.length > 0 && (
+        {(critRows.length > 0 || reqRows.length > 0) && (
           <div className="rv-crit">
             <div className="eyebrow" style={{ color: 'var(--accent)', marginBottom: 10 }}>{l.criteria}</div>
             {critRows.map((k) => (
               <div key={k} className="rv-crit__row">
                 <span className="rv-crit__k">{l[k] ?? humanizeKey(k)}</span>
                 <span className="rv-crit__v">{String(crit![k])}</span>
+              </div>
+            ))}
+            {reqRows.map(([k, v]) => (
+              <div key={k} className="rv-crit__row">
+                <span className="rv-crit__k">{k}</span>
+                <span className="rv-crit__v">{v}</span>
               </div>
             ))}
           </div>

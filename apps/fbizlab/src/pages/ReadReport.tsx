@@ -68,6 +68,14 @@ export function ReadReport() {
             title={job.data?.title ?? undefined}
             lang={lang}
             meta={report.data.meta}
+            request={{
+              modeLabel: template.data?.modes?.find((m) => m.key === (job.data?.params?.mode))?.label
+                ?? (job.data?.params?.mode as string | undefined) ?? null,
+              languageLabel: (template.data?.paramsUi?.fields?.language?.optionLabels as Record<string, string> | undefined)?.[job.data?.params?.language as string]
+                ?? (job.data?.params?.language as string | undefined) ?? null,
+              sourcesFound: job.data?.summary?.sourcesFound ?? null,
+              creditsSpent: job.data?.creditsSpent ?? null,
+            }}
           />
         )}
       </div>
