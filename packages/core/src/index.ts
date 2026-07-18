@@ -161,6 +161,7 @@ export {
   UserExistsError,
 } from './auth/users.js';
 export type { UserCredential, AuthProvider } from './auth/users.js';
+export { isDisposableEmail, DISPOSABLE_EMAIL_DOMAINS } from './auth/disposable-email.js';
 
 // Transactional email (shared Postmark, per-app From)
 export { sendAppEmail, EmailNotConfiguredError } from './email/postmark.js';

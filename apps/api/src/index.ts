@@ -73,6 +73,7 @@ import {
   verifyPassword,
   passwordProblem,
   normalizeEmail,
+  isDisposableEmail,
   getCredential,
   createPasswordUser,
   setEmailVerified,
@@ -289,6 +290,10 @@ app.post(
     const b = req.body as { appId: string; email: string; password: string; name?: string };
     const email = normalizeEmail(b.email);
     if (!email.includes('@')) return reply.code(400).send({ error: 'A valid email is required.' });
+    // Block throwaway / disposable inboxes (one person → unlimited fake accounts).
+    if (isDisposableEmail(email)) {
+      return reply.code(400).send({ error: 'You can’t register with a disposable or temporary email address. Please use a permanent personal or work email.', code: 'disposable_email' });
+    }
     const pwProblem = passwordProblem(b.password);
     if (pwProblem) return reply.code(400).send({ error: pwProblem });
 

@@ -26,7 +26,7 @@ const T = {
     haveAccount: 'Already have an account?', signInLink: 'Sign in', backToSignin: '← Back to sign in',
     denied: 'This account can’t sign in yet.', back: '← Back to home',
     errInvalid: 'Invalid email or password.', errUnverified: 'Please verify your email before signing in.',
-    errTaken: 'An account with this email already exists. Sign in instead.',
+    errTaken: 'An account with this email already exists. Sign in instead.', errDisposable: 'You can’t register with a disposable or temporary email. Please use a permanent personal or work email.',
     resend: 'Resend verification email', busy: 'Please wait…',
     verifyTitle: 'Check your email', verifySub: 'We sent a verification link to',
     verifyHint: 'Click the link to activate your account. It expires in 24 hours.',
@@ -50,7 +50,7 @@ const T = {
     haveAccount: '¿Ya tienes cuenta?', signInLink: 'Ingresa', backToSignin: '← Volver al ingreso',
     denied: 'Esta cuenta aún no puede ingresar.', back: '← Volver al inicio',
     errInvalid: 'Email o contraseña incorrectos.', errUnverified: 'Verifica tu email antes de ingresar.',
-    errTaken: 'Ya existe una cuenta con este email. Mejor ingresa.',
+    errTaken: 'Ya existe una cuenta con este email. Mejor ingresa.', errDisposable: 'No puedes registrarte con un email desechable o temporal. Usa un email personal o de trabajo permanente.',
     resend: 'Reenviar email de verificación', busy: 'Espera…',
     verifyTitle: 'Revisa tu email', verifySub: 'Enviamos un enlace de verificación a',
     verifyHint: 'Haz clic en el enlace para activar tu cuenta. Expira en 24 horas.',
@@ -74,7 +74,7 @@ const T = {
     haveAccount: 'Déjà un compte ?', signInLink: 'Se connecter', backToSignin: '← Retour à la connexion',
     denied: 'Ce compte ne peut pas encore se connecter.', back: '← Retour à l’accueil',
     errInvalid: 'Email ou mot de passe incorrect.', errUnverified: 'Vérifiez votre email avant de vous connecter.',
-    errTaken: 'Un compte existe déjà pour cet email. Connectez-vous.',
+    errTaken: 'Un compte existe déjà pour cet email. Connectez-vous.', errDisposable: 'Vous ne pouvez pas vous inscrire avec un email jetable ou temporaire. Utilisez un email personnel ou professionnel permanent.',
     resend: 'Renvoyer l’email de vérification', busy: 'Patientez…',
     verifyTitle: 'Vérifiez votre email', verifySub: 'Nous avons envoyé un lien de vérification à',
     verifyHint: 'Cliquez sur le lien pour activer votre compte. Il expire dans 24 heures.',
@@ -98,7 +98,7 @@ const T = {
     haveAccount: 'Já tem conta?', signInLink: 'Entrar', backToSignin: '← Voltar ao login',
     denied: 'Esta conta ainda não pode entrar.', back: '← Voltar ao início',
     errInvalid: 'Email ou senha incorretos.', errUnverified: 'Verifique seu email antes de entrar.',
-    errTaken: 'Já existe uma conta com este email. Faça login.',
+    errTaken: 'Já existe uma conta com este email. Faça login.', errDisposable: 'Você não pode se registrar com um email descartável ou temporário. Use um email pessoal ou de trabalho permanente.',
     resend: 'Reenviar email de verificação', busy: 'Aguarde…',
     verifyTitle: 'Verifique seu email', verifySub: 'Enviamos um link de verificação para',
     verifyHint: 'Clique no link para ativar sua conta. Expira em 24 horas.',
@@ -195,6 +195,7 @@ export function Login() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) { setUnverified(true); setError(t.errUnverified); }
       else if (err instanceof ApiError && err.status === 409) setError(t.errTaken);
+      else if (err instanceof ApiError && err.code === 'disposable_email') setError(t.errDisposable);
       else if (err instanceof ApiError && err.status === 401) setError(t.errInvalid);
       else setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {

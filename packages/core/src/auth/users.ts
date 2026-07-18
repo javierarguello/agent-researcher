@@ -37,7 +37,23 @@ export class UserExistsError extends Error {
   }
 }
 
-export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+/**
+ * Canonicalize an email for identity: lowercase/trim, strip +subaddressing (so
+ * `alias+tag@domain` can't spawn duplicate accounts), and collapse Gmail dots
+ * (`a.b@gmail.com` == `ab@gmail.com`). Applied everywhere identity is compared
+ * (register, login, credential lookup) so the variants all resolve to one account.
+ */
+export const normalizeEmail = (email: string): string => {
+  const e = email.trim().toLowerCase();
+  const at = e.lastIndexOf('@');
+  if (at <= 0) return e;
+  let local = e.slice(0, at);
+  const domain = e.slice(at + 1);
+  const plus = local.indexOf('+');
+  if (plus >= 0) local = local.slice(0, plus); // drop +subaddress
+  if (domain === 'gmail.com' || domain === 'googlemail.com') local = local.replace(/\./g, '');
+  return local ? `${local}@${domain}` : e;
+};
 const docId = (appId: string, email: string) => `${appId}__${normalizeEmail(email)}`;
 const nowIso = () => new Date().toISOString();
 

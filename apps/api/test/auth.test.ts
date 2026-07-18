@@ -73,6 +73,23 @@ describe('auth — password register / verify / login / reset', () => {
     expect(again.json().code).toBe('email_taken');
   });
 
+  it('rejects disposable / temporary email domains (400 disposable_email)', async () => {
+    const r = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'throwaway@mailinator.com' } });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().code).toBe('disposable_email');
+    expect(sent).toHaveLength(0); // no verification email sent
+    expect(await getCredential('fbizlab', 'throwaway@mailinator.com')).toBeUndefined();
+  });
+
+  it('+subaddressing cannot spawn a duplicate account (normalized identity)', async () => {
+    await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    // new+promo@x.com normalizes to new@x.com → treated as the existing account.
+    const dup = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'new+promo@x.com' } });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().code).toBe('email_taken');
+  });
+
   it('wrong password and unknown email both return 401 (no enumeration)', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
     await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
