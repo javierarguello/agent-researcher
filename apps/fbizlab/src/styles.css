@@ -501,6 +501,17 @@ p { margin: 0; }
 .rev__v { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 @media (max-width: 560px) { .rev, .modal__actions { grid-template-columns: 1fr; } }
 
+/* Pre-flight validation dialog: "preparing summary" loader + result. */
+.pf-prep { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 0 26px; text-align: center; }
+.pf-dots { display: flex; gap: 8px; }
+.pf-dots span { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pfPulse 1s var(--ease) infinite both; }
+@keyframes pfPulse { 0%, 80%, 100% { transform: scale(.5); opacity: .35; } 40% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pf-dots span { animation: none; opacity: .8; } }
+.pf-result p { margin: 0; }
+.pf-suggest { margin-top: 16px; padding: 14px 16px; background: var(--accent-tint); border-radius: 10px; }
+.pf-suggest ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+.pf-suggest li { font-size: 13.5px; line-height: 1.5; }
+
 /* Admin read-only report view (?rt= token). A slim banner + the report, nothing else. */
 .read-shell { min-height: 100vh; background: var(--bg); }
 .read-banner { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; justify-content: space-between; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-tint); border-bottom: 1px solid #efdcb8; padding: 9px 20px; }

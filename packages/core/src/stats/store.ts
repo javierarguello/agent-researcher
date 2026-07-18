@@ -334,6 +334,9 @@ export interface UserRecord {
   blockedAt?: string;
   /** How many times this user's params were rejected by moderation. */
   moderationStrikes?: number;
+  /** Preflight validations run without any generation since the last generated
+   *  dossier — resets to 0 on generation; blocks the user when it hits the limit. */
+  preflightCount?: number;
 }
 
 function toUserRecord(d: Record<string, unknown>): UserRecord {
@@ -355,6 +358,7 @@ function toUserRecord(d: Record<string, unknown>): UserRecord {
     blockedReason: d.blockedReason as string | undefined,
     blockedAt: d.blockedAt as string | undefined,
     moderationStrikes: typeof d.moderationStrikes === 'number' ? (d.moderationStrikes as number) : undefined,
+    preflightCount: typeof d.preflightCount === 'number' ? (d.preflightCount as number) : undefined,
   };
 }
 
@@ -398,7 +402,7 @@ export async function recordModerationStrike(
   });
 }
 
-/** Admin block/unblock. Unblocking clears the reason and resets the strike count. */
+/** Admin block/unblock. Unblocking clears the reason and resets the strike counters. */
 export async function setUserBlocked(appId: string, userId: string, blocked: boolean, reason?: string): Promise<void> {
   const now = nowIso();
   await appUsers()
@@ -406,9 +410,55 @@ export async function setUserBlocked(appId: string, userId: string, blocked: boo
     .set(
       blocked
         ? { appId, userId, blocked: true, blockedReason: reason ?? 'Blocked by an administrator.', blockedAt: now, updatedAt: now }
-        : { blocked: false, blockedReason: FieldValue.delete(), blockedAt: FieldValue.delete(), moderationStrikes: 0, updatedAt: now },
+        : { blocked: false, blockedReason: FieldValue.delete(), blockedAt: FieldValue.delete(), moderationStrikes: 0, preflightCount: 0, updatedAt: now },
       { merge: true },
     );
+}
+
+/** Max preflight validations allowed within the sliding window before a user is
+ *  rate-limited (must wait for the window to lapse). Reset to 0 on every generation. */
+export const PREFLIGHT_RATE_LIMIT = config.validation.blockLimit;
+const PREFLIGHT_WINDOW_MS = config.validation.windowHours * 60 * 60 * 1000;
+
+function retryAfterSeconds(preflightAt?: string): number {
+  const last = preflightAt ? Date.parse(preflightAt) : 0;
+  return Math.max(1, Math.ceil((last + PREFLIGHT_WINDOW_MS - Date.now()) / 1000));
+}
+
+/**
+ * Rate-limit preflight validations over a sliding window: at most
+ * `PREFLIGHT_RATE_LIMIT` within `PREFLIGHT_WINDOW_HOURS`. The counter resets to 0 on
+ * every generation, and the window lapses on its own — if the last preflight was
+ * longer ago than the window, the count restarts (so idle users never accumulate).
+ * When the limit is hit the user must wait for the window to expire before running
+ * the validation flow again; blocked attempts do NOT extend the window. Returns
+ * `{ limited, retryAfterSeconds }` — the caller 429s when limited (no tokens spent).
+ */
+export async function recordPreflightAttempt(
+  appId: string,
+  userId: string,
+): Promise<{ limited: boolean; count: number; retryAfterSeconds: number }> {
+  const uref = appUsers().doc(userKey(appId, userId));
+  const now = nowIso();
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(uref);
+    const cur = (snap.exists ? snap.data() : {}) as { preflightCount?: number; preflightAt?: string };
+    const lastMs = cur.preflightAt ? Date.parse(cur.preflightAt) : 0;
+    const withinWindow = !!lastMs && Date.parse(now) - lastMs <= PREFLIGHT_WINDOW_MS;
+    const curCount = withinWindow ? cur.preflightCount ?? 0 : 0;
+    if (curCount >= PREFLIGHT_RATE_LIMIT) {
+      // Rate-limited: don't run/charge validation and don't extend the window.
+      return { limited: true, count: curCount, retryAfterSeconds: retryAfterSeconds(cur.preflightAt) };
+    }
+    const count = curCount + 1;
+    tx.set(uref, { appId, userId, preflightCount: count, preflightAt: now, updatedAt: now }, { merge: true });
+    return { limited: false, count, retryAfterSeconds: 0 };
+  });
+}
+
+/** Reset the preflight counter — called when the user actually generates a dossier. */
+export async function clearPreflightCount(appId: string, userId: string): Promise<void> {
+  await appUsers().doc(userKey(appId, userId)).set({ preflightCount: 0, preflightAt: FieldValue.delete(), updatedAt: nowIso() }, { merge: true });
 }
 
 /**

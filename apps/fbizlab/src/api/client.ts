@@ -17,10 +17,14 @@ export const PENDING_PLAN_KEY = 'fbizlab_pending_plan';
 export const DRAFT_KEY = 'fbizlab_newreport_draft';
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly body?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
   }
+  /** Machine-readable error code from the API body (e.g. 'preflight_rate_limited'). */
+  get code(): string | undefined { return this.body?.code as string | undefined; }
+  /** Seconds to wait before retrying, when the API provides it (429s). */
+  get retryAfterSeconds(): number | undefined { return this.body?.retryAfterSeconds as number | undefined; }
 }
 
 interface RequestOptions {
@@ -48,7 +52,7 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   if (res.status === 401 && !opts.anonymous && !opts.token) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? `Request failed (${res.status})`, data as Record<string, unknown>);
   return data as T;
 }
 

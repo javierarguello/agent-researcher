@@ -96,6 +96,17 @@ export const config = {
      *  deterministic pre-screen). Disable in tests to avoid live LLM calls. */
     llm: str('MODERATION_LLM', 'true') !== 'false',
   },
+  validation: {
+    /** Run the AI pre-flight validation pass (summary + suggestions) on research
+     *  params. Disable in tests to avoid live LLM calls. */
+    llm: str('VALIDATION_LLM', 'true') !== 'false',
+    /** Preflight validations without any generation before an account is blocked
+     *  (guards against burning tokens by repeatedly previewing but never generating). */
+    blockLimit: int('PREFLIGHT_BLOCK_LIMIT', 10),
+    /** Sliding window (hours) for the preflight counter: if the last preflight was
+     *  longer ago than this, the counter resets — so counts don't accumulate forever. */
+    windowHours: int('PREFLIGHT_WINDOW_HOURS', 8),
+  },
   cors: {
     /** Comma-separated allowed origins for the static web frontends; "*" for dev. */
     origins: str('CORS_ORIGINS', '*'),

@@ -11,6 +11,7 @@
  */
 import { resolveModel } from '../llm/index.js';
 import { config } from '../config.js';
+import { retryAsync } from '../util/retry.js';
 
 export interface ModerationVerdict {
   ok: boolean;
@@ -90,14 +91,16 @@ const VERDICT_SCHEMA = {
 /** LLM classification on the cheapest model. */
 async function llmModerate(text: string): Promise<ModerationVerdict> {
   const model = resolveModel('flash'); // cheapest configured model
-  const res = await model.provider.generate({
+  // Sync single-shot call — retry with backoff so a transient error / Gemini rate
+  // limit doesn't immediately fail open.
+  const res = await retryAsync(() => model.provider.generate({
     system: MODERATION_SYSTEM,
     messages: [{ role: 'user', text: `Classify the following user-provided request fields:\n"""\n${text}\n"""` }],
     model: model.model,
     temperature: 0,
     responseSchema: VERDICT_SCHEMA,
     maxOutputTokens: 200,
-  });
+  }));
   const parsed = JSON.parse(res.text) as { allowed?: boolean; categories?: string[]; reason?: string };
   return {
     ok: parsed.allowed !== false,

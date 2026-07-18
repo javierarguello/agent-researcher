@@ -44,10 +44,14 @@ import {
   updateSettings,
   validateRequest,
   moderateResearchParams,
+  validateResearchParams,
   getUserFlags,
   recordModerationStrike,
   setUserBlocked,
   MODERATION_STRIKE_LIMIT,
+  recordPreflightAttempt,
+  clearPreflightCount,
+  PREFLIGHT_RATE_LIMIT,
   resolveMode,
   getModelPricing,
   setModelPricing,
@@ -606,6 +610,36 @@ app.get(
  */
 const MAX_CONCURRENT_JOBS_PER_USER = 1;
 
+/**
+ * Content moderation for research params, shared by /research and /research/preflight.
+ * On a violation it records a strike (blocking at MODERATION_STRIKE_LIMIT) and returns
+ * a reply spec; returns null when the params are clean. Behaviour is unchanged from the
+ * original inline gate.
+ */
+async function moderateParams(
+  appId: string,
+  userId: string,
+  params: Record<string, unknown>,
+): Promise<{ code: number; body: Record<string, unknown> } | null> {
+  const verdict = await moderateResearchParams(params);
+  if (verdict.ok) return null;
+  const strike = await recordModerationStrike(appId, userId, { reason: verdict.reason, categories: verdict.categories });
+  logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories ?? [], strikes: strike.strikes, blocked: strike.blocked });
+  if (strike.blocked) {
+    return { code: 403, body: { error: strike.blockedReason ?? 'Your account has been blocked for repeated policy violations.', code: 'account_blocked', reason: strike.blockedReason } };
+  }
+  return {
+    code: 422,
+    body: {
+      error: verdict.reason ?? 'Your request was rejected by our content filter. Please review and re-enter your details.',
+      code: 'params_rejected',
+      categories: verdict.categories,
+      strikes: strike.strikes,
+      strikeLimit: MODERATION_STRIKE_LIMIT,
+    },
+  };
+}
+
 app.post(
   '/research',
   {
@@ -698,22 +732,8 @@ app.post(
     // BEFORE spending credits or creating a job. Cheapest model; fails open on an
     // LLM outage (the engine still fences user instructions as low-authority).
     if (req.auth!.role !== 'admin') {
-      const verdict = await moderateResearchParams(validated.params);
-      if (!verdict.ok) {
-        // Each rejection is a strike; the Nth blocks the account (read-only from then on).
-        const strike = await recordModerationStrike(appId, userId, { reason: verdict.reason, categories: verdict.categories });
-        logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories ?? [], strikes: strike.strikes, blocked: strike.blocked });
-        if (strike.blocked) {
-          return reply.code(403).send({ error: strike.blockedReason ?? 'Your account has been blocked for repeated policy violations.', code: 'account_blocked', reason: strike.blockedReason });
-        }
-        return reply.code(422).send({
-          error: verdict.reason ?? 'Your request was rejected by our content filter. Please review and re-enter your details.',
-          code: 'params_rejected',
-          categories: verdict.categories,
-          strikes: strike.strikes,
-          strikeLimit: MODERATION_STRIKE_LIMIT,
-        });
-      }
+      const rej = await moderateParams(appId, userId, validated.params);
+      if (rej) return reply.code(rej.code).send(rej.body);
     }
 
     const jobId = randomUUID();
@@ -741,6 +761,8 @@ app.post(
 
     await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent });
     logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
+    // The user generated → reset their preflight-without-generation counter (best-effort).
+    if (req.auth!.role !== 'admin') await clearPreflightCount(appId, userId).catch(() => {});
 
     try {
       const { enqueueJob } = await import('./enqueue.js');
@@ -757,6 +779,69 @@ app.post(
 
     logEvent(logCtx, 'INFO', 'job.queued', {});
     return reply.code(202).send({ jobId, status: 'queued' });
+  },
+);
+
+// --- Research: pre-flight validation (moderation + AI preview) ---------------
+app.post(
+  '/research/preflight',
+  {
+    schema: {
+      summary: 'Validate research params before generating',
+      description:
+        'Runs content moderation and a cheap AI validation pass that restates what the research will ' +
+        'look for and suggests refinements when the request is too broad or ambiguous. Advisory only — ' +
+        'it never blocks generation. Rate-limited per user over a sliding window so repeatedly previewing ' +
+        'without ever generating (burning tokens) makes the user wait for the window to lapse.',
+      tags: ['research'],
+      security: sec,
+      body: {
+        type: 'object',
+        required: ['template'],
+        properties: {
+          template: { type: 'string', minLength: 1, maxLength: 128 },
+          params: { type: 'object', description: 'Template-specific params.' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    let validated;
+    try {
+      validated = validateRequest(req.body);
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
+    const appId = req.auth!.appId;
+    const userId = req.auth!.email;
+
+    if (req.auth!.role !== 'admin') {
+      // Blocked users (moderation) can't preflight either.
+      const flags = await getUserFlags(appId, userId);
+      if (flags.blocked) {
+        return reply.code(403).send({ error: flags.blockedReason ?? 'Your account is blocked.', code: 'account_blocked', reason: flags.blockedReason });
+      }
+      // Preflight rate limit (sliding window) — 429 BEFORE spending any tokens.
+      const rate = await recordPreflightAttempt(appId, userId);
+      if (rate.limited) {
+        reply.header('Retry-After', String(rate.retryAfterSeconds));
+        return reply.code(429).send({
+          error: 'Too many validations without generating a report. Please wait before trying again.',
+          code: 'preflight_rate_limited',
+          retryAfterSeconds: rate.retryAfterSeconds,
+          limit: PREFLIGHT_RATE_LIMIT,
+        });
+      }
+      // Moderation always runs (same strike logic as generate).
+      const rej = await moderateParams(appId, userId, validated.params);
+      if (rej) return reply.code(rej.code).send(rej.body);
+    }
+
+    // Advisory AI validation — summary + suggestions (fails open internally).
+    const lang = String((validated.params as Record<string, unknown>).language ?? 'en');
+    const result = await validateResearchParams(validated.params, lang);
+    logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { quality: result.quality, suggestions: result.suggestions.length });
+    return reply.send({ ok: true, ...result });
   },
 );
 

@@ -15,6 +15,8 @@ export default defineConfig({
       STRIPE_WEBHOOK_SECRET: 'whsec_test',
       POSTMARK_SERVER_TOKEN: 'test-postmark-token',
       MODERATION_LLM: 'false',
+      VALIDATION_LLM: 'false',
+      PREFLIGHT_BLOCK_LIMIT: '3',
       LOG_LEVEL: 'silent',
     },
   },

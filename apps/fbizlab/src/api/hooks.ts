@@ -35,6 +35,13 @@ export function useCreateJob() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
   });
 }
+export interface PreflightResult { ok: boolean; summary: string; quality: 'ok' | 'broad' | 'ambiguous'; suggestions: string[] }
+/** Pre-flight validation: moderation + a cheap AI preview (summary + suggestions). */
+export function usePreflight() {
+  return useMutation({
+    mutationFn: (body: { template: string; params: Record<string, unknown> }) => api<PreflightResult>('/research/preflight', { method: 'POST', body }),
+  });
+}
 export function useBalance() {
   return useQuery({ queryKey: ['balance'], queryFn: () => api<{ balance: number }>('/credits/balance') });
 }

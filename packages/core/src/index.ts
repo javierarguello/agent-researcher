@@ -127,6 +127,9 @@ export {
   recordModerationStrike,
   setUserBlocked,
   MODERATION_STRIKE_LIMIT,
+  recordPreflightAttempt,
+  clearPreflightCount,
+  PREFLIGHT_RATE_LIMIT,
 } from './stats/store.js';
 export type { ReportStatsInput, PurchaseStatsInput, AdminStats, AppStatsRollup, UserRecord } from './stats/store.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';
@@ -167,6 +170,9 @@ export { verifyEmailTemplate, resetPasswordTemplate, reportReadyTemplate } from 
 // Pre-submission moderation of research params (prompt-injection + profanity gate)
 export { moderateResearchParams, preScreen, collectFreeText } from './moderation/moderate.js';
 export type { ModerationVerdict } from './moderation/moderate.js';
+// Pre-flight AI validation (advisory summary + suggestions before generating)
+export { validateResearchParams } from './moderation/validate.js';
+export type { ValidationResult, ValidationQuality } from './moderation/validate.js';
 
 import { z } from 'zod';
 import { getTemplate } from './templates/registry.js';
