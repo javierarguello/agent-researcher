@@ -74,7 +74,8 @@ export function ReadReport() {
               languageLabel: (template.data?.paramsUi?.fields?.language?.optionLabels as Record<string, string> | undefined)?.[job.data?.params?.language as string]
                 ?? (job.data?.params?.language as string | undefined) ?? null,
               sourcesFound: job.data?.summary?.sourcesFound ?? null,
-              creditsSpent: job.data?.creditsSpent ?? null,
+              creditsSpent: job.data?.creditsSpent
+                ?? template.data?.modes?.find((m) => m.key === (job.data?.params?.mode))?.credits ?? null,
             }}
           />
         )}

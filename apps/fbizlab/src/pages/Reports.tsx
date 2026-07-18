@@ -90,7 +90,10 @@ export function Reports() {
   const nav = useNavigate();
   // Map a live job's progress phase → its localized step label (from the manifest).
   const stepMap: Record<string, string> = Object.fromEntries((templates.data?.templates?.[0]?.steps ?? []).map((s) => [s.id, s.label]));
-  const modeLabels: Record<string, string> = Object.fromEntries((templates.data?.templates?.[0]?.modes ?? []).map((m) => [m.key, m.label]));
+  const modes = templates.data?.templates?.[0]?.modes ?? [];
+  const modeLabels: Record<string, string> = Object.fromEntries(modes.map((m) => [m.key, m.label]));
+  // Fallback for legacy jobs created before creditsSpent was stored: the mode's standard cost.
+  const modeCredits: Record<string, number> = Object.fromEntries(modes.map((m) => [m.key, m.credits]));
   const blocked = stats.data?.blocked ?? false;
 
   const list = jobs.data?.jobs ?? [];
@@ -173,7 +176,10 @@ export function Reports() {
                     <span className="mono muted">{shortId(j.jobId)}</span>
                     <span className={`badge ${j.status}`}>{sl[j.status] ?? j.status}</span>
                     {j.mode && <span className="rtag">{modeLabels[j.mode] ?? j.mode}</span>}
-                    {j.creditsSpent != null && <span className="rtag rtag--cr">◆ {j.creditsSpent}</span>}
+                    {(() => {
+                      const cr = j.creditsSpent ?? (j.mode ? modeCredits[j.mode] : undefined);
+                      return cr != null ? <span className="rtag rtag--cr">◆ {cr}</span> : null;
+                    })()}
                   </div>
                   <div className="dash-row__title">{j.title ?? j.jobId.slice(0, 8)}</div>
                   {meta && <div className="dash-row__meta mono">{meta}</div>}

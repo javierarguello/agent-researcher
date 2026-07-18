@@ -36,9 +36,11 @@ export function JobView() {
 
   // Request context folded into the report's right-rail Mandate card (no duplicate top card).
   const p = job.params ?? {};
-  const modeLabel = template.data?.modes?.find((m) => m.key === p.mode)?.label ?? (p.mode as string | undefined) ?? null;
+  const modeInfo = template.data?.modes?.find((m) => m.key === p.mode);
+  const modeLabel = modeInfo?.label ?? (p.mode as string | undefined) ?? null;
   const langLabel = (template.data?.paramsUi?.fields?.language?.optionLabels as Record<string, string> | undefined)?.[p.language as string] ?? (p.language as string | undefined) ?? null;
-  const requestCtx = { modeLabel, languageLabel: langLabel, sourcesFound: job.summary?.sourcesFound ?? null, creditsSpent: job.creditsSpent ?? null };
+  // Fallback to the mode's standard cost for legacy jobs created before creditsSpent was stored.
+  const requestCtx = { modeLabel, languageLabel: langLabel, sourcesFound: job.summary?.sourcesFound ?? null, creditsSpent: job.creditsSpent ?? modeInfo?.credits ?? null };
 
   return (
     <div className="stack" style={{ gap: 22 }}>
@@ -64,7 +66,7 @@ export function JobView() {
         </div>
       )}
 
-      {job.status !== 'completed' && job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} creditsSpent={job.creditsSpent} />}
+      {job.status !== 'completed' && job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} creditsSpent={job.creditsSpent ?? modeInfo?.credits ?? null} />}
 
       {job.status === 'failed' && <div className="card" style={{ padding: 18, borderColor: '#e6c3bd' }}><span className="risk">{t.failed}</span></div>}
 
