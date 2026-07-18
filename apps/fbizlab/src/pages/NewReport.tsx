@@ -266,12 +266,15 @@ export function NewReport() {
   const startWait = (secs: number) => setWaitUntil(Date.now() + Math.max(1, secs) * 1000);
 
   // Step 1: moderation + AI validation preview. Shown in the dialog (once per params).
+  // If validation yields nothing useful (or the call fails), skip the preview and
+  // generate directly — the preview is advisory and must never block a generation.
   async function runPreflight() {
     setError(null);
     try {
       const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams() });
-      setPf(res);
-      setValidatedKey(paramsKey);
+      const useful = (res.summary?.trim().length ?? 0) > 0 || res.suggestions.length > 0;
+      if (useful) { setPf(res); setValidatedKey(paramsKey); }
+      else await submit(); // nothing to show → just generate
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setConfirming(false);
@@ -285,7 +288,7 @@ export function NewReport() {
         setError(`${t.blockedNote} ${err.message}`);
         stats.refetch();
       } else {
-        setError(err instanceof ApiError ? err.message : 'Failed.');
+        await submit(); // preflight failed (5xx/network) → generate anyway
       }
     }
   }
@@ -497,7 +500,7 @@ export function NewReport() {
               <p className="soft" style={{ fontSize: 14 }}>{t.confirmSub}</p>
             </div>
             <div className="modal__body">
-              {preflight.isPending ? (
+              {preflight.isPending || create.isPending ? (
                 <div className="pf-prep">
                   <div className="pf-dots"><span /><span style={{ animationDelay: '.15s' }} /><span style={{ animationDelay: '.3s' }} /></div>
                   <div className="soft" style={{ marginTop: 14 }}>{t.preparing}</div>

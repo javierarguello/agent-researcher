@@ -11,6 +11,7 @@
 import { resolveModel } from '../llm/index.js';
 import { config } from '../config.js';
 import { retryAsync } from '../util/retry.js';
+import { logEvent } from '../obs/log.js';
 import { collectFreeText } from './moderate.js';
 
 export type ValidationQuality = 'ok' | 'broad' | 'ambiguous';
@@ -83,7 +84,10 @@ export async function validateResearchParams(params: Record<string, unknown>, la
       quality,
       suggestions: quality === 'ok' ? [] : (Array.isArray(parsed.suggestions) ? parsed.suggestions.filter((s) => typeof s === 'string').slice(0, 4) : []),
     };
-  } catch {
-    return { summary: '', quality: 'ok', suggestions: [] }; // fail-open; caller logs
+  } catch (err) {
+    // Advisory — fail open (empty result), but log so a silent LLM/permission
+    // failure (e.g. the API SA lacking Vertex access) is visible.
+    logEvent({ jobId: '-' }, 'WARNING', 'validation.llm_failed', { message: (err as Error).message });
+    return { summary: '', quality: 'ok', suggestions: [] };
   }
 }

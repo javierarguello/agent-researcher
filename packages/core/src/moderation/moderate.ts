@@ -12,6 +12,7 @@
 import { resolveModel } from '../llm/index.js';
 import { config } from '../config.js';
 import { retryAsync } from '../util/retry.js';
+import { logEvent } from '../obs/log.js';
 
 export interface ModerationVerdict {
   ok: boolean;
@@ -124,7 +125,10 @@ export async function moderateResearchParams(params: Record<string, unknown>): P
   if (!config.moderation.llm) return { ok: true }; // deterministic-only (tests / opt-out)
   try {
     return await llmModerate(text);
-  } catch {
-    return { ok: true }; // fail-open; caller logs the moderation error
+  } catch (err) {
+    // Fail-open so an LLM/permission outage never blocks legit users — but log it,
+    // since a silent failure means moderation isn't actually running.
+    logEvent({ jobId: '-' }, 'WARNING', 'moderation.llm_failed', { message: (err as Error).message });
+    return { ok: true };
   }
 }

@@ -125,9 +125,13 @@ gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
 gcloud iam service-accounts add-iam-policy-binding "${WORKER_SA_EMAIL}" \
   --member="serviceAccount:${WORKER_SA_EMAIL}" --role="roles/iam.serviceAccountTokenCreator" >/dev/null
 
-echo ">> API SA roles (Firestore, bucket read+sign, trigger worker job)..."
+echo ">> API SA roles (Firestore, bucket read+sign, trigger worker job, Vertex)..."
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${API_SA_EMAIL}" --role="roles/datastore.user" --condition=None >/dev/null
+# The API runs inline flash calls (content moderation + pre-flight validation), so it
+# needs Vertex access too — not just the worker.
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${API_SA_EMAIL}" --role="roles/aiplatform.user" --condition=None >/dev/null
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
   --member="serviceAccount:${API_SA_EMAIL}" --role="roles/storage.objectViewer" >/dev/null
 gcloud iam service-accounts add-iam-policy-binding "${API_SA_EMAIL}" \
