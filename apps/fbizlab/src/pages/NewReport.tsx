@@ -129,13 +129,6 @@ type Schema = { properties?: Record<string, Prop>; required?: string[] };
 
 /** When no industry is given, instructions must be at least this long (mirrors the API). */
 const MIN_INSTR = 40;
-
-/** Compact "2h 05m" / "8m" / "45s" duration for rate-limit wait messages. */
-function fmtWait(secs: number): string {
-  if (secs >= 3600) { const h = Math.floor(secs / 3600); const m = Math.round((secs % 3600) / 60); return `${h}h ${String(m).padStart(2, '0')}m`; }
-  if (secs >= 60) return `${Math.round(secs / 60)}m`;
-  return `${Math.max(1, Math.round(secs))}s`;
-}
 /** On mobile the long form becomes a step-by-step wizard. */
 const WIZARD_STEPS = 4;
 
@@ -167,9 +160,6 @@ export function NewReport() {
   // re-triggers validation, but re-opening the dialog for the same params does not).
   const [pf, setPf] = useState<PreflightResult | null>(null);
   const [validatedKey, setValidatedKey] = useState<string | null>(null);
-  // A rate-limit "wait until" (epoch ms) + reason — disables Generate meanwhile.
-  const [waitUntil, setWaitUntil] = useState<number | null>(null);
-  const [nowTick, setNowTick] = useState(() => Date.now());
   const isMobile = useIsMobile();
   const [step, setStep] = useState(0);
   // On mobile, only the current wizard step's section(s) are shown. Groups:
@@ -199,13 +189,6 @@ export function NewReport() {
     setParams(d);
   }, [schema, model?.modes, lang]);
 
-  // While rate-limited, tick so the countdown updates and the button re-enables.
-  useEffect(() => {
-    if (waitUntil == null || waitUntil <= Date.now()) return;
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [waitUntil]);
-
   const modes = model?.modes ?? [];
   const mode = (params.mode as string) ?? modes[0]?.key;
   const cost = modes.find((m) => m.key === mode)?.credits ?? 0;
@@ -229,9 +212,7 @@ export function NewReport() {
   };
   const paramsKey = JSON.stringify(cleanParams());
   const validated = validatedKey === paramsKey && pf != null; // already previewed these exact params
-  const waitSecs = waitUntil != null ? Math.max(0, Math.ceil((waitUntil - nowTick) / 1000)) : 0;
-  const rateLimited = waitSecs > 0;
-  const canGo = instrOk && !hasLive && !blocked && !rateLimited && !create.isPending && !preflight.isPending;
+  const canGo = instrOk && !hasLive && !blocked && !create.isPending && !preflight.isPending;
   const insufficient = typeof bal === 'number' && bal < cost;
   const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(params)); } catch { /* ignore */ } };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
@@ -263,24 +244,19 @@ export function NewReport() {
     </label>
   );
 
-  const startWait = (secs: number) => setWaitUntil(Date.now() + Math.max(1, secs) * 1000);
-
   // Step 1: moderation + AI validation preview. Shown in the dialog (once per params).
-  // If validation yields nothing useful (or the call fails), skip the preview and
-  // generate directly — the preview is advisory and must never block a generation.
+  // If validation yields nothing useful — including when it's rate-limited/skipped or
+  // the call fails — we skip the preview and generate directly. The preview is advisory
+  // and must never block a generation.
   async function runPreflight() {
     setError(null);
     try {
       const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams() });
       const useful = (res.summary?.trim().length ?? 0) > 0 || res.suggestions.length > 0;
       if (useful) { setPf(res); setValidatedKey(paramsKey); }
-      else await submit(); // nothing to show → just generate
+      else await submit(); // nothing to show (empty / rate-limited / off) → just generate
     } catch (err) {
-      if (err instanceof ApiError && err.status === 429) {
-        setConfirming(false);
-        startWait(err.retryAfterSeconds ?? 8 * 3600);
-        setError(`${t.rateLimited} ${t.tryAgainIn} ${fmtWait(err.retryAfterSeconds ?? 8 * 3600)}.`);
-      } else if (err instanceof ApiError && err.status === 422) {
+      if (err instanceof ApiError && err.status === 422) {
         setConfirming(false);
         setError(`${t.rejected} ${err.message}`);
       } else if (err instanceof ApiError && err.status === 403) {
@@ -302,19 +278,14 @@ export function NewReport() {
       nav(`/app/jobs/${res.jobId}`);
     } catch (err) {
       setConfirming(false); // surface the error on the form, not the dialog
-      if (err instanceof ApiError && err.status === 429) {
-        startWait(err.retryAfterSeconds ?? 3600);
-        setError(`${err.message}`);
-      } else {
-        setError(
-          err instanceof ApiError && err.status === 402 ? t.noCredits
-            : err instanceof ApiError && err.status === 409 ? t.alreadyRunning
-              : err instanceof ApiError && err.status === 422 ? `${t.rejected} ${err.message}`
-                : err instanceof ApiError && err.status === 403 ? `${t.blockedNote} ${err.message}`
-                  : err instanceof ApiError ? err.message : 'Failed.',
-        );
-        if (err instanceof ApiError && err.status === 403) stats.refetch();
-      }
+      setError(
+        err instanceof ApiError && err.status === 402 ? t.noCredits
+          : err instanceof ApiError && err.status === 409 ? t.alreadyRunning
+            : err instanceof ApiError && err.status === 422 ? `${t.rejected} ${err.message}`
+              : err instanceof ApiError && err.status === 403 ? `${t.blockedNote} ${err.message}`
+                : err instanceof ApiError ? err.message : 'Failed.',
+      );
+      if (err instanceof ApiError && err.status === 403) stats.refetch();
     }
   }
 
@@ -425,9 +396,9 @@ export function NewReport() {
               )}
             </section>
 
-            {isMobile && step === WIZARD_STEPS - 1 && (rateLimited || hasLive || error) && (
+            {isMobile && step === WIZARD_STEPS - 1 && (hasLive || error) && (
               <div className="mono" style={{ fontSize: 11, color: 'var(--risk)', marginTop: 12, lineHeight: 1.5 }}>
-                {rateLimited ? <>{t.rateLimited} {t.tryAgainIn} <b>{fmtWait(waitSecs)}</b>.</> : hasLive ? t.alreadyRunning : error}
+                {hasLive ? t.alreadyRunning : error}
               </div>
             )}
             {isMobile && (
@@ -473,12 +444,6 @@ export function NewReport() {
               {hasLive && (
                 <div className="mono" style={{ fontSize: 11, color: 'var(--risk)', marginTop: 12, lineHeight: 1.5 }}>
                   {t.alreadyRunning} <Link to="/app" className="accent">→</Link>
-                </div>
-              )}
-
-              {rateLimited && (
-                <div className="mono" style={{ fontSize: 11, color: 'var(--risk)', marginTop: 12, lineHeight: 1.5 }}>
-                  {t.rateLimited} {t.tryAgainIn} <b>{fmtWait(waitSecs)}</b>.
                 </div>
               )}
 

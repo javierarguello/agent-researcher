@@ -35,7 +35,7 @@ export function useCreateJob() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
   });
 }
-export interface PreflightResult { ok: boolean; summary: string; quality: 'ok' | 'broad' | 'ambiguous'; suggestions: string[] }
+export interface PreflightResult { ok: boolean; summary: string; quality: 'ok' | 'broad' | 'ambiguous'; suggestions: string[]; skipped?: boolean }
 /** Pre-flight validation: moderation + a cheap AI preview (summary + suggestions). */
 export function usePreflight() {
   return useMutation({

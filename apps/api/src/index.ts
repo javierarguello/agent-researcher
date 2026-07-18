@@ -51,7 +51,6 @@ import {
   MODERATION_STRIKE_LIMIT,
   recordPreflightAttempt,
   clearPreflightCount,
-  PREFLIGHT_RATE_LIMIT,
   resolveMode,
   getModelPricing,
   setModelPricing,
@@ -826,16 +825,15 @@ app.post(
       if (flags.blocked) {
         return reply.code(403).send({ error: flags.blockedReason ?? 'Your account is blocked.', code: 'account_blocked', reason: flags.blockedReason });
       }
-      // Preflight rate limit (sliding window) — 429 BEFORE spending any tokens.
+      // Preflight rate limit (sliding window). This only caps how often we spend
+      // tokens on the ADVISORY validation — it must NOT block generation. When the
+      // window is exhausted we skip validation (and moderation, which still runs at
+      // generate time) and return an empty result so the UI just proceeds to generate.
+      // Validation resumes automatically once the window lapses.
       const rate = await recordPreflightAttempt(appId, userId);
       if (rate.limited) {
-        reply.header('Retry-After', String(rate.retryAfterSeconds));
-        return reply.code(429).send({
-          error: 'Too many validations without generating a report. Please wait before trying again.',
-          code: 'preflight_rate_limited',
-          retryAfterSeconds: rate.retryAfterSeconds,
-          limit: PREFLIGHT_RATE_LIMIT,
-        });
+        logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { skipped: 'rate_limited' });
+        return reply.send({ ok: true, quality: 'ok', summary: '', suggestions: [], skipped: true });
       }
       // Moderation always runs (same strike logic as generate).
       const rej = await moderateParams(appId, userId, validated.params);
@@ -845,7 +843,7 @@ app.post(
     // Advisory AI validation — summary + suggestions (fails open internally).
     const lang = String((validated.params as Record<string, unknown>).language ?? 'en');
     const result = await validateResearchParams(validated.params, lang);
-    logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { quality: result.quality, suggestions: result.suggestions.length });
+    logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { quality: result.quality, suggestions: result.suggestions.length, summaryLen: result.summary.length });
     return reply.send({ ok: true, ...result });
   },
 );

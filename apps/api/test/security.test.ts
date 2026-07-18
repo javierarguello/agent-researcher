@@ -262,24 +262,25 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(r.json().code).toBe('params_rejected');
   });
 
-  it('preflight is rate-limited after the limit; generating resets the counter', async () => {
+  it('preflight rate limit skips validation (200 skipped) but never blocks generation; resets on generate', async () => {
     await grantCredits({ appId: 'fbizlab', userId: 'pf-rate@x.com', credits: 50 });
     const t = await token('fbizlab', 'pf-rate@x.com');
-    // Limit = 3 in the test env: three previews pass, the fourth is 429.
+    // Limit = 3 in the test env: three previews validate; the fourth is skipped (not 429).
     for (let i = 1; i <= 3; i++) {
       const r = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(t), payload: research });
       expect(r.statusCode).toBe(200);
+      expect(r.json().skipped).toBeFalsy();
     }
-    const limited = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(t), payload: research });
-    expect(limited.statusCode).toBe(429);
-    expect(limited.json().code).toBe('preflight_rate_limited');
-    expect(limited.json().retryAfterSeconds).toBeGreaterThan(0);
+    const skipped = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(t), payload: research });
+    expect(skipped.statusCode).toBe(200);
+    expect(skipped.json().skipped).toBe(true);
 
-    // Generating a report resets the counter → the validation flow works again.
+    // Generation is never blocked by the preflight limit, and it resets the counter.
     const gen = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
     expect(gen.statusCode).toBe(202);
     const again = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(t), payload: research });
     expect(again.statusCode).toBe(200);
+    expect(again.json().skipped).toBeFalsy();
   });
 
   it('admin-only endpoints reject non-admin tokens (403) and allow admin', async () => {
