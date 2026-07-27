@@ -62,10 +62,23 @@ describe('resilience — per-step retry, resume, degrade', () => {
 
     expect(second.trace.status).toBe('completed');
     expect(second.meta.degradedSections).toBeUndefined();
-    const run2Agents = second.trace.agents.map((a) => a.id);
-    expect(run2Agents).not.toContain('deal-scout'); // done in run 1 → skipped
-    expect(run2Agents).toContain('market-analyst'); // was failing → retried in run 2
     expect(Object.keys(second.report)).toHaveLength(12); // full essential report
+
+    // The trace covers the WHOLE job, not just this dispatch: every agent appears
+    // exactly once, whichever dispatch ran it. An agent that re-ran must replace
+    // its checkpointed entry, never sit next to it as a second, stale row.
+    const ids = second.trace.agents.map((a) => a.id);
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]); // no duplicates
+    expect(second.trace.agents.every((a) => a.status === 'ok')).toBe(true);
+
+    // deal-scout succeeded in run 1, so run 2 skipped it: its entry is the one
+    // restored from the checkpoint, which carries no output (slimmed when saved).
+    // market-analyst was the failing one, so run 2 really did execute it.
+    const scout = second.trace.agents.find((a) => a.id === 'deal-scout')!;
+    const analyst = second.trace.agents.find((a) => a.id === 'market-analyst')!;
+    expect(scout.output).toBeUndefined(); // carried over, not re-run
+    expect(analyst.output).toBeDefined(); // ran in this dispatch
+    expect(second.report).toHaveProperty('shortlist'); // …and run 1's work survived
   });
 
   it('DEGRADES + WARNS after exhausting retries on the final attempt', async () => {

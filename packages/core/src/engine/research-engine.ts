@@ -258,7 +258,14 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         notes: [],
         startedAt: new Date().toISOString(),
       };
-      trace.agents.push(at);
+      // An agent running now SUPERSEDES whatever the checkpoint said about it —
+      // it was `failed` or `pending` last dispatch, which is why it is running
+      // again. Replacing in place (rather than appending) keeps the trace one
+      // entry per agent, in DAG order: a resumed job must not show an agent twice,
+      // once failed and once ok.
+      const prior = trace.agents.findIndex((a) => a.id === agent.id);
+      if (prior >= 0) trace.agents[prior] = at;
+      else trace.agents.push(at);
 
       // While retries remain, defer an agent whose dependency hasn't completed —
       // it runs once its deps succeed (a later re-dispatch), never on stale context.
