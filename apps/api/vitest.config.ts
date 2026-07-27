@@ -35,7 +35,7 @@ export default defineConfig({
       ...(live
         ? {
             LLM_PROVIDER_FLASH: 'ollama',
-            LLM_MODEL_FLASH: process.env.LLM_MODEL_FLASH ?? 'qwen2.5:3b',
+            LLM_MODEL_FLASH: process.env.LOCAL_LLM_MODEL ?? 'qwen2.5:3b',
             OLLAMA_HOST: process.env.OLLAMA_HOST ?? 'http://localhost:11434',
           }
         : {}),

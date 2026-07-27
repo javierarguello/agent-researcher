@@ -1,21 +1,35 @@
 # Local model server for development and testing.
 #
-# Runs Ollama and pre-pulls a small instruct model, so the moderation and
-# pre-flight passes (the two cheap LLM calls on the request path) can be
-# exercised end-to-end with no cloud credentials and no token bill.
+# The standard, reproducible way to get a model: same image version, same model
+# tag, on any machine, with nothing installed on the host. It lets the moderation
+# and pre-flight passes AND a full report generation run end-to-end with no cloud
+# credentials and no token bill.
 #
-#   docker compose -f docker-compose.local.yml up -d      # start + pull the model
-#   docker compose -f docker-compose.local.yml logs -f puller
-#   curl localhost:11434/api/tags                          # ready when the model is listed
+#   npm run llm:up      # start + pull the model, waits until actually ready
+#   npm run llm:down    # stop (the model stays in the volume)
+#   curl localhost:11434/api/tags
 #
-# Then point the cheap alias at it (see docs/local-llm.md):
+# Then point the model aliases at it (see docs/local-llm.md):
+#   npm run test:local-llm
 #   LLM_PROVIDER_FLASH=ollama LLM_MODEL_FLASH=qwen2.5:3b npm run dev:api
+#
+# Both the image and the model are pinned, so two devs (and CI) get the same
+# thing. One variable overrides the model, here and in the test suites:
+#   LOCAL_LLM_MODEL=llama3.1:8b npm run llm:up && LOCAL_LLM_MODEL=llama3.1:8b npm run test:local-llm
+#
+# (Deliberately NOT named LLM_MODEL_FLASH: compose auto-loads the repo's .env,
+# where that variable already names the hosted Gemini model.)
 #
 # NOT for production: a 3B local model is much weaker than the hosted ones. That
 # is the point — if the guards hold with a sloppy model, they hold.
+#
+# On Apple Silicon, Docker Desktop does not pass the GPU through, so this runs on
+# CPU. A native `brew install ollama` is Metal-accelerated and several times
+# faster; nothing else changes, since the provider only speaks HTTP to
+# OLLAMA_HOST. Use whichever you prefer — this one is the reproducible default.
 services:
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.32.4
     container_name: agent-researcher-ollama
     ports:
       - '11434:11434'
@@ -27,19 +41,28 @@ services:
       timeout: 5s
       retries: 20
 
-  # One-shot: pulls the models the local setup expects, then exits.
+  # One-shot: pulls the model the tests expect, then exits. Behind a profile so a
+  # plain `up` doesn't treat a previously-exited puller as "already satisfied";
+  # `npm run llm:up` invokes it with `run --rm`, which always executes it fresh
+  # and fails the command if the pull fails.
   puller:
-    image: ollama/ollama:latest
+    profiles: ['setup']
+    image: ollama/ollama:0.32.4
     depends_on:
       ollama:
         condition: service_healthy
     environment:
+      OLLAMA_HOST: http://ollama:11434
       # qwen2.5 supports both constrained JSON output and tool calling, which is
       # what the moderation/pre-flight calls and the research loop need.
-      OLLAMA_HOST: http://ollama:11434
+      MODEL: ${LOCAL_LLM_MODEL:-qwen2.5:3b}
     entrypoint: ['/bin/sh', '-c']
-    command: >
-      "ollama pull qwen2.5:3b && echo 'local models ready'"
+    # A literal block: no YAML escaping to get wrong. `$$` is compose's escape for
+    # a `$` that the shell — not compose — should expand.
+    command:
+      - |
+        ollama pull "$$MODEL"
+        echo "local model ready: $$MODEL"
     restart: 'no'
 
 volumes:

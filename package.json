@@ -21,8 +21,8 @@
     "reset:dev": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/reset-dev.ts",
     "apps": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/apps.ts",
     "test": "npm run test -w @agent-researcher/core && npm run test -w @agent-researcher/api",
-    "test:local-llm": "TEST_LLM=ollama npm run test -w @agent-researcher/api",
-    "llm:up": "docker compose -f docker-compose.local.yml up -d",
+    "test:local-llm": "TEST_LLM=ollama npm run test -w @agent-researcher/core && TEST_LLM=ollama npm run test -w @agent-researcher/api",
+    "llm:up": "docker compose -f docker-compose.local.yml up -d --wait ollama && docker compose -f docker-compose.local.yml run --rm puller",
     "llm:down": "docker compose -f docker-compose.local.yml down"
   },
   "license": "MIT"

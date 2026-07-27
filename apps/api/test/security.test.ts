@@ -12,6 +12,7 @@ import { app } from '../src/index.js';
 import { grantCredits, getBalance, listJobs, updateApp, signReadToken, markCompleted } from '@agent-researcher/core';
 import { seedApp, seedAdmin, token, auth } from './helpers.js';
 import { fakeLlm } from './setup.js';
+import { describeMock } from './llm-mode.js';
 
 const research = { template: 'florida-business-for-sale', params: { industry: 'laundromats', mode: 'essential' } };
 
@@ -294,6 +295,26 @@ describe('API security — auth, credits gate, isolation', () => {
     expect((await preflight()).json().assist.state).toBe('on');
   });
 
+  it('admin-only endpoints reject non-admin tokens (403) and allow admin', async () => {
+    await seedAdmin(['boss@x.com']);
+    const user = await token('fbizlab', 'u@x.com', 'user');
+    expect((await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(user) })).statusCode).toBe(403);
+
+    const admin = await token('admin', 'boss@x.com', 'admin');
+    expect((await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(admin) })).statusCode).toBe(200);
+  });
+});
+
+/**
+ * These assert on how many times the model was called, which only means anything
+ * against the stub — in live mode (TEST_LLM=ollama) there is no call counter to
+ * read, so they would be vacuous at best.
+ */
+describeMock('API security — model-call accounting', () => {
+  beforeEach(async () => {
+    await seedApp('fbizlab');
+  });
+
   it('assisted review does not run for a user who cannot afford the report', async () => {
     const t = await token('fbizlab', 'pf-broke@x.com'); // no credits granted
     const r = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(t), payload: research });
@@ -324,14 +345,5 @@ describe('API security — auth, credits gate, isolation', () => {
     });
     expect(injected.statusCode).toBe(422);
     expect(fakeLlm.calls).toBe(spentSoFar);
-  });
-
-  it('admin-only endpoints reject non-admin tokens (403) and allow admin', async () => {
-    await seedAdmin(['boss@x.com']);
-    const user = await token('fbizlab', 'u@x.com', 'user');
-    expect((await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(user) })).statusCode).toBe(403);
-
-    const admin = await token('admin', 'boss@x.com', 'admin');
-    expect((await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(admin) })).statusCode).toBe(200);
   });
 });

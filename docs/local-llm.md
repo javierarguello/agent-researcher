@@ -10,13 +10,42 @@ guards hold with a sloppy model, they hold.
 
 ## 1. Start the model server
 
+One command, nothing installed on the host, same image and same model tag for
+everyone:
+
 ```bash
-docker compose -f docker-compose.local.yml up -d
-docker compose -f docker-compose.local.yml logs -f puller   # wait for "local models ready"
-curl localhost:11434/api/tags                               # qwen2.5:3b listed → ready
+npm run llm:up      # ~1 min: starts Ollama, pulls the model, waits until it's really there
+npm run llm:down    # stop (the model stays in a volume, so it's instant next time)
 ```
 
-The pull is ~2 GB and happens once (kept in the `ollama-models` volume).
+Both the image (`ollama/ollama:0.32.4`) and the model (`qwen2.5:3b`, ~2 GB) are
+pinned, so two devs and CI get the same behaviour. One variable changes the model
+in every place that references it:
+
+```bash
+LOCAL_LLM_MODEL=llama3.1:8b npm run llm:up
+```
+
+`curl localhost:11434/api/tags` lists what's available.
+
+<details>
+<summary>Running Ollama natively instead (faster on Apple Silicon)</summary>
+
+Nothing here cares whether Ollama runs in a container or on the host — the
+provider only speaks HTTP to `OLLAMA_HOST` (default `http://localhost:11434`).
+Docker Desktop doesn't pass the GPU through, so the container runs on CPU, while
+a native install on an M-series Mac is Metal-accelerated and several times
+faster. Worth it if you run the full report test often:
+
+```bash
+brew install ollama          # or the app from https://ollama.com/download
+ollama serve &               # the .app starts this for you
+ollama pull qwen2.5:3b
+```
+
+Everything below works identically either way. Docker is the documented default
+because it's the reproducible one.
+</details>
 
 ## 2. Point an alias at it
 
@@ -78,23 +107,71 @@ The dev opts into the sloppy-model run:
 
 ```bash
 npm run llm:up          # once
-npm run test:local-llm  # TEST_LLM=ollama → apps/api suite against qwen2.5:3b
+npm run test:local-llm  # TEST_LLM=ollama → core + api suites against qwen2.5:3b
 ```
 
 | | `npm test` (default) | `npm run test:local-llm` |
 | --- | --- | --- |
 | LLM | stub provider, no network | real local model |
-| Speed | ~1 s | ~1 min (CPU) |
+| Speed | ~1 s | minutes (CPU) |
 | Asserts | exact answers, incl. pathological ones | invariants only |
-| Files | `preflight.test.ts` | `preflight.live.test.ts` |
+| Request review | `apps/api/test/preflight.test.ts` | `preflight.live.test.ts` |
+| Report generation | `packages/core/test/report.test.ts` | `report.live.test.ts` |
 
 The two are complements. The stub can force answers a real model rarely
 produces — prose where a code belongs, a correction that swaps the city, an enum
 member that doesn't exist — and pin down exactly what the API does with each.
 The live run can't predict the answer, so it asserts what must hold *whatever*
-the model says: the summary equals our own deterministic render, every finding is
-a known code with our copy, every correction is recognisably the user's own
-value, and an injection in the instructions changes nothing in the response.
+the model says.
+
+**Request review** (`preflight.live.test.ts`): the summary equals our own
+deterministic render, every finding is a known code with our copy, every
+correction is recognisably the user's own value, and an injection in the
+instructions changes nothing in the response.
+
+**Report generation** (`report.live.test.ts`): a real model drives the tool loop
+and answers under `responseSchema`, and the engine turns that into a report —
+well-formed envelope, every section validating against its own schema, evidence
+carried into the derived `sources` section, non-zero token cost, and **every
+source traceable to the fixture corpus** (a URL from anywhere else means the
+engine recorded something a model made up). Both tiers share one fixture
+(`test/fixtures/compact-model.ts`) with the mocked run, so the same model and the
+same assertions are exercised either way; only the tolerance for a weak model
+fumbling a section differs.
+
+```bash
+npm run test:local-llm                          # compact 2-agent model, ~1-2 min
+TEST_E2E_FULL=1 npm run test:local-llm          # + the real florida model, essential mode (slow)
+LOCAL_LLM_MODEL=llama3.1:8b npm run llm:up      # a bigger local model, in both places
+LOCAL_LLM_MODEL=llama3.1:8b npm run test:local-llm
+```
+
+### No test touches the internet
+
+Every tool that would leave the machine is replaced by
+`test/fixtures/fake-web.ts` — a small fake web, not a two-line stub. It carries
+three laundromat listings with consistent prices/revenue/SDE, a Florida market
+overview, valuation benchmarks and comparable transactions, SBA financing terms,
+state licensing rules, and community reviews, ranked by term overlap so different
+agents asking different questions get different (relevant) pages. It is rich
+enough that a report built from it reads like a real one and can be checked
+against known figures:
+
+```jsonc
+"listings": [
+  { "business": "Sunshine Coin Laundry", "askingPrice": 450000,
+    "sourceUrl": "https://example-marketplace.test/listing/sunshine-coin-laundry" }
+]
+```
+
+An unknown URL fails extraction on purpose, so a model that invents a link is
+visible rather than quietly accommodated. The same corpus feeds the mocked and
+live runs, which is what makes the two comparable.
+
+`TEST_E2E_FULL=1` runs `florida-business-for-sale` end to end: a dozen agents and
+12 sections on a 3B model, so expect tens of minutes and several degraded
+sections. That is the point — it checks the run still completes and still yields
+a schema-valid report when the model is out of its depth.
 
 Live mode refuses to run if the server isn't actually up — otherwise the assisted
 pass would fail soft, degrade to the deterministic review, and every invariant
@@ -105,9 +182,9 @@ Error: TEST_LLM=ollama but no model server at http://localhost:11434 (fetch fail
 Start it with: npm run llm:up
 ```
 
-Options: `LLM_MODEL_FLASH=llama3.1:8b npm run test:local-llm` for a bigger model,
-`TEST_MODERATION_LLM=1` to also put the moderation classifier on the local model
-(off by default so one sloppy verdict can't make unrelated suites flaky).
+`TEST_MODERATION_LLM=1` additionally puts the moderation classifier on the local
+model; it is off by default so one sloppy verdict can't make unrelated suites
+flaky, while the deterministic pre-screen still guards every test.
 
 For manual runs against a real database, `APP_ENV=local` still talks to the
 `agent-researcher-dev` Firestore, so use a throwaway user id.
