@@ -126,10 +126,19 @@ export const config = {
      *  extra finding codes. The deterministic half always runs. Disable in tests
      *  to avoid live LLM calls. */
     llm: str('VALIDATION_LLM', 'true') !== 'false',
-    /** Assisted reviews a user gets between two generated reports. Past this the
-     *  feature pauses (the deterministic review continues), so previewing forever
-     *  without ever generating can't burn tokens. */
-    assistAttempts: int('PREFLIGHT_ASSIST_ATTEMPTS', 3),
+    /** Assisted reviews for ONE report the user is drafting. They can act on the
+     *  suggestions and re-check, but past this the review goes deterministic-only
+     *  and generation proceeds — no waiting, no penalty. Editing is normal; paying
+     *  a model to re-read the same request a third time is not. */
+    assistAttempts: int('PREFLIGHT_ASSIST_ATTEMPTS', 2),
+    /**
+      * Backstop across ALL drafts, per user, within the window below. The per-draft
+      * limit is what shapes normal use; this one exists only to catch a client
+      * cycling draft ids to farm assisted reviews, so it is set well clear of real
+      * behaviour — 30 is 15 different reports reviewed twice each in 8 hours, and
+      * each review is a fraction of a cent. Only this limit triggers a cooldown.
+      */
+    assistUserAttempts: int('PREFLIGHT_ASSIST_USER_ATTEMPTS', 30),
     /** Escalating pause (hours) applied each time the allowance is exhausted.
      *  Generating a report pays one step back. */
     cooldownHours: ints('PREFLIGHT_COOLDOWN_HOURS', [1, 6, 24, 72]),

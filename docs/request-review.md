@@ -107,21 +107,32 @@ otherwise let a crafted request write its own text into the admin panel.
 
 ## Spending the assisted pass only where it can pay off
 
-The assisted pass costs tokens; it earns them back only when a preview turns into
-a report. So it runs when **both** hold:
+The assisted pass costs tokens, so it runs only when the user could actually
+generate — the balance has to cover the selected mode — and only while it still
+has something to add. Two limits, with deliberately different consequences:
 
-- the user's balance covers the selected mode (nothing to preview otherwise);
-- they haven't used up `PREFLIGHT_ASSIST_ATTEMPTS` (default 3) previews since
-  their last generated report.
+| | Limit | What happens past it |
+| --- | --- | --- |
+| **Per report** (`draftId`) | `PREFLIGHT_ASSIST_ATTEMPTS` (2) | `assist.state = "off_attempts"`. The deterministic review still runs and generation proceeds immediately. |
+| **Per user, all drafts** | `PREFLIGHT_ASSIST_USER_ATTEMPTS` (30) in `PREFLIGHT_WINDOW_HOURS` | `assist.state = "off_cooldown"` for an escalating pause (`PREFLIGHT_COOLDOWN_HOURS`, default `1,6,24,72`). |
 
-Exceeding the allowance doesn't error, and doesn't block anything: it starts an
-escalating pause (`PREFLIGHT_COOLDOWN_HOURS`, default `1,6,24,72` hours) during
-which the review falls back to its deterministic layer, with
-`assist.state = "off_cooldown"` and a line explaining it. Generating a report
-resets the counter, lifts the pause, and pays back one escalation step.
+The split is the point. Editing a request and re-checking it is exactly what the
+findings are for, so the per-report limit ends with "nothing more a model will
+add here" — no wait, no penalty, no counter to nurse. What it stops is the loop
+where a user keeps asking for another opinion on the same request forever.
+
+The per-user limit is a different thing: a backstop against a client cycling
+draft ids to farm assisted reviews. It sits well clear of real behaviour (30 is
+fifteen different reports reviewed twice each in eight hours), and it is the only
+one that makes anyone wait.
+
+The draft id comes from the client, which is safe precisely because the backstop
+does not trust it: rotating it buys a couple more reviews, not unlimited ones.
+Generating a report ends the draft, clears both counters, lifts any cooldown, and
+pays back one escalation step.
 
 ```
-assist.state   on | off_disabled | off_no_credits | off_cooldown
+assist.state   on | off_disabled | off_no_credits | off_attempts | off_cooldown
 ```
 
 ## Response shape

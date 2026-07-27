@@ -864,6 +864,14 @@ app.post(
         properties: {
           template: { type: 'string', minLength: 1, maxLength: 128 },
           params: { type: 'object', description: 'Template-specific params.' },
+          draftId: {
+            type: 'string',
+            maxLength: 64,
+            description:
+              'Opaque id for the report being drafted, stable while the user edits it. Scopes the assisted ' +
+              'review allowance: the same draft gets a couple of assisted passes, then the review continues ' +
+              'deterministic-only. Omit it and only the per-user backstop applies.',
+          },
           ...captchaBodyProperties,
         },
       },
@@ -904,7 +912,16 @@ app.post(
         const pricing = await getModelPricing(validated.template);
         const cost = resolveModeCredits(pricing, mode.config, mode.key);
         if (config.server.appEnv !== 'local' && (await getBalance(appId, userId)) < cost) assist = 'off_no_credits';
-        else if (!(await reserveAssistedReview(appId, userId)).allowed) assist = 'off_cooldown';
+        else {
+          const draftId = typeof (req.body as { draftId?: unknown }).draftId === 'string'
+            ? (req.body as { draftId: string }).draftId.slice(0, 64)
+            : undefined;
+          const claim = await reserveAssistedReview(appId, userId, draftId);
+          // Two different situations: 'attempts' means this request has already
+          // been reviewed enough — nothing to wait for, just generate. 'cooldown'
+          // is the abuse backstop and does make the user wait.
+          if (!claim.allowed) assist = claim.reason === 'attempts' ? 'off_attempts' : 'off_cooldown';
+        }
       }
 
       // 3. Moderation. The deterministic pre-screen always runs and still records

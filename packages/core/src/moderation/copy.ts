@@ -166,7 +166,7 @@ export function isCoreIssueCode(code: string): code is CoreIssueCode {
 
 // --- Assisted-review availability -------------------------------------------
 
-export type AssistState = 'on' | 'off_disabled' | 'off_no_credits' | 'off_cooldown';
+export type AssistState = 'on' | 'off_disabled' | 'off_no_credits' | 'off_cooldown' | 'off_attempts';
 
 const ASSIST_COPY: Record<Exclude<AssistState, 'on'>, Copy> = {
   off_disabled: {
@@ -186,6 +186,12 @@ const ASSIST_COPY: Record<Exclude<AssistState, 'on'>, Copy> = {
     es: 'La revisión asistida está en pausa tras varias vistas previas sin generar un reporte. Vuelve sola — las verificaciones de abajo sí se ejecutaron.',
     fr: 'La relecture assistée est en pause après plusieurs aperçus sans génération. Elle revient d’elle-même — les vérifications ci-dessous ont été faites.',
     pt: 'A revisão assistida está pausada após várias prévias sem gerar relatório. Ela volta sozinha — as verificações abaixo foram feitas.',
+  },
+  off_attempts: {
+    en: 'You have already had this request reviewed. The checks below still ran — go ahead and generate when you are ready.',
+    es: 'Esta solicitud ya fue revisada. Las verificaciones de abajo sí se ejecutaron — cuando quieras, genera el reporte.',
+    fr: 'Cette demande a déjà été relue. Les vérifications ci-dessous ont bien été faites — lancez la génération quand vous voulez.',
+    pt: 'Este pedido já foi revisado. As verificações abaixo foram feitas — gere o relatório quando quiser.',
   },
 };
 

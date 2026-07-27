@@ -16,6 +16,27 @@ export const PENDING_PLAN_KEY = 'fbizlab_pending_plan';
  *  they return to exactly the same inputs after paying (or cancelling). */
 export const DRAFT_KEY = 'fbizlab_newreport_draft';
 
+/**
+ * Identifies the report currently being drafted, so the API can tell "the same
+ * request, edited" from "a different request". Stable across edits and across a
+ * trip to buy credits; cleared once the report is generated.
+ */
+const DRAFT_ID_KEY = 'fbizlab_newreport_draft_id';
+
+export function draftId(): string {
+  let id = localStorage.getItem(DRAFT_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(DRAFT_ID_KEY, id);
+  }
+  return id;
+}
+
+/** A generated report ends the draft: the next one starts its own allowance. */
+export function clearDraftId(): void {
+  localStorage.removeItem(DRAFT_ID_KEY);
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string, readonly body?: Record<string, unknown>) {
     super(message);

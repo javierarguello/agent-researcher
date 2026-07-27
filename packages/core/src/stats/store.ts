@@ -440,8 +440,11 @@ export async function setUserBlocked(appId: string, userId: string, blocked: boo
  * so nothing is blocked and no error is shown. Generating resets the allowance
  * and pays back one escalation step.
  */
+/** Assisted reviews allowed for ONE report being drafted. */
 export const ASSIST_FREE_ATTEMPTS = config.validation.assistAttempts;
-/** Escalating pause after each exhausted allowance. */
+/** Backstop across all drafts between two generated reports. */
+export const ASSIST_USER_ATTEMPTS = config.validation.assistUserAttempts;
+/** Escalating pause, applied only when the backstop trips. */
 export const ASSIST_COOLDOWN_HOURS = config.validation.cooldownHours;
 const ASSIST_WINDOW_MS = config.validation.windowHours * 60 * 60 * 1000;
 
@@ -452,16 +455,40 @@ function cooldownFor(previousCooldowns: number): number {
   return steps[Math.min(previousCooldowns, steps.length - 1)] ?? steps[steps.length - 1] ?? 1;
 }
 
+/** Why an assisted review was refused. */
+export type AssistDenial = 'attempts' | 'cooldown';
+
+export interface AssistReservation {
+  allowed: boolean;
+  /** Set when `allowed` is false. */
+  reason?: AssistDenial;
+  /** Assisted reviews used for this draft, including the one just claimed. */
+  count: number;
+  /** Only meaningful for `cooldown`; `attempts` has nothing to wait for. */
+  retryAfterSeconds: number;
+}
+
 /**
- * Claim one assisted review. Returns `{ allowed:false, retryAfterSeconds }` when
- * the user is on cooldown or has just exhausted the allowance — the caller then
- * runs the deterministic review only. Attempts made while on cooldown do NOT
- * extend it.
+ * Claim one assisted review for a draft.
+ *
+ * Two limits with deliberately different consequences:
+ *
+ *  - **Per draft** (`draftId`): the user reads the findings, edits, and re-checks.
+ *    Past `ASSIST_FREE_ATTEMPTS` the answer is simply "no more model" — the
+ *    deterministic review still runs and generation proceeds immediately. Nothing
+ *    to wait for, because iterating on a request is normal behaviour, not abuse.
+ *  - **Per user across drafts**: the backstop. Someone cycling draft ids to farm
+ *    assisted reviews trips this one, and only this one starts a cooldown.
+ *
+ * A draft is identified by the client. That is fine precisely because the
+ * per-user backstop does not trust it: rotating the id buys a couple more
+ * reviews, not unlimited ones.
  */
 export async function reserveAssistedReview(
   appId: string,
   userId: string,
-): Promise<{ allowed: boolean; count: number; retryAfterSeconds: number }> {
+  draftId?: string,
+): Promise<AssistReservation> {
   const uref = appUsers().doc(userKey(appId, userId));
   const now = nowIso();
   return firestore().runTransaction(async (tx) => {
@@ -471,18 +498,30 @@ export async function reserveAssistedReview(
       preflightAt?: string;
       assistCooldownUntil?: string;
       assistCooldowns?: number;
+      assistDraftId?: string;
+      assistDraftCount?: number;
     };
 
     if (cur.assistCooldownUntil && Date.parse(cur.assistCooldownUntil) > Date.now()) {
-      return { allowed: false, count: cur.preflightCount ?? 0, retryAfterSeconds: secondsUntil(cur.assistCooldownUntil) };
+      return { allowed: false, reason: 'cooldown' as const, count: 0, retryAfterSeconds: secondsUntil(cur.assistCooldownUntil) };
     }
 
-    // The window lapses on its own, so an idle user never accumulates.
+    // Per draft. A new draft id starts its own count; the previous one is dropped,
+    // since a user works on one report at a time.
+    const sameDraft = !!draftId && cur.assistDraftId === draftId;
+    const draftCount = (sameDraft ? cur.assistDraftCount ?? 0 : 0) + 1;
+    if (draftId && draftCount > ASSIST_FREE_ATTEMPTS) {
+      // Deliberately writes nothing: this is not a violation, just the end of the
+      // useful part. Retrying costs nothing and stays refused.
+      return { allowed: false, reason: 'attempts' as const, count: draftCount - 1, retryAfterSeconds: 0 };
+    }
+
+    // Per user across drafts — the window lapses on its own, so an idle user never
+    // accumulates.
     const lastMs = cur.preflightAt ? Date.parse(cur.preflightAt) : 0;
     const withinWindow = !!lastMs && Date.parse(now) - lastMs <= ASSIST_WINDOW_MS;
-    const count = (withinWindow ? cur.preflightCount ?? 0 : 0) + 1;
-
-    if (count > ASSIST_FREE_ATTEMPTS) {
+    const userCount = (withinWindow ? cur.preflightCount ?? 0 : 0) + 1;
+    if (userCount > ASSIST_USER_ATTEMPTS) {
       const cooldowns = cur.assistCooldowns ?? 0;
       const until = new Date(Date.now() + cooldownFor(cooldowns) * 60 * 60 * 1000).toISOString();
       tx.set(
@@ -490,11 +529,22 @@ export async function reserveAssistedReview(
         { appId, userId, preflightCount: 0, assistCooldownUntil: until, assistCooldowns: cooldowns + 1, updatedAt: now },
         { merge: true },
       );
-      return { allowed: false, count: 0, retryAfterSeconds: secondsUntil(until) };
+      return { allowed: false, reason: 'cooldown' as const, count: 0, retryAfterSeconds: secondsUntil(until) };
     }
 
-    tx.set(uref, { appId, userId, preflightCount: count, preflightAt: now, updatedAt: now }, { merge: true });
-    return { allowed: true, count, retryAfterSeconds: 0 };
+    tx.set(
+      uref,
+      {
+        appId,
+        userId,
+        preflightCount: userCount,
+        preflightAt: now,
+        ...(draftId ? { assistDraftId: draftId, assistDraftCount: draftCount } : {}),
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+    return { allowed: true, count: draftCount, retryAfterSeconds: 0 };
   });
 }
 
@@ -512,6 +562,8 @@ export async function resetAssistAllowance(appId: string, userId: string): Promi
       {
         preflightCount: 0,
         preflightAt: FieldValue.delete(),
+        assistDraftId: FieldValue.delete(),
+        assistDraftCount: 0,
         assistCooldownUntil: FieldValue.delete(),
         assistCooldowns: Math.max(0, cooldowns - 1),
         updatedAt: nowIso(),

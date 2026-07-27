@@ -4,7 +4,7 @@ import { pick, useLang } from '../i18n';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { captchaConfigured } from '../auth/captcha';
 import { useBalance, useCreateJob, useMyStats, usePreflight, useTemplates, type PreflightResult } from '../api/hooks';
-import { ApiError, DRAFT_KEY } from '../api/client';
+import { ApiError, DRAFT_KEY, clearDraftId, draftId } from '../api/client';
 import type { ParamsUi } from '../api/types';
 
 type Props = Record<string, unknown>;
@@ -262,7 +262,7 @@ export function NewReport() {
   async function runPreflight() {
     setError(null);
     try {
-      const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams(), captcha: await captcha.current?.getToken() });
+      const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams(), draftId: draftId(), captcha: await captcha.current?.getToken() });
       const useful = (res.summary?.trim().length ?? 0) > 0 || res.issues.length > 0 || res.corrections.length > 0;
       if (useful) {
         setPf(res);
@@ -293,6 +293,7 @@ export function NewReport() {
       const params = applyFixes && pf?.correctedParams ? pf.correctedParams : cleanParams();
       const res = await create.mutateAsync({ template: model!.id, params, captcha: await captcha.current?.getToken() });
       clearDraft();
+      clearDraftId(); // this report is done; the next one gets its own allowance
       nav(`/app/jobs/${res.jobId}`);
     } catch (err) {
       setConfirming(false); // surface the error on the form, not the dialog

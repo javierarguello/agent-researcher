@@ -155,8 +155,9 @@ See [request-review.md](request-review.md).
 |---|---|---|
 | `MODERATION_LLM` | `true` | LLM classifier on top of the deterministic pre-screen. `false` keeps the free rule-based screen only. |
 | `VALIDATION_LLM` | `true` | The assisted half of the pre-flight review. `false` still returns the deterministic summary + findings. |
-| `PREFLIGHT_ASSIST_ATTEMPTS` | `3` | Assisted reviews a user gets between two generated reports. |
-| `PREFLIGHT_COOLDOWN_HOURS` | `1,6,24,72` | Escalating pause each time that allowance is exhausted; generating pays one step back. |
+| `PREFLIGHT_ASSIST_ATTEMPTS` | `2` | Assisted reviews for one report being drafted. Past it the review is deterministic-only and generation proceeds — no wait. |
+| `PREFLIGHT_ASSIST_USER_ATTEMPTS` | `30` | Backstop across all drafts per user in the window. Only this one triggers the cooldown. |
+| `PREFLIGHT_COOLDOWN_HOURS` | `1,6,24,72` | Escalating pause each time the per-user backstop trips; generating pays one step back. |
 | `PREFLIGHT_WINDOW_HOURS` | `8` | Sliding window after which the allowance counter restarts on its own. |
 
 ### Public-endpoint abuse limits + Turnstile (API only)
