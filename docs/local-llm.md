@@ -113,7 +113,7 @@ npm run test:local-llm  # TEST_LLM=ollama → core + api suites against qwen2.5:
 | | `npm test` (default) | `npm run test:local-llm` |
 | --- | --- | --- |
 | LLM | stub provider, no network | real local model |
-| Speed | ~1 s | minutes (CPU) |
+| Speed | ~1 s | ~1 min compact, ~17 min with `TEST_E2E_FULL=1` |
 | Asserts | exact answers, incl. pathological ones | invariants only |
 | Request review | `apps/api/test/preflight.test.ts` | `preflight.live.test.ts` |
 | Report generation | `packages/core/test/report.test.ts` | `report.live.test.ts` |
@@ -169,9 +169,10 @@ visible rather than quietly accommodated. The same corpus feeds the mocked and
 live runs, which is what makes the two comparable.
 
 `TEST_E2E_FULL=1` runs `florida-business-for-sale` end to end: a dozen agents and
-12 sections on a 3B model, so expect tens of minutes and several degraded
-sections. That is the point — it checks the run still completes and still yields
-a schema-valid report when the model is out of its depth.
+12 sections. Measured at **~17 minutes** on qwen2.5:3b in Docker (CPU) — it does
+pass, which is the point: the run completes and yields a schema-valid report even
+when the model is well out of its depth. It prints its source count, token spend
+and degraded sections when it finishes.
 
 Live mode refuses to run if the server isn't actually up — otherwise the assisted
 pass would fail soft, degrade to the deterministic review, and every invariant

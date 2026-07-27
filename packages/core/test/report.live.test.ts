@@ -64,6 +64,13 @@ describeLive('report generation — full pipeline, real local model', () => {
       expect(out.meta.mode).toBe('essential');
       expect(out.meta.cost.outputTokens).toBeGreaterThan(0);
 
+      // Worth seeing after a run this long: which sections the model couldn't write.
+      // eslint-disable-next-line no-console
+      console.log(
+        `florida e2e: ${out.sources.length} sources, ${out.meta.cost.outputTokens} output tokens, ` +
+          `degraded: ${(out.meta.degradedSections ?? []).join(', ') || 'none'}`,
+      );
+
       // Essential drops some sections; every section it DOES produce must validate.
       const exclude = new Set(florida.modes!.essential!.exclude ?? []);
       const produced = florida.sections.filter((s) => !exclude.has(s.key));
