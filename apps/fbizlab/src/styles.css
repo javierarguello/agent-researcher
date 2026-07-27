@@ -641,3 +641,11 @@ p { margin: 0; }
 .blocked-banner { padding: 18px 20px; border-color: #e6b8b0; background: #fdf1ef; }
 .blocked-banner__t { font-weight: 800; color: var(--risk); margin-bottom: 6px; font-size: 15px; }
 .blocked-banner p { font-size: 14px; line-height: 1.55; color: var(--ink-soft); }
+
+/* Turnstile. `size=flexible` makes the iframe fill its container, so the widget
+   matches the form width instead of sitting at its default 300px. With
+   `appearance=interaction-only` it is usually absent entirely, hence no fixed
+   height — the layout must not reserve space for something that rarely renders. */
+.cf-turnstile { width: 100%; }
+.cf-turnstile:not(:empty) { margin-top: 16px; }
+.cf-turnstile iframe { width: 100% !important; }

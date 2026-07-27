@@ -116,6 +116,20 @@ describe('turnstile — route enforcement', () => {
     expect(reset.statusCode).toBe(403);
   });
 
+  it('leaves Google sign-in alone — that button never renders a widget', async () => {
+    stubSiteverify(true);
+    // No token, provider=google: must reach the handler (401/400 for a bad
+    // id_token), never a captcha rejection. Regression test: gating the whole
+    // route broke Google login in production.
+    const r = await app.inject({
+      method: 'POST',
+      url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'google', idToken: 'not-a-real-id-token' },
+    });
+    expect(r.statusCode).not.toBe(403);
+    expect(r.json().code).not.toBe('captcha_failed');
+  });
+
   it('accepts the token under either field name', async () => {
     stubSiteverify(true);
     const t = await token('fbizlab', 'u@x.com');

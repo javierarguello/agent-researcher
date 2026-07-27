@@ -198,7 +198,9 @@ app.post(
         },
       },
     },
-    preHandler: requireCaptcha('login'),
+    // Password sign-in only: a Google id_token already proves an account Google
+    // vouched for, and the Google button never renders a widget to solve.
+    preHandler: requireCaptcha('login', { when: (req) => (req.body as { provider?: string } | undefined)?.provider === 'password' }),
   },
   async (req, reply) => {
     const b = req.body as { appId?: string; provider?: string; idToken?: string; email?: string; password?: string };

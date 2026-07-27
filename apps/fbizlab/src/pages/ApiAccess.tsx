@@ -4,6 +4,7 @@ import { useLang, pick } from '../i18n';
 import { useAuth } from '../auth/AuthContext';
 import { LangSwitcher } from '../components/LangSwitcher';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
+import { captchaConfigured } from '../auth/captcha';
 import { ApiError, contactRequest } from '../api/client';
 
 const BRAND = 'Florida Biz Labs';
@@ -68,6 +69,7 @@ function ContactForm({ variant }: { variant: 'api' | 'info' }) {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const captcha = useRef<TurnstileHandle>(null);
+  const [captchaReady, setCaptchaReady] = useState(!captchaConfigured());
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -125,8 +127,8 @@ function ContactForm({ variant }: { variant: 'api' | 'info' }) {
               <label htmlFor="c-message">{t.message}</label>
               <textarea id="c-message" className="textarea" style={{ minHeight: 120 }} placeholder={t.messagePh} value={message} onChange={(e) => setMessage(e.target.value)} required />
             </div>
-            <Turnstile ref={captcha} />
-            <button type="submit" className="btn btn--black" style={{ marginTop: 4 }} disabled={busy}>{busy ? t.busy : t.send}</button>
+            <button type="submit" className="btn btn--black" style={{ marginTop: 4 }} disabled={busy || !captchaReady}>{busy ? t.busy : t.send}</button>
+            <Turnstile ref={captcha} onReady={setCaptchaReady} />
           </form>
         )}
 

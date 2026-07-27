@@ -6,6 +6,7 @@ import { config } from '../config';
 import { initGoogleAuth, renderGoogleButton } from '../auth/google';
 import { LangSwitcher } from '../components/LangSwitcher';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
+import { captchaConfigured } from '../auth/captcha';
 import { useCheckout } from '../api/hooks';
 import { ApiError, PENDING_PLAN_KEY, register, requestPasswordReset } from '../api/client';
 
@@ -128,6 +129,9 @@ export function Login() {
   };
   const btnRef = useRef<HTMLDivElement>(null);
   const captcha = useRef<TurnstileHandle>(null);
+  // Gate the submit on the widget. Starts ready when Turnstile isn't configured,
+  // so the form is never dead in an environment without it.
+  const [captchaReady, setCaptchaReady] = useState(!captchaConfigured());
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('signin');
   const [name, setName] = useState('');
@@ -290,10 +294,12 @@ export function Login() {
                       <input id="password" className="input" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} placeholder={t.passPh} value={password} onChange={(e) => setPassword(e.target.value)} required />
                     </div>
                   )}
-                  <Turnstile ref={captcha} />
-                  <button type="submit" className="btn btn--black btn--block" style={{ marginTop: 4 }} disabled={busy}>
+                  <button type="submit" className="btn btn--black btn--block" style={{ marginTop: 4 }} disabled={busy || !captchaReady}>
                     {busy ? t.busy : mode === 'signin' ? t.signIn : mode === 'signup' ? t.signUp : t.sendReset}
                   </button>
+                  {/* Last in the form: usually invisible, and when a challenge is
+                      needed it appears below the button rather than shifting it. */}
+                  <Turnstile ref={captcha} onReady={setCaptchaReady} />
                 </form>
 
                 {mode === 'forgot' ? (

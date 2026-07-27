@@ -66,14 +66,26 @@ export function captchaRequired(flow: CaptchaFlow, req?: FastifyRequest): boolea
   return config.captcha.apps.has(appIdOf(req));
 }
 
+export interface CaptchaOptions {
+  /**
+   * Narrows the guard to some requests on the route. Use it when one endpoint
+   * serves paths with different risk: `/auth/session` takes both a password and a
+   * Google id_token, and only the password path is worth a challenge — an
+   * id_token is issued by Google and cannot be minted at scale, while the widget
+   * would just add a puzzle to a one-click sign-in.
+   */
+  when?: (req: FastifyRequest) => boolean;
+}
+
 /**
  * Fastify preHandler enforcing Turnstile for one flow. Returns 403 with a
  * machine-readable `code` so a client can tell "solve it again" apart from a
  * genuine authorization failure.
  */
-export function requireCaptcha(flow: CaptchaFlow): preHandlerHookHandler {
+export function requireCaptcha(flow: CaptchaFlow, opts: CaptchaOptions = {}): preHandlerHookHandler {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!captchaRequired(flow, req)) return;
+    if (opts.when && !opts.when(req)) return;
 
     const ip = clientIp(req);
     const result = await verifyCaptcha(tokenFrom(req), ip);

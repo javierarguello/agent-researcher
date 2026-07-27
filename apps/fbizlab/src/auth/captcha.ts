@@ -83,6 +83,11 @@ export async function renderWidget(el: HTMLElement, onToken: (token?: string) =>
   const id = turnstile.render(el, {
     sitekey: config.turnstileSiteKey,
     action: TURNSTILE_ACTION,
+    // Hidden unless Cloudflare actually needs a human to click…
+    appearance: 'interaction-only',
+    // …and when it does show, it fills its container instead of the fixed 300px
+    // an iframe defaults to.
+    size: 'flexible',
     theme: 'auto',
     callback: (token: string) => onToken(token),
     'error-callback': () => onToken(undefined),

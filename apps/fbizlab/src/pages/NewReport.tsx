@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
+import { captchaConfigured } from '../auth/captcha';
 import { useBalance, useCreateJob, useMyStats, usePreflight, useTemplates, type PreflightResult } from '../api/hooks';
 import { ApiError, DRAFT_KEY } from '../api/client';
 import type { ParamsUi } from '../api/types';
@@ -170,6 +171,7 @@ export function NewReport() {
   // One widget for the dialog. Preflight and generate are two protected calls, and
   // a Turnstile token is single-use, so each one solves separately.
   const captcha = useRef<TurnstileHandle>(null);
+  const [captchaReady, setCaptchaReady] = useState(!captchaConfigured());
   const isMobile = useIsMobile();
   const [step, setStep] = useState(0);
   // On mobile, only the current wizard step's section(s) are shown. Groups:
@@ -542,17 +544,19 @@ export function NewReport() {
                 <span className="mono muted" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase' }}>{t.cost}</span>
                 <span><b className="accent" style={{ fontSize: 26, fontWeight: 800 }}>{cost}</b> <span className="mono muted" style={{ fontSize: 12 }}>{t.credits}</span></span>
               </div>
-              <Turnstile ref={captcha} />
               {insufficient && <div className="mono" style={{ fontSize: 12, color: 'var(--risk)', marginBottom: 12 }}>{t.notEnough}</div>}
               {error && <div className="mono" style={{ fontSize: 12, color: 'var(--risk)', marginBottom: 12 }}>{error}</div>}
               <div className="modal__actions">
                 <button className="btn btn--outline" disabled={create.isPending || preflight.isPending} onClick={() => setConfirming(false)}>{t.goBack}</button>
                 {validated ? (
-                  <button className="btn btn--black" disabled={create.isPending} onClick={insufficient ? goBuy : submit}>{insufficient ? t.buyCredits : t.generate}</button>
+                  <button className="btn btn--black" disabled={create.isPending || (!captchaReady && !insufficient)} onClick={insufficient ? goBuy : submit}>{insufficient ? t.buyCredits : t.generate}</button>
                 ) : (
-                  <button className="btn btn--black" disabled={preflight.isPending} onClick={insufficient ? goBuy : runPreflight}>{insufficient ? t.buyCredits : t.validateContinue}</button>
+                  <button className="btn btn--black" disabled={preflight.isPending || (!captchaReady && !insufficient)} onClick={insufficient ? goBuy : runPreflight}>{insufficient ? t.buyCredits : t.validateContinue}</button>
                 )}
               </div>
+              {/* Below the actions: normally invisible, and a challenge appears
+                  without pushing the buttons around. */}
+              <Turnstile ref={captcha} onReady={setCaptchaReady} />
               <div className="mono muted" style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', textAlign: 'center', marginTop: 12 }}>{t.delivered}</div>
               <div className="soft" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 10, lineHeight: 1.5 }}>✉ {t.emailNotice}</div>
             </div>
