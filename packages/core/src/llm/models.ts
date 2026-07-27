@@ -11,6 +11,7 @@
  */
 import { config } from '../config.js';
 import { GeminiVertexProvider } from './gemini-vertex.js';
+import { OllamaProvider } from './ollama.js';
 import type { LlmProvider } from './provider.js';
 
 const providers = new Map<string, LlmProvider>();
@@ -29,6 +30,9 @@ function instantiate(name: string): LlmProvider {
   switch (name) {
     case 'gemini-vertex':
       return new GeminiVertexProvider();
+    case 'ollama':
+      // Local models for development/testing — see docker-compose.local.yml.
+      return new OllamaProvider();
     // case 'anthropic':
     //   return new AnthropicProvider(); // future — same interface.
     default:

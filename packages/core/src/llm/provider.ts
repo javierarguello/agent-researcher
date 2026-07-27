@@ -50,6 +50,13 @@ export interface GenerateOptions {
   tools?: ToolSchema[];
   model: string;
   temperature?: number;
+  /**
+   * Sampling seed. With `temperature: 0` this is what makes a call reproducible
+   * for the gate-style uses (moderation verdicts, pre-flight review) where the
+   * same input must not sometimes pass and sometimes fail. Providers that don't
+   * support it ignore it — it's a best effort, not a guarantee.
+   */
+  seed?: number;
   /** Ask the model for raw text only (no tool calls) — used for synthesis. */
   disableTools?: boolean;
   /** Force the model to call a tool this turn (function-calling mode ANY). */

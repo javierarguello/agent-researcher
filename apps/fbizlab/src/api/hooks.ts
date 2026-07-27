@@ -35,8 +35,24 @@ export function useCreateJob() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
   });
 }
-export interface PreflightResult { ok: boolean; summary: string; quality: 'ok' | 'broad' | 'ambiguous'; suggestions: string[]; skipped?: boolean }
-/** Pre-flight validation: moderation + a cheap AI preview (summary + suggestions). */
+export interface PreflightIssue { code: string; message: string; severity: 'info' | 'warn'; field?: string }
+export interface PreflightCorrection { field: string; from: string; to: string }
+export interface PreflightResult {
+  ok: boolean;
+  /** Plain-language description of what will be researched, rendered by the API
+   *  from the params themselves (never written by a model). */
+  summary: string;
+  quality: 'ok' | 'broad' | 'ambiguous';
+  /** Findings, each with copy the API owns — safe to render as text. */
+  issues: PreflightIssue[];
+  /** Proposed fixes, shown as a diff; applying them is the user's choice. */
+  corrections: PreflightCorrection[];
+  /** The params with every proposed fix applied — submit these to accept them. */
+  correctedParams?: Record<string, unknown>;
+  /** Whether the assisted (AI) layer ran, and why not when it didn't. */
+  assist: { state: 'on' | 'off_disabled' | 'off_no_credits' | 'off_cooldown'; message?: string };
+}
+/** Pre-flight review: moderation + a deterministic summary + an optional assisted pass. */
 export function usePreflight() {
   return useMutation({
     mutationFn: (body: { template: string; params: Record<string, unknown> }) => api<PreflightResult>('/research/preflight', { method: 'POST', body }),

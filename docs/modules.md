@@ -40,7 +40,21 @@ apps, with its purpose and key exports. Public exports are re-exported from
 | `provider.ts` | Provider-agnostic `LlmProvider` interface + message/tool/generate types. | `LlmProvider`, `GenerateOptions`, `GenerateResult`, `LlmMessage`, `ToolSchema`, `ToolCall`, `TokenUsage`, `JsonSchema` |
 | `models.ts` | Alias → concrete `{ provider, model, price }` resolver; memoized provider instances. | `resolveModel`, `getProviderFor`, `modelAliases`, `ResolvedModel` |
 | `gemini-vertex.ts` | Gemini via Vertex AI (`@google/genai`, ADC): tool-calling, structured output (JSON-Schema→Gemini normalization), retry w/ backoff, token usage. | `GeminiVertexProvider`, `jsonSchemaToGemini` |
+| `ollama.ts` | Local model server for dev/testing (`/api/chat`): constrained JSON via `format`, tool calling, seed. Point any alias at it with `LLM_PROVIDER_<ALIAS>=ollama`. See [local-llm.md](local-llm.md). | `OllamaProvider` |
 | `index.ts` | LLM entry point; default provider helper. | `getProvider`, plus re-exports of the above |
+
+## `moderation/` — request gates (before credits are spent)
+
+See [request-review.md](request-review.md) for the design. The invariant every
+module here upholds: no model-authored string is rendered, stored, or forwarded.
+
+| Module | Purpose | Key exports |
+|---|---|---|
+| `moderate.ts` | Deterministic pre-screen (unicode-normalized + squeezed pattern match, control chars) then an LLM classifier answering a closed category enum. Fails open. | `moderateResearchParams`, `preScreen`, `collectFreeText`, `ModerationVerdict` |
+| `copy.ts` | The localized copy (en/es/fr/pt) for every category, issue code and assist state — what a user actually reads. | `moderationMessage`, `blockReasonFor`, `assistMessage`, `MODERATION_CATEGORIES`, `ModerationCategory`, `Lang` |
+| `deterministic.ts` | The free half of the pre-flight review: template rules → issue codes, and `describePlan` → the user-facing summary. Pure. | `deterministicIssues`, `renderPlan`, `issueMessage`, `allowedIssueCodes`, `PreflightIssue` |
+| `enrich.ts` | The assisted half: corrections + issue codes from the cheap model, each put through whitelist / sanitize / length / similarity / schema gates. | `enrichRequest`, `acceptCorrections`, `applyCorrections`, `Correction` |
+| `preflight.ts` | Orchestrates both halves and merges them into one outcome. | `runPreflight`, `PreflightOutcome`, `PreflightQuality` |
 
 ## `credits/` — billing
 
@@ -60,6 +74,7 @@ apps, with its purpose and key exports. Public exports are re-exported from
 | Module | Purpose | Key exports |
 |---|---|---|
 | `tokens.ts` | Sign/verify HS256 session JWTs; verify Google id_tokens; provider-agnostic `Identity`. | `signSession`, `verifySession`, `verifyGoogleIdToken`, `SessionClaims`, `SessionRole`, `Identity`, `IdentityProvider` |
+| `captcha.ts` | Invisible bot check for the anonymous forms (Cloudflare Turnstile or reCAPTCHA v3). Off until `CAPTCHA_SECRET` is set; verification fails closed. | `verifyCaptcha`, `captchaEnabled`, `CaptchaResult` |
 
 ## `jobs/` — job store
 
@@ -117,4 +132,5 @@ apps, with its purpose and key exports. Public exports are re-exported from
 | `apps/api/src/auth.ts` | `jwtAuth` onRequest hook (public paths, local bypass, JWT verify) + `requireAdmin`. |
 | `apps/api/src/stripe.ts` | Stripe client + plan resolution from Prices (`lookup_key`/metadata). |
 | `apps/api/src/enqueue.ts` | Enqueue a job onto the Cloud Tasks queue (OIDC token, dedup by jobId). |
+| `apps/api/src/public-limit.ts` | Abuse limits for the unauthenticated endpoints: in-process burst guard + Firestore hourly counters, keyed by client IP (forge-resistant) and target email. |
 | `apps/worker/src/index.ts` | Fastify worker: `POST /run` → `runJob`; idempotent, acks finished jobs. |

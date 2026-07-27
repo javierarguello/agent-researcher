@@ -2,7 +2,7 @@
 export { config } from './config.js';
 
 // Templates
-export { getTemplate, listTemplates, toManifest, TEMPLATES, SUPPORTED_LANGS, DEFAULT_LANG } from './templates/registry.js';
+export { getTemplate, listTemplates, toManifest, modeLabel, TEMPLATES, SUPPORTED_LANGS, DEFAULT_LANG } from './templates/registry.js';
 export { reportSchemaOf, sectionSubsetSchema, sectionByKey } from './templates/types.js';
 export { chartSchema } from './templates/chart.js';
 export type { ChartSpec } from './templates/chart.js';
@@ -127,9 +127,9 @@ export {
   recordModerationStrike,
   setUserBlocked,
   MODERATION_STRIKE_LIMIT,
-  recordPreflightAttempt,
-  clearPreflightCount,
-  PREFLIGHT_RATE_LIMIT,
+  reserveAssistedReview,
+  resetAssistAllowance,
+  ASSIST_FREE_ATTEMPTS,
 } from './stats/store.js';
 export type { ReportStatsInput, PurchaseStatsInput, AdminStats, AppStatsRollup, UserRecord } from './stats/store.js';
 export { DEPTH_PROFILES, depthParamSchema, resolveDepthProfile } from './depth.js';
@@ -143,7 +143,9 @@ export type { RunJobInput, RunJobResult } from './engine/run-job.js';
 
 // LLM
 export { getProvider, resolveModel, getProviderFor, modelAliases } from './llm/index.js';
-export type { LlmProvider, ResolvedModel } from './llm/index.js';
+export type { LlmProvider, ResolvedModel, GenerateOptions, GenerateResult } from './llm/index.js';
+/** Test seams: swap a provider for a stub so a suite never hits the network. */
+export { __setProviderForTests, __clearProvidersForTests } from './llm/models.js';
 
 // Auth (session JWTs + Google id_token verification)
 export { signSession, signReadToken, signActionToken, verifySession, verifyGoogleIdToken } from './auth/tokens.js';
@@ -162,6 +164,9 @@ export {
 } from './auth/users.js';
 export type { UserCredential, AuthProvider } from './auth/users.js';
 export { isDisposableEmail, DISPOSABLE_EMAIL_DOMAINS } from './auth/disposable-email.js';
+// Invisible bot check for the unauthenticated forms (off until a secret is set)
+export { verifyCaptcha, captchaEnabled } from './auth/captcha.js';
+export type { CaptchaResult } from './auth/captcha.js';
 
 // Transactional email (shared Postmark, per-app From)
 export { sendAppEmail, EmailNotConfiguredError } from './email/postmark.js';
@@ -171,9 +176,27 @@ export { verifyEmailTemplate, resetPasswordTemplate, reportReadyTemplate } from 
 // Pre-submission moderation of research params (prompt-injection + profanity gate)
 export { moderateResearchParams, preScreen, collectFreeText } from './moderation/moderate.js';
 export type { ModerationVerdict } from './moderation/moderate.js';
-// Pre-flight AI validation (advisory summary + suggestions before generating)
-export { validateResearchParams } from './moderation/validate.js';
-export type { ValidationResult, ValidationQuality, ValidationTemplate } from './moderation/validate.js';
+// Fixed, localized copy for everything moderation / pre-flight shows or stores.
+// (No LLM-authored string is ever rendered or persisted — see moderation/copy.ts.)
+export {
+  moderationMessage,
+  blockReasonFor,
+  asModerationCategory,
+  assistMessage,
+  asLang,
+  MODERATION_CATEGORIES,
+} from './moderation/copy.js';
+export type { ModerationCategory, AssistState, Lang, IssueSeverity } from './moderation/copy.js';
+// Pre-flight review: deterministic summary + rules, plus an optional constrained
+// assisted pass (typo corrections + finding codes) on the cheapest model.
+export { runPreflight } from './moderation/preflight.js';
+export type { PreflightOutcome, PreflightQuality } from './moderation/preflight.js';
+export { deterministicIssues, renderPlan, issueMessage, allowedIssueCodes } from './moderation/deterministic.js';
+export type { PreflightIssue } from './moderation/deterministic.js';
+export { enrichRequest, acceptCorrections, applyCorrections } from './moderation/enrich.js';
+export type { Correction, EnrichResult } from './moderation/enrich.js';
+// Text hardening (unicode normalization for screening, similarity for corrections)
+export { screeningForms, similarity, sanitizeProposal, hasControlChars } from './util/text.js';
 
 import { z } from 'zod';
 import { getTemplate } from './templates/registry.js';

@@ -45,14 +45,19 @@ tracked as **analytics** in Firestore.
 7. [credits.md](credits.md) — the credits ledger/balances, consumption + refund,
    mode weighting, Stripe plans, checkout + webhook, idempotency.
 8. [stats.md](stats.md) — the per-app analytics schema and how it is written/read.
+9. [request-review.md](request-review.md) — the two gates before a request costs
+   anything: moderation and the pre-flight review (deterministic summary + a
+   bounded assisted pass), plus the abuse limits around them.
 
 ### Reference
-9.  [api-reference.md](api-reference.md) — every endpoint: method, path, auth,
+10. [api-reference.md](api-reference.md) — every endpoint: method, path, auth,
     request, response, errors (grouped by tag).
-10. [modules.md](modules.md) — a reference of every core module + its key exports.
-11. [extending.md](extending.md) — add a section / agent / research model / LLM
+11. [modules.md](modules.md) — a reference of every core module + its key exports.
+12. [extending.md](extending.md) — add a section / agent / research model / LLM
     provider / auth provider **without breaking** anything.
-12. [deployment.md](deployment.md) — infra scripts, CI, every env var, Firestore
+13. [deployment.md](deployment.md) — infra scripts, CI, every env var, Firestore
     indexes + TTL, the `fbizlab` / admin apps, admin SPA Hosting.
-13. [model-ui.md](model-ui.md) — how a client (the admin, or a model-specific web
+14. [model-ui.md](model-ui.md) — how a client (the admin, or a model-specific web
     app) renders a model's params from its manifest (`paramsSchema` + `paramsUi`).
+15. [local-llm.md](local-llm.md) — run the whole flow (and the suites) against a
+    local model with no cloud credentials; how the mocked and live test modes differ.

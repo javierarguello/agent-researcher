@@ -67,6 +67,16 @@ function localizeParamsUi(ui: ParamsUi | undefined, tr: TemplateI18n | undefined
 }
 
 /**
+ * The localized label of one report tier ("Essential" / "Esencial" / …). Same
+ * source of truth the manifest uses, so a preview and the form always agree.
+ */
+export function modeLabel(t: ResearchTemplate<any>, key: string, lang: string = DEFAULT_LANG): string {
+  const tr = lang !== DEFAULT_LANG ? t.i18n?.[lang] : undefined;
+  const cfg = t.modes?.[key as keyof typeof t.modes] ?? DEFAULT_MODES[key as keyof typeof DEFAULT_MODES];
+  return tr?.modeLabels?.[key as keyof NonNullable<TemplateI18n['modeLabels']>] ?? cfg?.label ?? key;
+}
+
+/**
  * Public, client-safe manifest (never exposes the internal base prompt),
  * localized to `lang` (default 'en'). Any string without a translation falls
  * back to the template's English base.

@@ -26,7 +26,8 @@ const T = {
     youHave: 'You have', creditsLeft: 'credits',
     notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits', alreadyRunning: 'You already have a dossier in progress — wait for it to finish before starting another.',
     rejected: 'Your request couldn’t be submitted:', blockedNote: 'Your account is blocked:', emailNotice: 'We’ll email you when your dossier is ready.',
-    validateContinue: 'Validate & continue', preparing: 'Preparing summary…', whatWeWillSearch: 'What we’ll search', suggestionsTitle: 'Suggestions to sharpen your results', rateLimited: 'You’ve run too many previews without generating a report.', tryAgainIn: 'Try again in',
+    validateContinue: 'Validate & continue', preparing: 'Preparing summary…',
+    whatWeWillSearch: 'What we’ll search', findingsTitle: 'Worth checking before you spend credits', fixesTitle: 'Suggested fixes', applyFixes: 'Apply suggested fixes', assistOff: 'Assisted review',
     noCredits: 'Not enough credits — buy more first.', yes: 'Yes',
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
@@ -48,7 +49,8 @@ const T = {
     youHave: 'Tienes', creditsLeft: 'créditos',
     notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos', alreadyRunning: 'Ya tienes un dossier en progreso — espera a que termine antes de iniciar otro.',
     rejected: 'No pudimos enviar tu solicitud:', blockedNote: 'Tu cuenta está bloqueada:', emailNotice: 'Te enviaremos un email cuando tu dossier esté listo.',
-    validateContinue: 'Validar y continuar', preparing: 'Preparando resumen…', whatWeWillSearch: 'Lo que buscaremos', suggestionsTitle: 'Sugerencias para afinar tus resultados', rateLimited: 'Hiciste demasiadas vistas previas sin generar un reporte.', tryAgainIn: 'Intenta de nuevo en',
+    validateContinue: 'Validar y continuar', preparing: 'Preparando resumen…',
+    whatWeWillSearch: 'Lo que buscaremos', findingsTitle: 'Vale la pena revisar antes de gastar créditos', fixesTitle: 'Correcciones sugeridas', applyFixes: 'Aplicar correcciones', assistOff: 'Revisión asistida',
     noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí',
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -70,7 +72,8 @@ const T = {
     youHave: 'Vous avez', creditsLeft: 'crédits',
     notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits', alreadyRunning: 'Vous avez déjà un dossier en cours — attendez qu’il se termine avant d’en lancer un autre.',
     rejected: 'Votre demande n’a pas pu être envoyée :', blockedNote: 'Votre compte est bloqué :', emailNotice: 'Nous vous enverrons un email quand votre dossier sera prêt.',
-    validateContinue: 'Valider et continuer', preparing: 'Préparation du résumé…', whatWeWillSearch: 'Ce que nous chercherons', suggestionsTitle: 'Suggestions pour affiner vos résultats', rateLimited: 'Vous avez lancé trop d’aperçus sans générer de rapport.', tryAgainIn: 'Réessayez dans',
+    validateContinue: 'Valider et continuer', preparing: 'Préparation du résumé…',
+    whatWeWillSearch: 'Ce que nous chercherons', findingsTitle: 'À vérifier avant de dépenser des crédits', fixesTitle: 'Corrections suggérées', applyFixes: 'Appliquer les corrections', assistOff: 'Relecture assistée',
     noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui',
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
@@ -92,7 +95,8 @@ const T = {
     youHave: 'Você tem', creditsLeft: 'créditos',
     notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos', alreadyRunning: 'Você já tem um dossiê em andamento — aguarde ele terminar antes de iniciar outro.',
     rejected: 'Não foi possível enviar sua solicitação:', blockedNote: 'Sua conta está bloqueada:', emailNotice: 'Enviaremos um email quando seu dossiê estiver pronto.',
-    validateContinue: 'Validar e continuar', preparing: 'Preparando resumo…', whatWeWillSearch: 'O que vamos buscar', suggestionsTitle: 'Sugestões para refinar seus resultados', rateLimited: 'Você fez pré-visualizações demais sem gerar um relatório.', tryAgainIn: 'Tente novamente em',
+    validateContinue: 'Validar e continuar', preparing: 'Preparando resumo…',
+    whatWeWillSearch: 'O que vamos buscar', findingsTitle: 'Vale revisar antes de gastar créditos', fixesTitle: 'Correções sugeridas', applyFixes: 'Aplicar correções', assistOff: 'Revisão assistida',
     noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim',
     modeDesc: { essential: 'Seções principais. Cerca da metade do custo. Ótimo para triagem inicial.', comprehensive: 'Dossiê longo completo: valuations, comparáveis, due diligence, playbook.' } as Record<string, string>,
   },
@@ -160,6 +164,8 @@ export function NewReport() {
   // re-triggers validation, but re-opening the dialog for the same params does not).
   const [pf, setPf] = useState<PreflightResult | null>(null);
   const [validatedKey, setValidatedKey] = useState<string | null>(null);
+  // Whether the user keeps the proposed corrections (on by default, one click to drop).
+  const [applyFixes, setApplyFixes] = useState(true);
   const isMobile = useIsMobile();
   const [step, setStep] = useState(0);
   // On mobile, only the current wizard step's section(s) are shown. Groups:
@@ -244,17 +250,19 @@ export function NewReport() {
     </label>
   );
 
-  // Step 1: moderation + AI validation preview. Shown in the dialog (once per params).
-  // If validation yields nothing useful — including when it's rate-limited/skipped or
-  // the call fails — we skip the preview and generate directly. The preview is advisory
-  // and must never block a generation.
+  // Step 1: moderation + the pre-flight review. The deterministic half always
+  // produces a summary, so there is normally something to show; if the call itself
+  // fails we generate anyway — the review is advisory and must never block.
   async function runPreflight() {
     setError(null);
     try {
       const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams() });
-      const useful = (res.summary?.trim().length ?? 0) > 0 || res.suggestions.length > 0;
-      if (useful) { setPf(res); setValidatedKey(paramsKey); }
-      else await submit(); // nothing to show (empty / rate-limited / off) → just generate
+      const useful = (res.summary?.trim().length ?? 0) > 0 || res.issues.length > 0 || res.corrections.length > 0;
+      if (useful) {
+        setPf(res);
+        setValidatedKey(paramsKey);
+        setApplyFixes(res.corrections.length > 0); // proposed fixes are opt-out, not silent
+      } else await submit();
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         setConfirming(false);
@@ -269,11 +277,13 @@ export function NewReport() {
     }
   }
 
-  // Step 2: actually create the job (moderation runs again server-side).
+  // Step 2: actually create the job (moderation runs again server-side). When the
+  // user kept the suggested fixes, we submit the corrected set the API returned.
   async function submit() {
     setError(null);
     try {
-      const res = await create.mutateAsync({ template: model!.id, params: cleanParams() });
+      const params = applyFixes && pf?.correctedParams ? pf.correctedParams : cleanParams();
+      const res = await create.mutateAsync({ template: model!.id, params });
       clearDraft();
       nav(`/app/jobs/${res.jobId}`);
     } catch (err) {
@@ -474,10 +484,37 @@ export function NewReport() {
                 <div className="pf-result">
                   <div className="eyebrow" style={{ color: 'var(--accent)', marginBottom: 8 }}>{t.whatWeWillSearch}</div>
                   <p className="soft" style={{ fontSize: 14, lineHeight: 1.6 }}>{pf.summary || t.confirmSub}</p>
-                  {pf.suggestions.length > 0 && (
+
+                  {/* Proposed corrections, as a diff the user can decline. */}
+                  {pf.corrections.length > 0 && (
                     <div className="pf-suggest">
-                      <div className="rev__k" style={{ marginBottom: 8 }}>{t.suggestionsTitle}</div>
-                      <ul>{pf.suggestions.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                      <div className="rev__k" style={{ marginBottom: 8 }}>{t.fixesTitle}</div>
+                      <ul>
+                        {pf.corrections.map((c) => (
+                          <li key={c.field}>
+                            <span className="mono muted">{t.f[c.field] ?? c.field}: </span>
+                            <s className="muted">{c.from}</s> <span aria-hidden>→</span> <b>{c.to}</b>
+                          </li>
+                        ))}
+                      </ul>
+                      <label className="checkcard" style={{ marginTop: 10 }}>
+                        <input type="checkbox" checked={applyFixes} onChange={(e) => setApplyFixes(e.target.checked)} />
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{t.applyFixes}</div>
+                      </label>
+                    </div>
+                  )}
+
+                  {pf.issues.length > 0 && (
+                    <div className="pf-suggest">
+                      <div className="rev__k" style={{ marginBottom: 8 }}>{t.findingsTitle}</div>
+                      <ul>{pf.issues.map((i) => <li key={i.code}>{i.message}</li>)}</ul>
+                    </div>
+                  )}
+
+                  {/* Why the assisted layer didn't run — informational, never an error. */}
+                  {pf.assist.message && (
+                    <div className="mono muted" style={{ fontSize: 11.5, marginTop: 12, lineHeight: 1.5 }}>
+                      {t.assistOff}: {pf.assist.message}
                     </div>
                   )}
                 </div>

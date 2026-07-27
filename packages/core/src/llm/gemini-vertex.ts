@@ -51,6 +51,7 @@ export class GeminiVertexProvider implements LlmProvider {
         config: {
           systemInstruction: opts.system,
           temperature: opts.temperature ?? 0.2,
+          ...(opts.seed != null ? { seed: opts.seed } : {}),
           ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
           ...(opts.thinkingBudget != null ? { thinkingConfig: { thinkingBudget: opts.thinkingBudget } } : {}),
           ...(structured

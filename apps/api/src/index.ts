@@ -44,13 +44,19 @@ import {
   updateSettings,
   validateRequest,
   moderateResearchParams,
-  validateResearchParams,
+  moderationMessage,
+  asLang,
+  runPreflight,
+  modeLabel,
+  type AssistState,
+  type Lang,
   getUserFlags,
   recordModerationStrike,
   setUserBlocked,
   MODERATION_STRIKE_LIMIT,
-  recordPreflightAttempt,
-  clearPreflightCount,
+  reserveAssistedReview,
+  resetAssistAllowance,
+  verifyCaptcha,
   resolveMode,
   getModelPricing,
   setModelPricing,
@@ -92,6 +98,7 @@ import type Stripe from 'stripe';
 import { jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan } from './stripe.js';
 import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
+import { publicLimit, clientIp } from './public-limit.js';
 
 // bodyLimit caps every request body at 512 KB — far above any legitimate payload
 // (research params are bounded per-field, a Google id_token is ~2 KB, Stripe
@@ -195,6 +202,16 @@ app.post(
     const b = req.body as { appId?: string; provider?: string; idToken?: string; email?: string; password?: string };
     if (!b.appId || !b.provider) return reply.code(400).send({ error: 'appId and provider are required.' });
 
+    // Unauthenticated + does password hashing → limit per IP and per target email
+    // so neither a spray across accounts nor a brute force on one is cheap.
+    if (
+      await publicLimit(req, reply, {
+        route: 'login',
+        perIp: config.publicLimits.loginPerHourPerIp,
+        perKey: { limit: config.publicLimits.loginPerHourPerEmail, value: normalizeEmail(b.email ?? '') },
+      })
+    ) return reply;
+
     const appRec = await getApp(b.appId);
     if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
 
@@ -281,14 +298,25 @@ app.post(
           email: { type: 'string', minLength: 3, maxLength: 320 },
           password: { type: 'string', maxLength: 200 },
           name: { type: 'string', maxLength: 200 },
+          captchaToken: { type: 'string', maxLength: 4096, description: 'Invisible bot-check token, when the app is configured with a captcha provider.' },
         },
       },
     },
   },
   async (req, reply) => {
-    const b = req.body as { appId: string; email: string; password: string; name?: string };
+    const b = req.body as { appId: string; email: string; password: string; name?: string; captchaToken?: string };
     const email = normalizeEmail(b.email);
     if (!email.includes('@')) return reply.code(400).send({ error: 'A valid email is required.' });
+
+    // Every registration sends an email on our Postmark account — the most
+    // expensive unauthenticated action in the API. Rate-limit it, then (when a
+    // provider is configured) require the invisible bot check.
+    if (await publicLimit(req, reply, { route: 'register', perIp: config.publicLimits.registerPerHourPerIp })) return reply;
+    const captcha = await verifyCaptcha(b.captchaToken, clientIp(req));
+    if (!captcha.ok) {
+      logEvent({ jobId: '-', appId: b.appId, userId: email }, 'WARNING', 'auth.captcha_rejected', { reason: captcha.reason });
+      return reply.code(400).send({ error: 'We could not verify that you are human. Please reload the page and try again.', code: 'captcha_failed' });
+    }
     // Block throwaway / disposable inboxes (one person → unlimited fake accounts).
     if (isDisposableEmail(email)) {
       return reply.code(400).send({ error: 'You can’t register with a disposable or temporary email address. Please use a permanent personal or work email.', code: 'disposable_email' });
@@ -344,6 +372,7 @@ app.post(
     },
   },
   async (req, reply) => {
+    if (await publicLimit(req, reply, { route: 'token', perIp: config.publicLimits.tokenPerHourPerIp })) return reply;
     const { token } = req.body as { token: string };
     let claims;
     try {
@@ -379,6 +408,15 @@ app.post(
   async (req, reply) => {
     const b = req.body as { appId: string; email: string };
     const email = normalizeEmail(b.email);
+    // Sends an email to an address the caller chooses → limit per IP and per
+    // target, so it can't be used to mail-bomb someone else's inbox.
+    if (
+      await publicLimit(req, reply, {
+        route: 'reset',
+        perIp: config.publicLimits.resetPerHourPerIp,
+        perKey: { limit: config.publicLimits.resetPerHourPerEmail, value: email },
+      })
+    ) return reply;
     const appRec = await getApp(b.appId);
     // Only send for an existing password account with email configured; but always
     // return 202 so callers can't probe which emails are registered.
@@ -412,6 +450,7 @@ app.post(
     },
   },
   async (req, reply) => {
+    if (await publicLimit(req, reply, { route: 'token', perIp: config.publicLimits.tokenPerHourPerIp })) return reply;
     const b = req.body as { token: string; password: string };
     const pwProblem = passwordProblem(b.password);
     if (pwProblem) return reply.code(400).send({ error: pwProblem });
@@ -455,12 +494,20 @@ app.post(
           name: { type: 'string', minLength: 1, maxLength: 200 },
           email: { type: 'string', minLength: 3, maxLength: 320 },
           message: { type: 'string', minLength: 1, maxLength: 5000 },
+          captchaToken: { type: 'string', maxLength: 4096, description: 'Invisible bot-check token, when the app is configured with a captcha provider.' },
         },
       },
     },
   },
   async (req, reply) => {
-    const b = req.body as { appId: string; subject?: string; name: string; email: string; message: string };
+    const b = req.body as { appId: string; subject?: string; name: string; email: string; message: string; captchaToken?: string };
+    // Anonymous + sends an email on our account: limit it and run the bot check.
+    if (await publicLimit(req, reply, { route: 'contact', perIp: config.publicLimits.contactPerHourPerIp })) return reply;
+    const captcha = await verifyCaptcha(b.captchaToken, clientIp(req));
+    if (!captcha.ok) {
+      logEvent({ jobId: '-', appId: b.appId, userId: b.email }, 'WARNING', 'contact.captcha_rejected', { reason: captcha.reason });
+      return reply.code(400).send({ error: 'We could not verify that you are human. Please reload the page and try again.', code: 'captcha_failed' });
+    }
     const appRec = await getApp(b.appId);
     if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
     if (!appRec.emailFrom) return reply.code(500).send({ error: 'Contact is not configured for this app.' });
@@ -617,25 +664,30 @@ const MAX_CONCURRENT_JOBS_PER_USER = 1;
 /**
  * Content moderation for research params, shared by /research and /research/preflight.
  * On a violation it records a strike (blocking at MODERATION_STRIKE_LIMIT) and returns
- * a reply spec; returns null when the params are clean. Behaviour is unchanged from the
- * original inline gate.
+ * a reply spec; returns null when the params are clean.
+ *
+ * Every user-facing string here is OUR copy, selected by the closed category the
+ * classifier returned — a rejected request can never write its own message into
+ * the response or into the block reason stored on the account.
  */
 async function moderateParams(
   appId: string,
   userId: string,
   params: Record<string, unknown>,
+  lang: Lang,
+  opts: { llm?: boolean } = {},
 ): Promise<{ code: number; body: Record<string, unknown> } | null> {
-  const verdict = await moderateResearchParams(params);
+  const verdict = await moderateResearchParams(params, opts);
   if (verdict.ok) return null;
-  const strike = await recordModerationStrike(appId, userId, { reason: verdict.reason, categories: verdict.categories });
-  logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories ?? [], strikes: strike.strikes, blocked: strike.blocked });
+  const strike = await recordModerationStrike(appId, userId, verdict.categories);
+  logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories, strikes: strike.strikes, blocked: strike.blocked });
   if (strike.blocked) {
-    return { code: 403, body: { error: strike.blockedReason ?? 'Your account has been blocked for repeated policy violations.', code: 'account_blocked', reason: strike.blockedReason } };
+    return { code: 403, body: { error: strike.blockedReason, code: 'account_blocked', reason: strike.blockedReason } };
   }
   return {
     code: 422,
     body: {
-      error: verdict.reason ?? 'Your request was rejected by our content filter. Please review and re-enter your details.',
+      error: moderationMessage(verdict.categories[0] ?? 'other', lang),
       code: 'params_rejected',
       categories: verdict.categories,
       strikes: strike.strikes,
@@ -643,6 +695,9 @@ async function moderateParams(
     },
   };
 }
+
+/** The report language a request asked for (drives every message we send back). */
+const paramsLang = (params: Record<string, unknown>): Lang => asLang(params.language);
 
 app.post(
   '/research',
@@ -736,7 +791,7 @@ app.post(
     // BEFORE spending credits or creating a job. Cheapest model; fails open on an
     // LLM outage (the engine still fences user instructions as low-authority).
     if (req.auth!.role !== 'admin') {
-      const rej = await moderateParams(appId, userId, validated.params);
+      const rej = await moderateParams(appId, userId, validated.params, paramsLang(validated.params));
       if (rej) return reply.code(rej.code).send(rej.body);
     }
 
@@ -765,8 +820,9 @@ app.post(
 
     await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent });
     logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
-    // The user generated → reset their preflight-without-generation counter (best-effort).
-    if (req.auth!.role !== 'admin') await clearPreflightCount(appId, userId).catch(() => {});
+    // The user generated: the assisted previews they ran paid off, so give the
+    // allowance back (and pay off one cooldown step). Best-effort.
+    if (req.auth!.role !== 'admin') await resetAssistAllowance(appId, userId).catch(() => {});
 
     try {
       const { enqueueJob } = await import('./enqueue.js');
@@ -791,12 +847,17 @@ app.post(
   '/research/preflight',
   {
     schema: {
-      summary: 'Validate research params before generating',
+      summary: 'Review research params before generating',
       description:
-        'Runs content moderation and a cheap AI validation pass that restates what the research will ' +
-        'look for and suggests refinements when the request is too broad or ambiguous. Advisory only — ' +
-        'it never blocks generation. Rate-limited per user over a sliding window so repeatedly previewing ' +
-        'without ever generating (burning tokens) makes the user wait for the window to lapse.',
+        'Runs content moderation, then a review of the request in two layers. The DETERMINISTIC layer always ' +
+        'runs and costs nothing: a plain-language summary of exactly what will be researched, rendered from the ' +
+        'validated params, plus rule-based findings. The ASSISTED layer additionally asks the cheapest model for ' +
+        'spelling/format corrections on a small whitelist of fields and for extra finding codes; it is bounded to ' +
+        'a closed output vocabulary, so no model-authored text is ever returned. ' +
+        'Corrections are PROPOSALS — `correctedParams` is what to submit if the user accepts them. ' +
+        'The assisted layer runs only when the user could actually generate (enough credits) and has not run ' +
+        'several previews without generating; otherwise `assist.state` explains why and the deterministic ' +
+        'review is returned on its own. This endpoint never blocks a generation.',
       tags: ['research'],
       security: sec,
       body: {
@@ -818,44 +879,60 @@ app.post(
     }
     const appId = req.auth!.appId;
     const userId = req.auth!.email;
+    const params = validated.params as Record<string, unknown>;
+    const lang = paramsLang(params);
+    const tpl = getTemplate(validated.template)!;
+    const mode = resolveMode(tpl.modes, params.mode);
+
+    // Which layers may run. Admins always get the assisted one.
+    let assist: AssistState = config.validation.llm ? 'on' : 'off_disabled';
 
     if (req.auth!.role !== 'admin') {
-      // Blocked users (moderation) can't preflight either.
+      // 1. Account state. A blocked user previews nothing.
       const flags = await getUserFlags(appId, userId);
       if (flags.blocked) {
         return reply.code(403).send({ error: flags.blockedReason ?? 'Your account is blocked.', code: 'account_blocked', reason: flags.blockedReason });
       }
-      // Preflight rate limit (sliding window). This only caps how often we spend
-      // tokens on the ADVISORY validation — it must NOT block generation. When the
-      // window is exhausted we skip validation (and moderation, which still runs at
-      // generate time) and return an empty result so the UI just proceeds to generate.
-      // Validation resumes automatically once the window lapses.
-      const rate = await recordPreflightAttempt(appId, userId);
-      if (rate.limited) {
-        logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { skipped: 'rate_limited' });
-        return reply.send({ ok: true, quality: 'ok', summary: '', suggestions: [], skipped: true });
+
+      // 2. Allowance, BEFORE anything reaches a model. Both model-backed passes on
+      //    this endpoint — the moderation classifier and the assisted review — are
+      //    covered by it, so a user who previews without ever generating cannot
+      //    keep either one running.
+      if (assist === 'on') {
+        // Nothing to preview for someone who can't pay for this mode. (Local dev
+        // has no credits gate at all — mirror /research and skip the check.)
+        const pricing = await getModelPricing(validated.template);
+        const cost = resolveModeCredits(pricing, mode.config, mode.key);
+        if (config.server.appEnv !== 'local' && (await getBalance(appId, userId)) < cost) assist = 'off_no_credits';
+        else if (!(await reserveAssistedReview(appId, userId)).allowed) assist = 'off_cooldown';
       }
-      // Moderation always runs (same strike logic as generate).
-      const rej = await moderateParams(appId, userId, validated.params);
+
+      // 3. Moderation. The deterministic pre-screen always runs and still records
+      //    strikes/blocks; the classifier is billed against the allowance above.
+      //    Skipping it here is safe because /research moderates in full — and that
+      //    is the call that actually spends credits.
+      const rej = await moderateParams(appId, userId, params, lang, { llm: assist === 'on' });
       if (rej) return reply.code(rej.code).send(rej.body);
     }
 
-    // Advisory AI validation — summary + suggestions (fails open internally). The
-    // template ("model") supplies the domain context (its internal validationPrompt,
-    // or its name/description/sections) so validation is generic across report types.
-    const lang = String((validated.params as Record<string, unknown>).language ?? 'en');
-    const tpl = getTemplate(validated.template);
-    // Describe only the sections this mode will actually produce (essential drops some),
-    // so the preview doesn't over-promise.
-    let ctx = {};
-    if (tpl) {
-      const m = resolveMode(tpl.modes, (validated.params as Record<string, unknown>).mode);
-      const exclude = new Set(m.config.exclude ?? []);
-      ctx = { name: tpl.name, description: tpl.description, validationPrompt: tpl.validationPrompt, sections: tpl.sections.filter((s) => !exclude.has(s.key)) };
-    }
-    const result = await validateResearchParams(validated.params, lang, ctx);
-    logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', { quality: result.quality, suggestions: result.suggestions.length, summaryLen: result.summary.length });
-    return reply.send({ ok: true, ...result });
+    const outcome = await runPreflight({
+      template: tpl,
+      params,
+      lang,
+      modeLabel: modeLabel(tpl, mode.key, lang),
+      assist,
+    });
+
+    logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', {
+      assist: outcome.assist.state,
+      quality: outcome.quality,
+      issues: outcome.issues.map((i) => i.code),
+      corrections: outcome.corrections.map((c) => c.field),
+      ...(outcome.usage ? { inputTokens: outcome.usage.inputTokens, outputTokens: outcome.usage.outputTokens } : {}),
+    });
+    // `usage` is internal metering — it stays in the log, like job cost does.
+    const { usage: _usage, ...clientView } = outcome;
+    return reply.send({ ok: true, ...clientView });
   },
 );
 

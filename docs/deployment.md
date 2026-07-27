@@ -141,9 +141,41 @@ Every value has a default (import never throws). Grouped as in `config.ts`.
 | `LLM_DEFAULT_SYNTH` | `pro` | Default synthesis alias. |
 | `LLM_MAX_OUTPUT_TOKENS` | `32768` | Cap for structured JSON (avoid mid-JSON truncation). |
 | `LLM_MAX_CONCURRENT_AGENTS` | `2` | Max agents running per job (Vertex-quota guard). |
+| `LLM_PROVIDER_<ALIAS>` | — | Per-alias provider override (`LLM_PROVIDER_FLASH=ollama`). Points just those calls elsewhere. |
+| `OLLAMA_HOST` | `http://localhost:11434` | Local model server for the `ollama` provider (dev/testing only — see [local-llm.md](local-llm.md)). |
+| `OLLAMA_TIMEOUT_MS` | `180000` | Per-call timeout; local models on CPU are slow. |
 
 Prices per alias (`inPerM`/`outPerM`) are set in `config.llm.models` — edit there
 when provider pricing changes (one place; drives cost accounting).
+
+### Request review (moderation + pre-flight)
+See [request-review.md](request-review.md).
+
+| Var | Default | Purpose |
+|---|---|---|
+| `MODERATION_LLM` | `true` | LLM classifier on top of the deterministic pre-screen. `false` keeps the free rule-based screen only. |
+| `VALIDATION_LLM` | `true` | The assisted half of the pre-flight review. `false` still returns the deterministic summary + findings. |
+| `PREFLIGHT_ASSIST_ATTEMPTS` | `3` | Assisted reviews a user gets between two generated reports. |
+| `PREFLIGHT_COOLDOWN_HOURS` | `1,6,24,72` | Escalating pause each time that allowance is exhausted; generating pays one step back. |
+| `PREFLIGHT_WINDOW_HOURS` | `8` | Sliding window after which the allowance counter restarts on its own. |
+
+### Public-endpoint abuse limits (API only)
+Unauthenticated routes have no session to meter and each costs money (Postmark
+sends, password hashing), so they are capped per client IP and per target email.
+`0` disables one limit.
+
+| Var | Default | Purpose |
+|---|---|---|
+| `PUBLIC_BURST_PER_MINUTE` | `30` | In-process burst guard per IP, across all public routes. |
+| `PUBLIC_REGISTER_PER_HOUR_IP` | `5` | Registrations per IP per hour. |
+| `PUBLIC_LOGIN_PER_HOUR_IP` / `_EMAIL` | `30` / `10` | Login attempts per IP / per targeted account. |
+| `PUBLIC_RESET_PER_HOUR_IP` / `_EMAIL` | `5` / `3` | Password-reset emails per IP / per target inbox. |
+| `PUBLIC_CONTACT_PER_HOUR_IP` | `5` | Contact-form submissions per IP. |
+| `PUBLIC_TOKEN_PER_HOUR_IP` | `30` | Verify-email / reset-password link submissions per IP. |
+| `TRUSTED_PROXY_HOPS` | `1` | Trailing `X-Forwarded-For` entries added by infrastructure (1 on Cloud Run) — how many to drop so the client IP can't be forged. |
+| `CAPTCHA_PROVIDER` | `turnstile` | `turnstile` (Cloudflare, free at any volume) or `recaptcha` (Google v3, score-based). Both invisible. |
+| `CAPTCHA_SECRET` | — | Provider secret. **Empty disables the bot check entirely.** The web app needs the matching `VITE_CAPTCHA_SITE_KEY`. |
+| `CAPTCHA_MIN_SCORE` | `0.5` | reCAPTCHA v3 only: minimum score to accept. |
 
 ### Search
 | Var | Default | Purpose |

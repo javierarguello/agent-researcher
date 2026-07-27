@@ -16,8 +16,33 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function float(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Comma-separated integers, e.g. "1,6,24,72". Falls back on any malformed entry. */
+function ints(name: string, fallback: number[]): number[] {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = raw.split(',').map((p) => Number.parseInt(p.trim(), 10));
+  return parsed.length && parsed.every((n) => Number.isFinite(n) && n > 0) ? parsed : fallback;
+}
+
 /** Deployment environment. Names every stateful resource (dev vs prod). */
 const ENV = str('ENV', 'dev');
+
+/**
+ * Provider backing one model alias. Per-alias override first
+ * (`LLM_PROVIDER_FLASH=ollama` points just the cheap calls at a local model),
+ * then the global default. Lets a laptop run the whole flow offline without a
+ * code change.
+ */
+function providerFor(alias: string): string {
+  return str(`LLM_PROVIDER_${alias}`, str('LLM_PROVIDER', 'gemini-vertex'));
+}
 
 export const config = {
   /** "dev" | "prod" — isolates all resources between environments. */
@@ -97,15 +122,50 @@ export const config = {
     llm: str('MODERATION_LLM', 'true') !== 'false',
   },
   validation: {
-    /** Run the AI pre-flight validation pass (summary + suggestions) on research
-     *  params. Disable in tests to avoid live LLM calls. */
+    /** Run the assisted (LLM) half of the pre-flight review — typo corrections +
+     *  extra finding codes. The deterministic half always runs. Disable in tests
+     *  to avoid live LLM calls. */
     llm: str('VALIDATION_LLM', 'true') !== 'false',
-    /** Preflight validations without any generation before an account is blocked
-     *  (guards against burning tokens by repeatedly previewing but never generating). */
-    blockLimit: int('PREFLIGHT_BLOCK_LIMIT', 10),
-    /** Sliding window (hours) for the preflight counter: if the last preflight was
-     *  longer ago than this, the counter resets — so counts don't accumulate forever. */
+    /** Assisted reviews a user gets between two generated reports. Past this the
+     *  feature pauses (the deterministic review continues), so previewing forever
+     *  without ever generating can't burn tokens. */
+    assistAttempts: int('PREFLIGHT_ASSIST_ATTEMPTS', 3),
+    /** Escalating pause (hours) applied each time the allowance is exhausted.
+     *  Generating a report pays one step back. */
+    cooldownHours: ints('PREFLIGHT_COOLDOWN_HOURS', [1, 6, 24, 72]),
+    /** Sliding window (hours) for the allowance counter: if the last assisted
+     *  review was longer ago than this, the count restarts. */
     windowHours: int('PREFLIGHT_WINDOW_HOURS', 8),
+  },
+  /**
+   * Abuse limits for the UNAUTHENTICATED endpoints (register / login / password
+   * reset / contact). These cost real money — Postmark sends, password hashing —
+   * and have no session to rate-limit against, so they are limited per client IP
+   * and per target email. `0` disables a limit.
+   */
+  publicLimits: {
+    /** In-process burst guard per IP (requests/minute across all public routes). */
+    burstPerMinute: int('PUBLIC_BURST_PER_MINUTE', 30),
+    registerPerHourPerIp: int('PUBLIC_REGISTER_PER_HOUR_IP', 5),
+    loginPerHourPerIp: int('PUBLIC_LOGIN_PER_HOUR_IP', 30),
+    loginPerHourPerEmail: int('PUBLIC_LOGIN_PER_HOUR_EMAIL', 10),
+    resetPerHourPerIp: int('PUBLIC_RESET_PER_HOUR_IP', 5),
+    resetPerHourPerEmail: int('PUBLIC_RESET_PER_HOUR_EMAIL', 3),
+    contactPerHourPerIp: int('PUBLIC_CONTACT_PER_HOUR_IP', 5),
+    /** Token-consuming link endpoints (verify-email / reset-password). */
+    tokenPerHourPerIp: int('PUBLIC_TOKEN_PER_HOUR_IP', 30),
+  },
+  /**
+   * Invisible bot check on the signup + contact forms. Both supported providers
+   * run without a puzzle: Cloudflare Turnstile (free at any volume) and Google
+   * reCAPTCHA v3 (score-based). Disabled entirely when no secret is configured,
+   * so nothing breaks before you set one up.
+   */
+  captcha: {
+    provider: str('CAPTCHA_PROVIDER', 'turnstile') as 'turnstile' | 'recaptcha',
+    secret: str('CAPTCHA_SECRET'),
+    /** reCAPTCHA v3 only: minimum score to accept (0..1). Turnstile is pass/fail. */
+    minScore: float('CAPTCHA_MIN_SCORE', 0.5),
   },
   cors: {
     /** Comma-separated allowed origins for the static web frontends; "*" for dev. */
@@ -122,14 +182,18 @@ export const config = {
      */
     models: {
       /** Cheap tier for the tool-calling research loop (planning + search). */
-      gather: { provider: 'gemini-vertex', model: str('LLM_MODEL_FLASH', 'gemini-2.5-flash'), inPerM: 0.3, outPerM: 2.5 },
+      gather: { provider: providerFor('GATHER'), model: str('LLM_MODEL_GATHER', str('LLM_MODEL_FLASH', 'gemini-2.5-flash')), inPerM: 0.3, outPerM: 2.5 },
       /** Same as gather; a distinct alias so intent reads clearly at call sites. */
-      flash: { provider: 'gemini-vertex', model: str('LLM_MODEL_FLASH', 'gemini-2.5-flash'), inPerM: 0.3, outPerM: 2.5 },
+      flash: { provider: providerFor('FLASH'), model: str('LLM_MODEL_FLASH', 'gemini-2.5-flash'), inPerM: 0.3, outPerM: 2.5 },
       /** Strong tier for structured section synthesis. */
-      pro: { provider: 'gemini-vertex', model: str('LLM_MODEL_PRO', 'gemini-2.5-pro'), inPerM: 1.25, outPerM: 10 },
+      pro: { provider: providerFor('PRO'), model: str('LLM_MODEL_PRO', 'gemini-2.5-pro'), inPerM: 1.25, outPerM: 10 },
       // Later (no breaking change): add Claude and reference it per-agent.
       // 'claude-sonnet': { provider: 'anthropic', model: 'claude-sonnet-5', inPerM: 3, outPerM: 15 },
     } as Record<string, { provider: string; model: string; inPerM: number; outPerM: number }>,
+    /** Base URL of a local Ollama server (provider "ollama" — dev/testing only). */
+    ollamaHost: str('OLLAMA_HOST', 'http://localhost:11434'),
+    /** Local models are slow on CPU; give a generated answer room to finish. */
+    ollamaTimeoutMs: int('OLLAMA_TIMEOUT_MS', 180_000),
     /** Default alias for an agent's tool-calling / gathering loop. */
     defaultGatherModel: str('LLM_DEFAULT_GATHER', 'gather'),
     /** Default alias for an agent's structured synthesis. */
@@ -184,6 +248,14 @@ export const config = {
     logLevel: str('LOG_LEVEL', 'info'),
     /** Environment: "local" disables API-key auth. Anything else enforces it. */
     appEnv: str('APP_ENV', 'production'),
+    /**
+     * Trailing `X-Forwarded-For` entries added by infrastructure we control, and
+     * therefore the number to drop when deriving the client IP. On Cloud Run the
+     * header is `[…spoofed…, <real client>, <google front end>]`, so dropping the
+     * last entry yields an IP the caller cannot forge. Set to 0 only when the
+     * service is reached directly.
+     */
+    proxyHops: int('TRUSTED_PROXY_HOPS', 1),
   },
 } as const;
 

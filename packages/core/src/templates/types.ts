@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ModeConfig, ReportMode } from '../mode.js';
+import type { IssueSeverity, Lang } from '../moderation/copy.js';
 
 /**
  * One section of the final structured report.
@@ -140,12 +141,10 @@ export interface ResearchTemplate<TParams = unknown> {
    */
   basePrompt: string;
   /**
-   * Internal (admin-only; never in the public manifest): an optional template-authored
-   * brief for the pre-flight validation LLM — what the generated report is meant to
-   * produce and how to judge/refine a request. Falls back to name + description +
-   * section titles when omitted, so validation is generic across templates.
+   * Internal (admin-only; never in the public manifest): how this model's requests
+   * are reviewed before a job is created. See `moderation/preflight.ts`.
    */
-  validationPrompt?: string;
+  preflight?: PreflightSpec<TParams>;
   /** Zod schema validating the client-supplied params. */
   paramsSchema: z.ZodType<TParams>;
   /** Ordered, typed report sections. */
@@ -178,6 +177,49 @@ export interface ResearchTemplate<TParams = unknown> {
    * string missing a translation falls back to English. See `toManifest(t, lang)`.
    */
   i18n?: Record<string, TemplateI18n>;
+}
+
+/**
+ * How a model's requests are reviewed in the confirm step, BEFORE credits are
+ * spent. Everything here is internal: none of it appears in the public manifest.
+ *
+ * The design constraint: a user-facing preview must be produced without trusting
+ * a model. `describePlan` + `rules` do that on their own; the assisted pass may
+ * only propose values for `correctable` fields and pick codes that already have
+ * copy here or in the core set.
+ */
+export interface PreflightSpec<TParams = unknown> {
+  /**
+   * Fields the assisted pass may propose a corrected value for (a misspelled
+   * city, an incomplete place name). A proposal is accepted only if it survives
+   * sanitization, stays close to what the user typed, and re-validates against
+   * `paramsSchema`. Anything not listed here can never be rewritten.
+   */
+  correctable?: Array<{ field: string; maxLength: number }>;
+  /**
+   * Deterministic findings: a predicate over validated params → an issue code.
+   * Runs with no model and no I/O, so it always executes.
+   */
+  rules?: Array<{
+    code: string;
+    when: (params: TParams & Record<string, unknown>) => boolean;
+    severity?: IssueSeverity;
+    /** Param this finding is about, so a UI can highlight the right input. */
+    field?: string;
+  }>;
+  /**
+   * Copy for template-specific issue codes, by language (English required — it is
+   * the fallback). Core codes already have copy in `moderation/copy.ts`.
+   */
+  issueCopy?: Record<string, Partial<Record<Lang, string>>> & Record<string, { en: string } & Partial<Record<Lang, string>>>;
+  /**
+   * Renders the user-facing "here's what we'll research" sentence from the
+   * validated params. MUST be a pure function: it is the deterministic summary,
+   * and the reason no model writes the text the user reads.
+   */
+  describePlan?: (params: TParams & Record<string, unknown>, ctx: { lang: Lang; modeLabel: string }) => string;
+  /** One line telling the assisted pass what this model delivers (internal). */
+  assistPrompt?: string;
 }
 
 /**

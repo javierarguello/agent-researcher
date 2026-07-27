@@ -14,6 +14,7 @@
  */
 import { FieldValue, Firestore, Timestamp, type DocumentReference, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
+import { blockReasonFor, type ModerationCategory } from '../moderation/copy.js';
 
 let db: Firestore | undefined;
 function firestore(): Firestore {
@@ -334,9 +335,13 @@ export interface UserRecord {
   blockedAt?: string;
   /** How many times this user's params were rejected by moderation. */
   moderationStrikes?: number;
-  /** Preflight validations run without any generation since the last generated
-   *  dossier — resets to 0 on generation; blocks the user when it hits the limit. */
+  /** Assisted (LLM) reviews run without any generation since the last report —
+   *  resets to 0 on generation; puts the feature on cooldown when it hits the limit. */
   preflightCount?: number;
+  /** While set (ISO), the assisted review is paused for this user. */
+  assistCooldownUntil?: string;
+  /** How many cooldowns this user has earned (drives the escalating backoff). */
+  assistCooldowns?: number;
 }
 
 function toUserRecord(d: Record<string, unknown>): UserRecord {
@@ -359,6 +364,8 @@ function toUserRecord(d: Record<string, unknown>): UserRecord {
     blockedAt: d.blockedAt as string | undefined,
     moderationStrikes: typeof d.moderationStrikes === 'number' ? (d.moderationStrikes as number) : undefined,
     preflightCount: typeof d.preflightCount === 'number' ? (d.preflightCount as number) : undefined,
+    assistCooldownUntil: d.assistCooldownUntil as string | undefined,
+    assistCooldowns: typeof d.assistCooldowns === 'number' ? (d.assistCooldowns as number) : undefined,
   };
 }
 
@@ -375,13 +382,15 @@ export async function getUserFlags(appId: string, userId: string): Promise<{ blo
 
 /**
  * Record a moderation rejection. Increments the strike counter and, on reaching
- * `MODERATION_STRIKE_LIMIT`, blocks the user (storing the moderation explanation +
- * what was detected as `blockedReason`). Returns the new state.
+ * `MODERATION_STRIKE_LIMIT`, blocks the user. The stored `blockedReason` is copy
+ * WE wrote, derived from the closed category set — never a string produced by the
+ * classifier, which would otherwise let a crafted request write its own text into
+ * the admin panel. The raw categories are kept for triage.
  */
 export async function recordModerationStrike(
   appId: string,
   userId: string,
-  detail: { reason?: string; categories?: string[] },
+  categories: ModerationCategory[],
 ): Promise<{ blocked: boolean; strikes: number; blockedReason?: string }> {
   const uref = appUsers().doc(userKey(appId, userId));
   const now = nowIso();
@@ -390,12 +399,18 @@ export async function recordModerationStrike(
     const cur = (snap.exists ? snap.data() : {}) as { moderationStrikes?: number; blocked?: boolean; blockedReason?: string };
     if (cur.blocked) return { blocked: true, strikes: cur.moderationStrikes ?? MODERATION_STRIKE_LIMIT, blockedReason: cur.blockedReason };
     const strikes = (cur.moderationStrikes ?? 0) + 1;
-    const detected = detail.categories?.length ? ` (detected: ${detail.categories.join(', ')})` : '';
-    const blockedReason = `${detail.reason ?? 'Repeated policy violations in report requests.'}${detected}`;
+    const blockedReason = blockReasonFor(categories);
     const willBlock = strikes >= MODERATION_STRIKE_LIMIT;
     tx.set(
       uref,
-      { appId, userId, moderationStrikes: strikes, updatedAt: now, ...(willBlock ? { blocked: true, blockedReason, blockedAt: now } : {}) },
+      {
+        appId,
+        userId,
+        moderationStrikes: strikes,
+        lastModerationCategories: categories,
+        updatedAt: now,
+        ...(willBlock ? { blocked: true, blockedReason, blockedAt: now } : {}),
+      },
       { merge: true },
     );
     return { blocked: willBlock, strikes, blockedReason: willBlock ? blockedReason : undefined };
@@ -415,50 +430,95 @@ export async function setUserBlocked(appId: string, userId: string, blocked: boo
     );
 }
 
-/** Max preflight validations allowed within the sliding window before a user is
- *  rate-limited (must wait for the window to lapse). Reset to 0 on every generation. */
-export const PREFLIGHT_RATE_LIMIT = config.validation.blockLimit;
-const PREFLIGHT_WINDOW_MS = config.validation.windowHours * 60 * 60 * 1000;
+/**
+ * Assisted-review allowance.
+ *
+ * The assisted (LLM) pass costs tokens and only pays for itself when it leads to
+ * a generated report. So a user gets `ASSIST_FREE_ATTEMPTS` assisted previews
+ * between reports; past that the feature goes on an escalating cooldown and the
+ * preview falls back to the deterministic layer — which is complete on its own,
+ * so nothing is blocked and no error is shown. Generating resets the allowance
+ * and pays back one escalation step.
+ */
+export const ASSIST_FREE_ATTEMPTS = config.validation.assistAttempts;
+/** Escalating pause after each exhausted allowance. */
+export const ASSIST_COOLDOWN_HOURS = config.validation.cooldownHours;
+const ASSIST_WINDOW_MS = config.validation.windowHours * 60 * 60 * 1000;
 
-function retryAfterSeconds(preflightAt?: string): number {
-  const last = preflightAt ? Date.parse(preflightAt) : 0;
-  return Math.max(1, Math.ceil((last + PREFLIGHT_WINDOW_MS - Date.now()) / 1000));
+const secondsUntil = (iso: string): number => Math.max(1, Math.ceil((Date.parse(iso) - Date.now()) / 1000));
+
+function cooldownFor(previousCooldowns: number): number {
+  const steps = ASSIST_COOLDOWN_HOURS;
+  return steps[Math.min(previousCooldowns, steps.length - 1)] ?? steps[steps.length - 1] ?? 1;
 }
 
 /**
- * Rate-limit preflight validations over a sliding window: at most
- * `PREFLIGHT_RATE_LIMIT` within `PREFLIGHT_WINDOW_HOURS`. The counter resets to 0 on
- * every generation, and the window lapses on its own — if the last preflight was
- * longer ago than the window, the count restarts (so idle users never accumulate).
- * When the limit is hit the user must wait for the window to expire before running
- * the validation flow again; blocked attempts do NOT extend the window. Returns
- * `{ limited, retryAfterSeconds }` — the caller 429s when limited (no tokens spent).
+ * Claim one assisted review. Returns `{ allowed:false, retryAfterSeconds }` when
+ * the user is on cooldown or has just exhausted the allowance — the caller then
+ * runs the deterministic review only. Attempts made while on cooldown do NOT
+ * extend it.
  */
-export async function recordPreflightAttempt(
+export async function reserveAssistedReview(
   appId: string,
   userId: string,
-): Promise<{ limited: boolean; count: number; retryAfterSeconds: number }> {
+): Promise<{ allowed: boolean; count: number; retryAfterSeconds: number }> {
   const uref = appUsers().doc(userKey(appId, userId));
   const now = nowIso();
   return firestore().runTransaction(async (tx) => {
     const snap = await tx.get(uref);
-    const cur = (snap.exists ? snap.data() : {}) as { preflightCount?: number; preflightAt?: string };
-    const lastMs = cur.preflightAt ? Date.parse(cur.preflightAt) : 0;
-    const withinWindow = !!lastMs && Date.parse(now) - lastMs <= PREFLIGHT_WINDOW_MS;
-    const curCount = withinWindow ? cur.preflightCount ?? 0 : 0;
-    if (curCount >= PREFLIGHT_RATE_LIMIT) {
-      // Rate-limited: don't run/charge validation and don't extend the window.
-      return { limited: true, count: curCount, retryAfterSeconds: retryAfterSeconds(cur.preflightAt) };
+    const cur = (snap.exists ? snap.data() : {}) as {
+      preflightCount?: number;
+      preflightAt?: string;
+      assistCooldownUntil?: string;
+      assistCooldowns?: number;
+    };
+
+    if (cur.assistCooldownUntil && Date.parse(cur.assistCooldownUntil) > Date.now()) {
+      return { allowed: false, count: cur.preflightCount ?? 0, retryAfterSeconds: secondsUntil(cur.assistCooldownUntil) };
     }
-    const count = curCount + 1;
+
+    // The window lapses on its own, so an idle user never accumulates.
+    const lastMs = cur.preflightAt ? Date.parse(cur.preflightAt) : 0;
+    const withinWindow = !!lastMs && Date.parse(now) - lastMs <= ASSIST_WINDOW_MS;
+    const count = (withinWindow ? cur.preflightCount ?? 0 : 0) + 1;
+
+    if (count > ASSIST_FREE_ATTEMPTS) {
+      const cooldowns = cur.assistCooldowns ?? 0;
+      const until = new Date(Date.now() + cooldownFor(cooldowns) * 60 * 60 * 1000).toISOString();
+      tx.set(
+        uref,
+        { appId, userId, preflightCount: 0, assistCooldownUntil: until, assistCooldowns: cooldowns + 1, updatedAt: now },
+        { merge: true },
+      );
+      return { allowed: false, count: 0, retryAfterSeconds: secondsUntil(until) };
+    }
+
     tx.set(uref, { appId, userId, preflightCount: count, preflightAt: now, updatedAt: now }, { merge: true });
-    return { limited: false, count, retryAfterSeconds: 0 };
+    return { allowed: true, count, retryAfterSeconds: 0 };
   });
 }
 
-/** Reset the preflight counter — called when the user actually generates a dossier. */
-export async function clearPreflightCount(appId: string, userId: string): Promise<void> {
-  await appUsers().doc(userKey(appId, userId)).set({ preflightCount: 0, preflightAt: FieldValue.delete(), updatedAt: nowIso() }, { merge: true });
+/**
+ * The user generated a report — the assisted previews they ran did their job.
+ * Resets the allowance, lifts any cooldown, and pays back one escalation step.
+ */
+export async function resetAssistAllowance(appId: string, userId: string): Promise<void> {
+  const uref = appUsers().doc(userKey(appId, userId));
+  await firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(uref);
+    const cooldowns = (snap.exists ? (snap.data()?.assistCooldowns as number | undefined) : undefined) ?? 0;
+    tx.set(
+      uref,
+      {
+        preflightCount: 0,
+        preflightAt: FieldValue.delete(),
+        assistCooldownUntil: FieldValue.delete(),
+        assistCooldowns: Math.max(0, cooldowns - 1),
+        updatedAt: nowIso(),
+      },
+      { merge: true },
+    );
+  });
 }
 
 /**

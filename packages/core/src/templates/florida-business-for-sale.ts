@@ -4,6 +4,7 @@ import { LANGUAGE_LABELS } from '../languages.js';
 import { dedupeSources } from '../tools/sources.js';
 import { chartSchema } from './chart.js';
 import { metricSchema, riskItemSchema, projectionTableSchema } from './blocks.js';
+import { floridaPreflight } from './florida-preflight.js';
 import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
@@ -599,6 +600,9 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     },
   },
   instructionsField: 'instructions',
+  // Confirm-step review: deterministic summary + rules, and the whitelist the
+  // assisted (LLM) pass may propose corrections for. See florida-preflight.ts.
+  preflight: floridaPreflight,
   // Paid post-report deliverables this model offers (credits are the code
   // default; overridable per model in Firestore via /admin/pricing). Generators
   // ship later — the catalog + prices are defined here.
