@@ -38,6 +38,56 @@ const reg = { appId: 'fbizlab', email: 'New@X.com', password: 'sup3rsecret', nam
 const login = (email: string, password: string) =>
   app.inject({ method: 'POST', url: '/auth/session', payload: { appId: 'fbizlab', provider: 'password', email, password } });
 
+/**
+ * Tokens that are not sign-ins, and identities that are not proven.
+ *
+ * Both of these were live: an emailed link doubled as 24h of full API access, and
+ * a Google id_token was trusted for an address Google had not verified.
+ */
+describe('auth — single-purpose tokens and unverified identities', () => {
+  beforeEach(async () => {
+    sent.length = 0;
+    await seedEmailApp();
+  });
+
+  it('a verification link is not a session: it opens nothing but its own endpoint', async () => {
+    await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
+    const link = tokenFromLast('verify');
+    expect(link).toBeTruthy();
+
+    // These links live in email bodies, browser history and forwarded mail.
+    for (const url of ['/research', '/credits/balance', '/me/stats']) {
+      const r = await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${link}` } });
+      expect(r.statusCode, url).toBe(401);
+    }
+    const post = await app.inject({
+      method: 'POST',
+      url: '/research',
+      headers: { authorization: `Bearer ${link}`, 'content-type': 'application/json' },
+      payload: { template: 'florida-business-for-sale', params: { industry: 'x', mode: 'essential' } },
+    });
+    expect(post.statusCode).toBe(401);
+
+    // …but it still does the one job it was minted for.
+    expect((await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link } })).statusCode).toBe(200);
+  });
+
+  it('a password-reset link is not a session either', async () => {
+    await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: reg.email } });
+    const link = tokenFromLast('reset');
+    expect(link).toBeTruthy();
+    expect((await app.inject({ method: 'GET', url: '/credits/balance', headers: { authorization: `Bearer ${link}` } })).statusCode).toBe(401);
+  });
+
+  it('the session a real login returns still works everywhere', async () => {
+    await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
+    const session = (await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } })).json().token;
+    expect((await app.inject({ method: 'GET', url: '/credits/balance', headers: { authorization: `Bearer ${session}` } })).statusCode).toBe(200);
+  });
+});
+
 describe('auth — password register / verify / login / reset', () => {
   beforeEach(async () => {
     sent.length = 0;

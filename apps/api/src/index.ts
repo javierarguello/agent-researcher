@@ -226,10 +226,27 @@ app.post(
       if (!b.idToken) return reply.code(400).send({ error: 'idToken is required for provider "google".' });
       try {
         const verified = await verifyGoogleIdToken(b.idToken, appRec.googleClientId);
-        // Link Google to the app+email record and mark it verified (Google proves
-        // the address) — the same email used with a password is the SAME user.
+        // Google only proves the address when it says so. An id_token can carry an
+        // email the account never verified (the classic unverified-alias case), and
+        // accepting it would both hand over a session for someone else's address
+        // and stamp their record as verified. `email_verified` is the whole reason
+        // this path may skip the verification gate the password path enforces.
+        if (!verified.emailVerified) {
+          logEvent({ jobId: '-', appId: appRec.appId, userId: verified.email }, 'WARNING', 'auth.google_unverified', {});
+          return reply.code(403).send({
+            error: 'This Google account has not verified its email address. Verify it with Google, or sign in with a password.',
+            code: 'email_unverified',
+          });
+        }
+        // Link Google to the app+email record and mark it verified — the same email
+        // used with a password is the SAME user.
         await upsertGoogleUser({ appId: appRec.appId, email: verified.email, name: verified.name });
-        identity = { email: verified.email, name: verified.name };
+        // Normalize to the same identity the password path uses. The abuse counters
+        // (blocks, strikes, allowances, credits, rate limits) are all keyed on the
+        // session email, so `j.doe@gmail.com` and `jdoe@gmail.com` resolving to two
+        // different keys would let a blocked user walk around the block by switching
+        // login button.
+        identity = { email: normalizeEmail(verified.email), name: verified.name };
       } catch (err) {
         return reply.code(401).send({ error: `Google verification failed: ${(err as Error).message}` });
       }

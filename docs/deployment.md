@@ -173,7 +173,7 @@ sends, password hashing), so they are capped per client IP and per target email.
 | `PUBLIC_RESET_PER_HOUR_IP` / `_EMAIL` | `5` / `3` | Password-reset emails per IP / per target inbox. |
 | `PUBLIC_CONTACT_PER_HOUR_IP` | `5` | Contact-form submissions per IP. |
 | `PUBLIC_TOKEN_PER_HOUR_IP` | `30` | Verify-email / reset-password link submissions per IP. |
-| `TRUSTED_PROXY_HOPS` | `1` | Trailing `X-Forwarded-For` entries added by infrastructure (1 on Cloud Run) — how many to drop so the client IP can't be forged. |
+| `TRUSTED_PROXY_HOPS` | `0` | `X-Forwarded-For` entries added by infrastructure BEYOND the one holding the real peer. **0** when the API is reached directly on `*.run.app` (this deployment) — Cloud Run appends the peer, so the last entry is real. **1** behind a global external load balancer. Too high and every per-IP limit keys on a header the caller writes. |
 | `TURNSTILE_SECRET` | — | Cloudflare Turnstile secret for the registered widget. **Empty disables the bot check entirely** — every guarded flow behaves exactly as before. Server-side only. |
 | `TURNSTILE_SITE_KEY` | `0x4AAAAAAD_OEtqrL5B2NN6f` | Public site key. Ships in the HTML; the web app has the same default via `VITE_TURNSTILE_SITE_KEY`. |
 | `TURNSTILE_FLOWS` | `register,login,password-reset,contact,research,preflight` | Which flows require a solved widget. A route binds to a flow name, so protecting or unprotecting one is a deploy-time decision. |

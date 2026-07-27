@@ -278,13 +278,21 @@ export const config = {
     /** Environment: "local" disables API-key auth. Anything else enforces it. */
     appEnv: str('APP_ENV', 'production'),
     /**
-     * Trailing `X-Forwarded-For` entries added by infrastructure we control, and
-     * therefore the number to drop when deriving the client IP. On Cloud Run the
-     * header is `[…spoofed…, <real client>, <google front end>]`, so dropping the
-     * last entry yields an IP the caller cannot forge. Set to 0 only when the
-     * service is reached directly.
+     * How many trailing `X-Forwarded-For` entries were added by infrastructure
+     * BEYOND the one that recorded the real peer — i.e. how many to drop before
+     * taking the client IP.
+     *
+     * This is 0 for a service reached directly on its `*.run.app` host, which is
+     * this deployment: Cloud Run appends the peer address to whatever the caller
+     * sent, so the LAST entry is the real one and everything before it is
+     * attacker-written. It becomes 1 behind a global external load balancer,
+     * which appends its own address after the client's.
+     *
+     * Getting this wrong is silent and total: too high and every per-IP limit
+     * keys on a header the caller writes. Verified against the deployment in
+     * `apps/api/test/public-limits.test.ts`.
      */
-    proxyHops: int('TRUSTED_PROXY_HOPS', 1),
+    proxyHops: int('TRUSTED_PROXY_HOPS', 0),
   },
 } as const;
 

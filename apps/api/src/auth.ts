@@ -64,6 +64,17 @@ export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise
     await reply.code(401).send({ error: 'Unauthorized: app not found or inactive.' });
     return;
   }
+  // Single-purpose tokens are NOT logins. `verify-email` and `reset-password` are
+  // minted for one public endpoint each (which verifies the scope itself) and are
+  // handed out in URLs — email bodies, browser history, forwarded mail, link
+  // scanners. A 24h verification link must never double as 24h of full API access,
+  // so anything carrying a scope this hook doesn't explicitly handle is refused
+  // here rather than falling through into a session.
+  if (claims.scope && claims.scope !== 'report-read') {
+    await reply.code(401).send({ error: 'Unauthorized: this link is not a sign-in token.' });
+    return;
+  }
+
   req.auth = claims;
   req.appRecord = app;
 

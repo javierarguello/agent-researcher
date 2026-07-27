@@ -23,10 +23,17 @@ import { checkRateLimits, config, logEvent, type RateLimitEntry } from '@agent-r
 // --- Client IP ---------------------------------------------------------------
 
 /**
- * The client IP, resolved so a caller cannot forge it. Infrastructure appends to
- * `X-Forwarded-For`, so the trustworthy entry is counted from the RIGHT: with
- * `proxyHops = 1` (Cloud Run) we drop the Google front end and take what it saw,
- * which is the real peer even when the caller sent their own header.
+ * The client IP, resolved so a caller cannot forge it.
+ *
+ * Infrastructure APPENDS to `X-Forwarded-For`, so the trustworthy entry is
+ * counted from the RIGHT — never the left, which is whatever the caller chose to
+ * send. `config.server.proxyHops` says how many trailing entries our own
+ * infrastructure added beyond the one that recorded the real peer: 0 when the
+ * service is reached directly on `*.run.app` (this deployment), 1 behind a
+ * global external load balancer.
+ *
+ * Set it too high and the index lands on an attacker-written entry, silently
+ * turning every per-IP limit off. That is not hypothetical — it shipped that way.
  */
 export function clientIp(req: FastifyRequest): string {
   const raw = req.headers['x-forwarded-for'];
@@ -34,11 +41,13 @@ export function clientIp(req: FastifyRequest): string {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (chain.length) {
-    const idx = Math.max(0, chain.length - 1 - Math.max(0, config.server.proxyHops));
-    return chain[idx] ?? req.ip;
-  }
-  return req.ip;
+  const hops = Math.max(0, config.server.proxyHops);
+  const idx = chain.length - 1 - hops;
+  // A chain shorter than the hops we expect means our own infrastructure did not
+  // write it — so every entry in it came from the caller. Clamping to 0 here (the
+  // obvious-looking `Math.max(0, idx)`) would hand the key straight to them.
+  // Fall back to the socket address, which cannot be forged.
+  return idx >= 0 ? chain[idx] ?? req.ip : req.ip;
 }
 
 // --- Burst guard (per instance) ---------------------------------------------

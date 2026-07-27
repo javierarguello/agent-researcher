@@ -16,6 +16,7 @@ vi.mock('../src/stripe.js', () => ({
 import { app } from '../src/index.js';
 import { createApp } from '@agent-researcher/core';
 import { burstOk, clientIp, __resetBurst } from '../src/public-limit.js';
+import { config } from '@agent-researcher/core';
 
 const sent: unknown[] = [];
 vi.stubGlobal(
@@ -30,8 +31,11 @@ vi.stubGlobal(
 );
 
 const seed = () => createApp({ appId: 'fbizlab', name: 'F', role: 'app', emailFrom: 'no-reply@f.test', webUrl: 'https://f.test' });
+// The shape this deployment actually receives: Cloud Run appends the peer, so the
+// last entry is the real client. (A load balancer would add one more; see the
+// `client IP resolution` cases below.)
 const post = (url: string, payload: unknown, ip = '203.0.113.9') =>
-  app.inject({ method: 'POST', url, payload, headers: { 'x-forwarded-for': `${ip}, 130.211.0.1` } });
+  app.inject({ method: 'POST', url, payload, headers: { 'x-forwarded-for': ip } });
 
 describe('public endpoints — rate limits', () => {
   beforeEach(async () => {
@@ -81,15 +85,44 @@ describe('public endpoints — rate limits', () => {
 });
 
 describe('client IP resolution', () => {
-  it('ignores a forged leading X-Forwarded-For entry', () => {
-    // Cloud Run appends: [spoofed, real client, google front end]. With one
-    // trusted hop, the entry we keep is the one the front end actually saw.
+  // The whole per-IP layer rests on this one index. Getting it wrong is silent:
+  // limits still "work" in tests while production keys on a header the caller
+  // writes. These cases are the two real topologies, pinned explicitly.
+  const withHops = <T>(hops: number, fn: () => T): T => {
+    const prev = config.server.proxyHops;
+    (config.server as { proxyHops: number }).proxyHops = hops;
+    try {
+      return fn();
+    } finally {
+      (config.server as { proxyHops: number }).proxyHops = prev;
+    }
+  };
+
+  it('direct on *.run.app (this deployment): takes the entry Cloud Run appended', () => {
+    // The caller sent "1.2.3.4"; Cloud Run appended the real peer after it.
+    const req = { headers: { 'x-forwarded-for': '1.2.3.4, 198.51.100.7' }, ip: '10.0.0.1' };
+    expect(withHops(0, () => clientIp(req as never))).toBe('198.51.100.7');
+  });
+
+  it('a forged header cannot change the key, however many entries it carries', () => {
+    const forged = Array.from({ length: 20 }, (_, i) => `1.2.3.${i}`).join(', ');
+    const req = { headers: { 'x-forwarded-for': `${forged}, 198.51.100.7` }, ip: '10.0.0.1' };
+    expect(withHops(0, () => clientIp(req as never))).toBe('198.51.100.7');
+  });
+
+  it('behind a load balancer: drops the LB entry and takes what it saw', () => {
     const req = { headers: { 'x-forwarded-for': '1.2.3.4, 198.51.100.7, 130.211.0.1' }, ip: '10.0.0.1' };
-    expect(clientIp(req as never)).toBe('198.51.100.7');
+    expect(withHops(1, () => clientIp(req as never))).toBe('198.51.100.7');
   });
 
   it('falls back to the socket address with no header', () => {
     expect(clientIp({ headers: {}, ip: '10.0.0.1' } as never)).toBe('10.0.0.1');
+  });
+
+  it('never returns a caller-supplied value when the header holds only forged entries', () => {
+    // No infrastructure hop at all (impossible in prod, but must not fail open).
+    const req = { headers: { 'x-forwarded-for': '1.2.3.4' }, ip: '10.0.0.1' };
+    expect(withHops(1, () => clientIp(req as never))).toBe('10.0.0.1');
   });
 });
 
