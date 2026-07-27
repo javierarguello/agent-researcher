@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from './client';
+import { api, captchaBody } from './client';
 import type { CreditPlan, JobDetail, JobListItem, JobReport, TemplateManifest } from './types';
 
 const LIVE = new Set(['queued', 'running', 'incomplete']);
@@ -31,7 +31,8 @@ export function useJobReport(jobId: string, enabled: boolean) {
 export function useCreateJob() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { template: string; params: Record<string, unknown> }) => api<{ jobId: string; status: string }>('/research', { method: 'POST', body }),
+    mutationFn: ({ captcha, ...body }: { template: string; params: Record<string, unknown>; captcha?: string }) =>
+      api<{ jobId: string; status: string }>('/research', { method: 'POST', body: { ...body, ...captchaBody(captcha) } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
   });
 }
@@ -55,7 +56,8 @@ export interface PreflightResult {
 /** Pre-flight review: moderation + a deterministic summary + an optional assisted pass. */
 export function usePreflight() {
   return useMutation({
-    mutationFn: (body: { template: string; params: Record<string, unknown> }) => api<PreflightResult>('/research/preflight', { method: 'POST', body }),
+    mutationFn: ({ captcha, ...body }: { template: string; params: Record<string, unknown>; captcha?: string }) =>
+      api<PreflightResult>('/research/preflight', { method: 'POST', body: { ...body, ...captchaBody(captcha) } }),
   });
 }
 export function useBalance() {

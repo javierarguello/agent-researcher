@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useLang, pick } from '../i18n';
 import { useAuth } from '../auth/AuthContext';
 import { LangSwitcher } from '../components/LangSwitcher';
+import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { ApiError, contactRequest } from '../api/client';
 
 const BRAND = 'Florida Biz Labs';
@@ -66,17 +67,19 @@ function ContactForm({ variant }: { variant: 'api' | 'info' }) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const captcha = useRef<TurnstileHandle>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await contactRequest({ subject: subject || undefined, name, email, message });
+      await contactRequest({ subject: subject || undefined, name, email, message }, await captcha.current?.getToken());
       setSent(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t.err);
     } finally {
+      captcha.current?.reset(); // tokens are single-use
       setBusy(false);
     }
   }
@@ -122,6 +125,7 @@ function ContactForm({ variant }: { variant: 'api' | 'info' }) {
               <label htmlFor="c-message">{t.message}</label>
               <textarea id="c-message" className="textarea" style={{ minHeight: 120 }} placeholder={t.messagePh} value={message} onChange={(e) => setMessage(e.target.value)} required />
             </div>
+            <Turnstile ref={captcha} />
             <button type="submit" className="btn btn--black" style={{ marginTop: 4 }} disabled={busy}>{busy ? t.busy : t.send}</button>
           </form>
         )}

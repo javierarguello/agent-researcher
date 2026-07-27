@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, clearToken, setToken, UNAUTHORIZED_EVENT } from '../api/client';
+import { api, captchaBody, clearToken, setToken, UNAUTHORIZED_EVENT } from '../api/client';
 import { config } from '../config';
 import type { SessionResponse, SessionUser } from '../api/types';
 
@@ -9,7 +9,7 @@ interface AuthState {
   user: SessionUser | null;
   isAuthed: boolean;
   loginWithGoogle: (idToken: string) => Promise<void>;
-  loginWithPassword: (email: string, password: string) => Promise<void>;
+  loginWithPassword: (email: string, password: string, captcha?: string) => Promise<void>;
   /** Persist a session returned by the API (verify-email / reset-password auto-login). */
   applySession: (res: SessionResponse) => void;
   logout: () => void;
@@ -49,11 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithPassword = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, captcha?: string) => {
       const res = await api<SessionResponse>('/auth/session', {
         method: 'POST',
         anonymous: true,
-        body: { appId: config.appId, provider: 'password', email, password },
+        body: { appId: config.appId, provider: 'password', email, password, ...captchaBody(captcha) },
       });
       applySession(res);
     },

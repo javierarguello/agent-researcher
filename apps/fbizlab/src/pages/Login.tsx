@@ -5,6 +5,7 @@ import { pick, useLang } from '../i18n';
 import { config } from '../config';
 import { initGoogleAuth, renderGoogleButton } from '../auth/google';
 import { LangSwitcher } from '../components/LangSwitcher';
+import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { useCheckout } from '../api/hooks';
 import { ApiError, PENDING_PLAN_KEY, register, requestPasswordReset } from '../api/client';
 
@@ -126,6 +127,7 @@ export function Login() {
     return from && from.startsWith('/app') ? from : '/app';
   };
   const btnRef = useRef<HTMLDivElement>(null);
+  const captcha = useRef<TurnstileHandle>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('signin');
   const [name, setName] = useState('');
@@ -182,14 +184,15 @@ export function Login() {
     setUnverified(false);
     setBusy(true);
     try {
+      const token = await captcha.current?.getToken();
       if (mode === 'forgot') {
-        await requestPasswordReset(email);
+        await requestPasswordReset(email, token);
         setSent('reset');
       } else if (mode === 'signup') {
-        await register(email, password, name || undefined);
+        await register(email, password, name || undefined, token);
         setSent('verify');
       } else {
-        await loginWithPassword(email, password);
+        await loginWithPassword(email, password, token);
         await afterLogin();
       }
     } catch (err) {
@@ -199,15 +202,20 @@ export function Login() {
       else if (err instanceof ApiError && err.status === 401) setError(t.errInvalid);
       else setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {
+      // Turnstile tokens are single-use: hand the next submit a fresh one.
+      captcha.current?.reset();
       setBusy(false);
     }
   }
 
   async function resend() {
     setBusy(true);
-    try { await register(email, password, name || undefined); setSent('verify'); setError(null); setUnverified(false); }
+    try {
+      await register(email, password, name || undefined, await captcha.current?.getToken());
+      setSent('verify'); setError(null); setUnverified(false);
+    }
     catch { /* keep the current error */ }
-    finally { setBusy(false); }
+    finally { captcha.current?.reset(); setBusy(false); }
   }
 
   const switchMode = (m: Mode) => { setMode(m); setError(null); setUnverified(false); };
@@ -282,6 +290,7 @@ export function Login() {
                       <input id="password" className="input" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} placeholder={t.passPh} value={password} onChange={(e) => setPassword(e.target.value)} required />
                     </div>
                   )}
+                  <Turnstile ref={captcha} />
                   <button type="submit" className="btn btn--black btn--block" style={{ marginTop: 4 }} disabled={busy}>
                     {busy ? t.busy : mode === 'signin' ? t.signIn : mode === 'signup' ? t.signUp : t.sendReset}
                   </button>

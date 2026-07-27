@@ -1,5 +1,4 @@
 import { config } from '../config';
-import { captchaToken as mintCaptchaToken } from '../auth/captcha';
 import type { SessionResponse } from './types';
 
 const TOKEN_KEY = 'fbizlab_jwt';
@@ -101,14 +100,16 @@ export async function ensureReportPdf(
   throw new ApiError(504, 'The PDF is taking longer than expected. Please try again in a moment.');
 }
 
+/** The Turnstile token, under the field name Cloudflare's own widget posts.
+ *  Omitted entirely when there is no token, so unprotected flows are unchanged. */
+export const captchaBody = (token?: string): Record<string, string> =>
+  token ? { 'cf-turnstile-response': token } : {};
+
 // --- Password auth (register / verify email / reset) -----------------------
 /** Register a password account. 202 = verification email sent. Throws ApiError
  *  (409 email_taken) if the email already belongs to a verified account. */
-export async function register(email: string, password: string, name?: string): Promise<{ status: string; email: string }> {
-  // Invisible bot check — resolves undefined (and the API skips verification)
-  // until a site key + secret are configured.
-  const captchaToken = await mintCaptchaToken();
-  return api('/auth/register', { method: 'POST', anonymous: true, body: { appId: config.appId, email, password, name, captchaToken } });
+export function register(email: string, password: string, name?: string, captcha?: string): Promise<{ status: string; email: string }> {
+  return api('/auth/register', { method: 'POST', anonymous: true, body: { appId: config.appId, email, password, name, ...captchaBody(captcha) } });
 }
 
 /** Verify an email from the emailed link → returns a login session. */
@@ -117,8 +118,8 @@ export function verifyEmail(token: string): Promise<SessionResponse> {
 }
 
 /** Always resolves 202 (never reveals whether the email exists). */
-export function requestPasswordReset(email: string): Promise<{ status: string }> {
-  return api('/auth/request-password-reset', { method: 'POST', anonymous: true, body: { appId: config.appId, email } });
+export function requestPasswordReset(email: string, captcha?: string): Promise<{ status: string }> {
+  return api('/auth/request-password-reset', { method: 'POST', anonymous: true, body: { appId: config.appId, email, ...captchaBody(captcha) } });
 }
 
 /** Set a new password from the emailed reset link → returns a login session. */
@@ -128,9 +129,8 @@ export function resetPassword(token: string, password: string): Promise<SessionR
 
 /** Send a contact / API-access request. If the user is logged in, the stored
  *  session token is included so the server can note their account. */
-export async function contactRequest(payload: { subject?: string; name: string; email: string; message: string }): Promise<{ status: string }> {
-  const captchaToken = await mintCaptchaToken();
-  return api('/contact', { method: 'POST', body: { appId: config.appId, ...payload, captchaToken } });
+export function contactRequest(payload: { subject?: string; name: string; email: string; message: string }, captcha?: string): Promise<{ status: string }> {
+  return api('/contact', { method: 'POST', body: { appId: config.appId, ...payload, ...captchaBody(captcha) } });
 }
 
 export function qs(params: Record<string, string | number | undefined | null>): string {

@@ -156,16 +156,36 @@ export const config = {
     tokenPerHourPerIp: int('PUBLIC_TOKEN_PER_HOUR_IP', 30),
   },
   /**
-   * Invisible bot check on the signup + contact forms. Both supported providers
-   * run without a puzzle: Cloudflare Turnstile (free at any volume) and Google
-   * reCAPTCHA v3 (score-based). Disabled entirely when no secret is configured,
-   * so nothing breaks before you set one up.
+   * Cloudflare Turnstile bot check. Disabled entirely when `TURNSTILE_SECRET` is
+   * unset, so nothing breaks before it is configured.
+   *
+   * `flows` is the generic knob: a flow is a named thing a user does that we may
+   * want to prove a human is behind. Routes bind themselves to a flow, so
+   * protecting a new one — here or in a future app — is a config change, not a
+   * code change. Order is irrelevant; unknown names are ignored.
    */
   captcha: {
-    provider: str('CAPTCHA_PROVIDER', 'turnstile') as 'turnstile' | 'recaptcha',
-    secret: str('CAPTCHA_SECRET'),
-    /** reCAPTCHA v3 only: minimum score to accept (0..1). Turnstile is pass/fail. */
-    minScore: float('CAPTCHA_MIN_SCORE', 0.5),
+    secret: str('TURNSTILE_SECRET'),
+    /** Public site key. Not a credential — it ships in the HTML. */
+    siteKey: str('TURNSTILE_SITE_KEY', '0x4AAAAAAD_OEtqrL5B2NN6f'),
+    flows: new Set(
+      str('TURNSTILE_FLOWS', 'register,login,password-reset,contact,research,preflight')
+        .split(',')
+        .map((f) => f.trim())
+        .filter(Boolean),
+    ),
+    /**
+     * Apps whose clients render the widget, and are therefore expected to send a
+     * token. An app not listed here is exempt — which is what keeps a headless or
+     * internal client (the admin SPA, a future API consumer) from being locked out
+     * by a check its UI never had. Adding an app is a config change.
+     */
+    apps: new Set(
+      str('TURNSTILE_APPS', 'fbizlab')
+        .split(',')
+        .map((a) => a.trim())
+        .filter(Boolean),
+    ),
   },
   cors: {
     /** Comma-separated allowed origins for the static web frontends; "*" for dev. */

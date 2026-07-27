@@ -198,4 +198,4 @@ For manual runs against a real database, `APP_ENV=local` still talks to the
 | `VALIDATION_LLM=false` | assisted pre-flight off; the deterministic review still runs |
 | `PREFLIGHT_ASSIST_ATTEMPTS=1` | reach the assisted-review pause in one preview |
 | `PREFLIGHT_COOLDOWN_HOURS=1,2` | shorter escalation while testing |
-| `CAPTCHA_SECRET=` (empty) | bot check off (the default) |
+| `TURNSTILE_SECRET=` (empty) | Turnstile bot check off (the default) |

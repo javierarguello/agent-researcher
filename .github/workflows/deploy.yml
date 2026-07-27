@@ -58,4 +58,5 @@ jobs:
         env:
           ENV: ${{ steps.env.outputs.name }}
           TAVILY_API_KEY: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.TAVILY_API_KEY_PROD || secrets.TAVILY_API_KEY_DEV }}
+          TURNSTILE_SECRET: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.TURNSTILE_SECRET_PROD || secrets.TURNSTILE_SECRET_DEV }}
         run: bash infra/deploy.sh

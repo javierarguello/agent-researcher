@@ -56,7 +56,6 @@ import {
   MODERATION_STRIKE_LIMIT,
   reserveAssistedReview,
   resetAssistAllowance,
-  verifyCaptcha,
   resolveMode,
   getModelPricing,
   setModelPricing,
@@ -99,6 +98,7 @@ import { jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan } from './stripe.js';
 import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
 import { publicLimit, clientIp } from './public-limit.js';
+import { requireCaptcha, captchaBodyProperties } from './captcha.js';
 
 // bodyLimit caps every request body at 512 KB — far above any legitimate payload
 // (research params are bounded per-field, a Google id_token is ~2 KB, Stripe
@@ -194,9 +194,11 @@ app.post(
           idToken: { type: 'string', maxLength: 8192, description: "Google id_token (provider='google')." },
           email: { type: 'string', maxLength: 320, description: "Email (provider='password')." },
           password: { type: 'string', maxLength: 200, description: "Password (provider='password')." },
+          ...captchaBodyProperties,
         },
       },
     },
+    preHandler: requireCaptcha('login'),
   },
   async (req, reply) => {
     const b = req.body as { appId?: string; provider?: string; idToken?: string; email?: string; password?: string };
@@ -298,25 +300,20 @@ app.post(
           email: { type: 'string', minLength: 3, maxLength: 320 },
           password: { type: 'string', maxLength: 200 },
           name: { type: 'string', maxLength: 200 },
-          captchaToken: { type: 'string', maxLength: 4096, description: 'Invisible bot-check token, when the app is configured with a captcha provider.' },
+          ...captchaBodyProperties,
         },
       },
     },
+    preHandler: requireCaptcha('register'),
   },
   async (req, reply) => {
-    const b = req.body as { appId: string; email: string; password: string; name?: string; captchaToken?: string };
+    const b = req.body as { appId: string; email: string; password: string; name?: string };
     const email = normalizeEmail(b.email);
     if (!email.includes('@')) return reply.code(400).send({ error: 'A valid email is required.' });
 
     // Every registration sends an email on our Postmark account — the most
-    // expensive unauthenticated action in the API. Rate-limit it, then (when a
-    // provider is configured) require the invisible bot check.
+    // expensive unauthenticated action in the API.
     if (await publicLimit(req, reply, { route: 'register', perIp: config.publicLimits.registerPerHourPerIp })) return reply;
-    const captcha = await verifyCaptcha(b.captchaToken, clientIp(req));
-    if (!captcha.ok) {
-      logEvent({ jobId: '-', appId: b.appId, userId: email }, 'WARNING', 'auth.captcha_rejected', { reason: captcha.reason });
-      return reply.code(400).send({ error: 'We could not verify that you are human. Please reload the page and try again.', code: 'captcha_failed' });
-    }
     // Block throwaway / disposable inboxes (one person → unlimited fake accounts).
     if (isDisposableEmail(email)) {
       return reply.code(400).send({ error: 'You can’t register with a disposable or temporary email address. Please use a permanent personal or work email.', code: 'disposable_email' });
@@ -401,9 +398,10 @@ app.post(
         type: 'object',
         required: ['appId', 'email'],
         additionalProperties: false,
-        properties: { appId: { type: 'string', maxLength: 128 }, email: { type: 'string', maxLength: 320 } },
+        properties: { appId: { type: 'string', maxLength: 128 }, email: { type: 'string', maxLength: 320 }, ...captchaBodyProperties },
       },
     },
+    preHandler: requireCaptcha('password-reset'),
   },
   async (req, reply) => {
     const b = req.body as { appId: string; email: string };
@@ -494,20 +492,16 @@ app.post(
           name: { type: 'string', minLength: 1, maxLength: 200 },
           email: { type: 'string', minLength: 3, maxLength: 320 },
           message: { type: 'string', minLength: 1, maxLength: 5000 },
-          captchaToken: { type: 'string', maxLength: 4096, description: 'Invisible bot-check token, when the app is configured with a captcha provider.' },
+          ...captchaBodyProperties,
         },
       },
     },
+    preHandler: requireCaptcha('contact'),
   },
   async (req, reply) => {
-    const b = req.body as { appId: string; subject?: string; name: string; email: string; message: string; captchaToken?: string };
-    // Anonymous + sends an email on our account: limit it and run the bot check.
+    const b = req.body as { appId: string; subject?: string; name: string; email: string; message: string };
+    // Anonymous + sends an email on our account.
     if (await publicLimit(req, reply, { route: 'contact', perIp: config.publicLimits.contactPerHourPerIp })) return reply;
-    const captcha = await verifyCaptcha(b.captchaToken, clientIp(req));
-    if (!captcha.ok) {
-      logEvent({ jobId: '-', appId: b.appId, userId: b.email }, 'WARNING', 'contact.captcha_rejected', { reason: captcha.reason });
-      return reply.code(400).send({ error: 'We could not verify that you are human. Please reload the page and try again.', code: 'captcha_failed' });
-    }
     const appRec = await getApp(b.appId);
     if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
     if (!appRec.emailFrom) return reply.code(500).send({ error: 'Contact is not configured for this app.' });
@@ -718,9 +712,11 @@ app.post(
         properties: {
           template: { type: 'string', minLength: 1, maxLength: 128, description: 'Template id, e.g. "florida-business-for-sale".' },
           params: { type: 'object', description: 'Template-specific params.' },
+          ...captchaBodyProperties,
         },
       },
     },
+    preHandler: requireCaptcha('research'),
   },
   async (req, reply) => {
     let validated;
@@ -866,9 +862,11 @@ app.post(
         properties: {
           template: { type: 'string', minLength: 1, maxLength: 128 },
           params: { type: 'object', description: 'Template-specific params.' },
+          ...captchaBodyProperties,
         },
       },
     },
+    preHandler: requireCaptcha('preflight'),
   },
   async (req, reply) => {
     let validated;

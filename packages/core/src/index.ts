@@ -164,8 +164,8 @@ export {
 } from './auth/users.js';
 export type { UserCredential, AuthProvider } from './auth/users.js';
 export { isDisposableEmail, DISPOSABLE_EMAIL_DOMAINS } from './auth/disposable-email.js';
-// Invisible bot check for the unauthenticated forms (off until a secret is set)
-export { verifyCaptcha, captchaEnabled } from './auth/captcha.js';
+// Cloudflare Turnstile verification (off until TURNSTILE_SECRET is set)
+export { verifyCaptcha, captchaEnabled, TURNSTILE_TOKEN_FIELD } from './auth/captcha.js';
 export type { CaptchaResult } from './auth/captcha.js';
 
 // Transactional email (shared Postmark, per-app From)

@@ -159,7 +159,7 @@ See [request-review.md](request-review.md).
 | `PREFLIGHT_COOLDOWN_HOURS` | `1,6,24,72` | Escalating pause each time that allowance is exhausted; generating pays one step back. |
 | `PREFLIGHT_WINDOW_HOURS` | `8` | Sliding window after which the allowance counter restarts on its own. |
 
-### Public-endpoint abuse limits (API only)
+### Public-endpoint abuse limits + Turnstile (API only)
 Unauthenticated routes have no session to meter and each costs money (Postmark
 sends, password hashing), so they are capped per client IP and per target email.
 `0` disables one limit.
@@ -173,9 +173,29 @@ sends, password hashing), so they are capped per client IP and per target email.
 | `PUBLIC_CONTACT_PER_HOUR_IP` | `5` | Contact-form submissions per IP. |
 | `PUBLIC_TOKEN_PER_HOUR_IP` | `30` | Verify-email / reset-password link submissions per IP. |
 | `TRUSTED_PROXY_HOPS` | `1` | Trailing `X-Forwarded-For` entries added by infrastructure (1 on Cloud Run) — how many to drop so the client IP can't be forged. |
-| `CAPTCHA_PROVIDER` | `turnstile` | `turnstile` (Cloudflare, free at any volume) or `recaptcha` (Google v3, score-based). Both invisible. |
-| `CAPTCHA_SECRET` | — | Provider secret. **Empty disables the bot check entirely.** The web app needs the matching `VITE_CAPTCHA_SITE_KEY`. |
-| `CAPTCHA_MIN_SCORE` | `0.5` | reCAPTCHA v3 only: minimum score to accept. |
+| `TURNSTILE_SECRET` | — | Cloudflare Turnstile secret for the registered widget. **Empty disables the bot check entirely** — every guarded flow behaves exactly as before. Server-side only. |
+| `TURNSTILE_SITE_KEY` | `0x4AAAAAAD_OEtqrL5B2NN6f` | Public site key. Ships in the HTML; the web app has the same default via `VITE_TURNSTILE_SITE_KEY`. |
+| `TURNSTILE_FLOWS` | `register,login,password-reset,contact,research,preflight` | Which flows require a solved widget. A route binds to a flow name, so protecting or unprotecting one is a deploy-time decision. |
+| `TURNSTILE_APPS` | `fbizlab` | Apps whose UI actually renders the widget. An app not listed is exempt — this is what keeps the admin SPA (and any headless consumer) from being locked out when the secret is set. |
+
+**Turning Turnstile on** — the secret is the only thing that has to be stored,
+and it follows the same path as every other backend secret (GitHub secret →
+workflow env → `infra/deploy.sh` → Cloud Run `--set-env-vars`):
+
+```bash
+gh secret set TURNSTILE_SECRET_DEV    # dev API
+gh secret set TURNSTILE_SECRET_PROD   # prod API
+```
+
+Nothing else is required. The site key is public and already compiled into the
+web app, so `FBIZLAB_{DEV,PROD}_TURNSTILE_SITE_KEY` are optional GitHub
+*variables* that only matter if you point an environment at a different widget.
+A local `.env` is needed only to exercise the check while developing — leaving
+`TURNSTILE_SECRET` empty keeps it off, which is the default everywhere.
+
+Because it is off until the secret exists, the safe rollout is: deploy the code
+first (no behaviour change), then set the secret when you want enforcement, and
+`gh secret delete` to turn it back off without a code change.
 
 ### Search
 | Var | Default | Purpose |

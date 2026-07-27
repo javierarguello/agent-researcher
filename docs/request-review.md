@@ -161,3 +161,38 @@ copy in `moderation/copy.ts` in all four languages.
 `docs/local-llm.md` — the suite is fully mocked by default; `npm run
 test:local-llm` re-runs the assisted pass against a real (deliberately sloppy)
 local model and asserts the invariants above still hold.
+
+## Turnstile: proving a human is behind the request
+
+Cloudflare Turnstile sits in front of the flows where a bot costs us money or
+tokens. The verification is shared (`core/auth/captcha.ts`) and the binding is a
+one-line Fastify preHandler (`apps/api/src/captcha.ts`), so a new app or route
+opts in without new logic:
+
+```ts
+app.post('/thing', { preHandler: requireCaptcha('my-flow'), schema: {...} }, handler)
+```
+
+Three deployment-level switches decide whether a given request must carry a token:
+
+| Switch | Meaning |
+| --- | --- |
+| `TURNSTILE_SECRET` | Unset ⇒ the whole check is off and nothing changes. |
+| `TURNSTILE_FLOWS` | Which flows are enforced (`register`, `login`, `password-reset`, `contact`, `research`, `preflight`). |
+| `TURNSTILE_APPS` | Which apps' UIs actually render a widget. |
+
+That last one matters: the admin SPA logs in through the same `/auth/session` and
+can create jobs through the same `/research`, and it has no widget. Without the
+per-app switch, setting the secret would lock the admins out of their own
+dashboard. Admin sessions are exempt for the same reason.
+
+The browser never calls siteverify — the widget hands a token to our API, which
+verifies it server-side with the client IP the edge saw, and only `success === true`
+lets the request through. Verification fails **closed**: an unreachable Cloudflare
+rejects rather than waving traffic past a guard that costs credits.
+
+Tokens are single-use and live ~5 minutes, so each protected call needs its own
+solve. In the report flow that means two: one for the pre-flight review and one
+for the generation. The client resets the widget after every submission; if the
+double solve is unwanted, drop `preflight` from `TURNSTILE_FLOWS` — the assisted
+allowance already limits repeated previews on its own.
