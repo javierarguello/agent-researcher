@@ -21,6 +21,8 @@ import {
   getApp,
   deleteApp,
   checkRateLimits,
+  peekRateLimits,
+  commitRateLimits,
   createJob,
   getJob,
   getSettings,
@@ -792,14 +794,21 @@ app.post(
     }
 
     // Rate limits (reports per hour) — per app and per user. Skipped in local dev.
+    //
+    // PEEK only: this rejects a caller who is already at their cap without writing
+    // anything. The increment happens after the job exists (`commitRateLimits`
+    // below), so a request that dies at moderation or for want of credits does not
+    // spend a slot in the APP-WIDE bucket every other customer draws from —
+    // which is how five zero-balance accounts used to 429 the paying ones.
+    let rateEntries: RateLimitEntry[] = [];
     if (config.server.appEnv !== 'local') {
       const settings = await getSettings();
       const appLimit = req.appRecord?.rateLimitPerHour ?? settings.appRateLimitPerHour;
-      const entries: RateLimitEntry[] = [
+      rateEntries = [
         { key: `app:${appId}`, limit: appLimit, scope: 'app' },
         { key: `user:${userId}`, limit: settings.userRateLimitPerHour, scope: 'user' },
       ];
-      const rl = await checkRateLimits(entries);
+      const rl = await peekRateLimits(rateEntries);
       if (!rl.allowed && rl.violation) {
         reply.header('Retry-After', '3600');
         return reply.code(429).send({
@@ -811,14 +820,6 @@ app.post(
       }
     }
 
-    // Content moderation: reject prompt-injection / profanity / off-topic params
-    // BEFORE spending credits or creating a job. Cheapest model; fails open on an
-    // LLM outage (the engine still fences user instructions as low-authority).
-    if (req.auth!.role !== 'admin') {
-      const rej = await moderateParams(appId, userId, validated.params, paramsLang(validated.params));
-      if (rej) return reply.code(rej.code).send(rej.body);
-    }
-
     const jobId = randomUUID();
     const logCtx = { jobId, appId, userId, template: validated.template };
 
@@ -828,6 +829,24 @@ app.post(
     const mode = resolveMode(tmpl?.modes, (validated.params as Record<string, unknown>).mode);
     const pricing = await getModelPricing(validated.template); // Firestore override → code default
     const creditsSpent = resolveModeCredits(pricing, mode.config, mode.key);
+
+    // Affordability BEFORE moderation. `consumeCredits` below is the authority —
+    // this read is only here so a caller who provably cannot pay doesn't cost us a
+    // model call on the way to the same 402 they were always going to get.
+    if (config.server.appEnv !== 'local' && req.auth!.role !== 'admin') {
+      const balance = await getBalance(appId, userId);
+      if (balance < creditsSpent) {
+        return reply.code(402).send({ error: 'Insufficient credits.', required: creditsSpent, balance });
+      }
+    }
+
+    // Content moderation: reject prompt-injection / profanity / off-topic params
+    // BEFORE spending credits or creating a job. Cheapest model; fails open on an
+    // LLM outage (the engine still fences user instructions as low-authority).
+    if (req.auth!.role !== 'admin') {
+      const rej = await moderateParams(appId, userId, validated.params, paramsLang(validated.params));
+      if (rej) return reply.code(rej.code).send(rej.body);
+    }
 
     // Credits gate: consume the mode's credit cost up front (refunded if the job fails).
     if (config.server.appEnv !== 'local') {
@@ -843,6 +862,11 @@ app.post(
     }
 
     await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent });
+    // The work exists, so now it counts against the hourly quotas. Best-effort:
+    // losing a count is far better than failing a job that was already paid for.
+    await commitRateLimits(rateEntries).catch((err) =>
+      logEvent(logCtx, 'WARNING', 'ratelimit.commit_failed', { message: (err as Error).message }),
+    );
     logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
     // The user generated: the assisted previews they ran paid off, so give the
     // allowance back (and pay off one cooldown step). Best-effort.

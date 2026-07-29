@@ -224,6 +224,10 @@ export class Firestore {
   batch(): WriteBatch {
     return new WriteBatch();
   }
+  /** Real Firestore exposes getAll() on the client, not just inside a transaction. */
+  getAll(...refs: DocumentReference[]): Promise<DocumentSnapshot[]> {
+    return Promise.all(refs.map((r) => r.get()));
+  }
   async runTransaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
     // Serialize transactions so concurrent runs are isolated (no lost updates) —
     // this mirrors the isolation real Firestore guarantees, so concurrency tests

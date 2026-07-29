@@ -8,74 +8,13 @@ don't get re-reported.
 Every entry cites `file:line` and states how it was established. Line numbers
 drift — treat them as a starting point, not gospel.
 
+Group A (cheap external denial-of-service) is done; what follows is B onward.
+
 **Nothing open here is a door standing open.** The one finding that was — every
 per-IP limit bypassable with a forged header — was confirmed against the running
 dev API and is fixed (see *Closed*, below). What remains is serious debt: two
 denial-of-service paths that cost an attacker nothing, an inability to see what
 we spend, and several ways spend can run away.
-
----
-
-## A. Someone outside can take a service down — cheap for them, hours for us
-
-### A1 · `/plans` is an unauthenticated, unmetered Stripe amplifier
-`open` · verified by reading the code
-
-`/plans` is public (`apps/api/src/auth.ts:23`) and is the only public route that
-never calls `publicLimit()` (`apps/api/src/index.ts:1283-1299`). It calls
-`listStripePlans` → `stripe().products.search` (`apps/api/src/stripe.ts:80-84`).
-
-The cache cannot save us: `cached(..., (p) => p.length > 0)` (`index.ts:1292`,
-`cache.ts:43`) deliberately refuses to store an empty result, and an unknown
-`appId` always yields `[]` — so **every request with a fresh `appId` is a
-guaranteed cache miss and one live Stripe call**. No auth, no token, no captcha.
-
-Cost: Stripe's search endpoint throttles well below what one Cloud Run instance
-can drive. Once throttled, `POST /credits/checkout` and `GET /credits/plans`
-(both of which call `listStripePlans` uncached) fail too — **nobody can buy
-credits for as long as the attack runs.**
-
-Same route, second issue: `appId` is interpolated raw into Stripe's search DSL —
-`` query: `active:'true' AND metadata['appId']:'${appId}'` `` (`stripe.ts:81`). A
-`'` in the attacker-supplied, 128-char `appId` breaks out of the quoted literal.
-
-Related: `POST /credits/checkout` (`index.ts:1339-1370`) makes two uncached
-Stripe calls per request and has no rate limit of its own.
-
-### A2 · The app-wide hourly counter is spent before the caller pays
-`open` · verified by reading the code
-
-Guard order in `POST /research` (`apps/api/src/index.ts`): blocked-user check →
-concurrency → **`checkRateLimits([app:…, user:…])`, which increments** (769-786)
-→ moderation classifier (791-794) → **`consumeCredits`** (807-817).
-
-`checkRateLimits` increments atomically and never rolls back
-(`packages/core/src/apps/store.ts:161-167`), so a request that dies at moderation
-(422) or at credits (402) has still spent a slot in the **shared** `app:<appId>`
-bucket that every customer of that app draws from. Defaults: 100/hour per app,
-20/hour per user (`packages/core/src/settings/store.ts:20`).
-
-Cost: five zero-balance accounts × 20 requests/hour = 100 → the app quota is gone
-at :00 every hour and **every paying customer gets `429 … per app`**. The
-attacker's balance never moves. Turnstile raises the bar to ~100 solves/hour
-(cents at commodity solver rates); it does not remove the attack.
-
-Secondary, same ordering: the moderation classifier runs before the credits gate,
-so a caller who provably cannot pay still costs us a flash call each time.
-
-### A3 · `/auth/register` has no per-target-email cap
-`open` · verified by reading the code
-
-`/auth/request-password-reset` caps both dimensions — `perIp: 5` and
-`perKey: { limit: 3, value: email }` (`index.ts:413-419`). `/auth/register` caps
-only the IP (`index.ts:318`), and it is the more expensive of the two: it sends a
-Postmark verification email to a **fully attacker-chosen address**, writes a
-credential doc, and runs a password hash. Retrying an unverified registration
-re-sends the link (`index.ts:337-338`); the 409 short-circuit only fires once an
-account is *verified* (`index.ts:332`).
-
-Cost: Postmark volume on our account and our sender reputation with the victim's
-mail provider.
 
 ---
 
@@ -232,6 +171,38 @@ never runs for that job.
 ---
 
 ## Closed
+
+### ~~A1 · `/plans` was an unauthenticated, unmetered Stripe amplifier~~
+`done (ebda3cc)`
+
+The cache could not help: empty results were deliberately not stored and an
+unknown `appId` always produces one, so a fresh appId per request was a
+guaranteed miss and a live Stripe call. Unknown and malformed appIds are now
+refused before Stripe is touched, empty results get a short TTL instead of none,
+and the route has a per-IP limit. `appId` is validated against the slug shape it
+actually is rather than escaped, before reaching Stripe's search DSL.
+`/credits/checkout` (two Stripe calls, no limit) got a per-user one.
+
+### ~~A2 · The app-wide hourly counter was spent before the caller paid~~
+`done (<pending>)`
+
+`checkRateLimits` check-and-increments, and it ran before moderation and credits —
+so a request that died later still spent a slot in the bucket every customer of
+that app draws from. Split into `peekRateLimits` (read-only, enforces) and
+`commitRateLimits` (increments, after the job exists), so a shared quota is spent
+by work rather than by attempts. Affordability is also checked before the
+moderation classifier, so a caller who cannot pay no longer costs a model call.
+
+Known and accepted: two requests can pass the same peek concurrently and both
+commit, so a bucket can overshoot by the number of in-flight requests. Bounded,
+and strictly better than charging attempts against a shared quota.
+
+### ~~A3 · `/auth/register` had no per-target-email cap~~
+`done (ebda3cc)`
+
+Capped per target inbox as well as per IP, on the normalized address so dots and
++tags cannot split the bucket.
+
 
 ### ~~Every per-IP limit was bypassable with a forged `X-Forwarded-For`~~
 `done (0d4bb99)` · confirmed exploitable against the running dev API, then

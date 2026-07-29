@@ -140,12 +140,14 @@ export interface RateLimitResult {
  * Atomically checks ALL given dimensions and, only if none is over its cap,
  * increments every one. If any is exceeded, nothing is incremented and the
  * first violation is returned. Buckets by calendar hour (UTC).
+ *
+ * Check and increment are one operation here, which is right where every request
+ * should count (the unauthenticated routes). Where a request should only count if
+ * it becomes real work, use `peekRateLimits` + `commitRateLimits` instead.
  */
 export async function checkRateLimits(entries: RateLimitEntry[]): Promise<RateLimitResult> {
   const bucket = nowIso().slice(0, 13); // "yyyy-mm-ddTHH"
-  const active = entries.filter((e) => typeof e.limit === 'number' && e.limit > 0) as Array<
-    Required<Pick<RateLimitEntry, 'key' | 'scope'>> & { limit: number }
-  >;
+  const active = activeEntries(entries);
   if (active.length === 0) return { allowed: true, bucket };
 
   return firestore().runTransaction(async (tx) => {
@@ -167,4 +169,61 @@ export async function checkRateLimits(entries: RateLimitEntry[]): Promise<RateLi
     }
     return { allowed: true, bucket };
   });
+}
+
+/**
+ * Read-only check: is any dimension already at its cap? Writes nothing.
+ *
+ * This exists so a shared quota is spent by work, not by attempts. `POST /research`
+ * used to check-and-increment up front, so a request that died later — at
+ * moderation, or for want of credits — still consumed a slot in the *app-wide*
+ * bucket every other customer of that app draws from. Zero-balance accounts could
+ * therefore 429 paying customers for the rest of every hour, for free.
+ *
+ * Pair it with `commitRateLimits` after the work is actually created. Two
+ * requests can pass the same peek concurrently and both commit, so a bucket can
+ * overshoot by the number of in-flight requests — bounded, and far better than
+ * charging attempts against a shared quota.
+ */
+export async function peekRateLimits(entries: RateLimitEntry[]): Promise<RateLimitResult> {
+  const bucket = nowIso().slice(0, 13);
+  const active = activeEntries(entries);
+  if (active.length === 0) return { allowed: true, bucket };
+
+  const refs = active.map((e) => rateLimits().doc(`${e.key}:${bucket}`));
+  const snaps = await firestore().getAll(...refs);
+  for (let i = 0; i < active.length; i++) {
+    const count = snaps[i]!.exists ? ((snaps[i]!.data()?.count as number) ?? 0) : 0;
+    if (count >= active[i]!.limit) {
+      return { allowed: false, violation: { scope: active[i]!.scope, limit: active[i]!.limit, count }, bucket };
+    }
+  }
+  return { allowed: true, bucket };
+}
+
+/**
+ * Count one unit against every dimension. Never rejects — enforcement happened at
+ * the peek; this is the accounting, and it runs once the work exists.
+ */
+export async function commitRateLimits(entries: RateLimitEntry[]): Promise<void> {
+  const bucket = nowIso().slice(0, 13);
+  const active = activeEntries(entries);
+  if (active.length === 0) return;
+
+  const batch = firestore().batch();
+  for (const e of active) {
+    batch.set(
+      rateLimits().doc(`${e.key}:${bucket}`),
+      { key: e.key, scope: e.scope, bucket, count: FieldValue.increment(1), updatedAt: nowIso() },
+      { merge: true },
+    );
+  }
+  await batch.commit();
+}
+
+/** Entries with a meaningful cap (null/<=0 means "no limit"). */
+function activeEntries(entries: RateLimitEntry[]) {
+  return entries.filter((e) => typeof e.limit === 'number' && e.limit > 0) as Array<
+    Required<Pick<RateLimitEntry, 'key' | 'scope'>> & { limit: number }
+  >;
 }

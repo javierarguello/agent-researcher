@@ -297,6 +297,44 @@ describe('API security — auth, credits gate, isolation', () => {
     expect((await preflight()).json().assist.state).toBe('on');
   });
 
+  it('a rejected request does not spend the SHARED app quota', async () => {
+    // The app bucket is drawn from by every customer of that app. It used to be
+    // incremented before the credits gate, so zero-balance accounts could exhaust
+    // it and 429 the paying ones for the rest of the hour, for free.
+    const broke = await token('fbizlab', 'broke@x.com');
+    for (let i = 0; i < 6; i++) {
+      expect((await app.inject({ method: 'POST', url: '/research', headers: auth(broke), payload: research })).statusCode).toBe(402);
+    }
+
+    // A paying customer is unaffected: their own quota and the app's are intact.
+    await grantCredits({ appId: 'fbizlab', userId: 'payer@x.com', credits: 50 });
+    const payer = await token('fbizlab', 'payer@x.com');
+    const r = await app.inject({ method: 'POST', url: '/research', headers: auth(payer), payload: research });
+    expect(r.statusCode).toBe(202);
+  });
+
+  it('a request that cannot pay costs no model call', async () => {
+    const broke = await token('fbizlab', 'broke2@x.com');
+    const r = await app.inject({ method: 'POST', url: '/research', headers: auth(broke), payload: research });
+    expect(r.statusCode).toBe(402);
+    expect(fakeLlm.calls).toBe(0); // moderation classifier never ran
+  });
+
+  it('a created job DOES count against the hourly quota', async () => {
+    await grantCredits({ appId: 'fbizlab', userId: 'quota@x.com', credits: 500 });
+    const t = await token('fbizlab', 'quota@x.com');
+    // The per-user cap is 20/h by default; generate up to it, then expect a 429.
+    // (Concurrency is 1, so finish each job before the next.)
+    for (let i = 0; i < 20; i++) {
+      const r = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
+      expect(r.statusCode, `job ${i}`).toBe(202);
+      await markCompleted((r.json() as { jobId: string }).jobId, [], null);
+    }
+    const over = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
+    expect(over.statusCode).toBe(429);
+    expect(over.json().scope).toBe('user');
+  });
+
   it('admin-only endpoints reject non-admin tokens (403) and allow admin', async () => {
     await seedAdmin(['boss@x.com']);
     const user = await token('fbizlab', 'u@x.com', 'user');
