@@ -24,13 +24,20 @@
 name: Deploy fbizlab SPA (dev)
 
 on:
-  # Every push, with no paths filter: the build bakes the Stripe catalog into
-  # dist/plans.json, so what ships depends on Stripe as well as on this directory.
-  # A filter on apps/fbizlab/** would skip the rebuild for a commit that changed
-  # nothing here but ran after a price edit, quietly leaving stale prices live.
   push:
     branches: [main]
-  # …and daily regardless, since Stripe can change without any push at all.
+    paths:
+      # Its own code…
+      - 'apps/fbizlab/**'
+      # …and the backend, because the build bakes the Stripe catalog into the
+      # bundle: a backend release is a good moment to refresh prices, and it costs
+      # ~40s. Everything else (worker, admin, infra, docs) skips this workflow, so
+      # the common push stays fast.
+      - 'apps/api/**'
+      - 'packages/core/**'
+      - '.github/workflows/deploy-fbizlab.yml'
+  # Daily regardless: Stripe can change with no push at all, and that is the case
+  # the schedule exists for.
   schedule:
     - cron: '20 6 * * *'
   workflow_dispatch: {}

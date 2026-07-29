@@ -28,6 +28,16 @@ on:
   # A prod release re-bakes the catalog from PROD Stripe, same as dev does on main.
   push:
     branches: [deploy-prod]
+    paths:
+      # Its own code…
+      - 'apps/fbizlab/**'
+      # …and the backend, because the build bakes the Stripe catalog into the
+      # bundle: a backend release is a good moment to refresh prices, and it costs
+      # ~40s. Everything else (worker, admin, infra, docs) skips this workflow, so
+      # the common push stays fast.
+      - 'apps/api/**'
+      - 'packages/core/**'
+      - '.github/workflows/deploy-fbizlab-prod.yml'
   # Nightly re-bake from the released ref (07:20 UTC, after dev).
   schedule:
     - cron: '20 7 * * *'
