@@ -136,7 +136,7 @@ never runs for that job.
 ## Closed
 
 ### ~~B1 · Failed agent attempts discarded their cost~~
-`done (8575b96, completed in 04522f8)`
+`done (8575b96, completed in 335a5e4)`
 
 The first pass fixed it within a dispatch and left it broken across dispatches:
 the checkpoint is the only carrier of cost between dispatches and was written
@@ -160,7 +160,7 @@ paid for. Covered by a test that fails with `expected 0 to be greater than 0` if
 the failure-path accounting is removed.
 
 ### ~~B2 · Brave searches were recorded as $0~~
-`done (8575b96, corrected in 04522f8)`
+`done (8575b96, corrected in 335a5e4)`
 
 The first pass priced per PROVIDER, which made one case worse: `extractPages` is
 Tavily-only, so with a Brave key set every genuinely-billed extraction was booked
@@ -176,7 +176,7 @@ and the accounting charged nothing. Both decisions now live in one place,
 `BRAVE_COST_PER_CALL_USD` for a paid tier.
 
 ### ~~B3 · Pre-flight token usage never reached an aggregate~~
-`done (8575b96, corrected in 04522f8)`
+`done (8575b96, corrected in 335a5e4)`
 
 The first pass computed usage AFTER the JSON parse, inside a fail-open catch —
 reproducing, in the two files it touched, the exact "cost lost on a throw" bug it
