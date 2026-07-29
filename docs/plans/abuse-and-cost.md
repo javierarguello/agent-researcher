@@ -136,7 +136,7 @@ never runs for that job.
 ## Closed
 
 ### ~~B1 · Failed agent attempts discarded their cost~~
-`done (8575b96, completed in 335a5e4, hardened after review)`
+`done (8575b96, completed in 335a5e4, hardened in f873ade)`
 
 Saving on every attempt widened a race that was already there: checkpoint writes
 are last-writer-wins and a wave finishes several agents at once, so two overlapping
@@ -173,7 +173,7 @@ paid for. Covered by a test that fails with `expected 0 to be greater than 0` if
 the failure-path accounting is removed.
 
 ### ~~B2 · Brave searches were recorded as $0~~
-`done (8575b96, corrected in 335a5e4)`
+`done (8575b96, corrected in 335a5e4, tested in f873ade)`
 
 The first pass priced per PROVIDER, which made one case worse: `extractPages` is
 Tavily-only, so with a Brave key set every genuinely-billed extraction was booked
@@ -202,7 +202,7 @@ rates (each assertion verified by reverting the line it guards), and a contract 
 fails when the fixture's signatures drift from the module it stands in for.
 
 ### ~~B3 · Pre-flight token usage never reached an aggregate~~
-`done (8575b96, corrected in 335a5e4)`
+`done (8575b96, corrected in 335a5e4, given a reader in f873ade)`
 
 The first pass computed usage AFTER the JSON parse, inside a fail-open catch —
 reproducing, in the two files it touched, the exact "cost lost on a throw" bug it
