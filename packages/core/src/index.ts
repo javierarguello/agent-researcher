@@ -65,7 +65,6 @@ export {
   generateApiKey,
   checkRateLimits,
   peekRateLimits,
-  commitRateLimits,
 } from './apps/store.js';
 export { toPublicApp } from './apps/types.js';
 export type { AppRecord, AppPublic, AppRole } from './apps/types.js';

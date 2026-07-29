@@ -141,9 +141,11 @@ export interface RateLimitResult {
  * increments every one. If any is exceeded, nothing is incremented and the
  * first violation is returned. Buckets by calendar hour (UTC).
  *
- * Check and increment are one operation here, which is right where every request
- * should count (the unauthenticated routes). Where a request should only count if
- * it becomes real work, use `peekRateLimits` + `commitRateLimits` instead.
+ * Check and increment are ONE operation, and that matters twice over. It keeps
+ * the count honest, and — because contended Firestore transactions on the same
+ * document serialize — it is also the only thing that stops a simultaneous burst
+ * from all reading "0 used" and all being admitted. Callers rely on that second
+ * property, so do not split this into a read and a later write.
  */
 export async function checkRateLimits(entries: RateLimitEntry[]): Promise<RateLimitResult> {
   const bucket = nowIso().slice(0, 13); // "yyyy-mm-ddTHH"
@@ -174,16 +176,13 @@ export async function checkRateLimits(entries: RateLimitEntry[]): Promise<RateLi
 /**
  * Read-only check: is any dimension already at its cap? Writes nothing.
  *
- * This exists so a shared quota is spent by work, not by attempts. `POST /research`
- * used to check-and-increment up front, so a request that died later — at
- * moderation, or for want of credits — still consumed a slot in the *app-wide*
- * bucket every other customer of that app draws from. Zero-balance accounts could
- * therefore 429 paying customers for the rest of every hour, for free.
+ * A cheap early rejection, so a caller who is already over does not pay for the
+ * expensive work in between (a moderation model call, Firestore reads) on the way
+ * to a 429 they were always going to get.
  *
- * Pair it with `commitRateLimits` after the work is actually created. Two
- * requests can pass the same peek concurrently and both commit, so a bucket can
- * overshoot by the number of in-flight requests — bounded, and far better than
- * charging attempts against a shared quota.
+ * It is NOT an enforcement point. It contends with nothing, so a simultaneous
+ * burst all reads the same count and all passes. Always follow it with
+ * `checkRateLimits` before anything is actually spent.
  */
 export async function peekRateLimits(entries: RateLimitEntry[]): Promise<RateLimitResult> {
   const bucket = nowIso().slice(0, 13);
@@ -199,26 +198,6 @@ export async function peekRateLimits(entries: RateLimitEntry[]): Promise<RateLim
     }
   }
   return { allowed: true, bucket };
-}
-
-/**
- * Count one unit against every dimension. Never rejects — enforcement happened at
- * the peek; this is the accounting, and it runs once the work exists.
- */
-export async function commitRateLimits(entries: RateLimitEntry[]): Promise<void> {
-  const bucket = nowIso().slice(0, 13);
-  const active = activeEntries(entries);
-  if (active.length === 0) return;
-
-  const batch = firestore().batch();
-  for (const e of active) {
-    batch.set(
-      rateLimits().doc(`${e.key}:${bucket}`),
-      { key: e.key, scope: e.scope, bucket, count: FieldValue.increment(1), updatedAt: nowIso() },
-      { merge: true },
-    );
-  }
-  await batch.commit();
 }
 
 /** Entries with a meaningful cap (null/<=0 means "no limit"). */

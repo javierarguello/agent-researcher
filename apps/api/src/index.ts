@@ -22,7 +22,6 @@ import {
   deleteApp,
   checkRateLimits,
   peekRateLimits,
-  commitRateLimits,
   createJob,
   getJob,
   getSettings,
@@ -795,11 +794,12 @@ app.post(
 
     // Rate limits (reports per hour) — per app and per user. Skipped in local dev.
     //
-    // PEEK only: this rejects a caller who is already at their cap without writing
-    // anything. The increment happens after the job exists (`commitRateLimits`
-    // below), so a request that dies at moderation or for want of credits does not
-    // spend a slot in the APP-WIDE bucket every other customer draws from —
-    // which is how five zero-balance accounts used to 429 the paying ones.
+    // Two-stage on purpose. This peek is a cheap early rejection that writes
+    // nothing; the authoritative, serializing check runs further down, after the
+    // balance read and moderation. That ordering is what stops a request that dies
+    // for want of credits or on rejected params from spending a slot in the
+    // APP-WIDE bucket every other customer draws from — which is how five
+    // zero-balance accounts used to 429 the paying ones, for free.
     let rateEntries: RateLimitEntry[] = [];
     if (config.server.appEnv !== 'local') {
       const settings = await getSettings();
@@ -809,6 +809,9 @@ app.post(
         { key: `user:${userId}`, limit: settings.userRateLimitPerHour, scope: 'user' },
       ];
       const rl = await peekRateLimits(rateEntries);
+      // Read-only: rejects a caller who is ALREADY over without writing anything,
+      // so an over-limit request doesn't pay for moderation. The authoritative,
+      // serializing check runs later — see `checkRateLimits` below.
       if (!rl.allowed && rl.violation) {
         reply.header('Retry-After', '3600');
         return reply.code(429).send({
@@ -848,6 +851,33 @@ app.post(
       if (rej) return reply.code(rej.code).send(rej.body);
     }
 
+    // The authoritative quota check, and the last gate before we start spending.
+    //
+    // It is a Firestore transaction, and that is load-bearing beyond the count:
+    // contended transactions on the same document serialize, which is what stops a
+    // simultaneous burst from all reading "0 used" and all proceeding. A previous
+    // version of this handler replaced it with a read-only peek plus a later
+    // increment, which removed the only serialization point in the request and
+    // quietly turned both this cap and the concurrency cap into advisory ones.
+    //
+    // It sits after the balance read and after moderation, so the requests that
+    // used to spend the shared app bucket for free — no credits, or rejected
+    // params — never reach it. A request that passes here and then loses a race at
+    // `consumeCredits` does spend a slot; that costs the caller credits they had,
+    // so it is not a lever.
+    if (config.server.appEnv !== 'local') {
+      const rl = await checkRateLimits(rateEntries);
+      if (!rl.allowed && rl.violation) {
+        reply.header('Retry-After', '3600');
+        return reply.code(429).send({
+          error: `Rate limit exceeded: ${rl.violation.limit} reports/hour per ${rl.violation.scope}.`,
+          scope: rl.violation.scope,
+          limit: rl.violation.limit,
+          used: rl.violation.count,
+        });
+      }
+    }
+
     // Credits gate: consume the mode's credit cost up front (refunded if the job fails).
     if (config.server.appEnv !== 'local') {
       try {
@@ -862,11 +892,6 @@ app.post(
     }
 
     await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent });
-    // The work exists, so now it counts against the hourly quotas. Best-effort:
-    // losing a count is far better than failing a job that was already paid for.
-    await commitRateLimits(rateEntries).catch((err) =>
-      logEvent(logCtx, 'WARNING', 'ratelimit.commit_failed', { message: (err as Error).message }),
-    );
     logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
     // The user generated: the assisted previews they ran paid off, so give the
     // allowance back (and pay off one cooldown step). Best-effort.

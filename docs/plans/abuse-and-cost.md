@@ -184,18 +184,30 @@ actually is rather than escaped, before reaching Stripe's search DSL.
 `/credits/checkout` (two Stripe calls, no limit) got a per-user one.
 
 ### ~~A2 · The app-wide hourly counter was spent before the caller paid~~
-`done (24e87e5)`
+`done (24e87e5, corrected in 1630bdb)`
 
 `checkRateLimits` check-and-increments, and it ran before moderation and credits —
 so a request that died later still spent a slot in the bucket every customer of
-that app draws from. Split into `peekRateLimits` (read-only, enforces) and
-`commitRateLimits` (increments, after the job exists), so a shared quota is spent
-by work rather than by attempts. Affordability is also checked before the
-moderation classifier, so a caller who cannot pay no longer costs a model call.
+that app draws from.
 
-Known and accepted: two requests can pass the same peek concurrently and both
-commit, so a bucket can overshoot by the number of in-flight requests. Bounded,
-and strictly better than charging attempts against a shared quota.
+The first attempt split it into a read-only peek plus a later increment, and that
+was wrong in a way worth recording: **the transaction was doing two jobs.** It
+counted, and — because contended Firestore transactions on the same document
+serialize — it was also the only thing serializing the handler. Replacing it with
+a plain read removed that, so a simultaneous burst all read "0 used" and all
+passed, turning both this cap and the per-user concurrency cap into advisory ones.
+The commit message claimed the overshoot was "bounded by in-flight requests"; in
+fact the attacker chooses how many are in flight.
+
+The corrected shape keeps the atomic check and moves it *later* — after the
+balance read and after moderation — so the requests that used to spend the shared
+bucket for free never reach it, while the serialization is intact. The peek stays
+in front as a cheap early rejection that writes nothing, so an over-limit caller
+doesn't pay for a moderation call on the way to a 429.
+
+Residual, accepted: a request that passes the check and then loses a race at
+`consumeCredits` spends a slot. That costs the caller credits they actually had,
+so it is not a lever.
 
 ### ~~A3 · `/auth/register` had no per-target-email cap~~
 `done (ebda3cc)`
