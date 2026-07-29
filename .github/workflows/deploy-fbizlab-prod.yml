@@ -25,7 +25,10 @@
 name: Deploy fbizlab SPA (prod)
 
 on:
-  # Nightly catalog re-bake from the released ref (07:20 UTC, after dev).
+  # A prod release re-bakes the catalog from PROD Stripe, same as dev does on main.
+  push:
+    branches: [deploy-prod]
+  # Nightly re-bake from the released ref (07:20 UTC, after dev).
   schedule:
     - cron: '20 7 * * *'
   workflow_dispatch: {}
