@@ -96,7 +96,6 @@ async function updateGenMinMax(
   });
 }
 
-/** Record a finished report into the app + daily + user aggregates. */
 /**
  * Model spend that happens on the REQUEST path, outside any job: the moderation
  * classifier and the assisted pre-flight review. Small per call, but it runs on
@@ -116,6 +115,10 @@ export async function recordRequestLlmCost(input: {
   if (!input.usd && !input.inputTokens && !input.outputTokens) return;
   const now = nowIso();
   const date = utcDate();
+  // Must come first. `ensureUserSeen` only increments the distinct-user counters
+  // when the doc does not exist yet — so creating it here with a bare set() would
+  // make this user permanently uncounted, and leave `firstSeenAt` unset.
+  await ensureUserSeen(input.appId, input.userId, date);
   const inc = {
     requestLlmUsd: FieldValue.increment(input.usd || 0),
     requestLlmCalls: FieldValue.increment(1),
@@ -130,6 +133,7 @@ export async function recordRequestLlmCost(input: {
   ]);
 }
 
+/** Record a finished report into the app + daily + user aggregates. */
 export async function recordReportStats(input: ReportStatsInput): Promise<void> {
   const now = nowIso();
   const date = utcDate();

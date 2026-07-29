@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
-import type { Cost } from '../cost.js';
+import type { CostSink } from '../cost.js';
 import { synthesizeStructured } from '../engine/synthesize.js';
 import { LANGUAGES } from '../engine/prompt.js';
 import { resolveModel } from '../llm/index.js';
@@ -25,7 +25,9 @@ export async function generateHeadline(input: {
   params: Record<string, unknown>;
   mode: string;
   language: string;
-}): Promise<{ headline: Headline; cost: Cost }> {
+  /** Records the call as it happens; read it even if this function throws. */
+  spend?: CostSink;
+}): Promise<{ headline: Headline }> {
   const model = resolveModel(config.llm.defaultGatherModel); // cheapest tier (flash)
   const langName = (LANGUAGES as Record<string, string>)[input.language] ?? input.language;
 
@@ -44,6 +46,10 @@ export async function generateHeadline(input: {
     messages: [{ role: 'user', text: user }],
     schema: HeadlineSchema,
     temperature: 0.4,
+    // `synthesizeStructured` can burn two billed calls before throwing. The caller
+    // treats a failed headline as non-fatal, so without the sink those calls would
+    // be spent and invisible — the very shape the sink exists to prevent.
+    spend: input.spend,
   });
-  return { headline: res.value, cost: res.cost };
+  return { headline: res.value };
 }

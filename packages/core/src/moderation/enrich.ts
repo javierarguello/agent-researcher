@@ -138,7 +138,9 @@ export async function enrichRequest(
         ...DETERMINISM,
       }),
     );
-    parsed = JSON.parse(res.text);
+    // Usage first: the call is billed by the time we look at its text, and the
+    // parse is what fails. Assigning after it meant a truncated response — the
+    // interesting failure — was booked at zero.
     usage = res.usage
       ? {
           inputTokens: res.usage.inputTokens,
@@ -146,9 +148,11 @@ export async function enrichRequest(
           usd: llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM).usd,
         }
       : undefined;
+    parsed = JSON.parse(res.text);
   } catch (err) {
     logEvent({ jobId: '-' }, 'WARNING', 'preflight.assist_failed', { message: (err as Error).message });
-    return EMPTY;
+    // Fails soft, but not silently free: if the call happened, it is still booked.
+    return { ...EMPTY, ...(usage ? { usage } : {}) };
   }
 
   return {

@@ -128,7 +128,10 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
       maxOutputTokens: 256,
     }),
   );
-  const parsed = JSON.parse(res.text) as { allowed?: boolean; categories?: unknown[] };
+  // Before the parse, deliberately. The call is already billed by the time we look
+  // at its text, and the parse is precisely what fails here — a thinking model can
+  // truncate the JSON (see the fix in 7dab7ab). Computing usage after it meant the
+  // misbehaving calls, the ones worth seeing, were the ones booked at zero.
   const usage = res.usage
     ? {
         inputTokens: res.usage.inputTokens,
@@ -136,6 +139,15 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
         usd: llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM).usd,
       }
     : undefined;
+  // Fail open HERE rather than letting the parse throw past the meter. The caller's
+  // catch cannot report what this call cost, because it never saw the response.
+  let parsed: { allowed?: boolean; categories?: unknown[] };
+  try {
+    parsed = JSON.parse(res.text) as typeof parsed;
+  } catch (err) {
+    logEvent({ jobId: '-' }, 'WARNING', 'moderation.unparsable', { message: (err as Error).message });
+    return { ok: true, categories: [], ...(usage ? { usage } : {}) };
+  }
   if (parsed.allowed !== false) return { ok: true, categories: [], ...(usage ? { usage } : {}) };
   const categories = Array.isArray(parsed.categories) ? parsed.categories.map(asModerationCategory) : [];
   return {

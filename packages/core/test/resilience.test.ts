@@ -105,6 +105,33 @@ describe('resilience — per-step retry, resume, degrade', () => {
     expect(out.meta.cost.usd).toBeGreaterThan(0);
   });
 
+  it('persists cost from a dispatch in which nothing succeeded', async () => {
+    // The checkpoint is the only carrier of cost between dispatches, and it used to
+    // be written ONLY after an agent succeeded. A dispatch where the failing agent
+    // burns its retries and nothing else finishes therefore saved nothing, the next
+    // dispatch resumed from a stale total, and `setJobCost` overwrote the real one —
+    // the recorded cost went DOWN as the job spent more.
+    //
+    // It has to assert on what `onCheckpoint` DELIVERED. The checkpoint returned by
+    // runResearch is built unconditionally at the end, so reading that one cannot
+    // see the bug at all.
+    __setProviderForTests('gemini-vertex', failingMock('market_overview', 999));
+    const first = await runResearch({ template, params: params(), jobId: 'r6', generatedAt: 't', finalize: false });
+
+    // Resume with the same broken model: only the failing agent and its deferred
+    // dependents remain, so this dispatch produces no successes at all.
+    const saved: Array<{ usd: number }> = [];
+    const second = await runResearch({
+      template, params: params(), jobId: 'r6', generatedAt: 't',
+      resume: first.checkpoint, finalize: false,
+      onCheckpoint: async (cp) => { saved.push({ usd: cp.cost?.usd ?? 0 }); },
+    });
+
+    expect(second.trace.agents.some((a) => a.status === 'failed')).toBe(true);
+    expect(saved.length).toBeGreaterThan(0); // it spent money, so it must save something
+    expect(saved[saved.length - 1]!.usd).toBeGreaterThan(first.checkpoint.cost!.usd);
+  });
+
   it('DEGRADES + WARNS after exhausting retries on the final attempt', async () => {
     __setProviderForTests('gemini-vertex', failingMock('market_overview', 999));
     const out = await runResearch({ template, params: params(), jobId: 'r4', generatedAt: 't', finalize: true });

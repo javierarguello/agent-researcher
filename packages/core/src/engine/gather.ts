@@ -91,24 +91,23 @@ export interface GatherInput {
 }
 
 export interface GatherResult {
+  // NOTE: no `cost` here on purpose. Spend goes to the sink as it happens; a
+  // returned total would be a second, parallel accumulator for the same money —
+  // and the next paid call wired to one and not the other is a silent bug.
   turns: number;
-  cost: Cost;
 }
 
-/** Run one budgeted research loop, appending to the shared evidence. Returns turns + cost. */
+/** Run one budgeted research loop, appending to the shared evidence. Spend goes to `input.spend`. */
 export async function gather(input: GatherInput): Promise<GatherResult> {
   const { model, system, messages, maxTurns, evidence, onNote } = input;
   let plan: PlanStep[] = [];
   let turnsUsed = 0;
   let nudges = 0;
-  let cost = emptyCost();
   // Charge as we go. This loop can throw at any turn — a provider error, a tool
-  // failure — and everything spent up to that point used to vanish with it.
-  const perCall = searchCostPerCall();
-  const charge = (c: Cost) => {
-    cost = addCost(cost, c);
-    input.spend?.add(c);
-  };
+  // failure — and everything spent up to that point used to vanish with it. The
+  // sink is the only accumulator: a second, returned total would be the same money
+  // counted in two places, and the next paid call wired to one and not the other.
+  const charge = (c: Cost) => input.spend?.add(c);
   const maxIterations = maxTurns * 2 + 6;
   const note = async (m: string) => onNote?.(m);
 
@@ -156,7 +155,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           continue;
         }
         turnsUsed += 1;
-        charge(searchCost(1, perCall)); // one real backend call, charged as it is spent
+        charge(searchCost(1, searchCostPerCall('search')));
         try {
           const results = await searchWeb(query);
           for (const r of results) {
@@ -198,8 +197,11 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           await note(`Reused cached page.`);
           continue;
         }
+        // The turn is spent either way — that is the budget guard, and it is
+        // deliberate. The money is not: an empty url short-circuits inside
+        // `extractPages` without a network call, so charging it would invent spend.
         turnsUsed += 1;
-        charge(searchCost(1, perCall)); // one real backend call, charged as it is spent
+        if (url) charge(searchCost(1, searchCostPerCall('extract')));
         const pages = await extractPages(url ? [url] : []);
         for (const p of pages) {
           if (p.ok && p.content && !evidence.extractedUrls.has(p.url)) {
@@ -224,5 +226,5 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     }
   }
 
-  return { turns: turnsUsed, cost };
+  return { turns: turnsUsed };
 }

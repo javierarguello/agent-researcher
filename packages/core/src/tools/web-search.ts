@@ -12,19 +12,28 @@ export interface SearchResult {
 }
 
 /** The backend `searchWeb` will use, given the current configuration. */
-export function searchProvider(): 'brave' | 'tavily' | 'duckduckgo' {
+function searchProvider(): 'brave' | 'tavily' | 'duckduckgo' {
   if (config.search.braveApiKey) return 'brave';
   if (config.search.tavilyApiKey) return 'tavily';
   return 'duckduckgo';
 }
 
 /**
- * Estimated USD for one search/fetch call, from the SAME priority `searchWeb`
- * uses. Keeping the choice and its price in one place is the point: they used to
- * be decided in different files, so a Brave key meant Brave served the traffic
- * while the accounting charged Tavily's rate — that is, zero.
+ * Estimated USD for one call, priced per OPERATION — because the two operations do
+ * not share a provider.
+ *
+ * `searchWeb` picks Brave, then Tavily, then keyless DuckDuckGo. `extractPages` is
+ * Tavily, always: it refuses outright without a Tavily key. Pricing both from the
+ * search provider meant that with a Brave key set, every genuinely-billed
+ * extraction was booked at Brave's rate — an understatement on the call that
+ * actually costs money. The price has to follow the call, not the module.
  */
-export function searchCostPerCall(): number {
+export function searchCostPerCall(operation: 'search' | 'extract'): number {
+  if (operation === 'extract') {
+    // Tavily or nothing: without a key `extractPages` returns errors and spends
+    // nothing, so the rate is only ever charged when a real call was made.
+    return config.search.tavilyApiKey ? config.search.costPerCallUsd : 0;
+  }
   switch (searchProvider()) {
     case 'brave':
       return config.search.braveCostPerCallUsd;

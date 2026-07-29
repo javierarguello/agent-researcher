@@ -18,7 +18,7 @@ import {
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
-import { emptyCost } from '../cost.js';
+import { createCostSink, emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
 import { refundForJob } from '../credits/store.js';
 import { recordReportStats } from '../stats/store.js';
@@ -63,16 +63,18 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
   // Headline once (first dispatch only).
   let headlineCost = emptyCost();
   if (!existing?.title) {
+    // Read outside the try, so a failed headline still reports what it spent.
+    const spend = createCostSink();
     try {
       const mode = resolveMode(template.modes, (input.params as Record<string, unknown>).mode).key;
       const language = String((input.params as Record<string, unknown>).language ?? 'en');
-      const { headline, cost } = await generateHeadline({ templateName: template.name, params: input.params, mode, language });
-      headlineCost = cost;
+      const { headline } = await generateHeadline({ templateName: template.name, params: input.params, mode, language, spend });
       await setJobHeadline(input.jobId, headline);
-      log.info('job.headline', { title: headline.title, costUsd: cost.usd });
+      log.info('job.headline', { title: headline.title, costUsd: spend.total().usd });
     } catch (err) {
-      log.warn('headline.failed', { message: (err as Error).message });
+      log.warn('headline.failed', { message: (err as Error).message, costUsd: spend.total().usd });
     }
+    headlineCost = spend.total();
   }
 
   // Load a prior checkpoint (resume) if any.

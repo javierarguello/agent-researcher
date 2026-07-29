@@ -287,19 +287,15 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         // calls; booking only the successful one made the most expensive jobs in
         // the system — the ones that retried 24 times and degraded — report ~$0.
         const spend = createCostSink();
+        let ok = false;
         try {
           const { slice } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend });
           Object.assign(report, slice);
           at.status = 'ok';
           at.output = slice;
-          at.cost = addCost(at.cost, spend.total());
-          trace.cost = addCost(trace.cost, spend.total());
           done.add(agent.id);
-          break;
+          ok = true;
         } catch (err) {
-          // Charge the attempt regardless. This is the whole point.
-          at.cost = addCost(at.cost, spend.total());
-          trace.cost = addCost(trace.cost, spend.total());
           at.status = 'failed';
           at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
           if (attempt < config.workflow.agentMaxAttempts) {
@@ -310,11 +306,24 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
           } else {
             await emit(agent.id, `Failed after ${attempt} attempts: ${(err as Error).message}`);
           }
+        } finally {
+          // In `finally`, not duplicated across try/catch: the invariant is "an
+          // attempt is charged, whatever became of it". A third exit path added
+          // later — an early return, a continue — would silently stop charging
+          // otherwise, which is exactly the bug this replaced.
+          at.cost = addCost(at.cost, spend.total());
+          trace.cost = addCost(trace.cost, spend.total());
         }
+        if (ok) break;
       }
       at.durationMs = Date.now() - Date.parse(at.startedAt);
       at.finishedAt = new Date().toISOString();
-      if (at.status === 'ok') await saveCheckpoint();
+      // Save after every outcome, not only on success. The checkpoint is the ONLY
+      // carrier of cost across dispatches, and a dispatch where nothing succeeds
+      // used to save nothing at all — so a persistently failing agent's spend was
+      // written, then overwritten by the next dispatch resuming from a stale value.
+      // The job cost visibly went DOWN. Everything else here is idempotent.
+      await saveCheckpoint();
     });
     await persistTrace();
   }
@@ -427,7 +436,10 @@ async function runAgent(ctx: {
   /** Every paid call inside this agent writes here as it happens, so a failed
    *  attempt's spend is still known to the caller. */
   spend: CostSink;
-}): Promise<{ slice: Record<string, unknown>; cost: Cost }> {
+  // Returns the slice only. Cost lives in the sink, read by the caller on BOTH
+  // paths — returning it as well would invite someone tidying this signature to
+  // add it back, doubling every agent's cost with the suite still green.
+}): Promise<{ slice: Record<string, unknown> }> {
   const { template, agent, brief, language, depth, system, evidence, report, counter, trace } = ctx;
   const depthDirective = depth.directive;
   const owned = ownedKeys(agent);
@@ -484,14 +496,14 @@ async function runAgent(ctx: {
             depthDirective,
           });
     const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-    return { slice: sres.value as Record<string, unknown>, cost: addCost(gres.cost, sres.cost) };
+    return { slice: sres.value as Record<string, unknown> };
   }
 
   // synthesizer — compose from upstream only.
   await note(`Composing (${owned.join(', ')}).`);
   const text = buildSynthesizerPrompt({ agent, brief, sections, context, lang: language, depthDirective });
   const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-  return { slice: sres.value as Record<string, unknown>, cost: sres.cost };
+  return { slice: sres.value as Record<string, unknown> };
 }
 
 // --- DAG ---------------------------------------------------------------------

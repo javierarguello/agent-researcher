@@ -202,7 +202,9 @@ first (no behaviour change), then set the secret when you want enforcement, and
 | Var | Default | Purpose |
 |---|---|---|
 | `BRAVE_API_KEY` | — | Enables Brave (highest priority). |
-| `TAVILY_API_KEY` | — | Enables Tavily search **and** page extraction; only Tavily calls are billed. |
+| `TAVILY_API_KEY` | — | Enables Tavily search **and** page extraction. Extraction is Tavily-only: without this key `fetch_page` fails. |
+| `SEARCH_COST_PER_CALL_USD` | `0.016` | Estimated USD per Tavily call, for cost accounting. Charged for `fetch_page` regardless of which backend serves `web_search`, because extraction is always Tavily. |
+| `BRAVE_COST_PER_CALL_USD` | `0` | Estimated USD per Brave call. **Set it if you are on a paid Brave plan** — at 0 the job cost silently omits every search. |
 | `RESEARCH_MAX_TURNS` | `16` | Default per-producer search/fetch budget when a template omits one. |
 | `SEARCH_COST_PER_CALL_USD` | `0.016` | Estimated cost per Tavily call for accounting. |
 

@@ -5,10 +5,12 @@
  *    param into something the user didn't ask for;
  *  - the preview a user sees is a pure function of their params.
  */
-import { describe, it, expect } from 'vitest';
-import { preScreen, collectFreeText } from '../src/moderation/moderate.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { preScreen, collectFreeText, moderateResearchParams } from '../src/moderation/moderate.js';
 import { screeningForms, similarity, sanitizeProposal } from '../src/util/text.js';
-import { acceptCorrections } from '../src/moderation/enrich.js';
+import { acceptCorrections, enrichRequest } from '../src/moderation/enrich.js';
+import { __setProviderForTests, __clearProvidersForTests } from '../src/llm/models.js';
+import { config } from '../src/config.js';
 import { deterministicIssues, renderPlan } from '../src/moderation/deterministic.js';
 import { moderationMessage, blockReasonFor } from '../src/moderation/copy.js';
 import { floridaBusinessForSale as tpl } from '../src/templates/florida-business-for-sale.js';
@@ -56,6 +58,45 @@ describe('pre-screen — unicode evasion', () => {
   it('collects only the free text a user typed', () => {
     expect(collectFreeText(params({ askingPriceMax: 500_000 }))).toContain('industry: laundromats');
     expect(collectFreeText(params({ askingPriceMax: 500_000 }))).not.toContain('500000');
+  });
+});
+
+describe('a billed call is booked even when its answer is unusable', () => {
+  // Both of these fail SOFT by design — an unparsable verdict must not block a
+  // legitimate user. Soft is not the same as free: the call was billed the moment
+  // it returned, and computing usage after the parse meant the misbehaving calls,
+  // the ones worth seeing, were the ones recorded at zero. That is not
+  // hypothetical here: a thinking model truncating this JSON is a bug this repo
+  // has already fixed once.
+  const stub = (text: string) => ({
+    name: 'gemini-vertex',
+    async generate() {
+      return { text, toolCalls: [], usage: { inputTokens: 400, outputTokens: 120 } };
+    },
+  });
+
+  afterEach(() => {
+    config.moderation.llm = false;
+    __clearProvidersForTests();
+  });
+
+  it('moderation reports usage when the verdict does not parse', async () => {
+    config.moderation.llm = true;
+    __setProviderForTests('gemini-vertex', stub('{"allowed": tru') as never);
+    const verdict = await moderateResearchParams({ industry: 'laundromats' });
+
+    expect(verdict.ok).toBe(true); // fails open, as designed
+    expect(verdict.usage?.inputTokens).toBe(400);
+    expect(verdict.usage?.usd).toBeGreaterThan(0);
+  });
+
+  it('the assisted review reports usage when its answer does not parse', async () => {
+    __setProviderForTests('gemini-vertex', stub('not json at all') as never);
+    const res = await enrichRequest(tpl, params());
+
+    expect(res.corrections).toEqual([]); // fails soft
+    expect(res.usage?.outputTokens).toBe(120);
+    expect(res.usage?.usd).toBeGreaterThan(0);
   });
 });
 

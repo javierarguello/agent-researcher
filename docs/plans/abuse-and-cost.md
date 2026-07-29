@@ -136,7 +136,16 @@ never runs for that job.
 ## Closed
 
 ### ~~B1 · Failed agent attempts discarded their cost~~
-`done (fee6fdc)`
+`done (8575b96, completed in 04522f8)`
+
+The first pass fixed it within a dispatch and left it broken across dispatches:
+the checkpoint is the only carrier of cost between dispatches and was written
+only after an agent SUCCEEDED, so a dispatch where the failing agent burned its
+retries and nothing else finished saved nothing — the next dispatch resumed from
+a stale total and `setJobCost` overwrote the real one. The recorded cost went
+DOWN as the job spent more, hiding roughly 18 of the 24 passes. The checkpoint is
+now saved after every attempt outcome. The headline call, the one paid call site
+outside the engine, was also still unconverted and now takes the sink.
 
 Cost was added to the trace inside the `try`, so the `catch` dropped it. With up
 to 24 passes per agent (3 in-run retries × 8 dispatches), the most expensive jobs
@@ -151,7 +160,14 @@ paid for. Covered by a test that fails with `expected 0 to be greater than 0` if
 the failure-path accounting is removed.
 
 ### ~~B2 · Brave searches were recorded as $0~~
-`done (fee6fdc)`
+`done (8575b96, corrected in 04522f8)`
+
+The first pass priced per PROVIDER, which made one case worse: `extractPages` is
+Tavily-only, so with a Brave key set every genuinely-billed extraction was booked
+at Brave's rate. Pricing is now per OPERATION. `BRAVE_COST_PER_CALL_USD` also
+never reached Cloud Run — `deploy.sh` didn't pass it, so B2 was inert in
+production — and an empty value would have parsed as 0, silently zeroing the
+search cost.
 
 The price was chosen in `gather` (Tavily key present?) while the provider was
 chosen in `web-search` (Brave first). A Brave key meant Brave served the traffic
@@ -160,7 +176,12 @@ and the accounting charged nothing. Both decisions now live in one place,
 `BRAVE_COST_PER_CALL_USD` for a paid tier.
 
 ### ~~B3 · Pre-flight token usage never reached an aggregate~~
-`done (fee6fdc)`
+`done (8575b96, corrected in 04522f8)`
+
+The first pass computed usage AFTER the JSON parse, inside a fail-open catch —
+reproducing, in the two files it touched, the exact "cost lost on a throw" bug it
+was fixing. A billed call whose answer was unusable was booked at zero, and those
+are the calls worth seeing.
 
 The assisted pass captured usage and logged it; moderation captured none at all.
 Both now report tokens and dollars, and the API books them through
