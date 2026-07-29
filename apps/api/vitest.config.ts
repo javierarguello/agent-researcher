@@ -45,6 +45,7 @@ export default defineConfig({
       // enough for test/public-limits.test.ts to reach them in a few calls.
       PUBLIC_BURST_PER_MINUTE: '500',
       PUBLIC_REGISTER_PER_HOUR_IP: '5',
+      PUBLIC_REGISTER_PER_HOUR_EMAIL: '3',
       PUBLIC_LOGIN_PER_HOUR_IP: '8',
       PUBLIC_LOGIN_PER_HOUR_EMAIL: '5',
       PUBLIC_RESET_PER_HOUR_IP: '5',

@@ -55,6 +55,29 @@ describe('public endpoints — rate limits', () => {
     expect(sent).toHaveLength(5); // the 6th never reached Postmark
   });
 
+  it('caps registrations per target email, so one inbox cannot be bombed from many IPs', async () => {
+    // Registration is the more expensive of the two email routes AND the target is
+    // fully attacker-chosen, so rotating IPs must not buy more sends.
+    const victim = { appId: 'fbizlab', email: 'victim@x.com', password: 'sup3rsecret' };
+    for (let i = 1; i <= 3; i++) {
+      expect((await post('/auth/register', victim, `198.51.100.${i}`)).statusCode).toBe(202);
+    }
+    const blocked = await post('/auth/register', victim, '198.51.100.99');
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().scope).toBe('target');
+    expect(sent).toHaveLength(3); // the 4th never reached Postmark
+  });
+
+  it('the per-target cap cannot be split with dots or a +tag', async () => {
+    for (let i = 1; i <= 3; i++) {
+      await post('/auth/register', { appId: 'fbizlab', email: 'vic.tim@gmail.com', password: 'sup3rsecret' }, `203.0.113.${i}`);
+    }
+    // Same inbox, written differently — must land in the same bucket.
+    const blocked = await post('/auth/register', { appId: 'fbizlab', email: 'victim+promo@gmail.com', password: 'sup3rsecret' }, '203.0.113.99');
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().scope).toBe('target');
+  });
+
   it('caps password resets per target email, so one inbox cannot be bombed from many IPs', async () => {
     const target = { appId: 'fbizlab', email: 'victim@x.com' };
     for (let i = 1; i <= 3; i++) {

@@ -76,7 +76,21 @@ function planFromProduct(product: Stripe.Product, price: Stripe.Price, lang: str
  * each represented by its default price, localized to `lang`. Products without a
  * default price are skipped (not purchasable).
  */
+/**
+ * App ids are slugs (see the `apps` registry). Anything else is refused rather
+ * than escaped: `appId` is interpolated into Stripe's search DSL, where a stray
+ * quote breaks out of the literal, and validating against the shape we actually
+ * use is a stronger guarantee than trusting an escape routine to match Stripe's
+ * grammar.
+ */
+const APP_ID_RE = /^[a-z0-9][a-z0-9-_]{0,63}$/;
+
+export function isValidAppId(appId: string): boolean {
+  return APP_ID_RE.test(appId);
+}
+
 export async function listStripePlans(appId: string, lang = 'en'): Promise<StripePlan[]> {
+  if (!isValidAppId(appId)) return [];
   const res = await stripe().products.search({
     query: `active:'true' AND metadata['appId']:'${appId}'`,
     expand: ['data.default_price'],

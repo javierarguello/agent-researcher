@@ -156,6 +156,10 @@ export const config = {
     /** In-process burst guard per IP (requests/minute across all public routes). */
     burstPerMinute: int('PUBLIC_BURST_PER_MINUTE', 30),
     registerPerHourPerIp: int('PUBLIC_REGISTER_PER_HOUR_IP', 5),
+    /** Per TARGET address. Registration emails a link to an address the caller
+     *  chooses, so without this one inbox can be mail-bombed from many IPs — the
+     *  same reason the reset route has a per-target cap. */
+    registerPerHourPerEmail: int('PUBLIC_REGISTER_PER_HOUR_EMAIL', 3),
     loginPerHourPerIp: int('PUBLIC_LOGIN_PER_HOUR_IP', 30),
     loginPerHourPerEmail: int('PUBLIC_LOGIN_PER_HOUR_EMAIL', 10),
     resetPerHourPerIp: int('PUBLIC_RESET_PER_HOUR_IP', 5),
@@ -163,6 +167,12 @@ export const config = {
     contactPerHourPerIp: int('PUBLIC_CONTACT_PER_HOUR_IP', 5),
     /** Token-consuming link endpoints (verify-email / reset-password). */
     tokenPerHourPerIp: int('PUBLIC_TOKEN_PER_HOUR_IP', 30),
+    /** The public pricing catalog. A real visitor loads it once or twice a
+     *  session; every miss is a live Stripe call. */
+    plansPerHourPerIp: int('PUBLIC_PLANS_PER_HOUR_IP', 60),
+    /** Checkout is authenticated, but each call makes two Stripe requests, so it
+     *  is metered per user rather than per IP. Buying is a deliberate act. */
+    checkoutPerHourPerUser: int('CHECKOUT_PER_HOUR_PER_USER', 20),
   },
   /**
    * Cloudflare Turnstile bot check. Disabled entirely when `TURNSTILE_SECRET` is

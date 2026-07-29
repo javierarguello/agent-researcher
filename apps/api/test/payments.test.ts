@@ -19,14 +19,17 @@ vi.mock('../src/stripe.js', () => ({
     planId === 'investor'
       ? { planId: 'investor', name: 'Investor', priceUsd: 100, credits: 15, priceId: 'price_1', appId }
       : undefined,
-  listStripePlans: async (appId: string) =>
+  listStripePlans: vi.fn(async (appId: string) =>
     appId === 'fbizlab'
       ? [{ planId: 'scout', name: 'Scout', priceUsd: 19, credits: 3, priceId: 'price_s', popular: true, sub: 'Curious buyers', features: ['3 reports', 'Discovery'] }]
       : [],
+  ),
+  isValidAppId: (appId: string) => /^[a-z0-9][a-z0-9-_]{0,63}$/.test(appId),
 }));
 
 import { app } from '../src/index.js';
-import { getBalance, listTransactions, grantCredits } from '@agent-researcher/core';
+import { getBalance, listTransactions, grantCredits, createApp } from '@agent-researcher/core';
+import { listStripePlans } from '../src/stripe.js';
 import { seedApp, token, auth } from './helpers.js';
 
 function purchaseEvent(paymentId: string, credits = 15, amount = 10000) {
@@ -116,17 +119,40 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(15);
   });
 
-  it('GET /plans is public (no auth), Stripe-sourced, filtered by appId; empty catalog is never cached', async () => {
+  it('GET /plans is public (no auth) and Stripe-sourced', async () => {
     const r = await app.inject({ method: 'GET', url: '/plans?appId=fbizlab' }); // no Authorization header
     expect(r.statusCode).toBe(200);
     expect(r.json().plans).toHaveLength(1);
     expect(r.json().plans[0]).toMatchObject({ planId: 'scout', credits: 3, popular: true });
     // Short browser cache with background revalidation (not a long, un-purgeable TTL).
     expect(r.headers['cache-control']).toContain('stale-while-revalidate');
-    // An empty catalog must be no-store, so a fix propagates immediately.
-    const other = await app.inject({ method: 'GET', url: '/plans?appId=other-app' });
-    expect(other.json().plans).toHaveLength(0);
-    expect(other.headers['cache-control']).toBe('no-store');
+  });
+
+  it('an unknown appId is refused WITHOUT reaching Stripe', async () => {
+    // This is the amplifier fix. An unknown app used to miss the cache by
+    // construction (empty results were deliberately not stored), so a fresh appId
+    // per request bought a live Stripe call per request — on the one public route
+    // with no meter, and Stripe throttling us stops customers from checking out.
+    vi.mocked(listStripePlans).mockClear();
+    const r = await app.inject({ method: 'GET', url: '/plans?appId=nope-not-an-app' });
+    expect(r.statusCode).toBe(404);
+    expect(listStripePlans).not.toHaveBeenCalled();
+  });
+
+  it('a malformed appId is refused before it can reach the Stripe query language', async () => {
+    vi.mocked(listStripePlans).mockClear();
+    // A quote would break out of the literal in `metadata['appId']:'<appId>'`.
+    const r = await app.inject({ method: 'GET', url: `/plans?appId=${encodeURIComponent("x' OR active:'true")}` });
+    expect(r.statusCode).toBe(400);
+    expect(listStripePlans).not.toHaveBeenCalled();
+  });
+
+  it('a known app with an empty catalog stays no-store, so a fix propagates fast', async () => {
+    await createApp({ appId: 'empty-app', name: 'Empty', role: 'app' });
+    const r = await app.inject({ method: 'GET', url: '/plans?appId=empty-app' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().plans).toHaveLength(0);
+    expect(r.headers['cache-control']).toBe('no-store');
   });
 
   it('CONCURRENT duplicate webhooks credit only once (no over-credit)', async () => {

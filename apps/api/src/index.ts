@@ -95,8 +95,8 @@ import {
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { jwtAuth, requireAdmin } from './auth.js';
-import { stripe, stripeConfigured, listStripePlans, resolveStripePlan } from './stripe.js';
-import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
+import { stripe, stripeConfigured, listStripePlans, resolveStripePlan, isValidAppId } from './stripe.js';
+import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_EMPTY_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
 import { publicLimit, clientIp } from './public-limit.js';
 import { requireCaptcha, captchaBodyProperties } from './captcha.js';
 
@@ -331,8 +331,17 @@ app.post(
     if (!email.includes('@')) return reply.code(400).send({ error: 'A valid email is required.' });
 
     // Every registration sends an email on our Postmark account — the most
-    // expensive unauthenticated action in the API.
-    if (await publicLimit(req, reply, { route: 'register', perIp: config.publicLimits.registerPerHourPerIp })) return reply;
+    // expensive unauthenticated action in the API, and to an address the caller
+    // chose. Cap both dimensions: per IP, and per target inbox so it cannot be
+    // bombed from many IPs. `email` is normalized, so the bucket can't be split
+    // by adding dots or a +tag.
+    if (
+      await publicLimit(req, reply, {
+        route: 'register',
+        perIp: config.publicLimits.registerPerHourPerIp,
+        perKey: { limit: config.publicLimits.registerPerHourPerEmail, value: email },
+      })
+    ) return reply;
     // Block throwaway / disposable inboxes (one person → unlimited fake accounts).
     if (isDisposableEmail(email)) {
       return reply.code(400).send({ error: 'You can’t register with a disposable or temporary email address. Please use a permanent personal or work email.', code: 'disposable_email' });
@@ -1300,13 +1309,27 @@ app.get(
   async (req, reply) => {
     const { appId } = req.query as { appId: string };
     const lang = reqLang(req);
-    // Public, unauthenticated response. Cache it (30min in-process) — but ONLY when
-    // the catalog is non-empty, so a misconfigured/empty catalog is never pinned and
-    // recovers the moment it's fixed. Keyed by lang. The BROWSER cache is short with
-    // stale-while-revalidate so a Stripe change (which also busts the server cache
-    // via webhook) reaches every client within ~a minute.
+
+    // Unauthenticated and it reaches Stripe, so it needs its own meter.
+    if (await publicLimit(req, reply, { route: 'plans', perIp: config.publicLimits.plansPerHourPerIp })) return reply;
+
+    // Refuse an appId that isn't ours BEFORE touching Stripe. This is the actual
+    // amplifier fix: an unknown app used to miss the cache by construction (empty
+    // results were deliberately not stored), so a fresh appId per request bought a
+    // live Stripe call per request. A Firestore read is orders of magnitude cheaper,
+    // and unlike Stripe it is not a shared upstream whose throttling would also stop
+    // customers from checking out.
+    if (!isValidAppId(appId)) return reply.code(400).send({ error: 'Invalid appId.' });
+    const appRec = await cached(`app:${appId}`, PUBLIC_EMPTY_TTL_MS, () => getApp(appId));
+    if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${appId}` });
+
+    // Cache it (30min in-process). An empty catalog gets a SHORT ttl rather than
+    // none, which keeps the original intent — a misconfigured catalog recovers
+    // almost immediately — without handing out a guaranteed miss. Keyed by lang.
+    // The BROWSER cache is short with stale-while-revalidate so a Stripe change
+    // (which also busts the server cache via webhook) reaches clients within ~a minute.
     const plans = stripeConfigured()
-      ? await cached(`plans:${appId}:${lang}`, PUBLIC_TTL_MS, () => listStripePlans(appId, lang), (p) => p.length > 0)
+      ? await cached(`plans:${appId}:${lang}`, PUBLIC_TTL_MS, () => listStripePlans(appId, lang), (p) => p.length > 0, PUBLIC_EMPTY_TTL_MS)
       : [];
     reply.header(
       'Cache-Control',
@@ -1364,6 +1387,19 @@ app.post(
       const flags = await getUserFlags(appId, userId);
       if (flags.blocked) {
         return reply.code(403).send({ error: flags.blockedReason ?? 'Your account is blocked.', code: 'account_blocked', reason: flags.blockedReason });
+      }
+    }
+
+    // Two Stripe calls per request (resolve + create session) on an authenticated
+    // route, so meter it by user. `checkRateLimits` is the atomic counter used
+    // elsewhere; a rejected checkout has no side effect worth preserving.
+    if (config.server.appEnv !== 'local') {
+      const rl = await checkRateLimits([
+        { key: `checkout:${appId}:${userId}`, limit: config.publicLimits.checkoutPerHourPerUser, scope: 'user' },
+      ]);
+      if (!rl.allowed) {
+        reply.header('Retry-After', '3600');
+        return reply.code(429).send({ error: 'Too many checkout attempts. Please try again later.', code: 'rate_limited' });
       }
     }
 

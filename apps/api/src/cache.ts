@@ -13,6 +13,17 @@ const store = new Map<string, { value: unknown; expires: number }>();
 export const PUBLIC_TTL_MS = 30 * 60_000;
 
 /**
+ * TTL for a result we don't want to pin but must not recompute per request — an
+ * empty catalog, typically. Long enough that a flood of misses can't turn into a
+ * flood of upstream calls, short enough that a fix lands almost immediately.
+ *
+ * Not caching such results at all (the previous behaviour) meant any caller who
+ * could produce an empty result — an unknown `appId` — got a guaranteed cache
+ * miss and a live upstream call, every single time.
+ */
+export const PUBLIC_EMPTY_TTL_MS = 60_000;
+
+/**
  * Browser-facing freshness for public responses. Deliberately SHORT — a client's
  * HTTP cache can't be purged, so a long max-age would strand stale prices for
  * everyone. The long TTL above lives only in the server's in-process cache (which
@@ -35,12 +46,15 @@ export async function cached<T>(
   ttlMs: number,
   load: () => Promise<T>,
   shouldCache: (value: T) => boolean = () => true,
+  /** TTL for values `shouldCache` rejects. 0 keeps the old "don't store" behaviour. */
+  rejectedTtlMs = 0,
 ): Promise<T> {
   const now = Date.now();
   const hit = store.get(key);
   if (hit && hit.expires > now) return hit.value as T;
   const value = await load();
-  if (shouldCache(value)) store.set(key, { value, expires: now + ttlMs });
+  const ttl = shouldCache(value) ? ttlMs : rejectedTtlMs;
+  if (ttl > 0) store.set(key, { value, expires: now + ttl });
   return value;
 }
 
