@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { recordReportStats, recordPurchaseStats, getAppStats, getDailyStats } from '../src/stats/store.js';
+import {
+  recordReportStats,
+  recordPurchaseStats,
+  recordRequestLlmCost,
+  getAppStats,
+  getDailyStats,
+  queryUsers,
+} from '../src/stats/store.js';
 
 const A = 'app1';
 
@@ -32,6 +39,28 @@ describe('per-app stats', () => {
     expect(s.genTimeMsMin).toBe(500_000);
     expect(s.genTimeMsMax).toBe(900_000);
     expect((s.genTimeMsTotal as number) / (s.genCount as number)).toBe(700_000); // avg
+  });
+
+  it('counts a user whose first contact is a request-path model call', async () => {
+    // Moderation and the assisted review run BEFORE any report exists, so this is
+    // often the first write a user ever gets. Creating their doc with a plain set()
+    // would leave them permanently uncounted: `ensureUserSeen` only bumps the
+    // distinct-user counters when the doc does not exist yet, so nothing later —
+    // not a login, not a report — would ever count them.
+    const app = 'app-req';
+    await recordRequestLlmCost({ appId: app, userId: 'p1@x.com', usd: 0.0004, inputTokens: 400, outputTokens: 120 });
+
+    const s = (await getAppStats(app))!;
+    expect(s.users).toBe(1);
+    expect(s.requestLlmUsd).toBeCloseTo(0.0004, 9);
+    expect(s.requestLlmCalls).toBe(1);
+
+    const users = await queryUsers({ appId: app });
+    expect(users[0]!.firstSeenAt).toBeTruthy();
+
+    // …and a later report does not double-count them.
+    await recordReportStats({ appId: app, userId: 'p1@x.com', template: 't', status: 'completed', costUsd: 1, durationMs: 1000 });
+    expect((await getAppStats(app))!.users).toBe(1);
   });
 
   it('folds purchases into revenue + a daily bucket', async () => {

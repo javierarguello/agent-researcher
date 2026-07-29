@@ -233,8 +233,28 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Slim agent traces for the checkpoint: drop `output` (already in `report`) and
   // `notes` to keep checkpoint.json small; keep status/cost/timing for the summary.
   const slimAgents = (): AgentTrace[] => trace.agents.map((a) => ({ ...a, output: undefined, notes: [] }));
-  const saveCheckpoint = async () =>
-    input.onCheckpoint?.({ report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost });
+  const snapshot = (): Checkpoint =>
+    ({ report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost });
+
+  // Checkpoint writes are last-writer-wins in storage, and a wave finishes several
+  // agents concurrently — so two overlapping saves can land in the wrong order and
+  // the older snapshot wins, dropping a finished agent (it re-runs, and its spend is
+  // lost) on the next dispatch. Serialize them, and coalesce: a snapshot is
+  // cumulative, so when one is already queued a second is pure duplication.
+  let chain: Promise<unknown> = Promise.resolve();
+  let queued: Promise<void> | undefined;
+  const saveCheckpoint = (): Promise<void> => {
+    const write = input.onCheckpoint;
+    if (!write) return Promise.resolve();
+    if (queued) return queued;
+    const next = chain.then(() => {
+      queued = undefined; // built when it RUNS, so it carries the newest state
+      return write(snapshot());
+    });
+    queued = next.then(() => undefined);
+    chain = next.catch(() => undefined); // a failed save must not stop later ones
+    return queued;
+  };
 
   await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents (${done.size} already done).`);
 
@@ -264,8 +284,14 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       // entry per agent, in DAG order: a resumed job must not show an agent twice,
       // once failed and once ok.
       const prior = trace.agents.findIndex((a) => a.id === agent.id);
-      if (prior >= 0) trace.agents[prior] = at;
-      else trace.agents.push(at);
+      if (prior >= 0) {
+        // Carry the replaced row's spend forward. `trace.cost` already includes it
+        // (via `resume.cost`), so dropping it here would leave the job total larger
+        // than the sum of its agents, with the difference attributed to nobody —
+        // and the money in question is a failed agent's, the interesting kind.
+        at.cost = trace.agents[prior]!.cost ?? emptyCost();
+        trace.agents[prior] = at;
+      } else trace.agents.push(at);
 
       // While retries remain, defer an agent whose dependency hasn't completed —
       // it runs once its deps succeed (a later re-dispatch), never on stale context.
@@ -282,12 +308,12 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       // In-run retries with exponential backoff — keep trying the step.
       for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
         at.attempts = attempt;
-        // One sink per attempt, read on BOTH the success and the failure path.
-        // A failed attempt still ran its whole research loop and its synthesis
-        // calls; booking only the successful one made the most expensive jobs in
-        // the system — the ones that retried 24 times and degraded — report ~$0.
+        // One sink per attempt, read on BOTH the success and the failure path: a
+        // failed attempt still ran its whole research loop and its synthesis calls,
+        // and a job that retries to exhaustion is the most expensive kind there is.
         const spend = createCostSink();
         let ok = false;
+        let failure: Error | undefined;
         try {
           const { slice } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend });
           Object.assign(report, slice);
@@ -298,31 +324,34 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         } catch (err) {
           at.status = 'failed';
           at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
-          if (attempt < config.workflow.agentMaxAttempts) {
-            const backoff = backoffMs(attempt);
-            at.notes.push(`${new Date().toISOString()} retry ${attempt} after: ${(err as Error).message}`);
-            await emit(agent.id, `Retry ${attempt}/${config.workflow.agentMaxAttempts - 1} after error; backing off ${Math.round(backoff)}ms.`);
-            await sleep(backoff);
-          } else {
-            await emit(agent.id, `Failed after ${attempt} attempts: ${(err as Error).message}`);
-          }
+          failure = err as Error;
         } finally {
           // In `finally`, not duplicated across try/catch: the invariant is "an
-          // attempt is charged, whatever became of it". A third exit path added
-          // later — an early return, a continue — would silently stop charging
-          // otherwise, which is exactly the bug this replaced.
+          // attempt is charged, whatever became of it" — a later early return or
+          // `continue` cannot silently stop charging.
           at.cost = addCost(at.cost, spend.total());
           trace.cost = addCost(trace.cost, spend.total());
         }
         if (ok) break;
+
+        // Backoff happens AFTER the charge is booked, not inside the catch. Siblings
+        // run concurrently and checkpoint while this agent sleeps; a save during the
+        // backoff would otherwise persist a total missing this attempt's spend, and
+        // a process that dies in that window loses it for good.
+        if (attempt < config.workflow.agentMaxAttempts) {
+          const backoff = backoffMs(attempt);
+          at.notes.push(`${new Date().toISOString()} retry ${attempt} after: ${failure?.message}`);
+          await emit(agent.id, `Retry ${attempt}/${config.workflow.agentMaxAttempts - 1} after error; backing off ${Math.round(backoff)}ms.`);
+          await sleep(backoff);
+        } else {
+          await emit(agent.id, `Failed after ${attempt} attempts: ${failure?.message}`);
+        }
       }
       at.durationMs = Date.now() - Date.parse(at.startedAt);
       at.finishedAt = new Date().toISOString();
-      // Save after every outcome, not only on success. The checkpoint is the ONLY
-      // carrier of cost across dispatches, and a dispatch where nothing succeeds
-      // used to save nothing at all — so a persistently failing agent's spend was
-      // written, then overwritten by the next dispatch resuming from a stale value.
-      // The job cost visibly went DOWN. Everything else here is idempotent.
+      // Save after every outcome, not only on success: the checkpoint is the only
+      // carrier of cost across dispatches, so a dispatch where nothing succeeds must
+      // still persist what it spent. Everything in the snapshot is idempotent.
       await saveCheckpoint();
     });
     await persistTrace();
@@ -344,7 +373,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     cost: trace.cost,
     ...(degraded.length ? { degradedSections: degraded } : {}),
   });
-  const checkpoint: Checkpoint = { report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost };
+  const checkpoint: Checkpoint = snapshot();
 
   // Not finalizing yet → return 'incomplete' so a re-dispatch resumes the rest.
   if (pending.length && !finalize) {

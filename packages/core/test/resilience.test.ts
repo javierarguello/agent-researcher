@@ -4,7 +4,8 @@ import { vi } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => ({
   // The engine asks the search module what a call costs, so a mock of it must
   // answer too. Free here: these tests assert behaviour, not spend.
-  searchCostPerCall: () => 0,
+  searchCostPerCall: (_operation: 'search' | 'extract') => 0,
+  canExtractPages: () => true,
   searchWeb: async () => [{ title: 't', url: `https://x.com/${Math.random()}`, snippet: 's' }],
   extractPages: async (urls: string[]) => urls.map((url) => ({ url, ok: true, content: 'page' })),
 }));
@@ -130,6 +131,39 @@ describe('resilience — per-step retry, resume, degrade', () => {
     expect(second.trace.agents.some((a) => a.status === 'failed')).toBe(true);
     expect(saved.length).toBeGreaterThan(0); // it spent money, so it must save something
     expect(saved[saved.length - 1]!.usd).toBeGreaterThan(first.checkpoint.cost!.usd);
+  });
+
+  it('writes checkpoints one at a time, and never persists a smaller total', async () => {
+    // Storage is last-writer-wins and a wave finishes several agents at once, so two
+    // overlapping saves can land in the wrong order: the older snapshot wins, a
+    // finished agent disappears from `doneAgentIds`, and the next dispatch re-runs
+    // it — paying twice for the same work.
+    __setProviderForTests('gemini-vertex', new MockLlmProvider());
+    let inFlight = 0;
+    let overlaps = 0;
+    const saved: Array<{ usd: number; done: number }> = [];
+    const out = await runResearch({
+      template, params: params(), jobId: 'r7', generatedAt: 't', finalize: true,
+      onCheckpoint: async (cp) => {
+        inFlight += 1;
+        if (inFlight > 1) overlaps += 1;
+        await new Promise((r) => setTimeout(r, 5)); // hold it open long enough to collide
+        saved.push({ usd: cp.cost?.usd ?? 0, done: cp.doneAgentIds.length });
+        inFlight -= 1;
+      },
+    });
+
+    expect(config.llm.maxConcurrentAgents).toBeGreaterThan(1); // otherwise this proves nothing
+    expect(overlaps).toBe(0);
+    expect(saved.length).toBeGreaterThan(0);
+    // Both series only ever grow: a save that went backwards would be a stale
+    // snapshot overwriting a newer one.
+    for (let i = 1; i < saved.length; i++) {
+      expect(saved[i]!.usd).toBeGreaterThanOrEqual(saved[i - 1]!.usd - 1e-9);
+      expect(saved[i]!.done).toBeGreaterThanOrEqual(saved[i - 1]!.done);
+    }
+    // The last write is the one a resume would read: it must know about every agent.
+    expect(saved[saved.length - 1]!.done).toBe(out.trace.agents.filter((a) => a.status === 'ok').length);
   });
 
   it('DEGRADES + WARNS after exhausting retries on the final attempt', async () => {

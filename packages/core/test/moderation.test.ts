@@ -9,7 +9,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { preScreen, collectFreeText, moderateResearchParams } from '../src/moderation/moderate.js';
 import { screeningForms, similarity, sanitizeProposal } from '../src/util/text.js';
 import { acceptCorrections, enrichRequest } from '../src/moderation/enrich.js';
-import { __setProviderForTests, __clearProvidersForTests } from '../src/llm/models.js';
+import { __setProviderForTests } from '../src/llm/models.js'; // setup.ts clears providers between tests
 import { config } from '../src/config.js';
 import { deterministicIssues, renderPlan } from '../src/moderation/deterministic.js';
 import { moderationMessage, blockReasonFor } from '../src/moderation/copy.js';
@@ -75,9 +75,13 @@ describe('a billed call is booked even when its answer is unusable', () => {
     },
   });
 
+  // A real restore, not a reset to a value it never had: `MODERATION_LLM` is unset
+  // in the test env, so the flag starts out TRUE. Forcing it to false here would
+  // leave global state flipped — and under `--no-isolate` that silently disables
+  // LLM moderation for every file that runs after this one.
+  const wasEnabled = config.moderation.llm;
   afterEach(() => {
-    config.moderation.llm = false;
-    __clearProvidersForTests();
+    config.moderation.llm = wasEnabled;
   });
 
   it('moderation reports usage when the verdict does not parse', async () => {

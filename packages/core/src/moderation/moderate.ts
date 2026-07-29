@@ -130,8 +130,8 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
   );
   // Before the parse, deliberately. The call is already billed by the time we look
   // at its text, and the parse is precisely what fails here — a thinking model can
-  // truncate the JSON (see the fix in 7dab7ab). Computing usage after it meant the
-  // misbehaving calls, the ones worth seeing, were the ones booked at zero.
+  // truncate the JSON. Computing usage after it books the misbehaving calls, the
+  // ones worth seeing, at zero.
   const usage = res.usage
     ? {
         inputTokens: res.usage.inputTokens,
@@ -145,7 +145,14 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
   try {
     parsed = JSON.parse(res.text) as typeof parsed;
   } catch (err) {
-    logEvent({ jobId: '-' }, 'WARNING', 'moderation.unparsable', { message: (err as Error).message });
+    // The output-token count and the text itself are what identify the failure
+    // (a truncated verdict vs. a model ignoring the schema) — logging only the
+    // parser's complaint leaves the incident undiagnosable.
+    logEvent({ jobId: '-' }, 'WARNING', 'moderation.unparsable', {
+      message: (err as Error).message,
+      outputTokens: res.usage?.outputTokens,
+      textSnippet: res.text.slice(0, 200),
+    });
     return { ok: true, categories: [], ...(usage ? { usage } : {}) };
   }
   if (parsed.allowed !== false) return { ok: true, categories: [], ...(usage ? { usage } : {}) };

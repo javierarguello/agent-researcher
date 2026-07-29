@@ -3,6 +3,13 @@
 export const usd = (n: number | null | undefined): string =>
   n == null ? '—' : `$${n.toFixed(2)}`;
 
+/**
+ * For amounts that are legitimately sub-cent — request-path model calls cost
+ * fractions of a cent each, and `usd` would render every one of them as $0.00.
+ */
+export const usdFine = (n: number | null | undefined): string =>
+  n == null ? '—' : Math.abs(n) < 1 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+
 export const secs = (ms: number | null | undefined): string =>
   ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 

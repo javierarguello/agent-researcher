@@ -21,6 +21,9 @@ export interface AppStatsRollup {
   users: number;
   payingUsers: number;
   costUsd: number;
+  /** Request-path model spend (moderation + assisted review), outside any job. */
+  requestLlmUsd: number;
+  requestLlmCalls: number;
   revenueUsd: number;
   purchases: number;
   creditsPurchased: number;

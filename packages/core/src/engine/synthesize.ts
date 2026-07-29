@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
-import { addCost, emptyCost, llmCost, type Cost, type CostSink } from '../cost.js';
+import { llmCost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage } from '../llm/provider.js';
 
@@ -26,16 +26,17 @@ export interface SynthesizeStructuredInput<T> {
 }
 
 export interface StructuredResult<T> {
+  // No `cost` here, deliberately. Spend goes to the sink as it happens, and every
+  // call this function makes is billed whether or not it ever returns — so a
+  // returned total would be a second accumulator that only covers the happy path.
   value: T;
-  cost: Cost;
 }
 
-/** Generate + validate a typed object, with one repair retry. Returns value + cost. */
+/** Generate + validate a typed object, with one repair retry. Spend goes to `input.spend`. */
 export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T>): Promise<StructuredResult<T>> {
   const { model, system, schema, temperature = 0.3 } = input;
   const responseSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   const messages: LlmMessage[] = [...input.messages];
-  let cost = emptyCost();
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await model.provider.generate({
@@ -47,9 +48,7 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
       maxOutputTokens: config.llm.maxOutputTokens,
     });
     if (res.usage) {
-      const callCost = llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM);
-      cost = addCost(cost, callCost);
-      input.spend?.add(callCost);
+      input.spend?.add(llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
     }
 
     const raw = stripJsonFences(res.text);
@@ -64,7 +63,7 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
     }
 
     const result = schema.safeParse(parsed);
-    if (result.success) return { value: result.data, cost };
+    if (result.success) return { value: result.data };
 
     if (attempt === 1) {
       const issues = result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');

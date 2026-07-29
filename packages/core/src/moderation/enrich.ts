@@ -126,6 +126,8 @@ export async function enrichRequest(
 
   let parsed: { corrections?: Array<{ field?: string; value?: string }>; issues?: string[]; quality?: string };
   let usage: EnrichResult['usage'];
+  /** Kept outside the try so the failure log can show what came back. */
+  let answer: string | undefined;
   try {
     const model = resolveModel('flash');
     const res = await retryAsync(() =>
@@ -139,8 +141,8 @@ export async function enrichRequest(
       }),
     );
     // Usage first: the call is billed by the time we look at its text, and the
-    // parse is what fails. Assigning after it meant a truncated response — the
-    // interesting failure — was booked at zero.
+    // parse is what fails. Assigning after it books a truncated response — the
+    // interesting failure — at zero.
     usage = res.usage
       ? {
           inputTokens: res.usage.inputTokens,
@@ -148,9 +150,14 @@ export async function enrichRequest(
           usd: llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM).usd,
         }
       : undefined;
+    answer = res.text;
     parsed = JSON.parse(res.text);
   } catch (err) {
-    logEvent({ jobId: '-' }, 'WARNING', 'preflight.assist_failed', { message: (err as Error).message });
+    logEvent({ jobId: '-' }, 'WARNING', 'preflight.assist_failed', {
+      message: (err as Error).message,
+      outputTokens: usage?.outputTokens,
+      ...(answer != null ? { textSnippet: answer.slice(0, 200) } : {}),
+    });
     // Fails soft, but not silently free: if the call happened, it is still booked.
     return { ...EMPTY, ...(usage ? { usage } : {}) };
   }

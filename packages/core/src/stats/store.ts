@@ -98,9 +98,9 @@ async function updateGenMinMax(
 
 /**
  * Model spend that happens on the REQUEST path, outside any job: the moderation
- * classifier and the assisted pre-flight review. Small per call, but it runs on
- * every preview and every generation and belonged to no aggregate at all — it was
- * written to a log line and dropped, so no dashboard could see it.
+ * classifier and the assisted pre-flight review. Fractions of a cent per call, but
+ * it runs on every preview and every generation — so it is real money that no job
+ * cost accounts for.
  *
  * Booked separately from `costUsd` (which is job cost) so the two stay
  * comparable: this is what the product spends *before* deciding to do any work.
@@ -257,6 +257,9 @@ export interface AppStatsRollup {
   /** Users who have ever purchased credits (the rest signed up but never paid). */
   payingUsers: number;
   costUsd: number;
+  /** Request-path model spend (moderation + assisted review), separate from job cost. */
+  requestLlmUsd: number;
+  requestLlmCalls: number;
   revenueUsd: number;
   purchases: number;
   creditsPurchased: number;
@@ -283,6 +286,8 @@ function rollup(d: Record<string, unknown>): AppStatsRollup {
     users: num(d, 'users'),
     payingUsers: num(d, 'payingUsers'),
     costUsd: num(d, 'costUsd'),
+    requestLlmUsd: num(d, 'requestLlmUsd'),
+    requestLlmCalls: num(d, 'requestLlmCalls'),
     revenueUsd: num(d, 'revenueUsd'),
     purchases: num(d, 'purchases'),
     creditsPurchased: num(d, 'creditsPurchased'),
@@ -305,7 +310,7 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
   let genCount = 0;
   const totals: Omit<AppStatsRollup, 'appId'> = {
     reports: 0, reportsCompleted: 0, reportsFailed: 0, degradedReports: 0, users: 0, payingUsers: 0,
-    costUsd: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
+    costUsd: 0, requestLlmUsd: 0, requestLlmCalls: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
     avgGenMs: null, genTimeMsMin: null, genTimeMsMax: null,
   };
   for (const d of docs) {
@@ -316,6 +321,8 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
     totals.users += num(d, 'users');
     totals.payingUsers += num(d, 'payingUsers');
     totals.costUsd += num(d, 'costUsd');
+    totals.requestLlmUsd += num(d, 'requestLlmUsd');
+    totals.requestLlmCalls += num(d, 'requestLlmCalls');
     totals.revenueUsd += num(d, 'revenueUsd');
     totals.purchases += num(d, 'purchases');
     totals.creditsPurchased += num(d, 'creditsPurchased');

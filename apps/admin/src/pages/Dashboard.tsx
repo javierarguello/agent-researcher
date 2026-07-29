@@ -2,7 +2,7 @@ import { Alert, Card, Group, Loader, SimpleGrid, Stack, Table, Text } from '@man
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { useAdminStats } from '../api/hooks';
-import { int, secs, usd } from '../lib/format';
+import { int, secs, usd, usdFine } from '../lib/format';
 
 function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
@@ -36,7 +36,13 @@ export function Dashboard() {
         <Kpi label="Errors" value={int(t.reportsFailed)} hint="failed reports" accent={t.reportsFailed > 0 ? 'red' : undefined} />
         <Kpi label="Degraded" value={int(t.degradedReports)} hint="partial delivery" accent={t.degradedReports > 0 ? 'yellow' : undefined} />
         <Kpi label="Revenue" value={usd(t.revenueUsd)} hint={`${int(t.purchases)} purchases`} accent="teal" />
-        <Kpi label="Cost" value={usd(t.costUsd)} hint="LLM + search" />
+        {/* Jobs are not the whole bill: moderation and the assisted review run on
+            every preview, so the headline is job + request-path spend. */}
+        <Kpi
+          label="Cost"
+          value={usd(t.costUsd + t.requestLlmUsd)}
+          hint={`${usd(t.costUsd)} jobs · ${usdFine(t.requestLlmUsd)} pre-flight`}
+        />
         <Kpi label="Avg gen" value={secs(t.avgGenMs)} hint={`${secs(t.genTimeMsMin)}–${secs(t.genTimeMsMax)}`} />
       </SimpleGrid>
 

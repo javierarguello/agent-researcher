@@ -6,10 +6,10 @@
  * re-fetched) by another, and the final `sources` list is unified.
  */
 import { config } from '../config.js';
-import { addCost, emptyCost, llmCost, searchCost, type Cost, type CostSink } from '../cost.js';
+import { llmCost, searchCost, type Cost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage, ToolSchema } from '../llm/provider.js';
-import { extractPages, searchWeb, searchCostPerCall, type ExtractedPage, type SearchResult } from '../tools/web-search.js';
+import { canExtractPages, extractPages, searchWeb, searchCostPerCall, type ExtractedPage, type SearchResult } from '../tools/web-search.js';
 
 type PlanStep = { task: string; status: 'pending' | 'doing' | 'done' | 'dropped' };
 
@@ -91,9 +91,7 @@ export interface GatherInput {
 }
 
 export interface GatherResult {
-  // NOTE: no `cost` here on purpose. Spend goes to the sink as it happens; a
-  // returned total would be a second, parallel accumulator for the same money —
-  // and the next paid call wired to one and not the other is a silent bug.
+  /** No `cost` here on purpose — see `StructuredResult`: the sink is the only accumulator. */
   turns: number;
 }
 
@@ -103,10 +101,8 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   let plan: PlanStep[] = [];
   let turnsUsed = 0;
   let nudges = 0;
-  // Charge as we go. This loop can throw at any turn — a provider error, a tool
-  // failure — and everything spent up to that point used to vanish with it. The
-  // sink is the only accumulator: a second, returned total would be the same money
-  // counted in two places, and the next paid call wired to one and not the other.
+  // Charge as we go: this loop can throw at any turn — a provider error, a tool
+  // failure — and whatever it spent before that still has to be visible.
   const charge = (c: Cost) => input.spend?.add(c);
   const maxIterations = maxTurns * 2 + 6;
   const note = async (m: string) => onNote?.(m);
@@ -198,10 +194,12 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           continue;
         }
         // The turn is spent either way — that is the budget guard, and it is
-        // deliberate. The money is not: an empty url short-circuits inside
-        // `extractPages` without a network call, so charging it would invent spend.
+        // deliberate. The call is not: an empty url short-circuits inside
+        // `extractPages`, and without a Tavily key it refuses locally. Neither
+        // reaches a backend, so counting either would invent a call (`searchCalls`
+        // is billed backend calls) on top of inventing spend.
         turnsUsed += 1;
-        if (url) charge(searchCost(1, searchCostPerCall('extract')));
+        if (url && canExtractPages()) charge(searchCost(1, searchCostPerCall('extract')));
         const pages = await extractPages(url ? [url] : []);
         for (const p of pages) {
           if (p.ok && p.content && !evidence.extractedUrls.has(p.url)) {

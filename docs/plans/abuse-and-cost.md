@@ -136,7 +136,20 @@ never runs for that job.
 ## Closed
 
 ### ~~B1 · Failed agent attempts discarded their cost~~
-`done (8575b96, completed in 335a5e4)`
+`done (8575b96, completed in 335a5e4, hardened after review)`
+
+Saving on every attempt widened a race that was already there: checkpoint writes
+are last-writer-wins and a wave finishes several agents at once, so two overlapping
+saves could land in the wrong order and the older snapshot would win — dropping a
+finished agent, which the next dispatch then re-runs and pays for twice. Writes are
+now serialized and coalesced. Two more from the same review: the retry backoff
+happened *before* the attempt's spend was booked, so a sibling checkpointing during
+the sleep persisted a total missing it (the backoff now runs after the charge); and
+a resumed agent's replaced trace row dropped the prior dispatch's spend, leaving
+`trace.cost` bigger than the sum of its agents with the difference attributed to
+nobody. `synthesizeStructured` was also still returning a `cost` no caller read —
+the second accumulator this whole item exists to remove, now gone from the type
+rather than warned about in a comment.
 
 The first pass fixed it within a dispatch and left it broken across dispatches:
 the checkpoint is the only carrier of cost between dispatches and was written
@@ -169,11 +182,24 @@ never reached Cloud Run — `deploy.sh` didn't pass it, so B2 was inert in
 production — and an empty value would have parsed as 0, silently zeroing the
 search cost.
 
-The price was chosen in `gather` (Tavily key present?) while the provider was
-chosen in `web-search` (Brave first). A Brave key meant Brave served the traffic
-and the accounting charged nothing. Both decisions now live in one place,
-`searchCostPerCall()`, derived from the same priority `searchWeb` uses, with
-`BRAVE_COST_PER_CALL_USD` for a paid tier.
+Originally the price was chosen in `gather` (Tavily key present?) while the
+provider was chosen in `web-search` (Brave first), so a Brave key meant Brave
+served the traffic and the accounting charged nothing.
+
+Both decisions now live in `searchCostPerCall(operation)`: a search is priced by
+whichever backend `searchWeb` would pick (Brave → Tavily → free DuckDuckGo, with
+`BRAVE_COST_PER_CALL_USD` for a paid tier), an extraction always at Tavily's rate,
+and neither at all when the call cannot reach a backend — no Tavily key, or an
+empty url. `canExtractPages()` is what tells `gather` the difference, so
+`searchCalls` stays what it claims to be: calls that actually hit a backend.
+
+The pricing function got a test; its call site did not, and that is where the money
+moves. Every engine test replaces `web-search.js` wholesale with a stub returning 0,
+none of them ever issues `fetch_page`, and the fake-web fixture had already drifted —
+its `searchCostPerCall` still took no `operation`. So the entire paid extract branch
+ran in zero tests. `gather-pricing.test.ts` now drives it with two distinct nonzero
+rates (each assertion verified by reverting the line it guards), and a contract test
+fails when the fixture's signatures drift from the module it stands in for.
 
 ### ~~B3 · Pre-flight token usage never reached an aggregate~~
 `done (8575b96, corrected in 335a5e4)`
@@ -188,6 +214,14 @@ Both now report tokens and dollars, and the API books them through
 `recordRequestLlmCost` into app-stats, the daily buckets and the per-user record —
 separately from job cost, so "what we spend before deciding to do any work" stays
 a distinct number.
+
+Written but unread, until the follow-up review: nothing consumed `requestLlmUsd`, so
+the admin dashboard's Cost KPI understated spend by exactly what this item made
+visible. It now shows job + request-path spend, broken out in the hint (with a
+sub-cent formatter, since `$0.00` is what per-call amounts round to). Both fail-soft
+paths also log only the parser's complaint; they now log the output-token count and
+a snippet, which is what distinguishes a truncated verdict from a model ignoring the
+schema.
 
 
 ### ~~A1 · The Stripe catalog was an unmetered amplifier~~

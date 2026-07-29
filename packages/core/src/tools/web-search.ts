@@ -44,6 +44,15 @@ export function searchCostPerCall(operation: 'search' | 'extract'): number {
   }
 }
 
+/**
+ * Whether `extractPages` can reach a backend at all. It is Tavily-or-nothing, so
+ * without a key it refuses locally: no request leaves the process, and the caller
+ * must not book a backend call that never happened.
+ */
+export function canExtractPages(): boolean {
+  return !!config.search.tavilyApiKey;
+}
+
 /** Runs a web search via the highest-priority configured backend. */
 export async function searchWeb(query: string): Promise<SearchResult[]> {
   if (config.search.braveApiKey) return searchBrave(query);

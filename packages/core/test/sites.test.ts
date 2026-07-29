@@ -4,7 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => ({
   // The engine asks the search module what a call costs, so a mock of it must
   // answer too. Free here: these tests assert behaviour, not spend.
-  searchCostPerCall: () => 0,
+  searchCostPerCall: (_operation: 'search' | 'extract') => 0,
+  canExtractPages: () => true,
   searchWeb: async (query: string) => [
     { title: `Result for ${query}`, url: `https://example.com/${Math.random().toString(36).slice(2)}`, snippet: 'snippet' },
   ],
