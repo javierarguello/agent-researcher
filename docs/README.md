@@ -61,3 +61,8 @@ tracked as **analytics** in Firestore.
     app) renders a model's params from its manifest (`paramsSchema` + `paramsUi`).
 15. [local-llm.md](local-llm.md) — run the whole flow (and the suites) against a
     local model with no cloud credentials; how the mocked and live test modes differ.
+
+### Backlog
+16. [plans/](plans/) — decided-but-not-done work, one file per body of work.
+    Currently [plans/abuse-and-cost.md](plans/abuse-and-cost.md): what the July
+    2026 adversarial review of the limits and token-spend surface found.
