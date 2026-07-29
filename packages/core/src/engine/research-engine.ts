@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
-import { addCost, emptyCost, type Cost } from '../cost.js';
+import { addCost, createCostSink, emptyCost, type Cost, type CostSink } from '../cost.js';
 import { resolveDepthProfile, type DepthProfile } from '../depth.js';
 import { resolveMode } from '../mode.js';
 import { resolveModel, type ResolvedModel } from '../llm/index.js';
@@ -282,16 +282,24 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       // In-run retries with exponential backoff — keep trying the step.
       for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
         at.attempts = attempt;
+        // One sink per attempt, read on BOTH the success and the failure path.
+        // A failed attempt still ran its whole research loop and its synthesis
+        // calls; booking only the successful one made the most expensive jobs in
+        // the system — the ones that retried 24 times and degraded — report ~$0.
+        const spend = createCostSink();
         try {
-          const { slice, cost } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at });
+          const { slice } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend });
           Object.assign(report, slice);
           at.status = 'ok';
           at.output = slice;
-          at.cost = cost;
-          trace.cost = addCost(trace.cost, cost);
+          at.cost = addCost(at.cost, spend.total());
+          trace.cost = addCost(trace.cost, spend.total());
           done.add(agent.id);
           break;
         } catch (err) {
+          // Charge the attempt regardless. This is the whole point.
+          at.cost = addCost(at.cost, spend.total());
+          trace.cost = addCost(trace.cost, spend.total());
           at.status = 'failed';
           at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
           if (attempt < config.workflow.agentMaxAttempts) {
@@ -416,6 +424,9 @@ async function runAgent(ctx: {
   counter: { turns: number };
   emit: (phase: string, message: string) => Promise<void> | undefined;
   trace: AgentTrace;
+  /** Every paid call inside this agent writes here as it happens, so a failed
+   *  attempt's spend is still known to the caller. */
+  spend: CostSink;
 }): Promise<{ slice: Record<string, unknown>; cost: Cost }> {
   const { template, agent, brief, language, depth, system, evidence, report, counter, trace } = ctx;
   const depthDirective = depth.directive;
@@ -437,6 +448,7 @@ async function runAgent(ctx: {
     if (sites.length) await note(`Suggested sources (additive): ${sites.join(', ')}.`);
     await note(`Researching (${owned.join(', ')}).`);
     const gres = await gather({
+      spend: ctx.spend,
       model: gatherModel,
       system,
       messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, context, sites }) }],
@@ -471,14 +483,14 @@ async function runAgent(ctx: {
             lang: language,
             depthDirective,
           });
-    const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema });
+    const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
     return { slice: sres.value as Record<string, unknown>, cost: addCost(gres.cost, sres.cost) };
   }
 
   // synthesizer — compose from upstream only.
   await note(`Composing (${owned.join(', ')}).`);
   const text = buildSynthesizerPrompt({ agent, brief, sections, context, lang: language, depthDirective });
-  const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema });
+  const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
   return { slice: sres.value as Record<string, unknown>, cost: sres.cost };
 }
 

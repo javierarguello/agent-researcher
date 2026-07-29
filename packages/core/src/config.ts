@@ -260,9 +260,11 @@ export const config = {
     braveApiKey: str('BRAVE_API_KEY'),
     tavilyApiKey: str('TAVILY_API_KEY'),
     maxTurns: int('RESEARCH_MAX_TURNS', 16),
-    /** Estimated USD per web_search/fetch_page call (Tavily: ~2 credits × $0.008).
-     *  Only applied when a Tavily key is set; Brave/DDG are treated as free. */
+    /** Estimated USD per Tavily web_search/fetch_page call (~2 credits × $0.008). */
     costPerCallUsd: Number(process.env.SEARCH_COST_PER_CALL_USD ?? '0.016'),
+    /** Estimated USD per Brave call. Brave's free tier is $0, but a paid plan is
+     *  not — and booking paid searches at zero is how a job's real cost hides. */
+    braveCostPerCallUsd: Number(process.env.BRAVE_COST_PER_CALL_USD ?? '0'),
   },
   worker: {
     /** Worker Cloud Run Service name (processes one job per request). */

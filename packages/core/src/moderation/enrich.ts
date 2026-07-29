@@ -21,6 +21,7 @@ import { resolveModel } from '../llm/index.js';
 import { config } from '../config.js';
 import { retryAsync } from '../util/retry.js';
 import { logEvent } from '../obs/log.js';
+import { llmCost } from '../cost.js';
 import { sanitizeProposal, similarity } from '../util/text.js';
 import type { ResearchTemplate } from '../templates/types.js';
 import { allowedIssueCodes } from './deterministic.js';
@@ -36,8 +37,8 @@ export interface EnrichResult {
   /** Issue codes only — copy is resolved from our own dictionary. */
   issueCodes: string[];
   quality: 'ok' | 'broad' | 'ambiguous';
-  /** Token usage, so the caller can meter what the feature costs per user. */
-  usage?: { inputTokens: number; outputTokens: number };
+  /** Token usage + dollars, so the caller can meter what the feature costs. */
+  usage?: { inputTokens: number; outputTokens: number; usd: number };
 }
 
 const EMPTY: EnrichResult = { corrections: [], issueCodes: [], quality: 'ok' };
@@ -138,7 +139,13 @@ export async function enrichRequest(
       }),
     );
     parsed = JSON.parse(res.text);
-    usage = res.usage;
+    usage = res.usage
+      ? {
+          inputTokens: res.usage.inputTokens,
+          outputTokens: res.usage.outputTokens,
+          usd: llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM).usd,
+        }
+      : undefined;
   } catch (err) {
     logEvent({ jobId: '-' }, 'WARNING', 'preflight.assist_failed', { message: (err as Error).message });
     return EMPTY;

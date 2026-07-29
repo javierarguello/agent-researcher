@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
-import { addCost, emptyCost, llmCost, type Cost } from '../cost.js';
+import { addCost, emptyCost, llmCost, type Cost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage } from '../llm/provider.js';
 
@@ -17,6 +17,12 @@ export interface SynthesizeStructuredInput<T> {
   schema: z.ZodType<T>;
   /** Lower temperature = more schema-faithful; default 0.3. */
   temperature?: number;
+  /**
+   * Records each call the moment it returns. Without it, a repair round that
+   * still fails throws away both calls' tokens — and those are precisely the
+   * attempts a failing agent makes over and over.
+   */
+  spend?: CostSink;
 }
 
 export interface StructuredResult<T> {
@@ -40,7 +46,11 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
       responseSchema,
       maxOutputTokens: config.llm.maxOutputTokens,
     });
-    if (res.usage) cost = addCost(cost, llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
+    if (res.usage) {
+      const callCost = llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM);
+      cost = addCost(cost, callCost);
+      input.spend?.add(callCost);
+    }
 
     const raw = stripJsonFences(res.text);
     let parsed: unknown;

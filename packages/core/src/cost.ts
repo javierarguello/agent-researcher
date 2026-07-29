@@ -21,6 +21,31 @@ export interface Cost {
   searchCalls: number;
 }
 
+/**
+ * Somewhere to record spend the moment it happens.
+ *
+ * Returning a cost at the end of a function loses everything when that function
+ * throws — which is exactly when the interesting spend has occurred, because a
+ * failed agent still ran its whole research loop and its synthesis calls. Every
+ * paid call writes here immediately, so a throw can no longer make money
+ * invisible. Pass one down; read `total()` from either the success or the failure
+ * path.
+ */
+export interface CostSink {
+  add(cost: Cost): void;
+  total(): Cost;
+}
+
+export function createCostSink(): CostSink {
+  let acc = emptyCost();
+  return {
+    add: (c) => {
+      acc = addCost(acc, c);
+    },
+    total: () => acc,
+  };
+}
+
 export function emptyCost(): Cost {
   return { usd: 0, llmUsd: 0, searchUsd: 0, inputTokens: 0, outputTokens: 0, searchCalls: 0 };
 }

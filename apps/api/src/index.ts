@@ -68,6 +68,7 @@ import {
   grantCredits,
   recordPurchase,
   recordPurchaseStats,
+  recordRequestLlmCost,
   recordLogin,
   signSession,
   signReadToken,
@@ -701,6 +702,13 @@ async function moderateParams(
   opts: { llm?: boolean } = {},
 ): Promise<{ code: number; body: Record<string, unknown> } | null> {
   const verdict = await moderateResearchParams(params, opts);
+  // Book the classifier's spend whether it allowed or rejected. It runs on the
+  // request path, on every preview and every generation, and used to belong to no
+  // aggregate at all. Best-effort: metering must never fail a request.
+  if (verdict.usage) {
+    await recordRequestLlmCost({ appId, userId, usd: verdict.usage.usd, inputTokens: verdict.usage.inputTokens, outputTokens: verdict.usage.outputTokens })
+      .catch((err) => logEvent({ jobId: '-', appId, userId }, 'WARNING', 'stats.request_llm_failed', { message: (err as Error).message }));
+  }
   if (verdict.ok) return null;
   const strike = await recordModerationStrike(appId, userId, verdict.categories);
   logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories, strikes: strike.strikes, blocked: strike.blocked });
@@ -1022,7 +1030,11 @@ app.post(
       corrections: outcome.corrections.map((c) => c.field),
       ...(outcome.usage ? { inputTokens: outcome.usage.inputTokens, outputTokens: outcome.usage.outputTokens } : {}),
     });
-    // `usage` is internal metering — it stays in the log, like job cost does.
+    if (outcome.usage) {
+      await recordRequestLlmCost({ appId, userId, usd: outcome.usage.usd, inputTokens: outcome.usage.inputTokens, outputTokens: outcome.usage.outputTokens })
+        .catch((err) => logEvent({ jobId: '-', appId, userId }, 'WARNING', 'stats.request_llm_failed', { message: (err as Error).message }));
+    }
+    // `usage` is internal metering — it stays server-side, like job cost does.
     const { usage: _usage, ...clientView } = outcome;
     return reply.send({ ok: true, ...clientView });
   },

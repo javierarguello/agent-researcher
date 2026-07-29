@@ -203,6 +203,11 @@ function score(query: string, page: Page): number {
  * asks an odd question still gets the general market pages rather than starving,
  * which is what a real search backend does too.
  */
+/** What the engine charges per call against this fake web. */
+export function searchCostPerCall(): number {
+  return 0.016;
+}
+
 export async function searchWeb(query: string): Promise<SearchResult[]> {
   const ranked = PAGES.map((page) => ({ page, s: score(query, page) }))
     .sort((a, b) => b.s - a.s)

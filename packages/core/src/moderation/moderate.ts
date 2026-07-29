@@ -21,6 +21,7 @@
 import { resolveModel } from '../llm/index.js';
 import { config } from '../config.js';
 import { retryAsync } from '../util/retry.js';
+import { llmCost } from '../cost.js';
 import { logEvent } from '../obs/log.js';
 import { hasControlChars, screeningForms, squeezedPattern } from '../util/text.js';
 import { MODERATION_CATEGORIES, asModerationCategory, type ModerationCategory } from './copy.js';
@@ -29,6 +30,8 @@ export interface ModerationVerdict {
   ok: boolean;
   /** Closed-vocabulary categories. The user-facing wording is derived from these. */
   categories: ModerationCategory[];
+  /** What the classifier cost, when it ran. Absent for the free pre-screen. */
+  usage?: { inputTokens: number; outputTokens: number; usd: number };
 }
 
 /** Collect the free-text the user typed (skip numbers/booleans; enums are harmless). */
@@ -126,9 +129,20 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
     }),
   );
   const parsed = JSON.parse(res.text) as { allowed?: boolean; categories?: unknown[] };
-  if (parsed.allowed !== false) return { ok: true, categories: [] };
+  const usage = res.usage
+    ? {
+        inputTokens: res.usage.inputTokens,
+        outputTokens: res.usage.outputTokens,
+        usd: llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM).usd,
+      }
+    : undefined;
+  if (parsed.allowed !== false) return { ok: true, categories: [], ...(usage ? { usage } : {}) };
   const categories = Array.isArray(parsed.categories) ? parsed.categories.map(asModerationCategory) : [];
-  return { ok: false, categories: categories.length ? Array.from(new Set(categories)) : ['other'] };
+  return {
+    ok: false,
+    categories: categories.length ? Array.from(new Set(categories)) : ['other'],
+    ...(usage ? { usage } : {}),
+  };
 }
 
 /**

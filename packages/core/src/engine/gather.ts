@@ -6,10 +6,10 @@
  * re-fetched) by another, and the final `sources` list is unified.
  */
 import { config } from '../config.js';
-import { addCost, emptyCost, llmCost, searchCost, type Cost } from '../cost.js';
+import { addCost, emptyCost, llmCost, searchCost, type Cost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage, ToolSchema } from '../llm/provider.js';
-import { extractPages, searchWeb, type ExtractedPage, type SearchResult } from '../tools/web-search.js';
+import { extractPages, searchWeb, searchCostPerCall, type ExtractedPage, type SearchResult } from '../tools/web-search.js';
 
 type PlanStep = { task: string; status: 'pending' | 'doing' | 'done' | 'dropped' };
 
@@ -78,6 +78,9 @@ export function createEvidence(): Evidence {
 }
 
 export interface GatherInput {
+  /** Records LLM and search spend as it happens, so a throw mid-loop cannot
+   *  make the turns already paid for invisible. */
+  spend?: CostSink;
   model: ResolvedModel;
   system: string;
   messages: LlmMessage[];
@@ -99,6 +102,13 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   let turnsUsed = 0;
   let nudges = 0;
   let cost = emptyCost();
+  // Charge as we go. This loop can throw at any turn — a provider error, a tool
+  // failure — and everything spent up to that point used to vanish with it.
+  const perCall = searchCostPerCall();
+  const charge = (c: Cost) => {
+    cost = addCost(cost, c);
+    input.spend?.add(c);
+  };
   const maxIterations = maxTurns * 2 + 6;
   const note = async (m: string) => onNote?.(m);
 
@@ -110,7 +120,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       forceTools: turnsUsed === 0, // force real research before it can stop
       model: model.model,
     });
-    if (res.usage) cost = addCost(cost, llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
+    if (res.usage) charge(llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
 
     messages.push({ role: 'model', text: res.text, toolCalls: res.toolCalls });
 
@@ -146,6 +156,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           continue;
         }
         turnsUsed += 1;
+        charge(searchCost(1, perCall)); // one real backend call, charged as it is spent
         try {
           const results = await searchWeb(query);
           for (const r of results) {
@@ -188,6 +199,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           continue;
         }
         turnsUsed += 1;
+        charge(searchCost(1, perCall)); // one real backend call, charged as it is spent
         const pages = await extractPages(url ? [url] : []);
         for (const p of pages) {
           if (p.ok && p.content && !evidence.extractedUrls.has(p.url)) {
@@ -212,7 +224,5 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     }
   }
 
-  // Each spent turn = one real backend search/fetch. Only Tavily is billed here.
-  const perCall = config.search.tavilyApiKey ? config.search.costPerCallUsd : 0;
-  return { turns: turnsUsed, cost: addCost(cost, searchCost(turnsUsed, perCall)) };
+  return { turns: turnsUsed, cost };
 }

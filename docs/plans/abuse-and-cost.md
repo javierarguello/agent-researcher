@@ -8,51 +8,14 @@ don't get re-reported.
 Every entry cites `file:line` and states how it was established. Line numbers
 drift — treat them as a starting point, not gospel.
 
-Group A (cheap external denial-of-service) is done; what follows is B onward.
+Groups A (cheap external denial-of-service) and B (cost visibility) are done;
+what follows is C onward.
 
 **Nothing open here is a door standing open.** The one finding that was — every
 per-IP limit bypassable with a forged header — was confirmed against the running
 dev API and is fixed (see *Closed*, below). What remains is serious debt: two
 denial-of-service paths that cost an attacker nothing, an inability to see what
 we spend, and several ways spend can run away.
-
----
-
-## B. We cannot see what we spend — half a day, and it gates everything in C
-
-### B1 · Failed agent attempts discard their cost
-`open` · verified by reading the code
-
-`research-engine.ts:291` adds cost to the trace **inside the `try`**. The `catch`
-records the failure and drops the tokens (`:294-305`). Since an agent retries
-`agentMaxAttempts` (3) times and a job re-dispatches up to `maxJobAttempts` (8),
-a persistently-failing agent runs up to **24 full gather+synthesis passes** whose
-cost is invisible.
-
-Consequence beyond the money: `job.cost`, the admin dashboard and
-`recordReportStats` (`run-job.ts:204-208`) show ≈$0 for the most expensive jobs in
-the system. **Every cost number we have today is wrong**, which is why this comes
-before anything in C — without it we cannot tell whether a fix helped.
-
-Same class, smaller: a throw inside `gather` discards the whole loop's
-accumulated cost (only returned at `gather.ts:217`); `synthesizeStructured`
-attempt 1 is lost when attempt 2 throws (`synthesize.ts:50,61`); the headline call
-is lost when it throws (`run-job.ts:73`).
-
-### B2 · Brave searches are recorded as $0
-`open` · verified by reading the code
-
-`gather.ts:215` charges `costPerCallUsd` only `if (config.search.tavilyApiKey)`,
-but `searchWeb` prefers Brave when `BRAVE_API_KEY` is set (`web-search.ts:16`) and
-`infra/deploy.sh:49` passes it through. On a paid Brave tier, ~92 queries per
-comprehensive job are billed by Brave and booked at zero.
-
-### B3 · Pre-flight token usage never reaches an aggregate
-`open` · verified by reading the code
-
-`enrich.ts:136` captures usage, `apps/api/src/index.ts:951` puts it in a log line
-and drops it. Moderation (`moderate.ts:112-127`) captures no usage at all. Both
-are on the request path, on every preview and every generation.
 
 ---
 
@@ -171,6 +134,40 @@ never runs for that job.
 ---
 
 ## Closed
+
+### ~~B1 · Failed agent attempts discarded their cost~~
+`done (fee6fdc)`
+
+Cost was added to the trace inside the `try`, so the `catch` dropped it. With up
+to 24 passes per agent (3 in-run retries × 8 dispatches), the most expensive jobs
+in the system — the ones that retried and degraded — reported ≈$0.
+
+Fixed by recording spend where it is incurred rather than where it is returned: a
+`CostSink` is passed into `gather` and `synthesizeStructured`, every paid call
+writes to it immediately, and the engine reads it on BOTH the success and the
+failure path. `gather` also charges each search turn as it is spent instead of
+totalling at the end, so a throw mid-loop can no longer erase the turns already
+paid for. Covered by a test that fails with `expected 0 to be greater than 0` if
+the failure-path accounting is removed.
+
+### ~~B2 · Brave searches were recorded as $0~~
+`done (fee6fdc)`
+
+The price was chosen in `gather` (Tavily key present?) while the provider was
+chosen in `web-search` (Brave first). A Brave key meant Brave served the traffic
+and the accounting charged nothing. Both decisions now live in one place,
+`searchCostPerCall()`, derived from the same priority `searchWeb` uses, with
+`BRAVE_COST_PER_CALL_USD` for a paid tier.
+
+### ~~B3 · Pre-flight token usage never reached an aggregate~~
+`done (fee6fdc)`
+
+The assisted pass captured usage and logged it; moderation captured none at all.
+Both now report tokens and dollars, and the API books them through
+`recordRequestLlmCost` into app-stats, the daily buckets and the per-user record —
+separately from job cost, so "what we spend before deciding to do any work" stays
+a distinct number.
+
 
 ### ~~A1 · The Stripe catalog was an unmetered amplifier~~
 `done (ebda3cc, completed in 7fe9211)`

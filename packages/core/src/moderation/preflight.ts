@@ -32,8 +32,8 @@ export interface PreflightOutcome {
   correctedParams?: Record<string, unknown>;
   /** Whether the assisted pass ran, and why not when it didn't. */
   assist: { state: AssistState; message?: string };
-  /** Token usage of the assisted pass, for per-user metering. */
-  usage?: { inputTokens: number; outputTokens: number };
+  /** Token usage + dollars of the assisted pass, for per-user metering. */
+  usage?: { inputTokens: number; outputTokens: number; usd: number };
 }
 
 /** Deterministic findings imply a quality floor even without a model. */

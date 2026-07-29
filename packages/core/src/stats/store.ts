@@ -97,6 +97,39 @@ async function updateGenMinMax(
 }
 
 /** Record a finished report into the app + daily + user aggregates. */
+/**
+ * Model spend that happens on the REQUEST path, outside any job: the moderation
+ * classifier and the assisted pre-flight review. Small per call, but it runs on
+ * every preview and every generation and belonged to no aggregate at all — it was
+ * written to a log line and dropped, so no dashboard could see it.
+ *
+ * Booked separately from `costUsd` (which is job cost) so the two stay
+ * comparable: this is what the product spends *before* deciding to do any work.
+ */
+export async function recordRequestLlmCost(input: {
+  appId: string;
+  userId: string;
+  usd: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}): Promise<void> {
+  if (!input.usd && !input.inputTokens && !input.outputTokens) return;
+  const now = nowIso();
+  const date = utcDate();
+  const inc = {
+    requestLlmUsd: FieldValue.increment(input.usd || 0),
+    requestLlmCalls: FieldValue.increment(1),
+    requestLlmInputTokens: FieldValue.increment(input.inputTokens || 0),
+    requestLlmOutputTokens: FieldValue.increment(input.outputTokens || 0),
+    updatedAt: now,
+  };
+  await Promise.all([
+    appStats().doc(input.appId).set({ appId: input.appId, ...inc }, { merge: true }),
+    dailyDoc(input.appId, date).set({ appId: input.appId, date, expireAt: expireAt(), ...inc }, { merge: true }),
+    appUsers().doc(userKey(input.appId, input.userId)).set({ appId: input.appId, userId: input.userId, ...inc }, { merge: true }),
+  ]);
+}
+
 export async function recordReportStats(input: ReportStatsInput): Promise<void> {
   const now = nowIso();
   const date = utcDate();

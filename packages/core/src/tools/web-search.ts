@@ -11,6 +11,30 @@ export interface SearchResult {
   snippet: string;
 }
 
+/** The backend `searchWeb` will use, given the current configuration. */
+export function searchProvider(): 'brave' | 'tavily' | 'duckduckgo' {
+  if (config.search.braveApiKey) return 'brave';
+  if (config.search.tavilyApiKey) return 'tavily';
+  return 'duckduckgo';
+}
+
+/**
+ * Estimated USD for one search/fetch call, from the SAME priority `searchWeb`
+ * uses. Keeping the choice and its price in one place is the point: they used to
+ * be decided in different files, so a Brave key meant Brave served the traffic
+ * while the accounting charged Tavily's rate — that is, zero.
+ */
+export function searchCostPerCall(): number {
+  switch (searchProvider()) {
+    case 'brave':
+      return config.search.braveCostPerCallUsd;
+    case 'tavily':
+      return config.search.costPerCallUsd;
+    default:
+      return 0; // keyless DuckDuckGo
+  }
+}
+
 /** Runs a web search via the highest-priority configured backend. */
 export async function searchWeb(query: string): Promise<SearchResult[]> {
   if (config.search.braveApiKey) return searchBrave(query);

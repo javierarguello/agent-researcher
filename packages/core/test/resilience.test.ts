@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 
 import { vi } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => ({
+  // The engine asks the search module what a call costs, so a mock of it must
+  // answer too. Free here: these tests assert behaviour, not spend.
+  searchCostPerCall: () => 0,
   searchWeb: async () => [{ title: 't', url: `https://x.com/${Math.random()}`, snippet: 's' }],
   extractPages: async (urls: string[]) => urls.map((url) => ({ url, ok: true, content: 'page' })),
 }));
@@ -10,6 +13,7 @@ import { runResearch } from '../src/engine/research-engine.js';
 import { getTemplate } from '../src/templates/registry.js';
 import { __setProviderForTests } from '../src/llm/models.js';
 import { MockLlmProvider } from './mocks/llm.js';
+import { config } from '../src/config.js';
 
 const template = getTemplate('florida-business-for-sale')!;
 const params = () => template.paramsSchema.parse({ industry: 'x', mode: 'essential' }) as Record<string, unknown>;
@@ -79,6 +83,26 @@ describe('resilience — per-step retry, resume, degrade', () => {
     expect(scout.output).toBeUndefined(); // carried over, not re-run
     expect(analyst.output).toBeDefined(); // ran in this dispatch
     expect(second.report).toHaveProperty('shortlist'); // …and run 1's work survived
+  });
+
+  it('charges failed attempts, not just the ones that worked', async () => {
+    // The most expensive jobs in the system are the ones that retry and degrade:
+    // every failed attempt still ran its whole research loop and its synthesis
+    // calls. Booking cost only on the success path made those jobs report ~$0,
+    // which meant no dashboard could see the money and no fix could be measured.
+    __setProviderForTests('gemini-vertex', failingMock('market_overview', 999));
+    const out = await runResearch({ template, params: params(), jobId: 'r5', generatedAt: 't', finalize: true });
+
+    const analyst = out.trace.agents.find((a) => a.id === 'market-analyst')!;
+    expect(analyst.status).toBe('failed');
+    expect(analyst.attempts).toBe(config.workflow.agentMaxAttempts); // it tried, and paid, every time
+    expect(analyst.cost.outputTokens).toBeGreaterThan(0);
+    expect(analyst.cost.usd).toBeGreaterThan(0);
+
+    // …and that spend reaches the job total, which is what anyone actually reads.
+    const summed = out.trace.agents.reduce((n, a) => n + a.cost.usd, 0);
+    expect(out.trace.cost.usd).toBeGreaterThanOrEqual(summed - 1e-9);
+    expect(out.meta.cost.usd).toBeGreaterThan(0);
   });
 
   it('DEGRADES + WARNS after exhausting retries on the final attempt', async () => {
