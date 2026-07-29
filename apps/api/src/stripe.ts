@@ -5,7 +5,7 @@
  * needed here.
  */
 import Stripe from 'stripe';
-import { config } from '@agent-researcher/core';
+import { config, logEvent } from '@agent-researcher/core';
 
 let client: Stripe | undefined;
 
@@ -90,7 +90,12 @@ export function isValidAppId(appId: string): boolean {
 }
 
 export async function listStripePlans(appId: string, lang = 'en'): Promise<StripePlan[]> {
-  if (!isValidAppId(appId)) return [];
+  if (!isValidAppId(appId)) {
+    // Returning [] silently would show an empty pricing page with nothing in the
+    // logs to explain it.
+    logEvent({ jobId: '-', appId }, 'WARNING', 'stripe.invalid_app_id', {});
+    return [];
+  }
   const res = await stripe().products.search({
     query: `active:'true' AND metadata['appId']:'${appId}'`,
     expand: ['data.default_price'],

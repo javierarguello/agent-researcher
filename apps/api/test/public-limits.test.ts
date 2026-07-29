@@ -149,6 +149,28 @@ describe('client IP resolution', () => {
   });
 });
 
+describe('burst isolation', () => {
+  it('a busy read-only route cannot lock a whole NAT out of signing in', async () => {
+    // The burst window is shared across public routes on purpose, so a flood can't
+    // be spread across them. But a legitimately busy read-only route would then
+    // exhaust it for everyone behind one egress IP — a corporate NAT is a single
+    // address to us — so /plans gets its own window.
+    __resetBurst();
+    const ip = '198.51.100.42';
+    for (let i = 0; i < 40; i++) {
+      await app.inject({ method: 'GET', url: '/plans?appId=fbizlab', headers: { 'x-forwarded-for': ip } });
+    }
+    // Same IP, an auth route: must still be served.
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'password', email: 'someone@x.com', password: 'x' },
+      headers: { 'x-forwarded-for': ip },
+    });
+    expect(login.statusCode).not.toBe(429);
+  });
+});
+
 describe('burst guard', () => {
   it('blocks a flood from one IP inside the minute, and lets others through', () => {
     __resetBurst();

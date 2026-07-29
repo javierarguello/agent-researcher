@@ -172,8 +172,28 @@ never runs for that job.
 
 ## Closed
 
-### ~~A1 · `/plans` was an unauthenticated, unmetered Stripe amplifier~~
-`done (ebda3cc)`
+### ~~A1 · The Stripe catalog was an unmetered amplifier~~
+`done (ebda3cc, completed in 7fe9211)`
+
+The first pass metered `/plans` and left `/credits/plans` — the route the product
+UI actually calls, uncached, unmetered, and hit on every mount and window focus
+because its React Query hook had no `staleTime`. The meter went on the public
+door while the busier one stayed open.
+
+Now: the landing doesn't call the API at all. The catalog is fetched from Stripe
+at build time (`apps/fbizlab/scripts/fetch-plans.mjs`) and baked into
+`dist/plans.json`, re-baked by a daily schedule per environment — dev's build
+reads the dev API and therefore dev/sandbox Stripe. The authenticated route is
+cached on the same key as the public one and metered **per user**, so a heavy
+client slows only itself. `/plans` also got its own burst window, so a busy
+read-only route can no longer exhaust the shared one and 429 sign-in for everyone
+behind a NAT.
+
+The scheduled prod run builds the released ref, not the default branch, and skips
+itself cleanly until that ref exists — a nightly cron on `main` would otherwise
+ship unreleased code to production every night.
+
+<details><summary>Original entry</summary>
 
 The cache could not help: empty results were deliberately not stored and an
 unknown `appId` always produces one, so a fresh appId per request was a
@@ -182,6 +202,7 @@ refused before Stripe is touched, empty results get a short TTL instead of none,
 and the route has a per-IP limit. `appId` is validated against the slug shape it
 actually is rather than escaped, before reaching Stripe's search DSL.
 `/credits/checkout` (two Stripe calls, no limit) got a per-user one.
+</details>
 
 ### ~~A2 · The app-wide hourly counter was spent before the caller paid~~
 `done (24e87e5, corrected in 1630bdb)`

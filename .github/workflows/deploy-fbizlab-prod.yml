@@ -1,5 +1,15 @@
 # Build + deploy the public FloridaBizLab SPA (apps/fbizlab) to the PROD Firebase
-# Hosting site. Manual trigger only (workflow_dispatch) — prod releases are deliberate.
+# Hosting site. Dispatch for releases; a nightly schedule re-bakes the catalog.
+#
+# The pricing catalog is baked into the build (apps/fbizlab/scripts/fetch-plans.mjs)
+# and read from the PROD API, so it carries prod's Stripe data — dev's build reads
+# the dev API and therefore dev/sandbox Stripe. One schedule per environment.
+#
+# The scheduled run checks out `deploy-prod`, the released ref (the same branch the
+# API's prod deploy uses), NOT the default branch. A cron on the default branch
+# would quietly ship unreleased code to production every night. Until that branch
+# exists the scheduled run skips itself cleanly instead of failing daily:
+#   git push origin main:deploy-prod
 #
 # Every key/id/URL differs between dev and prod. This workflow reads FBIZLAB_PROD_*
 # variables and the GCP_SA_KEY_PROD secret; it shares nothing with the dev workflow.
@@ -15,6 +25,9 @@
 name: Deploy fbizlab SPA (prod)
 
 on:
+  # Nightly catalog re-bake from the released ref (07:20 UTC, after dev).
+  schedule:
+    - cron: '20 7 * * *'
   workflow_dispatch: {}
 
 concurrency:
@@ -32,16 +45,38 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      # A scheduled run must never publish the default branch. Skip cleanly when
+      # the released ref doesn't exist yet, rather than red-Xing every night.
+      - name: Resolve the ref to build
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}" deploy-prod >/dev/null 2>&1; then
+            echo "ref=deploy-prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "No deploy-prod branch yet — skipping the scheduled catalog re-bake."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.ref.outputs.skip != 'true'
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
 
       - uses: actions/setup-node@v4
+        if: steps.ref.outputs.skip != 'true'
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
+        if: steps.ref.outputs.skip != 'true'
 
       - name: Build fbizlab SPA (prod config)
+        if: steps.ref.outputs.skip != 'true'
         env:
           VITE_API_BASE_URL: ${{ vars.FBIZLAB_PROD_API_BASE_URL }}
           VITE_GOOGLE_CLIENT_ID: ${{ vars.FBIZLAB_PROD_GOOGLE_CLIENT_ID }}
@@ -51,11 +86,13 @@ jobs:
         run: npm run build -w @agent-researcher/fbizlab
 
       - name: Authenticate to Google Cloud (prod service-account key)
+        if: steps.ref.outputs.skip != 'true'
         uses: google-github-actions/auth@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
           credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
 
       - name: Deploy to Firebase Hosting (prod site)
+        if: steps.ref.outputs.skip != 'true'
         working-directory: apps/fbizlab
         run: npx --yes firebase-tools deploy --only hosting:fbizlab-prod --project "${GCP_PROJECT_ID}" --non-interactive

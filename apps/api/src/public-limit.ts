@@ -86,6 +86,17 @@ export interface PublicLimitSpec {
   perIp?: number;
   /** Per-target hourly cap plus the target (an email), when the route has one. */
   perKey?: { limit?: number; value?: string };
+  /**
+   * Give this route its own burst window instead of the one shared by every
+   * public route. Use it for read-only routes that legitimate traffic hits often:
+   * otherwise a busy page can exhaust the shared window and 429 sign-in and
+   * registration for everyone behind the same egress IP — a corporate NAT, CGNAT
+   * or mobile carrier is one address to us.
+   *
+   * The shared window is the default on purpose: it is what stops someone
+   * spreading a flood across routes to stay under each individual cap.
+   */
+  isolatedBurst?: boolean;
 }
 
 /**
@@ -95,7 +106,7 @@ export interface PublicLimitSpec {
 export async function publicLimit(req: FastifyRequest, reply: FastifyReply, spec: PublicLimitSpec): Promise<boolean> {
   const ip = clientIp(req);
 
-  const tooFast = !burstOk(ip);
+  const tooFast = !burstOk(spec.isolatedBurst ? `${spec.route}:${ip}` : ip);
   const entries: RateLimitEntry[] = [];
   if (!tooFast) {
     if (spec.perIp) entries.push({ key: `pub:${spec.route}:ip:${ip}`, limit: spec.perIp, scope: 'ip' });

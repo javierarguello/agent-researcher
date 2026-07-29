@@ -48,10 +48,17 @@ export const normalizeEmail = (email: string): string => {
   const at = e.lastIndexOf('@');
   if (at <= 0) return e;
   let local = e.slice(0, at);
-  const domain = e.slice(at + 1);
+  // A trailing dot is a legal FQDN form of the same domain, and would otherwise be
+  // a second key for one inbox.
+  let domain = e.slice(at + 1).replace(/\.$/, '');
   const plus = local.indexOf('+');
   if (plus >= 0) local = local.slice(0, plus); // drop +subaddress
-  if (domain === 'gmail.com' || domain === 'googlemail.com') local = local.replace(/\./g, '');
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    local = local.replace(/\./g, '');
+    // googlemail.com IS gmail.com — same inbox. Collapsing the dots but not the
+    // domain left two keys for one address, which doubles any per-address limit.
+    domain = 'gmail.com';
+  }
   return local ? `${local}@${domain}` : e;
 };
 const docId = (appId: string, email: string) => `${appId}__${normalizeEmail(email)}`;

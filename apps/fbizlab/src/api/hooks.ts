@@ -71,9 +71,30 @@ export function useMyStats() {
 export function usePlans(lang: string) {
   return useQuery({ queryKey: ['plans', lang], queryFn: () => api<{ plans: CreditPlan[] }>(`/credits/plans?lang=${lang}`) });
 }
-/** Public plans (no auth) for the landing pricing section — straight from Stripe via the API, localized. */
+/**
+ * Public plans for the landing pricing section.
+ *
+ * Served from `plans.json`, baked into the build by `scripts/fetch-plans.mjs`, so
+ * a visitor loading the landing costs nothing and reaches neither our API nor
+ * Stripe. The catalog changes when someone edits it in Stripe — a daily scheduled
+ * rebuild (and a manual trigger) is the right cadence for that.
+ *
+ * Falls back to the API when the file isn't there, which is the `npm run dev`
+ * case: the dev server has no build step to bake it.
+ */
 export function usePublicPlans(appId: string, lang: string) {
-  return useQuery({ queryKey: ['public-plans', appId, lang], staleTime: 5 * 60_000, queryFn: () => api<{ plans: CreditPlan[] }>(`/plans?appId=${encodeURIComponent(appId)}&lang=${lang}`, { anonymous: true }) });
+  return useQuery({
+    queryKey: ['public-plans', appId, lang],
+    staleTime: Infinity,
+    queryFn: async () => {
+      const baked = await fetch('/plans.json').catch(() => undefined);
+      if (baked?.ok) {
+        const catalog = (await baked.json()) as Record<string, CreditPlan[]>;
+        if (catalog[lang]?.length) return { plans: catalog[lang]! };
+      }
+      return api<{ plans: CreditPlan[] }>(`/plans?appId=${encodeURIComponent(appId)}&lang=${lang}`, { anonymous: true });
+    },
+  });
 }
 export function useCheckout() {
   return useMutation({

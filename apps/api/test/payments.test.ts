@@ -155,6 +155,47 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     expect(r.headers['cache-control']).toBe('no-store');
   });
 
+  it('an empty catalog is cached briefly, so repeat requests do not each hit Stripe', async () => {
+    // The third pillar of the amplifier fix, and the easiest to delete by accident:
+    // the `no-store` header above is derived from plans.length, not from cache
+    // state, so it passes with or without the short TTL. This asserts the call count.
+    await createApp({ appId: 'empty-app', name: 'Empty', role: 'app' });
+    vi.mocked(listStripePlans).mockClear();
+    for (let i = 0; i < 5; i++) {
+      expect((await app.inject({ method: 'GET', url: '/plans?appId=empty-app' })).statusCode).toBe(200);
+    }
+    expect(listStripePlans).toHaveBeenCalledTimes(1);
+  });
+
+  it('/credits/plans is metered per user and shares the public cache line', async () => {
+    // The route the product UI actually calls. It was left uncached and unmetered
+    // while the public one was fixed — the more-used door of the two.
+    vi.mocked(listStripePlans).mockClear();
+    const t = await token('fbizlab', 'shopper@x.com');
+    for (let i = 0; i < 3; i++) {
+      expect((await app.inject({ method: 'GET', url: '/credits/plans', headers: auth(t) })).statusCode).toBe(200);
+    }
+    expect(listStripePlans).toHaveBeenCalledTimes(1); // cached, not one Stripe call each
+
+    // …and the cache line is shared with the public route, not a parallel one.
+    await app.inject({ method: 'GET', url: '/plans?appId=fbizlab' });
+    expect(listStripePlans).toHaveBeenCalledTimes(1);
+  });
+
+  it('one user hammering /credits/plans is limited without affecting anyone else', async () => {
+    const heavy = await token('fbizlab', 'heavy@x.com');
+    let limited = 0;
+    for (let i = 0; i < 62; i++) {
+      const r = await app.inject({ method: 'GET', url: '/credits/plans', headers: auth(heavy) });
+      if (r.statusCode === 429) limited++;
+    }
+    expect(limited).toBeGreaterThan(0); // the cap (60/h/user) is real
+
+    // Metered per user, so a different customer is untouched.
+    const other = await token('fbizlab', 'other@x.com');
+    expect((await app.inject({ method: 'GET', url: '/credits/plans', headers: auth(other) })).statusCode).toBe(200);
+  });
+
   it('CONCURRENT duplicate webhooks credit only once (no over-credit)', async () => {
     const results = await Promise.all(Array.from({ length: 5 }, () => webhook(purchaseEvent('pi_race', 15))));
     expect(results.every((r) => r.statusCode === 200)).toBe(true);

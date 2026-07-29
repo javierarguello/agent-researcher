@@ -1360,7 +1360,9 @@ app.get(
     const lang = reqLang(req);
 
     // Unauthenticated and it reaches Stripe, so it needs its own meter.
-    if (await publicLimit(req, reply, { route: 'plans', perIp: config.publicLimits.plansPerHourPerIp })) return reply;
+    // Its own burst window: this is a read-only catalog, and it must not be able
+    // to exhaust the shared one and lock a whole NAT out of signing in.
+    if (await publicLimit(req, reply, { route: 'plans', perIp: config.publicLimits.plansPerHourPerIp, isolatedBurst: true })) return reply;
 
     // Refuse an appId that isn't ours BEFORE touching Stripe. This is the actual
     // amplifier fix: an unknown app used to miss the cache by construction (empty
@@ -1398,10 +1400,36 @@ app.get(
       querystring: { type: 'object', additionalProperties: false, properties: { ...langQuery } },
     },
   },
-  async (req) => {
+  async (req, reply) => {
     const appId = req.auth!.appId;
+    const userId = req.auth!.email;
     if (!stripeConfigured()) return { plans: [] };
-    return { plans: await listStripePlans(appId, reqLang(req)) };
+
+    // This route reaches Stripe, and it is the one the product UI actually calls —
+    // the public `/plans` was metered first while this one was left open, which is
+    // the more-used door. Metered PER USER, not per IP: a heavy client should slow
+    // itself down, never everyone behind the same egress address.
+    if (config.server.appEnv !== 'local') {
+      const rl = await checkRateLimits([
+        { key: `plans:${appId}:${userId}`, limit: config.publicLimits.plansPerHourPerUser, scope: 'user' },
+      ]);
+      if (!rl.allowed) {
+        reply.header('Retry-After', '3600');
+        return reply.code(429).send({ error: 'Too many requests. Please try again later.', code: 'rate_limited' });
+      }
+    }
+
+    // Same cache line as the public route: same data, same key, so the two share
+    // one Stripe call rather than one each.
+    const lang = reqLang(req);
+    const plans = await cached(
+      `plans:${appId}:${lang}`,
+      PUBLIC_TTL_MS,
+      () => listStripePlans(appId, lang),
+      (p) => p.length > 0,
+      PUBLIC_EMPTY_TTL_MS,
+    );
+    return { plans };
   },
 );
 
@@ -1631,7 +1659,10 @@ app.post(
         properties: {
           name: { type: 'string', minLength: 1, maxLength: 200 },
           role: { type: 'string', enum: ['admin', 'app'] },
-          appId: { type: 'string', maxLength: 128, pattern: '^[a-zA-Z0-9._-]+$', description: 'Optional slug doc id; a UUID is generated if omitted.' },
+          // Must stay within what `isValidAppId` accepts (apps/api/src/stripe.ts):
+          // an app id outside it is silently unbillable — no catalog, no checkout —
+          // which is a miserable thing to debug months after the app was created.
+          appId: { type: 'string', maxLength: 64, pattern: '^[a-z0-9][a-z0-9-_]{0,63}$', description: 'Optional slug doc id (lowercase, digits, - and _); a UUID is generated if omitted.' },
           rateLimitPerHour: { type: 'integer', minimum: 1, maximum: 1_000_000, description: 'Optional reports/hour cap.' },
           allowedTemplates: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 128 }, description: 'If set, the only models this app may run (admin apps are exempt).' },
           googleClientId: { type: 'string', maxLength: 256 },

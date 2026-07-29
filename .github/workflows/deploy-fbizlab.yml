@@ -15,6 +15,12 @@
 #   gh variable set FBIZLAB_DEV_API_BASE_URL --body "https://agent-researcher-dev-api-xxxxx.run.app"
 #   gh variable set FBIZLAB_DEV_GOOGLE_CLIENT_ID --body "1234-abc.apps.googleusercontent.com"
 #
+#
+# The pricing catalog is baked into the build (scripts/fetch-plans.mjs), so the
+# landing never calls the API or Stripe for it. That means a Stripe price change
+# only reaches visitors on the next build — hence the daily schedule below, plus
+# workflow_dispatch for "publish it now".
+#
 name: Deploy fbizlab SPA (dev)
 
 on:
@@ -23,6 +29,9 @@ on:
     paths:
       - 'apps/fbizlab/**'
       - '.github/workflows/deploy-fbizlab.yml'
+  # Re-bake the catalog daily (06:20 UTC — off the hour, cheap runner slot).
+  schedule:
+    - cron: '20 6 * * *'
   workflow_dispatch: {}
 
 concurrency:

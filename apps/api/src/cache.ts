@@ -52,10 +52,26 @@ export async function cached<T>(
   const now = Date.now();
   const hit = store.get(key);
   if (hit && hit.expires > now) return hit.value as T;
+  if (hit) store.delete(key); // expired: don't let dead keys accumulate
+  sweep(now);
   const value = await load();
   const ttl = shouldCache(value) ? ttlMs : rejectedTtlMs;
   if (ttl > 0) store.set(key, { value, expires: now + ttl });
   return value;
+}
+
+/**
+ * Drop expired entries, occasionally. The store is keyed partly by caller-supplied
+ * values (an appId), so without this a caller probing distinct ids leaves an entry
+ * per probe in a Map that lives as long as the process. Cheap because it only runs
+ * once the store is big enough to be worth walking.
+ */
+const SWEEP_ABOVE = 500;
+let lastSweep = 0;
+function sweep(now: number): void {
+  if (store.size < SWEEP_ABOVE || now - lastSweep < 60_000) return;
+  lastSweep = now;
+  for (const [k, v] of store) if (v.expires <= now) store.delete(k);
 }
 
 /** Drop cached entries whose key starts with `prefix` (e.g. `plans:`). */

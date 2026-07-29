@@ -167,9 +167,13 @@ export const config = {
     contactPerHourPerIp: int('PUBLIC_CONTACT_PER_HOUR_IP', 5),
     /** Token-consuming link endpoints (verify-email / reset-password). */
     tokenPerHourPerIp: int('PUBLIC_TOKEN_PER_HOUR_IP', 30),
-    /** The public pricing catalog. A real visitor loads it once or twice a
-     *  session; every miss is a live Stripe call. */
+    /** The public pricing catalog. The landing no longer calls it (the catalog is
+     *  baked into the build), so this now only meters direct API consumers. */
     plansPerHourPerIp: int('PUBLIC_PLANS_PER_HOUR_IP', 60),
+    /** The authenticated catalog, per user. Opening the buy-credits dialog a few
+     *  times a session is normal; it is metered per user so one heavy client
+     *  cannot affect anyone else. */
+    plansPerHourPerUser: int('PLANS_PER_HOUR_PER_USER', 60),
     /** Checkout is authenticated, but each call makes two Stripe requests, so it
      *  is metered per user rather than per IP. Buying is a deliberate act. */
     checkoutPerHourPerUser: int('CHECKOUT_PER_HOUR_PER_USER', 20),
