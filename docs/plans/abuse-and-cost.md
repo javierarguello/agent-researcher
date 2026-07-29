@@ -191,7 +191,7 @@ a distinct number.
 
 
 ### ~~A1 · The Stripe catalog was an unmetered amplifier~~
-`done (ebda3cc, completed in 7fe9211)`
+`done (ebda3cc, completed in 6776b63)`
 
 The first pass metered `/plans` and left `/credits/plans` — the route the product
 UI actually calls, uncached, unmetered, and hit on every mount and window focus
@@ -223,7 +223,7 @@ actually is rather than escaped, before reaching Stripe's search DSL.
 </details>
 
 ### ~~A2 · The app-wide hourly counter was spent before the caller paid~~
-`done (24e87e5, corrected in 1630bdb)`
+`done (24e87e5, corrected in c39f806)`
 
 `checkRateLimits` check-and-increments, and it ran before moderation and credits —
 so a request that died later still spent a slot in the bucket every customer of
