@@ -184,7 +184,7 @@ actually is rather than escaped, before reaching Stripe's search DSL.
 `/credits/checkout` (two Stripe calls, no limit) got a per-user one.
 
 ### ~~A2 · The app-wide hourly counter was spent before the caller paid~~
-`done (<pending>)`
+`done (24e87e5)`
 
 `checkRateLimits` check-and-increments, and it ran before moderation and credits —
 so a request that died later still spent a slot in the bucket every customer of
