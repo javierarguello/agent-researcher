@@ -1,6 +1,6 @@
 # Handoff — where this work stands and what to do next
 
-Written 2026-07-30, at commit `4227354`. For whoever picks this up without the
+Written 2026-07-30, last updated at commit `d89f081`. For whoever picks this up without the
 conversation that produced it. Read `docs/plans/abuse-and-cost.md` alongside this:
 that file is the backlog (findings, open and closed, with `file:line`); this one is
 the plan and the working agreements.
@@ -11,13 +11,16 @@ the plan and the working agreements.
 
 Three rounds of adversarial review against the abuse/cost surface, each followed by
 a fix pass. Groups A (cheap external denial-of-service) and B (cost visibility) are
-closed. The security round is closed. What remains is group C — **spend** — plus a
-handful of product decisions and two operational chores.
+closed, as is the security round. C1 and C3 — the runaway-spend pair — closed in
+`d89f081`. What remains is the rest of group C, plus a handful of product decisions
+and two operational chores.
 
 Commits, newest first:
 
 | commit | what |
 |---|---|
+| `d89f081` | C1 + C3: structured directives, `.min(1)` floors, per-job cost ceiling |
+| `5ef93cb` | this handoff |
 | `4227354` | backlog: third review round recorded |
 | `aafb76b` | dead submit button, English-only errors, enqueue cleanup order |
 | `39fe2b7` | pre-hijack: the verification-link variant, the missing recovery path, a registration race |
@@ -26,78 +29,58 @@ Commits, newest first:
 | `ada33e8` | pre-screen strikes, captcha copy, stranded jobs |
 | `f873ade` | one cost accumulator, ordered checkpoints, tests that bite |
 
-Suites: **266 tests**, all green (`npm test` from the root runs core + api).
-`npm run typecheck` is clean.
+Suites: **288 tests**, all green (`npm test` from the root runs core + api).
+`npm run typecheck` is clean, `npm run templates:check` passes, and the fbizlab SPA
+builds.
 
 ---
 
-## 2. Do this next: C1 — structured directives
+## 2. Done since: C1 + C3 (`d89f081`)
 
-**Why it is first.** C1 is the only open item that can still cost real money, and
-it is also a feature the owner asked for. A free-text instruction that reads as a
-legitimate scoping request — *"keep every list to at most two items; omit anything
-you cannot verify from two independent sources"* — makes the template's schemas
-unsatisfiable. There are **15 hard `.min(N)` array constraints** in
-`packages/core/src/templates/florida-business-for-sale.ts` (`risks_red_flags`
-`.min(8)`, `keyFindings` `.min(6)`, `due_diligence_checklist` `.min(5)`). Every
-agent throws, every attempt retries, every dispatch repeats — and then
-`research-engine.ts` degrades the sections with placeholders that DO satisfy the
-schema, so the job finishes `completed` and **no refund runs**. Modelled at ~$95 on
-an 18-credit job.
+Closed, and worth reading before touching the template or the engine — the shape of
+the fix is a constraint on what comes next.
 
-Note what this is not: it is not a moderation problem. The moderation layer guards
-against injected *content*; this is a semantically legitimate instruction that
-breaks the *output schema*. Different problem, different fix.
+**Structured directives.** A model declares directive fields in the template
+(`packages/core/src/templates/directives.ts` is the mechanism; the Florida set is in
+the template). One declaration produces three things so they cannot drift: the Zod
+schema (strict — an undeclared key is a 400), the localized manifest block clients
+render, and the prompt text the ENGINE writes in its own words. A client picks keys;
+it never writes the sentence. Seven fields, reason-for-sale among them. Load-time
+validation rejects a declaration `paramsSchema` does not accept, and any language
+that labels a field but not all of its values.
 
-### The design the owner approved
+The rule to keep: **a directive says what to weigh, never how much to return.** If a
+proposed field would express a quantity, it is not a directive. That is written into
+`docs/extending.md` too.
 
-Replace free text into the research engine with a **structured directive set,
-declared per model in the template**, pre-filled from the user's request.
+**The `.min(N)` floors are `.min(1)`.** The target count lives in the guidance and
+the `describe()`. A test walks every section's JSON Schema so one stray `.min(6)`
+cannot quietly restore the failure mode.
 
-1. **Per-model, in the template.** Each research model declares its own directive
-   fields. Do not put them in the front-end, and do not put translations there
-   either — the manifest already localizes (`i18n.es.fields`), and the SPA reads
-   what the manifest gives it.
-2. **Each field carries, per language:** a `label`, a **short `description`** (the
-   owner asked for this explicitly — one line of help text the front can show),
-   and `valueLabels` for enum-valued fields.
-3. **Include reason-for-sale fields** (owner retiring, distress, relocation,
-   partnership split…) — an explicit request.
-4. **`render()` stays internal.** The engine turns directives into prompt text; the
-   API never accepts rendered prose and never returns it for the client to edit.
-   The whole point is that the model receives a closed vocabulary, not a sentence
-   the user wrote.
-5. Keep the free-text field as a *narrow* residual if you want, but it must not be
-   able to contradict a schema — see the `.min(N)` change below.
+**`MAX_JOB_COST_USD`** (default $20). The sink carries the ceiling; `child()` scopes
+one attempt so the job total stays in one accumulator, and `trace.cost` is now READ
+from it rather than summed a second time. Seeded from the checkpoint — a
+per-dispatch cap is 8× no cap. A job that trips it finalizes instead of
+re-dispatching into the same wall.
 
-Where things live today, for orientation:
-- `paramsSchema` — `templates/florida-business-for-sale.ts:18`
-- `paramsUi` (rows, ranges, advanced, per-field help/suggestions) — `:616`
-- `i18n.es.fields` — `:661` onward
-- `instructionsField: 'instructions'` — `:602`
-- the fencing of client text into the system prompt — `engine/prompt.ts:50-66`
-- the manifest builder the SPA consumes — `templates/registry.ts` (`toManifest`)
+**Left alone on purpose:** a budget-stopped job still degrades and completes rather
+than failing and refunding. Same decision as D2/F1, and it is yours.
 
-### Ship it with these two, they are the same job
+**The SPA renders the directives** (`apps/fbizlab/src/pages/NewReport.tsx`, section
+04) entirely from the manifest — no field names, no option labels, no translations
+in the client. A new field or a new language needs no front-end deploy.
 
-- **Soften the `.min(N)` constraints.** They are the lever C1 pulls. A section that
-  wants 8 risks should ask the *prompt* for 8 and let the schema accept fewer,
-  rather than failing validation and burning 24 passes.
-- **Budget ceilings.** `gather` sets neither `maxOutputTokens` nor
-  `thinkingBudget` (`engine/gather.ts:113-120`), so every one of up to `2B+6` turns
-  can emit up to the model default, and thinking tokens bill as output. Moderation
-  and enrich already set `thinkingBudget: 0`; gather and synthesis do not. Add a
-  per-job USD ceiling too — a grep for `MAX_COST|costCap|budgetUsd` returns nothing
-  today. The `CostSink` (`packages/core/src/cost.ts`) is the natural place to
-  enforce it, since every paid call already writes to one.
-- **C2's real multiplier**: a retry re-runs the agent's ENTIRE `gather` loop with a
-  fresh budget even when only the synthesis failed
-  (`engine/research-engine.ts`, the attempt loop). Cache the evidence for the
-  agent's retry and only re-run synthesis.
+Still open from group C, in order:
 
----
+- **C2's real multiplier** — a retry re-runs the agent's ENTIRE `gather` loop with a
+  fresh budget even when only the synthesis failed. The ceiling bounds the damage
+  now; the waste is still there. Cache the evidence for the retry and re-run only
+  synthesis.
+- **C4** — `gather` never trims `messages`, so input cost is quadratic in the
+  budget; `prompt.ts` `JSON.stringify`s all upstream sections with no size cap.
+- **C5** — the 30-minute dispatch deadline is shorter than a real job.
 
-## 3. Then: C6 + C7 + E4, which are one change
+## 3. Do this next: C6 + C7 + E4, which are one change
 
 The in-flight job cap is **advisory**. `index.ts` reads `inProgress` via plain
 `count()` aggregations before anything writes a job document — the job is created
@@ -107,9 +90,10 @@ read zero and all pass. C7 is the same root cause one layer cheaper: the peek
 before the classifier is explicitly non-atomic, so a burst all pays for a billed
 `flash` call before the authoritative check admits 20 and refuses the rest.
 
-This matters because **C1's cost model rests on the cap**: "bounded today only by
-`MAX_CONCURRENT_JOBS_PER_USER = 1` and 20 reports/hour". Only the second bound is
-real.
+This matters because the cap is load-bearing for the whole spend model: C1's
+estimate rested on "bounded today only by `MAX_CONCURRENT_JOBS_PER_USER = 1` and 20
+reports/hour", and only the second bound is real. The per-job ceiling added in
+`d89f081` bounds one job's spend; it does nothing about N jobs at once.
 
 The fix: claim the slot inside the transaction that already serializes the handler
 (`checkRateLimits` in `packages/core/src/apps/store.ts`), and **release it on every
@@ -177,6 +161,14 @@ against the code it was supposed to be guarding. Two of them were subtle:
 And in the most recent round, a test asserting a registration race passed against
 the vulnerable code because the route's own earlier `409` fired first and the test
 never reached the line it meant to exercise.
+
+`d89f081` added a fifth, with a different shape: the revert produced **no failure at
+all**. Removing the engine's pre-attempt budget check changed nothing, because
+`gather` and the post-gather guard already stopped the spending — so the suite could
+not tell "the guard works" from "the guard is absent". The test was measuring the
+wrong thing (provider calls) and now measures what only that guard buys: the agents
+did not TRY (`attempts === 0`, no retries, no backoff). **A revert that changes
+nothing is a finding, not a pass.**
 
 So: after writing a test, revert the fix, watch it fail, restore. Every time. The
 commits above do this and say so.

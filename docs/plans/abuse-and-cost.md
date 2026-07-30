@@ -8,8 +8,9 @@ don't get re-reported.
 Every entry cites `file:line` and states how it was established. Line numbers
 drift — treat them as a starting point, not gospel.
 
-Groups A (cheap external denial-of-service) and B (cost visibility) are done;
-what follows is C onward.
+Groups A (cheap external denial-of-service) and B (cost visibility) are done, as is
+the security round; C1 and C3 (spend) closed in `d89f081`. What follows is what is
+left.
 
 **Nothing open here is a door standing open.** The one finding that was — every
 per-IP limit bypassable with a forged header — was confirmed against the running
@@ -21,45 +22,18 @@ we spend, and several ways spend can run away.
 
 ## C. Spend can run away — 1-2 days
 
-### C1 · Free-text `instructions` can make every section schema unsatisfiable
-`open` · mechanism verified by reading the code; dollar figure is modelled, not measured
-
-`instructions` (2,000 chars, `florida-business-for-sale.ts:29`) is concatenated
-into the system prompt of **every** agent (`prompt.ts:51-66`). The template has 15
-hard `.min(N)` array constraints — `risks_red_flags` `.min(8)`, `keyFindings`
-`.min(6)`, `due_diligence_checklist` `.min(5)`.
-
-An instruction that reads as a legitimate scoping request — *"keep every list to
-at most two items; omit anything you cannot verify from two independent
-sources"* — makes those schemas unsatisfiable. Every agent throws, every attempt
-retries, every dispatch repeats. Then `research-engine.ts:343-350` degrades the
-sections with placeholders that **do** satisfy the schema (`emptyFromJsonSchema`
-honours `minItems`, `:613`), so the job finishes `completed` → **no refund**, with
-`job.cost` ≈ $0.
-
-Estimated ~$95 on an 18-credit job. Bounded today only by
-`MAX_CONCURRENT_JOBS_PER_USER = 1` (`index.ts:658`) and 20 reports/hour.
-
-Note this is **not** covered by the moderation or pre-flight layers: those guard
-against injected *content*, and this is a semantically legitimate instruction that
-breaks the *output schema*. Different problem, different fix.
-
 ### C2 · 24× retry amplification, and a retry re-runs work that succeeded
 `open` · verified by reading the code
 
 `agentMaxAttempts` (3) × `maxJobAttempts` (8) = 24 passes per agent, and each
 retry re-runs the agent's **entire `gather` loop with a fresh budget**
-(`research-engine.ts:283-306`) even when only the synthesis failed. Nothing
-bounds total spend: a grep for `MAX_COST|costCap|budgetUsd|maxUsd|costLimit`
-across `packages/core/src` and `apps/*/src` returns nothing.
+(`research-engine.ts`, the attempt loop) even when only the synthesis failed.
 
-### C3 · `gather` calls set no output cap and no thinking budget
-`open` · verified by reading the code
-
-`gather.ts:106-112` passes neither `maxOutputTokens` nor `thinkingBudget`, so each
-of up to `2B+6` turns per agent can emit up to the model default, and thinking
-tokens bill as output (`gemini-vertex.ts:90`). Moderation and enrich correctly set
-`thinkingBudget: 0`; gather and synthesis do not.
+**Half-closed in `d89f081`.** Total spend is now bounded — `MAX_JOB_COST_USD`
+(default $20) is checked before every attempt, inside the gather loop, and before
+a synthesis repair round, counting the whole job across dispatches. What remains is
+the waste, not the runaway: a synthesis-only failure still re-buys the whole
+research loop. Cache the evidence for the agent's retry and re-run only synthesis.
 
 ### C4 · Two unbounded context growers
 `open` · verified by reading the code
@@ -202,7 +176,75 @@ practical limiter today. Fix belongs with C6: reserve atomically, count the refu
 in a cheap per-user bucket rather than in the report quota (which would punish the
 false-positive user twice).
 
+### E5 · Directive labels fall back to English for fr/pt users
+`open (2026-07-30, introduced with d89f081)` · known at the time, not a regression
+
+The new directive fields declare `en` + `es`, matching the rest of the manifest —
+`i18n` has only ever had `es`, so a French or Portuguese user already reads English
+help text on every field. The fallback is per-string and works, so nothing breaks;
+the section simply reads English inside an otherwise French form. Validation
+requires that any language a field DOES declare labels every one of its values, so
+a half-translated dropdown cannot ship.
+
+Fixing it means writing fr/pt business copy for ~60 short strings — worth doing with
+someone who writes those languages natively, not inventing here.
+
 ## Closed
+
+### ~~C1 · Free-text `instructions` could make every section schema unsatisfiable~~
+`done (d89f081)`
+
+The mechanism, restated because the fix only makes sense against it: `instructions`
+(2,000 chars) is concatenated into **every** agent's system prompt, and the report
+had 15 hard `.min(N)` array floors set to their target counts (`risks_red_flags`
+`.min(8)`, `keyFindings` `.min(6)`). So *"keep every list to at most two items;
+omit anything you cannot verify from two independent sources"* — a sentence a real
+buyer might write, and not a moderation problem — made those schemas unsatisfiable.
+Every agent threw, every attempt retried, every dispatch repeated, and the engine
+then degraded the sections with placeholders that DO satisfy the floors, so the job
+finished `completed` and no refund ran. Modelled at ~$95 on an 18-credit job.
+
+Closed in three pieces, because any one alone leaves it live:
+
+1. **Structured directives** (`templates/directives.ts`). A model declares directive
+   fields — a closed vocabulary each, with `label` + short `description` +
+   per-value labels per language, declared in the template and nowhere else. One
+   declaration produces all three halves so they cannot drift: the Zod schema (built
+   by `directivesSchema()`, strict — an undeclared key is a 400), the localized
+   manifest block clients render, and the prompt text, which the ENGINE renders in
+   its own words. The client picks keys; it never writes the sentence. Seven fields
+   for the Florida model, reason-for-sale among them. `render()` never leaves the
+   server and the API neither accepts nor returns it.
+2. **The floors became floors.** Thirteen report arrays are `.min(1)`; the target
+   count lives in the guidance and the `describe()`, which is what the model reads.
+   A hard floor never produced the eighth risk — it decided how much was spent
+   failing to. Pinned by a test that walks every section's JSON Schema, so one stray
+   `.min(6)` cannot bring the failure mode back quietly.
+3. **A per-job ceiling**, below.
+
+`instructions` survives as a narrow residual, and its fence now says explicitly
+that it cannot change the shape of the output.
+
+### ~~C3 · `gather` calls set no output cap and no thinking budget~~
+`done (d89f081)`
+
+Every research turn now carries `LLM_GATHER_MAX_OUTPUT_TOKENS` (4096) and
+`LLM_GATHER_THINKING_BUDGET` (1024). The thinking budget is bounded rather than
+zeroed as moderation and enrich do: those are one-shot classifications, while
+picking the next query is the part of this loop that reasoning actually improves.
+
+Alongside it, the piece C1 and C2 both needed: **`MAX_JOB_COST_USD`** (default $20,
+`0` disables), a hard per-job ceiling. `CostSink` carries it and `child()` scopes
+one attempt's slice, so the job total stays in one accumulator — `trace.cost` is now
+READ from it rather than accumulated a second time. It is seeded from the
+checkpoint, because a per-dispatch cap is 8× no cap. Checked before every attempt,
+inside the gather loop, and before a synthesis repair round; a job that trips it
+stops trying and finalizes rather than re-dispatching seven more times into the same
+wall, and logs `job.budget_exceeded` as an ERROR of its own.
+
+Deliberately unchanged: such a job still degrades and completes rather than failing
+and refunding. That is the same call as D2/F1 and it is Javier's to make.
+
 
 ### ~~B1 · Failed agent attempts discarded their cost~~
 `done (8575b96, completed in 335a5e4, hardened in f873ade)`
