@@ -180,6 +180,28 @@ The per-email cap (3/h) is what stops mail-bombing one inbox; the per-IP cap mos
 catches shared egress. It is an env var, so raising it is a config change, not code.
 Related: the 429 body is English-only and the login page renders it raw.
 
+### E3 · Users blocked by the pre-screen before `ada33e8` are still blocked
+`open (2026-07-30)` · established by reading `stats/store.ts:418-447`
+
+Strikes never decay and the fix is not retroactive. Anyone who accumulated four
+pre-screen rejections — which, by the fix's own reasoning, should never have earned
+a strike — is still blocked, including from buying credits, and nothing identifies
+them. Needs a one-off pass over `app-users` clearing `blocked` + `moderationStrikes`
+where `blockedReason` names moderation. A data migration, not a code change.
+
+### E4 · A pre-screen refusal is counted by nothing
+`open (2026-07-30)` · established by reading the ordering in `index.ts`
+
+Now that a refusal earns no strike, a rejected `/research` writes to no counter at
+all: the authoritative `checkRateLimits` transaction runs after moderation, and
+`/research` is not behind the public burst guard. One account can loop it for the
+cost of ~6-8 Firestore reads and a Turnstile verify per call. The same free loop
+already exists for the 402 and 409 rejections, so this is a widening, not a new
+class — and each iteration needs a fresh single-use captcha token, which is the
+practical limiter today. Fix belongs with C6: reserve atomically, count the refusal
+in a cheap per-user bucket rather than in the report quota (which would punish the
+false-positive user twice).
+
 ## Closed
 
 ### ~~B1 · Failed agent attempts discarded their cost~~
@@ -270,6 +292,46 @@ paths also log only the parser's complaint; they now log the output-token count 
 a snippet, which is what distinguishes a truncated verdict from a model ignoring the
 schema.
 
+
+### ~~The pre-screen still rejected 22 of 58 ordinary phrasings~~
+`done (f80ac4e)`
+
+The first narrowing fixed English and left es/fr/pt untouched — including the exact
+string a code comment cited as an example of a false positive. It also opened
+evasions the old patterns caught (`s.y.s.t.e.m p.r.o.m.p.t`, `system-prompt`,
+`disregard all rules`, `enable jailbreak`). Rebuilt around the asymmetry that
+governs this layer: it rejects on its own with a hard 422 and is the only layer
+running when the classifier is off or skipped, while a miss reaches an engine that
+already fences client text as low-authority — so precision first. `squeezed` is
+replaced by `unpadded` (only runs of single characters collapse, so real word and
+sentence boundaries survive), patterns match through a separator-tolerant twin that
+KEEPS `\b`, "rules" is out of every family in all four languages, third-party
+attribution is excluded, and the shapes that are ambiguous in prose but
+unmistakable once padded are tested only against the unpadded form. The corpus —
+28 legitimate strings, 25 attacks — is the test now: 0 false positives, 0 misses.
+
+### ~~Pre-hijack, the other three variants~~
+`done (39fe2b7)`
+
+c45f679 closed the Google merge and left the siblings. `/auth/verify-email` handed
+back a SESSION for a record whose password was set by whoever registered — so a
+victim clicking a verification mail they never requested was logged straight into an
+account a stranger holds the password to, and would go on to pay into it. Verifying
+now returns `{status:'verified'}` and the user signs in, which is what proves they
+hold the password. The recovery the Google fix promised did not exist:
+`/auth/request-password-reset` only sent when a `passwordHash` existed — the exact
+field the fix deletes — so the user got "check your email" and no mail, forever. And
+registration read the record, spent ~40ms hashing, then blind-wrote, which let a
+password land on an account verified in between.
+
+### ~~One failed submit could permanently disable the button~~
+`done (aafb76b)`
+
+`Turnstile.reset()` disabled submit and waited for a token that could never arrive
+when the widget had not rendered. One mistyped password killed the sign-in button
+until a page reload. Also in that commit: the enqueue-failure cleanup ran in the
+order that could leave a created task running a refunded job, and the blocked-account
+403 sent the stored admin string — internal category codes, English — to the user.
 
 ### ~~Pre-hijack: an unverified password survived the victim's Google sign-in~~
 `done (c45f679)` — account takeover, reproduced end-to-end before fixing
