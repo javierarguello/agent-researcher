@@ -34,11 +34,27 @@ export default defineConfig({
       TEST_LLM: process.env.TEST_LLM ?? 'mock',
       ...(live
         ? {
+            // EVERY alias on the local server, not just `flash`. The API's own
+            // model use is the classifier (flash), but an end-to-end test also
+            // runs the engine — and an alias left pointing at Vertex would send a
+            // "local" test run to a paid hosted model.
+            LLM_PROVIDER: 'ollama',
             LLM_PROVIDER_FLASH: 'ollama',
             LLM_MODEL_FLASH: process.env.LOCAL_LLM_MODEL ?? 'qwen2.5:3b',
+            LLM_MODEL_GATHER: process.env.LOCAL_LLM_MODEL ?? 'qwen2.5:3b',
+            LLM_MODEL_PRO: process.env.LLM_MODEL_PRO ?? process.env.LOCAL_LLM_MODEL ?? 'qwen2.5:3b',
             OLLAMA_HOST: process.env.OLLAMA_HOST ?? 'http://localhost:11434',
+            // A 3B model on CPU: one agent at a time, and a smaller JSON ceiling,
+            // which is where long structured output derails.
+            LLM_MAX_CONCURRENT_AGENTS: '1',
+            LLM_MAX_OUTPUT_TOKENS: process.env.LLM_MAX_OUTPUT_TOKENS ?? '4096',
           }
         : {}),
+      // Fast, deterministic retries: an end-to-end test that holds a job should
+      // spend its time on the model, not on backoff.
+      AGENT_RETRY_BASE_MS: '1',
+      AGENT_RETRY_MAX_MS: '1',
+      RESEARCH_MAX_TURNS: '4',
       PREFLIGHT_ASSIST_ATTEMPTS: '2',
       PREFLIGHT_COOLDOWN_HOURS: '1,4',
       // Public-endpoint limits: high enough for the existing auth flows, low
@@ -57,6 +73,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@google-cloud/firestore': fileURLToPath(new URL('../../packages/core/test/mocks/firestore.ts', import.meta.url)),
+      // Without this, a test that runs a job uploads report.json to the REAL dev
+      // bucket with whatever credentials the developer has — or fails slowly on a
+      // machine with none. Same treatment as Firestore, for the same reason.
+      '@google-cloud/storage': fileURLToPath(new URL('../../packages/core/test/mocks/storage.ts', import.meta.url)),
     },
   },
 });

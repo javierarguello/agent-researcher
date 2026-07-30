@@ -8,6 +8,7 @@
  *   so the research loop terminates quickly.
  * - Reports fixed token usage so cost accounting is exercised deterministically.
  */
+import { __setProviderForTests } from '../../src/llm/models.js';
 import type { GenerateOptions, GenerateResult, LlmProvider } from '../../src/llm/provider.js';
 
 const LOREM =
@@ -87,4 +88,19 @@ export function sampleFromSchema(root: Node, node: Node = root, depth = 0): unkn
     default:
       return LOREM;
   }
+}
+
+/**
+ * Install the scripted provider under EVERY provider name, and return it.
+ *
+ * Which name the aliases resolve to depends on the run: `gemini-vertex` normally,
+ * `ollama` under `TEST_LLM=ollama`. A test that registers only one of them still
+ * passes in live mode — by quietly driving a real 3B model through a twelve-agent
+ * template, which is minutes per case and flaky on top. Use this in any test whose
+ * subject is the ENGINE's bookkeeping rather than what a model says.
+ */
+export function installMockProvider(): MockLlmProvider {
+  const mock = new MockLlmProvider();
+  for (const name of ['gemini-vertex', 'ollama']) __setProviderForTests(name, mock);
+  return mock;
 }

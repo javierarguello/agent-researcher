@@ -20,6 +20,32 @@ export function listTemplates(): ResearchTemplate<any>[] {
   return Object.values(TEMPLATES);
 }
 
+/**
+ * Test seam: register a template for the duration of a test (mirrors
+ * `__setProviderForTests`).
+ *
+ * An end-to-end test that goes through the API and the worker can only use a
+ * REGISTERED model — everything downstream resolves the template by id. Without
+ * this, such a test has to drive a production model, and against a real local
+ * model that is tens of minutes per run. A two-agent stand-in exercises the same
+ * pipeline in a couple of them.
+ *
+ * Validated on the way in, so a fixture cannot get away with a shape a real
+ * template would be rejected for.
+ */
+export function __registerTemplateForTests(t: ResearchTemplate<any>): void {
+  assertTemplatesValid([t]);
+  TEMPLATES[t.id] = t;
+  registeredForTests.add(t.id);
+}
+
+export function __clearTestTemplates(): void {
+  for (const id of registeredForTests) delete TEMPLATES[id];
+  registeredForTests.clear();
+}
+
+const registeredForTests = new Set<string>();
+
 import { LANGUAGE_LABELS } from '../languages.js';
 import { manifestDirectives } from './directives.js';
 import { planWaves } from '../engine/research-engine.js';

@@ -21,8 +21,7 @@ import { createCostSink, emptyCost, llmCost, type Cost } from '../src/cost.js';
 import { createEvidence, gather } from '../src/engine/gather.js';
 import { runResearch, type Checkpoint } from '../src/engine/research-engine.js';
 import { getTemplate } from '../src/templates/registry.js';
-import { __setProviderForTests } from '../src/llm/models.js';
-import { MockLlmProvider } from './mocks/llm.js';
+import { MockLlmProvider, installMockProvider } from './mocks/llm.js';
 import type { ResolvedModel } from '../src/llm/index.js';
 import type { GenerateOptions, GenerateResult, LlmProvider } from '../src/llm/provider.js';
 
@@ -90,8 +89,7 @@ describe('the engine stops a job at its ceiling', () => {
   const original = config.workflow.maxJobCostUsd;
 
   beforeEach(() => {
-    mock = new MockLlmProvider();
-    __setProviderForTests('gemini-vertex', mock);
+    mock = installMockProvider();
   });
   afterEach(() => {
     config.workflow.maxJobCostUsd = original;
@@ -147,7 +145,7 @@ describe('the engine stops a job at its ceiling', () => {
     // The ceiling is a guard against spending MORE, not a verdict on work already
     // done. If the last step took the total past it, everything exists — ship it.
     const full = await runResearch({ template, params: params(), jobId: 'b2b', generatedAt: 't' });
-    __setProviderForTests('gemini-vertex', new MockLlmProvider());
+    installMockProvider();
     // Resume with every step already done and the spend already past the ceiling:
     // there is nothing left to hold BACK from, only a finished report to hand over.
     config.workflow.maxJobCostUsd = full.trace.cost.usd / 2;
@@ -186,8 +184,7 @@ describe('the engine stops a job at its ceiling', () => {
     expect(full.trace.status).toBe('completed');
     expect(full.trace.budgetExceeded).toBeUndefined(); // the default ceiling is nowhere near
 
-    const capped = new MockLlmProvider();
-    __setProviderForTests('gemini-vertex', capped);
+    const capped = installMockProvider();
     config.workflow.maxJobCostUsd = full.trace.cost.usd / 4;
 
     const out = await runResearch({ template, params: params(), jobId: 'b4', generatedAt: 't' });

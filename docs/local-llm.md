@@ -94,9 +94,10 @@ on (all of them are also covered in `apps/api/test/preflight.test.ts`):
 
 ## Tests: mocked by default, local model on request
 
-Everything runs offline with no Docker and no Ollama. Firestore is the in-memory
-fake (`packages/core/test/mocks/firestore.ts`) and the LLM is a stub provider
-installed in `apps/api/test/setup.ts`:
+Everything runs offline with no Docker and no Ollama. Firestore and Cloud Storage
+are in-memory fakes (`packages/core/test/mocks/{firestore,storage}.ts`, aliased in
+both vitest configs so no file can forget to stub them) and the LLM is a stub
+provider installed in `apps/api/test/setup.ts`:
 
 ```bash
 npm test                                          # core + api, fully mocked
@@ -117,6 +118,7 @@ npm run test:local-llm  # TEST_LLM=ollama → core + api suites against qwen2.5:
 | Asserts | exact answers, incl. pathological ones | invariants only |
 | Request review | `apps/api/test/preflight.test.ts` | `preflight.live.test.ts` |
 | Report generation | `packages/core/test/report.test.ts` | `report.live.test.ts` |
+| Held job → admin decision | `apps/api/test/hold-e2e.test.ts` | the same file, `TEST_LLM=ollama` |
 
 The two are complements. The stub can force answers a real model rarely
 produces — prose where a code belongs, a correction that swaps the city, an enum
@@ -128,6 +130,24 @@ the model says.
 deterministic render, every finding is a known code with our copy, every
 correction is recognisably the user's own value, and an injection in the
 instructions changes nothing in the response.
+
+**The full job lifecycle** (`apps/api/test/hold-e2e.test.ts`): the one test that
+crosses every boundary — the buyer creates a job over HTTP, the worker runs it into
+a **hold** at the cost ceiling, an **admin approves it over HTTP**, and the worker
+finishes it. Plus reject, expiry, the one-in-flight cap, and who is allowed to see
+what. Same assertions in both modes; live mode adds a real model driving a real tool
+loop into the hold and out the other side (~40 s on a 3B model):
+
+```bash
+npm run llm:up
+TEST_LLM=ollama npm run test -w @agent-researcher/api -- hold-e2e
+```
+
+It drives a two-agent stand-in model registered through
+`__registerTemplateForTests`, not a production model — the flow is what is under
+test, and a production model against a local 3B is tens of minutes per run.
+Resumption *from the checkpoint* is pinned a layer down, in
+`packages/core/test/budget-refund.test.ts`.
 
 **Report generation** (`report.live.test.ts`): a real model drives the tool loop
 and answers under `responseSchema`, and the engine turns that into a report —

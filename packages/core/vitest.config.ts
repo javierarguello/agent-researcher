@@ -49,6 +49,9 @@ export default defineConfig({
     alias: {
       // All Firestore access hits the in-memory fake — no network/emulator.
       '@google-cloud/firestore': fileURLToPath(new URL('./test/mocks/firestore.ts', import.meta.url)),
+      // Same for Cloud Storage: no test may reach a real bucket, whether or not
+      // the file it lives in remembered to stub the module.
+      '@google-cloud/storage': fileURLToPath(new URL('./test/mocks/storage.ts', import.meta.url)),
     },
   },
 });

@@ -1,6 +1,7 @@
 /** Reset the in-memory Firestore + per-instance limiter state between API tests. */
 import { beforeEach, vi } from 'vitest';
 import { __resetDb } from '../../../packages/core/test/mocks/firestore.js';
+import { __resetStorage } from '../../../packages/core/test/mocks/storage.js';
 import { __setProviderForTests, type GenerateResult } from '@agent-researcher/core';
 import { __resetBurst } from '../src/public-limit.js';
 import { clearPublicCache } from '../src/cache.js';
@@ -26,6 +27,7 @@ if (!isLive) __setProviderForTests('gemini-vertex', fakeLlm.provider);
 
 beforeEach(() => {
   __resetDb();
+  __resetStorage();
   __resetBurst();
   // The public cache is a module-level Map that outlives __resetDb(), so without
   // this a test can be served a catalog for an app that no longer exists — which

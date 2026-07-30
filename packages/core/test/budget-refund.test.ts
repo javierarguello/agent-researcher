@@ -44,8 +44,7 @@ import { expireHolds } from '../src/jobs/holds.js';
 import { grantCredits, consumeCredits, getBalance, listTransactions, refundForJob } from '../src/credits/store.js';
 import { getAppStats } from '../src/stats/store.js';
 import { getTemplate } from '../src/templates/registry.js';
-import { __setProviderForTests } from '../src/llm/models.js';
-import { MockLlmProvider } from './mocks/llm.js';
+import { MockLlmProvider, installMockProvider } from './mocks/llm.js';
 
 const APP = 'fbizlab';
 const USER = 'u@x.com';
@@ -64,7 +63,7 @@ async function runCapped(jobId: string, maxUsd = 0.01) {
 
 describe('a job stopped by the cost ceiling', () => {
   const original = config.workflow.maxJobCostUsd;
-  beforeEach(() => __setProviderForTests('gemini-vertex', new MockLlmProvider()));
+  beforeEach(() => installMockProvider());
   afterEach(() => {
     config.workflow.maxJobCostUsd = original;
   });
@@ -122,7 +121,7 @@ describe('a job stopped by the cost ceiling', () => {
 
 describe('a report that ran but could not be stored', () => {
   const original = config.workflow.maxJobCostUsd;
-  beforeEach(() => __setProviderForTests('gemini-vertex', new MockLlmProvider()));
+  beforeEach(() => installMockProvider());
   afterEach(() => {
     config.workflow.maxJobCostUsd = original;
     GCS.failOn = '';
@@ -181,7 +180,7 @@ describe('a report that ran but could not be stored', () => {
 
 describe('resolving a hold', () => {
   const original = config.workflow.maxJobCostUsd;
-  beforeEach(() => __setProviderForTests('gemini-vertex', new MockLlmProvider()));
+  beforeEach(() => installMockProvider());
   afterEach(() => {
     config.workflow.maxJobCostUsd = original;
   });

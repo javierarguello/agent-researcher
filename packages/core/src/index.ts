@@ -2,7 +2,7 @@
 export { config } from './config.js';
 
 // Templates
-export { getTemplate, listTemplates, toManifest, modeLabel, TEMPLATES, SUPPORTED_LANGS, DEFAULT_LANG } from './templates/registry.js';
+export { getTemplate, listTemplates, toManifest, modeLabel, TEMPLATES, SUPPORTED_LANGS, DEFAULT_LANG, __registerTemplateForTests, __clearTestTemplates } from './templates/registry.js';
 export { reportSchemaOf, sectionSubsetSchema, sectionByKey } from './templates/types.js';
 export { chartSchema } from './templates/chart.js';
 export type { ChartSpec } from './templates/chart.js';

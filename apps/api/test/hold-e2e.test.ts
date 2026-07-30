@@ -1,0 +1,223 @@
+/**
+ * End to end: a job that runs out of budget, the admin decision, and what the
+ * buyer's credits do at every step.
+ *
+ * Everything else about holds is tested a layer down (`packages/core`, against
+ * scripted answers). This is the seam nothing else covers: the HTTP surface. The
+ * buyer creates a job over the API, the worker runs it, the ADMIN resolves it over
+ * the API, and the worker runs it again — the same four hops production makes,
+ * with the queue standing in as a direct `runJob` call (the queue's only job is to
+ * make that call).
+ *
+ * The model is a two-agent stand-in registered for the test, not a production
+ * model. That is what makes this affordable to run for real:
+ *
+ *   npm test                          scripted answers, seconds
+ *   npm run llm:up && TEST_LLM=ollama npm run test -w @agent-researcher/api
+ *                                     the same assertions, a real local model
+ *
+ * Same test, both ways. The scripted run keeps the flow honest on every commit;
+ * the live run is the one that proves a real model driving a real tool loop still
+ * ends up held, approvable, and finishable.
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
+
+// Cloud Storage is aliased to an in-memory fake for the whole suite (see
+// vitest.config.ts), so nothing here reaches a real bucket, and the checkpoint one
+// dispatch writes is genuinely there for the next one to resume from.
+
+import {
+  __clearTestTemplates,
+  __registerTemplateForTests,
+  config,
+  expireHolds,
+  getBalance,
+  getJob,
+  grantCredits,
+  listTransactions,
+  runJob,
+} from '@agent-researcher/core';
+import { __setProviderForTests } from '@agent-researcher/core';
+import { app } from '../src/index.js';
+import { auth, seedAdmin, seedApp, token } from './helpers.js';
+import { compactModel } from '../../../packages/core/test/fixtures/compact-model.js';
+import { MockLlmProvider } from '../../../packages/core/test/mocks/llm.js';
+import { isLive } from './llm-mode.js';
+
+/**
+ * A real 3B model on CPU runs the two agents in tens of seconds, and how many tens
+ * depends on the machine. Generous on purpose — the same treatment the other live
+ * tests give themselves — because a flaky timeout here reads as a broken flow.
+ */
+const RUN_TIMEOUT = isLive ? 900_000 : 30_000;
+
+const APP = 'fbizlab';
+const BUYER = 'buyer@x.com';
+const ADMIN = 'boss@x.com';
+
+/** The one hop this test stands in for: the queue calling the worker. */
+const workerRuns = (jobId: string) =>
+  getJob(jobId).then((j) =>
+    runJob({ jobId, appId: j!.appId, userId: j!.userId, template: j!.template, params: j!.params }),
+  );
+
+describe('a job held for budget, decided over the API', () => {
+  const ceiling = config.workflow.maxJobCostUsd;
+  let buyerToken = '';
+  let adminToken = '';
+
+  const classifier = config.moderation.llm;
+  beforeEach(async () => {
+    // The suite-wide stub answers `{"quality":"ok"}` to everything, which is right
+    // for the classifier and useless for the engine — it cannot satisfy a
+    // responseSchema. Swap in the schema-aware mock and turn the LLM classifier
+    // off; the deterministic pre-screen still guards every request here, and the
+    // classifier has its own suite. In live mode neither line applies: the real
+    // local model answers both.
+    if (!isLive) {
+      __setProviderForTests('gemini-vertex', new MockLlmProvider());
+      config.moderation.llm = false;
+    }
+    __registerTemplateForTests(compactModel);
+    await seedApp(APP);
+    await seedAdmin([ADMIN]);
+    buyerToken = await token(APP, BUYER);
+    adminToken = await token('admin', ADMIN, 'admin');
+    await grantCredits({ appId: APP, userId: BUYER, credits: 20 });
+    // Low enough that the very first agent takes the job past it, whichever model
+    // is answering — the point here is the decision flow, not where it stops.
+    config.workflow.maxJobCostUsd = 0.000001;
+  });
+  afterEach(() => {
+    config.workflow.maxJobCostUsd = ceiling;
+    config.moderation.llm = classifier;
+    __clearTestTemplates();
+  });
+
+  /** Buyer creates a job over the API; the worker runs it into a hold. */
+  async function heldJob(): Promise<string> {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/research',
+      headers: auth(buyerToken),
+      payload: { template: compactModel.id, params: { subject: 'laundromats for sale', location: 'Miami-Dade County, FL' } },
+    });
+    expect(res.statusCode).toBe(202);
+    const { jobId } = res.json() as { jobId: string };
+
+    expect((await workerRuns(jobId)).status).toBe('held');
+    return jobId;
+  }
+
+  it('approve: the buyer sees a paused job, the admin sees why, and it finishes', { timeout: RUN_TIMEOUT }, async () => {
+    const spent = 20 - (await getBalance(APP, BUYER));
+    const jobId = await heldJob();
+    const charged = 20 - (await getBalance(APP, BUYER)) - spent;
+    expect(charged).toBeGreaterThan(0); // the credits went out when the job was created
+
+    // What the BUYER sees: paused, with no idea what it cost us and no mention of
+    // our internal limits. Both are admin-only for the same reason.
+    const mine = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
+    expect(mine.statusCode).toBe(200);
+    expect(mine.json().status).toBe('held');
+    expect(mine.json().cost).toBeUndefined();
+    expect(mine.json().hold).toBeUndefined();
+
+    // What the ADMIN sees: the reason, the spend, and the deadline to decide.
+    const seen = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(adminToken) });
+    expect(seen.json().hold.reason).toBe('budget_exceeded');
+    expect(seen.json().hold.spentUsd).toBeGreaterThan(0);
+    expect(Date.parse(seen.json().hold.expiresAt)).toBeGreaterThan(Date.now());
+
+    // And it is findable without opening every job.
+    const list = await app.inject({ method: 'GET', url: '/admin/jobs?status=held', headers: auth(adminToken) });
+    expect(list.json().jobs.map((j: { jobId: string }) => j.jobId)).toContain(jobId);
+
+    const ok = await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) });
+    expect(ok.statusCode).toBe(202);
+    expect((await getJob(jobId))!.status).toBe('queued');
+
+    // The second dispatch runs UNCAPPED — the ceiling that held it is still
+    // configured, so only the per-job override can get this past the same wall.
+    expect(config.workflow.maxJobCostUsd).toBe(0.000001);
+    expect((await workerRuns(jobId)).status).toBe('completed');
+
+    const done = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
+    expect(done.json().status).toBe('completed');
+    expect(done.json().files.length).toBeGreaterThan(0);
+
+    // Charged once, for the report they got. Never refunded, never re-charged.
+    expect(20 - (await getBalance(APP, BUYER)) - spent).toBe(charged);
+    expect((await listTransactions(APP, BUYER, 20)).filter((t) => t.type === 'refund')).toHaveLength(0);
+  });
+
+  it('reject: fails the job and gives the credits back', { timeout: RUN_TIMEOUT }, async () => {
+    const before = await getBalance(APP, BUYER);
+    const jobId = await heldJob();
+    expect(await getBalance(APP, BUYER)).toBeLessThan(before);
+
+    const res = await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/reject`, headers: auth(adminToken) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().refunded).toBe(true);
+
+    const job = (await getJob(jobId))!;
+    expect(job.status).toBe('failed');
+    expect(job.failureKind).toBe('budget_exceeded');
+    expect(await getBalance(APP, BUYER)).toBe(before);
+  });
+
+  it('a hold resolves once: the second decision is a 409, not a second refund', { timeout: RUN_TIMEOUT }, async () => {
+    const before = await getBalance(APP, BUYER);
+    const jobId = await heldJob();
+
+    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/reject`, headers: auth(adminToken) })).statusCode).toBe(200);
+    // Whatever arrives second — another admin, or the sweep — must not refund again.
+    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/reject`, headers: auth(adminToken) })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) })).statusCode).toBe(409);
+
+    expect(await getBalance(APP, BUYER)).toBe(before);
+    // Exactly one refund on the ledger, not one per attempt.
+    expect((await listTransactions(APP, BUYER, 20)).filter((t) => t.type === 'refund' && t.jobId === jobId)).toHaveLength(1);
+
+    // What this does NOT cover: these 409s come from the handler's status check,
+    // which is a read-then-act and therefore useless against a genuine race. The
+    // transactional gate inside `rejectHold`/`approveHold` is what covers that, and
+    // no test here can exercise it — the in-memory Firestore does not model
+    // transaction contention. Its unit tests pin the return value (`false` for the
+    // loser); the refund itself is idempotent on `refund_<jobId>` regardless.
+  });
+
+  it('expiry: nobody decides, and the buyer is made whole anyway', { timeout: RUN_TIMEOUT }, async () => {
+    const before = await getBalance(APP, BUYER);
+    const jobId = await heldJob();
+
+    const after = new Date(Date.parse((await getJob(jobId))!.hold!.expiresAt) + 1000);
+    expect(await expireHolds({ now: after })).toMatchObject({ expired: 1, refunded: 1 });
+
+    expect((await getJob(jobId))!.status).toBe('failed');
+    expect(await getBalance(APP, BUYER)).toBe(before);
+  });
+
+  it('a held job does not lock the buyer out of starting another', { timeout: RUN_TIMEOUT }, async () => {
+    await heldJob();
+    // The one-in-flight cap bounds concurrent SPEND, and a parked job spends
+    // nothing. Counting it would strand the buyer until an admin got around to it.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/research',
+      headers: auth(buyerToken),
+      payload: { template: compactModel.id, params: { subject: 'car washes for sale', location: 'Broward County, FL' } },
+    });
+    expect(res.statusCode).toBe(202);
+  });
+
+  it('only an admin can decide', { timeout: RUN_TIMEOUT }, async () => {
+    const jobId = await heldJob();
+    for (const url of [`/admin/jobs/${jobId}/approve`, `/admin/jobs/${jobId}/reject`]) {
+      expect((await app.inject({ method: 'POST', url, headers: auth(buyerToken) })).statusCode).toBe(403);
+    }
+    expect((await getJob(jobId))!.status).toBe('held');
+  });
+});
