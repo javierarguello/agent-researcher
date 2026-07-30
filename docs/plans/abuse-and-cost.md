@@ -84,6 +84,36 @@ Adjacent: a failed checkpoint upload only warns (`run-job.ts:119`), and an
 unreadable checkpoint only warns and leaves `resume` undefined (`:86-88`) — a
 corrupted checkpoint silently replays the entire job up to 8 times.
 
+### C6 · The one-in-flight job cap is advisory under a burst
+`open (2026-07-30 review)` · established by reading the ordering; not reproduced,
+because the in-memory Firestore mock does not model transaction contention
+
+`index.ts` reads `inProgress` via plain `count()` aggregations before ANY write
+that would make a job visible — the job document is created much later, after the
+balance read, after the moderation call, after the rate-limit transaction. So N
+concurrent (or even ~1s-apart) `POST /research` calls all read zero, all pass, and
+all get distinct jobIds. The cap is not a lock.
+
+This matters because C1's cost model rests on it: "bounded today only by
+`MAX_CONCURRENT_JOBS_PER_USER = 1` and 20 reports/hour". Only the second bound is
+real, and a job takes many minutes — so the documented worst case is reachable in
+one burst rather than never. The credits are paid, so this is a spend-RATE bypass,
+not theft.
+
+Fix: claim the slot inside the transaction that already serializes the handler
+(`checkRateLimits`), and release it on every terminal path — completion, failure,
+and the enqueue failure now handled in E2. That release requirement is why it is
+its own change and not a rider on a fix pass.
+
+### C7 · The moderation classifier runs past the hourly cap under the same burst
+`open (2026-07-30 review)` · established by reading the ordering
+
+Same root cause as C6, cheaper consequence. The peek before the classifier is
+explicitly non-atomic, so a burst that arrives while the counter reads 0 all pass
+it, all pay for a billed `flash` call, and only then does the authoritative check
+admit 20 and refuse the rest. Cents per burst, repeatable hourly per account.
+Fixed as a by-product of C6: reserve before the model call, not after.
+
 ---
 
 ## D. Numbers someone has to choose — product decisions, not bugs
@@ -109,29 +139,46 @@ refund, no check on what was spent.
 
 ## E. Operational — small, and one of them hurts during an incident
 
-### E1 · Admin user search by email is dead code
-`open` · verified by reading the code
+### ~~E1 · Admin user search by email is dead code~~
+`NOT A BUG (ada33e8)` — the finding was wrong, three times over
 
-`packages/core/src/stats/store.ts:587`:
-`q.where('userId','>=',prefix).where('userId','<',`${prefix}`)` — `>= X AND < X`
-is an empty range, so `GET /admin/users?q=<email>` **always returns nothing**. The
-upper bound needs `` `${prefix}` ``.
+Reported as `>= X AND < X`, an empty range that would make `GET /admin/users?q=…`
+always return nothing. It is actually `>= X AND < X\uf8ff`: the upper bound carries
+a private-use sentinel that renders as NOTHING in a terminal, so every reader —
+including this document — saw an empty range that was never there. Pinned now by a
+test, so the next reader gets an answer from the suite instead of from squinting.
 
-Why it matters more than it looks: when someone is abusing the system, this is how
-you find them, and `POST /admin/users/block` needs an exact `userId` the UI can no
-longer surface.
+### ~~E2 · A failed enqueue strands the account and the credits~~
+`done (ada33e8)`
 
-### E2 · A failed enqueue strands the account and the credits
-`open` · verified by reading the code
-
-`index.ts:825-836`: when `enqueueJob` throws, the job is already created and the
-credits already consumed, and the response tells the user to retry. Retrying mints
-a new jobId and consumes credits **again**, while the orphaned job sits `queued`
-forever — counting toward `inProgress` and permanently 409-ing the user out of
-generating anything. No reaper, and the refund path lives in the worker, which
-never runs for that job.
+When `enqueueJob` threw, the job was already created and the credits already
+consumed, and the 202 response told the SPA it had succeeded. Nothing could ever
+clean it up: the worker is what refunds and fails a job, and the worker is exactly
+what could not be reached. The job sat `queued` forever, counting against the
+one-in-flight cap, so the user kept their spent credits AND was permanently 409'd
+out of generating anything. Now refunded and marked failed inline, with a 503 that
+says the credits were not spent.
 
 ---
+
+## F. Where the guards still cost a legitimate user something
+`open (2026-07-30 review)` — the blocking half of these was fixed in ada33e8; what
+follows is what remains, and each one is a judgement call rather than a defect.
+
+### F1 · A degraded report costs full price, and explains itself in developer English
+The system is designed to degrade sections after exhausting retries, and a degraded
+job finalizes as `completed` — so no refund path runs, and the buyer pays 18 credits
+for a dossier with placeholder sections. The only explanation they get is
+`trace.warnings`, rendered verbatim: `Degraded [risks_red_flags] from agent
+"market-analyst" after exhausting retries…`, in English, to es/pt/fr customers.
+Two decisions: a partial-refund policy, and localized copy for the user-facing
+summary (keep the raw warnings admin-side).
+
+### F2 · `registerPerHourPerIp = 5` counts an office, a co-working space or a
+CGNAT carrier as one person
+The per-email cap (3/h) is what stops mail-bombing one inbox; the per-IP cap mostly
+catches shared egress. It is an env var, so raising it is a config change, not code.
+Related: the 429 body is English-only and the login page renders it raw.
 
 ## Closed
 
@@ -223,6 +270,77 @@ paths also log only the parser's complaint; they now log the output-token count 
 a snippet, which is what distinguishes a truncated verdict from a model ignoring the
 schema.
 
+
+### ~~Pre-hijack: an unverified password survived the victim's Google sign-in~~
+`done (c45f679)` — account takeover, reproduced end-to-end before fixing
+
+`/auth/register` creates a credential for any address and proves nothing;
+`upsertGoogleUser` then merged `emailVerified: true` onto it without touching
+`passwordHash`. The password gate asks for exactly those two fields, so whoever
+registered an address FIRST held a working password for it the moment the real
+owner signed in with Google — their reports, their purchased credits. Sprayable
+across a list of addresses, and it reached admin role too (blocked only by the
+admin app record lacking `emailFrom`, which is an accident, not a control).
+
+Observed: register 202 → attacker login 403 `email_unverified` → victim's Google
+login 200 → attacker login 200.
+
+Google proves the ADDRESS; it does not vouch for a password stapled to it. An
+unverified credential is now discarded rather than inherited; a verified one is
+kept, because that is how a legitimate dual-provider user works. The existing test
+asserted `['google','password']` for exactly this case — the vulnerability written
+down as an expectation.
+
+### ~~`/auth/register` handed Postmark a caller-chosen recipient LIST~~
+`done (c45f679)`
+
+`normalizeEmail` splits on the last `@`, so a comma-separated string passed through
+intact. Observed: `To: "a@evil.com,v1@victim.com,v2@victim.com"`. That mail-bombs
+third parties from the verified `floridabizlabs.com` sender AND slips A3's
+per-inbox cap, because the counter keys on the whole string so every permutation is
+a fresh bucket. Sender reputation is the one thing here that cannot be rolled back.
+Now one-address-only on register, reset and contact's Reply-To, plus a last check
+inside `sendAppEmail` itself.
+
+### ~~The pre-screen blocked paying customers, permanently~~
+`done (ada33e8)`
+
+Verified by running the real function: "a jailbreak themed room", "offices near the
+county jail. Breakdown of revenue", "the owner will not do anything now", "the
+startup ecosystem prompted growth", "disregard the rules of thumb" were all
+`prompt_injection`. Causes: the squeezed form has no word boundaries by
+construction (it strips every separator, including the ones between real words), so
+"countyjailBREAKdown" matched; and several patterns were too loose — a missing `\b`
+made "ecoSYSTEM PROMPTed" match, and bare "jailbreak" is an escape-room theme in a
+product that researches escape rooms.
+
+The punishment was worse than the rejection. Every rejection recorded a strike,
+from the preview route too, and the SPA routes every generation through preview —
+one click, one strike. Four across the LIFETIME of an account (they never decay)
+meant a permanent block that also stops the user BUYING CREDITS, explained in an
+English string the code labels "admin-facing". Strikes exist to stop repeated
+BILLED classifier calls; the pre-screen makes none and costs nothing to refuse, so
+only the classifier's verdicts earn one now.
+
+### ~~Turnstile failures were reported as "your account is blocked"~~
+`done (ada33e8)`
+
+Tokens are single-use and expire in minutes, and the widget deliberately lets the
+form through when its script is blocked — so a captcha 403 is an expected outcome
+for an ordinary user on a slow form or a second tab. It landed on the block branch
+in generation and on the "verify your email" branch in login (complete with a
+resend button that mails another verification for an unrelated problem), in the
+wrong language. Both now match `captcha_failed` first, with localized copy.
+
+The "generate anyway" fallback could never work either: `submit()` ran inside the
+catch while the token reset sat in the `finally`, which runs after — so it always
+replayed a token siteverify had already consumed, and landed on that same false
+"blocked" message. Same shape as the backoff bug in f873ade.
+
+### ~~`/research/preflight` skipped the `allowedTemplates` check~~
+`done (c45f679)` — the one route missing the guard `/research` and
+`GET /templates/:id` both apply, so a preview returned a disallowed model's plan,
+its issue vocabulary, and an assisted pass against it.
 
 ### ~~A1 · The Stripe catalog was an unmetered amplifier~~
 `done (ebda3cc, completed in 6776b63)`

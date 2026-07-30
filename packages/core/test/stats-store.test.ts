@@ -63,6 +63,23 @@ describe('per-app stats', () => {
     expect((await getAppStats(app))!.users).toBe(1);
   });
 
+  it('finds a user by email prefix — the lookup support needs to unblock someone', async () => {
+    // Three reviewers in a row have read this query as `>= X AND < X` (an empty
+    // range, so the search would always return nothing) because the upper bound's
+    // sentinel is U+F8FF, which renders as nothing in a terminal. It is a real
+    // character and the range is real; this test is here so the next reader gets an
+    // answer from the suite instead of from squinting at the source.
+    const app = 'app-find';
+    for (const u of ['ana@corp.com', 'andres@corp.com', 'zoe@corp.com']) {
+      await recordReportStats({ appId: app, userId: u, template: 't', status: 'completed', costUsd: 1, durationMs: 1000 });
+    }
+
+    const found = await queryUsers({ appId: app, emailPrefix: 'an' });
+    expect(found.map((u) => u.userId).sort()).toEqual(['ana@corp.com', 'andres@corp.com']);
+    expect(await queryUsers({ appId: app, emailPrefix: 'ana@corp.com' })).toHaveLength(1);
+    expect(await queryUsers({ appId: app, emailPrefix: 'nobody' })).toHaveLength(0);
+  });
+
   it('folds purchases into revenue + a daily bucket', async () => {
     await recordPurchaseStats({ appId: A, userId: 'u1@x.com', amountUsd: 49, credits: 15 });
     const s = (await getAppStats(A))!;
