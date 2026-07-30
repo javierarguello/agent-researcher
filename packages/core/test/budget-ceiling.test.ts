@@ -124,7 +124,7 @@ describe('the engine stops a job at its ceiling', () => {
     for (const a of failed) expect(a.error).toMatch(/cost ceiling/i);
   });
 
-  it('fails instead of asking to be re-dispatched into the same wall', async () => {
+  it('holds the job instead of failing it or asking to be re-dispatched', async () => {
     config.workflow.maxJobCostUsd = 1;
     const resume: Checkpoint = { report: {}, sources: [], doneAgentIds: [], degraded: [], cost: usd(5) };
 
@@ -132,22 +132,32 @@ describe('the engine stops a job at its ceiling', () => {
       template, params: params(), jobId: 'b2', generatedAt: 't', resume, finalize: false,
     });
 
-    // Two things at once, and both matter.
-    //
-    // NOT 'incomplete': `finalize: false` normally means "come back and finish the
-    // rest", but the checkpoint carries the spend forward, so every remaining
+    // NOT 'incomplete': the checkpoint carries the spend forward, so every remaining
     // dispatch would wake up already over the ceiling and re-dispatch again.
     //
-    // 'failed', not 'completed': `failed` is the only status that refunds
-    // (`run-job.ts`), and a buyer whose report stopped half-way paid for something
-    // they did not get. This assertion IS the refund policy.
-    expect(out.trace.status).toBe('failed');
-    expect(out.trace.error).toMatch(/cost ceiling/i);
+    // NOT degraded either, and that is what makes an approval worth anything —
+    // degrading would write placeholders into the report, and those placeholders
+    // would be what an approved job resumed from.
+    expect(out.trace.status).toBe('held');
+    expect(out.meta.degradedSections).toBeUndefined();
+    expect(Object.keys(out.report)).toHaveLength(0);
+  });
 
-    // The partial work is still assembled and returned, so the failure is
-    // diagnosable from `report.json` rather than only from the trace.
-    expect(out.meta.degradedSections?.length).toBeGreaterThan(0);
-    expect(out.trace.warnings?.join(' ')).toMatch(/cost ceiling/i);
+  it('delivers a report that finished right ON the ceiling, rather than holding it', async () => {
+    // The ceiling is a guard against spending MORE, not a verdict on work already
+    // done. If the last step took the total past it, everything exists — ship it.
+    const full = await runResearch({ template, params: params(), jobId: 'b2b', generatedAt: 't' });
+    __setProviderForTests('gemini-vertex', new MockLlmProvider());
+    // Resume with every step already done and the spend already past the ceiling:
+    // there is nothing left to hold BACK from, only a finished report to hand over.
+    config.workflow.maxJobCostUsd = full.trace.cost.usd / 2;
+
+    const out = await runResearch({
+      template, params: params(), jobId: 'b2c', generatedAt: 't', resume: full.checkpoint,
+    });
+
+    expect(out.trace.status).toBe('completed');
+    expect(out.trace.warnings?.join(' ')).toMatch(/right at the per-job cost ceiling/i);
   });
 
   it('never prints what we spent into the buyer’s report', async () => {
@@ -183,11 +193,39 @@ describe('the engine stops a job at its ceiling', () => {
     const out = await runResearch({ template, params: params(), jobId: 'b4', generatedAt: 't' });
 
     expect(out.trace.budgetExceeded).toBe(true);
-    expect(out.meta.degradedSections?.length).toBeGreaterThan(0);
+    expect(out.trace.status).toBe('held');
     expect(capped.calls).toBeLessThan(fullCalls / 2);
-    // It overshoots by at most the call in flight when the ceiling was crossed —
-    // never by a whole second run of the workflow.
     expect(out.trace.cost.usd).toBeLessThan(full.trace.cost.usd);
+    // The work bought so far is kept, which is what an approval resumes from.
+    expect(out.checkpoint.doneAgentIds.length).toBeGreaterThan(0);
+  });
+
+  it('takes the ceiling from the MODEL\u2019s mode before the deployment default', async () => {
+    // This is a catalog: a cheap scan and a deep multi-agent report cannot share one
+    // number. A model that states its own cost profile must win over the global.
+    config.workflow.maxJobCostUsd = 1000; // deployment says "plenty"
+    const stingy = {
+      ...template,
+      modes: { ...template.modes, essential: { ...template.modes!.essential!, maxCostUsd: 0.002 } },
+    };
+
+    const out = await runResearch({ template: stingy, params: params(), jobId: 'b6', generatedAt: 't' });
+
+    expect(out.trace.status).toBe('held');
+    expect(out.trace.budgetExceeded).toBe(true);
+  });
+
+  it('runs uncapped when the job was approved to continue', async () => {
+    // What an admin approval passes down. Without it the resumed job would wake up
+    // already over the ceiling and hold again, forever.
+    config.workflow.maxJobCostUsd = 0.001;
+    const out = await runResearch({
+      template, params: params(), jobId: 'b7', generatedAt: 't', costCeilingUsd: null,
+    });
+
+    expect(out.trace.status).toBe('completed');
+    expect(out.trace.budgetExceeded).toBeUndefined();
+    expect(out.trace.cost.usd).toBeGreaterThan(0.001);
   });
 });
 

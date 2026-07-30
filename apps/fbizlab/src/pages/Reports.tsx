@@ -57,14 +57,15 @@ const T = {
 };
 
 const STATUS_LABEL: Record<Lang, Record<JobStatus, string>> = {
-  en: { queued: 'Queued', running: 'Processing', completed: 'Ready', failed: 'Failed', incomplete: 'Partial' },
-  es: { queued: 'En cola', running: 'Procesando', completed: 'Listo', failed: 'Falló', incomplete: 'Parcial' },
-  fr: { queued: 'En file', running: 'En cours', completed: 'Prêt', failed: 'Échec', incomplete: 'Partiel' },
-  pt: { queued: 'Na fila', running: 'Processando', completed: 'Pronto', failed: 'Falhou', incomplete: 'Parcial' },
+  en: { queued: 'Queued', running: 'Processing', completed: 'Ready', failed: 'Failed', incomplete: 'Partial', held: 'Under review' },
+  es: { queued: 'En cola', running: 'Procesando', completed: 'Listo', failed: 'Falló', incomplete: 'Parcial', held: 'En revisión' },
+  fr: { queued: 'En file', running: 'En cours', completed: 'Prêt', failed: 'Échec', incomplete: 'Partiel', held: 'En révision' },
+  pt: { queued: 'Na fila', running: 'Processando', completed: 'Pronto', failed: 'Falhou', incomplete: 'Parcial', held: 'Em revisão' },
 };
 
 const TERMINAL: JobStatus[] = ['completed', 'incomplete'];
-const LIVE: JobStatus[] = ['queued', 'running'];
+// `held` counts as live for the user's tiles: it is not finished and not failed.
+const LIVE: JobStatus[] = ['queued', 'running', 'held'];
 
 const shortId = (jobId: string) => `#${jobId.slice(0, 6).toUpperCase()}`;
 function fmtDate(iso: string, lang: string): string {

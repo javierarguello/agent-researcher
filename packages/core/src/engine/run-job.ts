@@ -13,8 +13,10 @@
 import { config } from '../config.js';
 import { getTemplate } from '../templates/registry.js';
 import {
-  getJob, markCompleted, markFailed, markRunning, setJobAttempts, setJobCost, setJobHeadline, setJobSummary, setProgress,
+  getJob, markCompleted, markFailed, markHeld, markRunning, setJobAttempts, setJobCost, setJobHeadline, setJobSummary, setProgress,
 } from '../jobs/firestore.js';
+import { holdExpiryFrom } from '../jobs/holds.js';
+import { retryAsync } from '../util/retry.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
@@ -40,7 +42,7 @@ export interface RunJobResult {
   reportBytes: number;
   sourcesFound: number;
   /** 'incomplete' → the worker should return a retryable status so the queue resumes it. */
-  status: 'completed' | 'failed' | 'incomplete';
+  status: 'completed' | 'failed' | 'incomplete' | 'held';
 }
 
 export async function runJob(input: RunJobInput): Promise<RunJobResult> {
@@ -89,8 +91,12 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     log.warn('checkpoint.load_failed', { message: (err as Error).message });
   }
 
+  // Retried: storage blips are transient, and losing the upload of a report that
+  // already ran is the most expensive way to fail — the work is done and paid for.
   const uploadJson = (name: string, data: unknown) =>
-    uploadObject({ jobId: input.jobId, name, data: JSON.stringify(data, null, 2), contentType: 'application/json; charset=utf-8' });
+    retryAsync(() =>
+      uploadObject({ jobId: input.jobId, name, data: JSON.stringify(data, null, 2), contentType: 'application/json; charset=utf-8' }),
+    );
   const uploadTrace = async (trace: JobTrace): Promise<JobFile | undefined> => {
     try {
       return await uploadJson('trace.json', trace);
@@ -114,6 +120,10 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // Fold headline cost into the trace so it's checkpointed and survives resumes
       // (nonzero only on the first dispatch; already carried in `resume.cost` after).
       baseCost: headlineCost,
+      // An admin approved this specific job to run past its ceiling. `null` is
+      // uncapped; `undefined` (the normal case) lets the engine derive the ceiling
+      // from the model's mode.
+      ...(existing?.budgetOverride ? { costCeilingUsd: null } : {}),
       onCheckpoint: async (cp) => {
         try {
           await uploadJson(CHECKPOINT, cp);
@@ -163,10 +173,37 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'incomplete' };
     }
 
+    // --- Held: parked for an admin decision. Not finished, not failed. ---
+    if (output.trace.status === 'held') {
+      const traceFile = await uploadTrace(output.trace);
+      const hold = {
+        reason: 'budget_exceeded' as const,
+        heldAt: new Date().toISOString(),
+        expiresAt: holdExpiryFrom(),
+        spentUsd: output.meta.cost.usd,
+      };
+      // No refund and no checkpoint deletion, both on purpose: the credits are what
+      // an approval spends, and the checkpoint is what it resumes from. Nor any
+      // report stats — this job has not finished, and booking it now would count it
+      // twice when it does.
+      await markHeld(input.jobId, hold, traceFile ? [traceFile] : undefined);
+      await setProgress(input.jobId, {
+        phase: 'held', message: 'Paused for review before spending more.',
+        turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
+      });
+      log.error('job.held', {
+        reason: hold.reason, costUsd: output.meta.cost.usd, limitUsd: config.workflow.maxJobCostUsd,
+        expiresAt: hold.expiresAt, attempts,
+      });
+      return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'held' };
+    }
+
     // --- Finished (completed or failed): persist outputs. ---
-    const report = await uploadJson('report.json', { meta: output.meta, report: output.report });
-    const sources = await uploadJson('sources.json', output.sources);
-    const meta = await uploadJson('metadata.json', {
+    // A storage failure here is NOT a failed report: the work ran, it cost what it
+    // cost, and the result is still in the checkpoint. Refunding and discarding it
+    // (what the outer catch used to do) throws away a report we already paid for.
+    // Hold it instead — an admin retry re-uploads it without re-running anything.
+    const metadataDoc = {
       jobId: input.jobId, appId: input.appId, userId: input.userId, template: input.template,
       version: output.meta.templateVersion, schemaVersion: output.meta.schemaVersion, params: input.params,
       language: output.language, mode: output.meta.mode, depth: output.meta.depth, generatedAt,
@@ -174,7 +211,29 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       status: output.trace.status, attempts,
       ...(output.meta.degradedSections ? { degradedSections: output.meta.degradedSections } : {}),
       ...(output.trace.warnings ? { warnings: output.trace.warnings } : {}),
-    });
+    };
+    let report: JobFile;
+    let sources: JobFile;
+    let meta: JobFile;
+    try {
+      report = await uploadJson('report.json', { meta: output.meta, report: output.report });
+      sources = await uploadJson('sources.json', output.sources);
+      meta = await uploadJson('metadata.json', metadataDoc);
+    } catch (err) {
+      const hold = {
+        reason: 'upload_failed' as const,
+        heldAt: new Date().toISOString(),
+        expiresAt: holdExpiryFrom(),
+        spentUsd: output.meta.cost.usd,
+      };
+      await markHeld(input.jobId, hold);
+      log.error('job.held', {
+        reason: hold.reason, costUsd: output.meta.cost.usd, expiresAt: hold.expiresAt, attempts,
+        message: (err as Error).message,
+      });
+      return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'held' };
+    }
+
     const traceFile = await uploadTrace(output.trace);
     const files = [report, sources, meta, ...(traceFile ? [traceFile] : [])];
 

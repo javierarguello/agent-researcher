@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { BudgetExceededError, addCost, createCostSink, emptyCost, type Cost, type CostSink } from '../cost.js';
 import { resolveDepthProfile, type DepthProfile } from '../depth.js';
-import { resolveMode } from '../mode.js';
+import { maxCostForMode, resolveMode } from '../mode.js';
 import { resolveModel, type ResolvedModel } from '../llm/index.js';
 import type { SearchResult } from '../tools/web-search.js';
 import {
@@ -102,8 +102,12 @@ export interface JobTrace {
   agents: AgentTrace[];
   /** Running total cost across all agents (LLM exact + search estimate). */
   cost: Cost;
-  /** 'incomplete' = some steps still failing; the job will be re-dispatched to resume. */
-  status: 'running' | 'completed' | 'failed' | 'incomplete';
+  /**
+   * 'incomplete' = some steps still failing; the job will be re-dispatched to resume.
+   * 'held'       = parked for an admin decision; the checkpoint is intact and an
+   *                approval resumes it. Never reached by retrying.
+   */
+  status: 'running' | 'completed' | 'failed' | 'incomplete' | 'held';
   /** Job-level fatal error (e.g. final schema validation), if any. */
   error?: string;
   /** Warnings worth reviewing later (e.g. sections degraded after exhausting retries). */
@@ -162,17 +166,17 @@ export interface RunResearchInput {
   /** Cost incurred outside the engine (e.g. headline) folded into the trace on the
    *  first dispatch, so it's carried in the checkpoint and not lost across resumes. */
   baseCost?: Cost;
+  /**
+   * Per-job USD ceiling override. `undefined` = derive it from the model's mode
+   * (`maxCostForMode`), which is the normal path. `null` = uncapped, which is what
+   * an admin approval means: this specific job was judged worth finishing.
+   */
+  costCeilingUsd?: number | null;
 }
 
 /** Max notes kept per agent (bounds trace size). */
 const MAX_NOTES = 300;
 
-/**
- * Why a budget-stopped job failed. No figures: it becomes `job.error`, which the
- * buyer's client reads. What we spent is in `job.cost` (admin-only in the API) and
- * in the `job.budget_exceeded` log.
- */
-const BUDGET_STOPPED_ERROR = 'Stopped by the per-job cost ceiling before the report could be completed.';
 
 export async function runResearch(input: RunResearchInput): Promise<ResearchOutput> {
   const { template, params, jobId, generatedAt, onProgress, onTrace } = input;
@@ -226,8 +230,15 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // ceiling would be no ceiling at all, since a job gets re-dispatched 8 times.
   // Per-attempt sinks are `child()`ren of this: they scope an attempt's slice for
   // the agent trace while the job total stays in a single place.
+  // Per MODEL and mode, not per deployment: this is a catalog, and a cheap scan
+  // and a deep multi-agent report cannot share one number. An explicit override
+  // (an admin approval) wins over both.
+  const ceilingUsd =
+    input.costCeilingUsd === undefined
+      ? maxCostForMode(mode.config, config.workflow.maxJobCostUsd)
+      : input.costCeilingUsd;
   const jobSpend = createCostSink({
-    maxUsd: config.workflow.maxJobCostUsd,
+    maxUsd: ceilingUsd,
     seed: addCost(input.resume?.cost ?? emptyCost(), input.baseCost ?? emptyCost()),
   });
 
@@ -420,14 +431,29 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   });
   const checkpoint: Checkpoint = snapshot();
 
-  // A job that stopped on its ceiling must NOT come back as 'incomplete': the
-  // checkpoint carries the spend forward, so every one of the remaining dispatches
-  // would wake up already over the ceiling, fail every agent, and re-dispatch. It
-  // is finished — finalize it here instead of seven more times.
   const budgetStopped = jobSpend.budget().exceeded;
 
+  // A job that stopped on its ceiling is HELD, not incomplete and not degraded.
+  //
+  // Not incomplete: the checkpoint carries the spend forward, so every remaining
+  // dispatch would wake up already over the ceiling and re-dispatch again.
+  //
+  // Not degraded either — and this is the part that makes an approval worth
+  // anything. Degrading writes placeholders into the report, and the placeholders
+  // would be what an approved job resumed from. Returning here leaves the
+  // checkpoint holding real work and nothing else, so continuing means finishing
+  // the sections that never ran, not un-doing filler first.
+  if (budgetStopped && pending.length) {
+    trace.status = 'held';
+    trace.durationMs = Date.now() - Date.parse(trace.startedAt);
+    trace.finishedAt = new Date().toISOString();
+    await persistTrace();
+    await emit('held', `Held at the cost ceiling with ${pending.length} step(s) unfinished — awaiting review.`);
+    return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint };
+  }
+
   // Not finalizing yet → return 'incomplete' so a re-dispatch resumes the rest.
-  if (pending.length && !finalize && !budgetStopped) {
+  if (pending.length && !finalize) {
     trace.status = 'incomplete';
     trace.durationMs = Date.now() - Date.parse(trace.startedAt);
     trace.finishedAt = new Date().toISOString();
@@ -436,16 +462,15 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint };
   }
 
-  // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
-  // A budget-stopped job is degraded the same way, but does NOT ship: the sections
-  // are assembled and uploaded so the failure is diagnosable, and the job is then
-  // marked failed (below) so `run-job` refunds. See the note on `failed`.
+  // Reaching here with the ceiling crossed means every step finished anyway — the
+  // last one simply took the total past it. There is a whole report; deliver it.
+  // Worth a warning, because a job landing exactly on its ceiling is a ceiling set
+  // too close to what this model actually costs.
   if (budgetStopped) {
-    // No figures: `trace.warnings` is surfaced to the buyer verbatim today (F1).
-    // The amounts are in `trace.cost` and in the `job.budget_exceeded` ERROR log,
-    // both admin-side.
-    warnings.push('Stopped at the per-job cost ceiling before the report could be completed.');
+    warnings.push('This report finished right at the per-job cost ceiling.');
   }
+
+  // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
   for (const agent of pending) {
     const reason = agentReason(trace, agent.id);
     for (const key of ownedKeys(agent)) {
@@ -473,18 +498,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     fatalError = `Assembled report failed schema validation: ${issues}`;
   }
 
-  // The ceiling FAILS the job; it does not degrade-and-complete it.
-  //
-  // `completed` is what keeps the credits, and a buyer whose report stopped
-  // half-way paid for something they did not get. `failed` is also the only status
-  // that refunds (`run-job.ts` calls `refundForJob` on it), so this line is the
-  // refund policy. It cuts the other way for someone provoking the spend on
-  // purpose — they get their credits back while we keep the bill — which is why
-  // it is a decision and not a default: Javier's, taken 2026-07-30.
-  //
-  // Composed rather than folded into `fatalError` so a schema problem found on the
-  // way out is still reported, instead of being hidden by the ceiling that caused it.
-  const reason = [budgetStopped ? BUDGET_STOPPED_ERROR : '', fatalError ?? ''].filter(Boolean).join(' ');
+  const reason = fatalError ?? '';
   const failed = !!reason;
   trace.status = failed ? 'failed' : 'completed';
   if (reason) trace.error = reason;

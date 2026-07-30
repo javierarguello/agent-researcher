@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, captchaBody } from './client';
 import type { CreditPlan, JobDetail, JobListItem, JobReport, TemplateManifest } from './types';
 
-const LIVE = new Set(['queued', 'running', 'incomplete']);
+// `held` keeps polling: an admin approval puts it back in the queue, and the user
+// should see that without reloading.
+const LIVE = new Set(['queued', 'running', 'incomplete', 'held']);
 
 export function useTemplates(lang: string) {
   return useQuery({ queryKey: ['templates', lang], queryFn: () => api<{ templates: TemplateManifest[] }>(`/templates?lang=${lang}`), staleTime: 5 * 60_000 });

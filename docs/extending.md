@@ -56,6 +56,29 @@ job's whole budget failing to satisfy them (C1 in
 [plans/abuse-and-cost.md](plans/abuse-and-cost.md)). If a proposed field would
 express a quantity, it is not a directive.
 
+## Give a model its own cost ceiling
+
+Every job is capped in dollars (`MAX_JOB_COST_USD`), and a catalog cannot share one
+number: a cheap scan and a deep multi-agent report have different normal costs, so a
+ceiling that is a safety net for one is a wall for the other.
+
+Declare it per mode, next to `budgetScale` and `credits`, where cost already lives:
+
+```ts
+modes: {
+  comprehensive: { budgetScale: 1, depth: 'standard', credits: 18, maxCostUsd: 35 },
+  essential:     { budgetScale: 0.5, depth: 'light',  credits: 5,  maxCostUsd: 12 },
+}
+```
+
+Omit it and the deployment default applies. Set it from what the model ACTUALLY
+costs — the admin dashboard's per-job `cost` and the `budgetStoppedReports` counter
+are the evidence. A rising count means the ceiling is below real cost, not that
+anyone is abusing it.
+
+A job that trips its ceiling is **held** for an admin (approve → continue uncapped
+from the checkpoint; reject → fail + refund), never silently degraded.
+
 ## Add a whole new research model
 
 1. Create `packages/core/src/templates/<id>.ts` exporting a `ResearchTemplate`

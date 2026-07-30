@@ -4,7 +4,7 @@
 import { FieldValue, Firestore, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
 import type { Cost } from '../cost.js';
-import type { JobFailureKind, JobFile, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
+import type { JobFailureKind, JobFile, JobHold, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
 
 let db: Firestore | undefined;
 function firestore(): Firestore {
@@ -67,7 +67,7 @@ export async function listJobs(appId: string, userId: string, limit = 50): Promi
   return snap.docs.map((d) => d.data() as ResearchJob);
 }
 
-export interface UserJobStats { total: number; ready: number; inProgress: number; failed: number; }
+export interface UserJobStats { total: number; ready: number; inProgress: number; held: number; failed: number; }
 
 /**
  * Per-user report counters by status, computed with Firestore `count()`
@@ -79,13 +79,18 @@ export interface UserJobStats { total: number; ready: number; inProgress: number
 export async function getUserJobStats(appId: string, userId: string): Promise<UserJobStats> {
   const base = () => collection().where('appId', '==', appId).where('userId', '==', userId);
   const countOf = async (status: JobStatus) => (await base().where('status', '==', status).count().get()).data().count;
-  const [queued = 0, running = 0, completed = 0, failed = 0, incomplete = 0] = await Promise.all(
-    (['queued', 'running', 'completed', 'failed', 'incomplete'] as JobStatus[]).map(countOf),
+  const [queued = 0, running = 0, completed = 0, failed = 0, incomplete = 0, held = 0] = await Promise.all(
+    (['queued', 'running', 'completed', 'failed', 'incomplete', 'held'] as JobStatus[]).map(countOf),
   );
   return {
-    total: queued + running + completed + failed + incomplete,
+    total: queued + running + completed + failed + incomplete + held,
     ready: completed + incomplete,
+    // `held` is NOT in flight. It is waiting on US, and the one-job-at-a-time cap
+    // exists to bound concurrent spend — a parked job spends nothing. Counting it
+    // would lock a buyer out of the product until an admin got around to it, which
+    // is the shape of the bug E2 fixed.
     inProgress: queued + running,
+    held,
     failed,
   };
 }
@@ -159,6 +164,77 @@ export async function markFailed(
     ...(files ? { files } : {}),
     ...(failureKind ? { failureKind } : {}),
   });
+}
+
+/**
+ * Park a job for an admin decision. NOT terminal: no `finishedAt`, no refund, and
+ * the checkpoint is deliberately left in storage — an approval resumes the work
+ * rather than restarting it.
+ */
+export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[]): Promise<void> {
+  await patch(jobId, { status: 'held', hold, updatedAt: nowIso(), ...(files ? { files } : {}) });
+}
+
+/**
+ * Let a held job continue. Transactional and status-checked: two admins clicking
+ * approve, or an approval racing the expiry sweep, must not both win — the loser
+ * gets `false` and no second dispatch is enqueued.
+ *
+ * Approval clears the ceiling for THIS job only (`budgetOverride`). The retry
+ * budget is reset the same way the manual retry does it, because a job resuming
+ * from a checkpoint has its finished agents behind it and needs room for the rest.
+ */
+export async function approveHold(jobId: string, by: string): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const job = snap.exists ? (snap.data() as ResearchJob) : undefined;
+    if (!job || job.status !== 'held') return false;
+    tx.set(
+      ref,
+      {
+        status: 'queued',
+        attempts: 0,
+        budgetOverride: true,
+        hold: { ...job.hold, approvedBy: by, approvedAt: nowIso() },
+        error: FieldValue.delete(),
+        finishedAt: FieldValue.delete(),
+        updatedAt: nowIso(),
+      },
+      { merge: true },
+    );
+    return true;
+  });
+}
+
+/**
+ * Resolve a held job as failed (an admin rejected it, or the hold expired).
+ * Transactional for the same reason as `approveHold` — the caller refunds only
+ * when this returns true, so a lost race cannot refund twice.
+ */
+export async function rejectHold(jobId: string, error: string): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const job = snap.exists ? (snap.data() as ResearchJob) : undefined;
+    if (!job || job.status !== 'held') return false;
+    tx.set(
+      ref,
+      { status: 'failed', error, failureKind: job.hold?.reason, finishedAt: nowIso(), updatedAt: nowIso() },
+      { merge: true },
+    );
+    return true;
+  });
+}
+
+/** Held jobs whose hold has expired, oldest first (the expiry sweep's input). */
+export async function listExpiredHolds(nowIso_: string, limit = 100): Promise<ResearchJob[]> {
+  const snap = await collection()
+    .where('status', '==', 'held')
+    .where('hold.expiresAt', '<=', nowIso_)
+    .limit(limit)
+    .get();
+  return snap.docs.map((d) => d.data() as ResearchJob);
 }
 
 export function setJobStatus(jobId: string, status: JobStatus): Promise<void> {

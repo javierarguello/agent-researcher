@@ -242,15 +242,31 @@ inside the gather loop, and before a synthesis repair round; a job that trips it
 stops trying and finalizes rather than re-dispatching seven more times into the same
 wall, and logs `job.budget_exceeded` as an ERROR of its own.
 
-**Refund policy (Javier, 2026-07-30): a budget-stopped job FAILS and refunds.** It
-does not degrade-and-complete. The partial report is still assembled and uploaded so
-the failure is diagnosable; the job is then marked `failed`, which is the only status
-`run-job` refunds on. That cuts against us for anyone provoking the spend on purpose
-— they get their credits back while we keep the bill — so the other half of the
-decision is visibility: `failureKind: 'budget_exceeded'` on the job (admin-only in
-the API, badged in the jobs list and detail), a `budgetStoppedReports` counter, and
-the spend booked as `failedCostUsd` so "what did our failures cost us" is a number
-you read rather than reconstruct. Shipped in `244336b`.
+**Refund policy (Javier, 2026-07-30), revised the same day: a budget-stopped job is
+HELD for an admin decision.** It does not degrade-and-complete, and it does not fail
+outright either. The credits stay consumed while it waits — refunding
+first would let the buyer spend the balance elsewhere and leave an approval with
+nothing to charge — and the checkpoint is kept intact and NOT degraded, because
+placeholders are what an approved job would otherwise resume from. Three outcomes,
+one of which always happens: approve (resumes uncapped from the checkpoint, nothing
+re-charged), reject (failed + refunded), or expire after `JOB_HOLD_TTL_HOURS` (the
+same, without anyone deciding). Every resolution is a transactional status flip that
+answers whether it won, so an approval racing the sweep produces one outcome.
+
+The same mechanism covers a second case that used to refund wrongly: a report that
+RAN and was paid for but could not be uploaded. That refunded 100% and discarded a
+finished report. Uploads are retried now, and a persistent failure holds the job
+instead — an approval re-uploads from the checkpoint without re-running research.
+
+Visibility, since a hold is generous to whoever provoked the spend:
+`failureKind` (`budget_exceeded` | `upload_failed`) on the job, admin-only in the
+API and badged in the admin; a decision panel with the spend and the expiry; a
+`budgetStoppedReports` counter; and `failedCostUsd` booked apart from `costUsd` so
+"what did our failures cost us" is a number you read rather than reconstruct.
+
+The ceiling itself is now **per model and mode** (`modes[key].maxCostUsd`, falling
+back to `MAX_JOB_COST_USD`): this is a catalog, and a cheap scan and a deep report
+cannot share one number. Shipped in `244336b` and revised in the commit below.
 
 This decides only the ceiling case. D2 — a partial refund when a report degrades
 after exhausting retries — is still open.

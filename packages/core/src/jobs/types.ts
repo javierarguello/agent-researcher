@@ -1,15 +1,41 @@
 import type { Cost } from '../cost.js';
 
-export type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
+/**
+ * `held` = paused, waiting for a person.
+ *
+ * Not a failure and not in flight: the work is parked mid-way, the credits are
+ * still consumed, and an admin decides whether it continues. It resolves either
+ * way — approved (back to `queued`) or rejected/expired (`failed`, refunded) — so
+ * it is never a resting place. Deliberately NOT counted as in-flight: a job
+ * waiting on us must not lock the buyer out of starting another (that was E2).
+ */
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'held';
 
 /**
- * Why a job failed, when the reason is worth telling apart at a glance.
+ * Why a job stopped in a way that needs a person, rather than a retry.
  *
- * Only set for failures that are OURS rather than the model's: `budget_exceeded`
- * means the job hit the per-job cost ceiling, was refunded, and still cost real
- * money — the one failure mode where the money spent is the point.
+ * - `budget_exceeded` — it passed its cost ceiling. Continuing costs more money,
+ *   so the call is whether this particular job is worth it.
+ * - `upload_failed`  — the report was produced and paid for, but could not be
+ *   stored. Nothing is wrong with the work; it needs re-uploading, not re-running.
+ *
+ * The same values name a hold and, if the hold is not approved, the failure it
+ * becomes — so a job's history reads the same before and after it resolves.
  */
-export type JobFailureKind = 'budget_exceeded';
+export type JobFailureKind = 'budget_exceeded' | 'upload_failed';
+
+/** A job parked for an admin decision. */
+export interface JobHold {
+  reason: JobFailureKind;
+  heldAt: string;
+  /** When it auto-resolves: the job fails and the buyer is refunded. */
+  expiresAt: string;
+  /** What the job had already spent (USD) when it was held — the number the call rests on. */
+  spentUsd: number;
+  /** Audit: who let it continue, and when. Set on approval; the job goes back to `queued`. */
+  approvedBy?: string;
+  approvedAt?: string;
+}
 
 export interface JobFile {
   /** File name, e.g. "report.md". */
@@ -86,6 +112,14 @@ export interface ResearchJob {
   error?: string;
   /** Set on failures worth distinguishing in the admin (see JobFailureKind). */
   failureKind?: JobFailureKind;
+  /** Present while `status === 'held'`, and kept afterwards as the audit trail. */
+  hold?: JobHold;
+  /**
+   * An admin approved this job to run past its cost ceiling. Set by the approval,
+   * read by the engine, and never cleared — a job that needed it once will need it
+   * again the moment it resumes.
+   */
+  budgetOverride?: boolean;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;

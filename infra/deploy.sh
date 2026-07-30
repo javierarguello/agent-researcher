@@ -89,5 +89,28 @@ gcloud run deploy "${API_SERVICE}" \
   --allow-unauthenticated \
   --set-env-vars "${COMMON_ENV},WORKER_SERVICE_NAME=${WORKER_SERVICE},WORKER_REGION=${REGION},WORKER_SERVICE_URL=${WORKER_URL},TASKS_QUEUE=${QUEUE},TASKS_REGION=${REGION},TASKS_INVOKER_SA=${API_SA_EMAIL},JOB_MAX_CONCURRENCY=${JOB_MAX_CONCURRENCY},STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY},STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET},AUTH_JWT_SECRET=${AUTH_JWT_SECRET},TURNSTILE_SECRET=${TURNSTILE_SECRET},CORS_ORIGINS=${CORS_ORIGINS},APP_ENV=production"
 
+# A held job keeps the buyer's credits while it waits for a decision, so something
+# has to guarantee it gets an answer. This is that something: hourly, it fails and
+# refunds every hold past `JOB_HOLD_TTL_HOURS`. It targets the WORKER because the
+# worker is already private + OIDC-authenticated — a scheduler has no admin session
+# to present, and this way it needs no secret of its own. The API SA already holds
+# run.invoker on the worker (granted above).
+SCHEDULER_JOB="${PREFIX}-expire-holds"
+echo ">> [${ENV}] Scheduling the hold sweep (hourly) -> ${WORKER_URL}/expire-holds ..."
+SCHEDULER_ARGS=(
+  --location "${REGION}"
+  --schedule "0 * * * *"
+  --uri "${WORKER_URL}/expire-holds"
+  --http-method POST
+  --oidc-service-account-email "${API_SA_EMAIL}"
+  --oidc-token-audience "${WORKER_URL}"
+  --attempt-deadline 300s
+)
+if gcloud scheduler jobs describe "${SCHEDULER_JOB}" --location "${REGION}" >/dev/null 2>&1; then
+  gcloud scheduler jobs update http "${SCHEDULER_JOB}" "${SCHEDULER_ARGS[@]}" >/dev/null
+else
+  gcloud scheduler jobs create http "${SCHEDULER_JOB}" "${SCHEDULER_ARGS[@]}" >/dev/null
+fi
+
 echo ">> [${ENV}] Done."
 gcloud run services describe "${API_SERVICE}" --region "${REGION}" --format='value(status.url)'

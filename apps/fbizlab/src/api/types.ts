@@ -43,7 +43,12 @@ export interface TemplateManifest {
   reportSchema: unknown;
 }
 
-export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'incomplete';
+/**
+ * `held` = paused while we review it before spending more on it. Not a failure and
+ * not finished; it resolves either way, and if it is not approved the credits come
+ * back. Treat it as a live state in the UI, but not one the user can hurry.
+ */
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'incomplete' | 'held';
 export interface Cost { usd: number; }
 
 export interface JobListItem {

@@ -128,6 +128,36 @@ Worker  runJob → runResearch                                     Core credits
    │  ◀── worker acks 200 (deterministic failure ⇒ don't re-run)  │
 ```
 
+### (d2) Held for a decision — the third outcome
+
+Two situations are neither success nor failure, and refunding on the spot would be
+wrong for both:
+
+```
+Worker  runJob                                                    Core jobs/credits
+   │  trace.status = 'held'   (the job passed its cost ceiling)    │
+   │     …or the report ran but report.json would not upload       │
+   │  markHeld(jobId, {reason, expiresAt, spentUsd})  ───────────▶ jobs/{jobId}.status='held'
+   │  checkpoint KEPT, credits NOT refunded, no report stats       │
+   │  ◀── worker acks 200 (re-dispatching walks into the same wall)│
+                                                                   │
+Admin   POST /admin/jobs/:id/approve ─▶ approveHold (transaction)  │
+   │      status='queued', budgetOverride=true, attempts=0         │
+   │      enqueue → runJob resumes from the checkpoint, UNCAPPED   │
+Admin   POST /admin/jobs/:id/reject  ─▶ rejectHold (transaction)   │
+   │      won? → refundForJob(...)                                 │
+Cron    POST /expire-holds (worker, hourly, OIDC) ─▶ expireHolds() │
+   │      past expiresAt → rejectHold + refundForJob               │
+```
+
+- The credits stay consumed **while it waits** — refunding first would let the buyer
+  spend the balance elsewhere and leave an approval with nothing to charge.
+- Every resolution goes through a transactional status flip that answers whether it
+  won, and only the winner refunds. An approval racing the expiry sweep produces one
+  outcome, not both.
+- `held` is **not** counted as in-flight, so the buyer is never locked out of
+  starting another report while we deliberate (that was E2's shape).
+
 - The user is refunded exactly what `consumeCredits` took for that `jobId`;
   successful jobs are never refunded.
 - Idempotent (`refund_<jobId>`) and a no-op when nothing was consumed (e.g. local

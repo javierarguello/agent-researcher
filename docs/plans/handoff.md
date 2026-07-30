@@ -63,14 +63,24 @@ from it rather than summed a second time. Seeded from the checkpoint — a
 per-dispatch cap is 8× no cap. A job that trips it finalizes instead of
 re-dispatching into the same wall.
 
-**The refund call, taken (Javier, 2026-07-30):** a budget-stopped job **fails and
-refunds**. The partial report is still assembled and uploaded so the failure is
-diagnosable, then the job is marked `failed` — the only status `run-job` refunds on.
-Because that is generous to whoever provoked the spend, the same change makes it
-visible: `failureKind: 'budget_exceeded'` on the job (admin-only, badged in the
-admin jobs list and detail), a `budgetStoppedReports` counter, and the spend booked
-as `failedCostUsd` beside `costUsd`. D2 — a partial refund for the ordinary degraded
-report — is still open and still yours.
+**The ceiling's policy, decided by Javier (2026-07-30):** a job that trips it is
+**held** — parked for an admin, credits still consumed, checkpoint kept and NOT
+degraded. Approve → resumes uncapped from where it stopped, nothing re-charged.
+Reject → failed + refunded. Nobody decides within `JOB_HOLD_TTL_HOURS` → the same,
+via an hourly sweep (`/expire-holds` on the worker, wired in `infra/deploy.sh`;
+without a scheduler, holds never expire on their own). A held job does NOT count
+against the one-in-flight cap — that was E2's shape.
+
+The same hold covers a report that ran, was paid for, and could not be uploaded:
+that used to refund 100% and throw the report away. Uploads retry now, and a
+persistent failure holds instead.
+
+**The ceiling is per model and mode** (`modes[key].maxCostUsd` → `MAX_JOB_COST_USD`).
+This is a catalog; one global number is a safety net for one model and a wall for
+another. Set it from measured cost — `budgetStoppedReports` rising means the ceiling
+is too low, not that anyone is abusing it. `MAX_JOB_COST_USD` still defaults to $20,
+which was picked without a measured per-job figure. That is the one number here
+still resting on a guess.
 
 **The SPA renders the directives** (`apps/fbizlab/src/pages/NewReport.tsx`, section
 04) entirely from the manifest — no field names, no option labels, no translations

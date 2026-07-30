@@ -39,8 +39,14 @@ export {
   setJobSummary,
   setJobHeadline,
   setJobStatus,
+  markHeld,
+  approveHold,
+  rejectHold,
+  listExpiredHolds,
 } from './jobs/firestore.js';
-export type { ResearchJob, JobStatus, JobFile, JobProgress, JobSummary } from './jobs/types.js';
+export { expireHolds, holdExpiryFrom } from './jobs/holds.js';
+export type { ExpireHoldsResult } from './jobs/holds.js';
+export type { ResearchJob, JobStatus, JobFailureKind, JobHold, JobFile, JobProgress, JobSummary } from './jobs/types.js';
 export { generateHeadline } from './jobs/headline.js';
 export type { Headline } from './jobs/headline.js';
 
@@ -95,7 +101,7 @@ export { logEvent, jobLogger } from './obs/log.js';
 export type { LogContext, JobLogger, Severity } from './obs/log.js';
 
 // Report modes (public cost/scope knob) + internal depth
-export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode } from './mode.js';
+export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode, maxCostForMode } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
 export { LANGUAGE_LABELS } from './languages.js';
 export { dedupeSources, normalizeUrl } from './tools/sources.js';

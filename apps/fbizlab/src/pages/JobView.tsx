@@ -14,10 +14,10 @@ const T = {
   pt: { back: '← Dossiês', working: 'Gerando seu dossiê…', loadingReport: 'Carregando dossiê…', failed: 'Este dossiê não pôde ser concluído.', download: 'Baixar', files: 'Arquivos', warnings: 'Notas', partial: 'Algumas seções foram entregues parciais.' },
 };
 const STATUS_LABEL: Record<string, Record<JobStatus, string>> = {
-  en: { queued: 'Queued', running: 'Running', completed: 'Ready', failed: 'Failed', incomplete: 'Paused' },
-  es: { queued: 'En cola', running: 'Corriendo', completed: 'Listo', failed: 'Falló', incomplete: 'En pausa' },
-  fr: { queued: 'En file', running: 'En cours', completed: 'Prêt', failed: 'Échec', incomplete: 'En pause' },
-  pt: { queued: 'Na fila', running: 'Rodando', completed: 'Pronto', failed: 'Falhou', incomplete: 'Em pausa' },
+  en: { queued: 'Queued', running: 'Running', completed: 'Ready', failed: 'Failed', incomplete: 'Paused', held: 'Under review' },
+  es: { queued: 'En cola', running: 'Corriendo', completed: 'Listo', failed: 'Falló', incomplete: 'En pausa', held: 'En revisión' },
+  fr: { queued: 'En file', running: 'En cours', completed: 'Prêt', failed: 'Échec', incomplete: 'En pause', held: 'En révision' },
+  pt: { queued: 'Na fila', running: 'Rodando', completed: 'Pronto', failed: 'Falhou', incomplete: 'Em pausa', held: 'Em revisão' },
 };
 
 export function JobView() {
@@ -30,7 +30,7 @@ export function JobView() {
   const report = useJobReport(jobId, job?.status === 'completed');
 
   if (!job) return <div className="mono muted">…</div>;
-  const live = job.status === 'queued' || job.status === 'running' || job.status === 'incomplete';
+  const live = job.status === 'queued' || job.status === 'running' || job.status === 'incomplete' || job.status === 'held';
   const stepsById: Record<string, StepInfo> = Object.fromEntries((template.data?.steps ?? []).map((s) => [s.id, s]));
   const step = job.progress ? stepsById[job.progress.phase] : undefined;
 

@@ -5,7 +5,19 @@
  * = we stopped it at the per-job cost ceiling; the user was refunded and the spend
  * is ours. Admin-only — the buyer's view never carries it.
  */
-export type JobFailureKind = 'budget_exceeded';
+export type JobFailureKind = 'budget_exceeded' | 'upload_failed';
+
+/** A job parked for an admin decision. Present while `status === 'held'`. */
+export interface JobHold {
+  reason: JobFailureKind;
+  heldAt: string;
+  /** When it resolves itself: the job fails and the buyer is refunded. */
+  expiresAt: string;
+  /** What it had already spent when it was parked — the number the call rests on. */
+  spentUsd: number;
+  approvedBy?: string;
+  approvedAt?: string;
+}
 
 export interface SessionUser {
   email: string;
@@ -75,7 +87,8 @@ export interface AdminUser {
   logins?: number;
 }
 
-export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'incomplete';
+/** `held` = parked for an admin decision; not failed, not in flight. */
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'incomplete' | 'held';
 
 export interface Cost {
   usd: number;
@@ -94,6 +107,7 @@ export interface AdminJob {
   title: string | null;
   status: JobStatus;
   failureKind: JobFailureKind | null;
+  hold: JobHold | null;
   cost: Cost | null;
   attempts: number | null;
   createdAt: string;
@@ -146,6 +160,7 @@ export interface JobDetail {
   status: JobStatus;
   /** Admin-only, like `cost` — present only when the caller is an admin. */
   failureKind?: JobFailureKind | null;
+  hold?: JobHold | null;
   progress: JobProgress | null;
   cost: Cost | null;
   summary: JobSummary | null;

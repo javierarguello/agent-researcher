@@ -142,7 +142,8 @@ Every value has a default (import never throws). Grouped as in `config.ts`.
 | `LLM_MAX_OUTPUT_TOKENS` | `32768` | Cap for structured JSON (avoid mid-JSON truncation). |
 | `LLM_GATHER_MAX_OUTPUT_TOKENS` | `4096` | Cap per research turn. A turn emits a plan or a query; uncapped, each of `2×budget+6` turns could emit the model default. |
 | `LLM_GATHER_THINKING_BUDGET` | `1024` | Thinking budget per research turn. Bounded, not zeroed — query planning is where reasoning pays. Billed as output. |
-| `MAX_JOB_COST_USD` | `20` | Hard per-job spend ceiling, counted across all dispatches. A safety net against retry amplification, not a budget — a normal report is a small fraction of it. A job that trips it **fails and refunds the buyer**, and is marked `budget_exceeded` in the admin with its spend booked as `failedCostUsd`. `0` disables. |
+| `MAX_JOB_COST_USD` | `20` | Deployment-wide per-job spend ceiling, counted across all dispatches. A safety net against retry amplification, not a budget. A model can override it per mode (`modes[key].maxCostUsd`) — a cheap scan and a deep report should not share one number. A job that trips it is **held for an admin decision**, not failed. `0` disables. |
+| `JOB_HOLD_TTL_HOURS` | `72` | How long a held job waits for a decision before it fails itself and refunds the buyer. Enforced by the hourly `expire-holds` sweep — see below. |
 | `LLM_MAX_CONCURRENT_AGENTS` | `2` | Max agents running per job (Vertex-quota guard). |
 | `LLM_PROVIDER_<ALIAS>` | — | Per-alias provider override (`LLM_PROVIDER_FLASH=ollama`). Points just those calls elsewhere. |
 | `OLLAMA_HOST` | `http://localhost:11434` | Local model server for the `ollama` provider (dev/testing only — see [local-llm.md](local-llm.md)). |
@@ -150,6 +151,27 @@ Every value has a default (import never throws). Grouped as in `config.ts`.
 
 Prices per alias (`inPerM`/`outPerM`) are set in `config.llm.models` — edit there
 when provider pricing changes (one place; drives cost accounting).
+
+### The hold sweep (`expire-holds`)
+
+A job that hits its cost ceiling — or whose report ran but could not be stored — is
+**held**: paused, with the buyer's credits still consumed, waiting for an admin to
+approve it (continue, uncapped, from its checkpoint) or reject it (fail + refund).
+
+Holding the credits is what makes an approval possible: refunding first would let
+the buyer spend the balance elsewhere and leave nothing to charge. The cost of that
+is that a hold nobody resolves is a buyer who paid for nothing — so `deploy.sh`
+creates a **Cloud Scheduler job** (`<prefix>-expire-holds`, hourly) that POSTs
+`/expire-holds` on the worker and refunds anything past `JOB_HOLD_TTL_HOURS`.
+
+It targets the worker, not the API: the worker is private and OIDC-authenticated at
+the platform level, so the scheduler needs no admin session and no secret of its
+own (it reuses the API service account, which already holds `run.invoker` on the
+worker). The sweep is idempotent and bounded — an overlap or a retry is harmless.
+
+**If you deploy without Cloud Scheduler enabled**, holds never expire on their own.
+`POST /admin/jobs/expire-holds` does the same thing on demand, and the admin's job
+list shows every held job with its expiry.
 
 ### Request review (moderation + pre-flight)
 See [request-review.md](request-review.md).

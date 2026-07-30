@@ -154,16 +154,27 @@ class Query {
   async get(): Promise<{ docs: DocumentSnapshot[]; empty: boolean; size: number }> {
     let entries = [...DB.entries()].filter(([p]) => (this.group ? collectionId(p) === this.path : parentPath(p) === this.path));
     for (const f of this.filters) {
-      entries = entries.filter(([, d]) => match(d[f.field], f.op, f.value));
+      entries = entries.filter(([, d]) => match(valueAt(d, f.field), f.op, f.value));
     }
     if (this.order) {
       const { field, dir } = this.order;
-      entries.sort(([, a], [, b]) => cmp(a[field], b[field]) * (dir === 'desc' ? -1 : 1));
+      entries.sort(([, a], [, b]) => cmp(valueAt(a, field), valueAt(b, field)) * (dir === 'desc' ? -1 : 1));
     }
     if (this.max != null) entries = entries.slice(0, this.max);
     const docs = entries.map(([p, d]) => new DocumentSnapshot(new DocumentReference(p), { ...d }));
     return { docs, empty: docs.length === 0, size: docs.length };
   }
+}
+
+/**
+ * Resolve a Firestore field PATH ('hold.expiresAt'), not just a key. Firestore
+ * filters and orders on nested fields; a mock that only reads top-level keys
+ * silently returns nothing for such a query, which reads as "no results" rather
+ * than "unsupported" — a query bug you cannot see.
+ */
+function valueAt(doc: Record<string, unknown>, path: string): unknown {
+  if (!path.includes('.')) return doc[path];
+  return path.split('.').reduce<unknown>((v, k) => (v == null ? v : (v as Record<string, unknown>)[k]), doc);
 }
 
 function match(a: unknown, op: string, b: unknown): boolean {

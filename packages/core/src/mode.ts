@@ -34,6 +34,17 @@ export interface ModeConfig {
   depth: 'light' | 'standard' | 'deep';
   /** Credits this mode consumes per report (default 1). Aligns with relative cost. */
   credits?: number;
+  /**
+   * Hard USD ceiling for ONE job in this mode. Omit to use the deployment-wide
+   * default (`config.workflow.maxJobCostUsd`).
+   *
+   * It lives here, next to `budgetScale` and `credits`, because a ceiling is only
+   * meaningful relative to what a job of this kind normally costs — and this is a
+   * catalog: a cheap scan and a deep multi-agent report cannot share one number.
+   * A model that declares nothing still gets a ceiling; a model that knows its own
+   * cost profile can say so without a deploy-wide change.
+   */
+  maxCostUsd?: number;
   /** Internal param overrides merged before the brief is built (e.g. targetCount). */
   params?: Record<string, unknown>;
 }
@@ -47,6 +58,15 @@ export const DEFAULT_MODES: Record<ReportMode, ModeConfig> = {
 /** Credits a mode consumes (defaults: essential 5, comprehensive 18 — track real cost). */
 export function creditsForMode(config: ModeConfig, key: ReportMode): number {
   return config.credits ?? (key === 'comprehensive' ? 18 : 5);
+}
+
+/**
+ * The USD ceiling for one job in this mode: the model's own figure when it
+ * declares one, otherwise the deployment default. `0`/negative means uncapped, at
+ * either level — a model can opt out of a ceiling the deployment sets.
+ */
+export function maxCostForMode(config: ModeConfig, fallbackUsd: number): number {
+  return config.maxCostUsd ?? fallbackUsd;
 }
 
 /** Resolve a requested mode against a template's modes (or the defaults). */

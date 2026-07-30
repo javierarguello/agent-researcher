@@ -7,6 +7,8 @@ const JOB_COLORS: Record<JobStatus, string> = {
   completed: 'teal',
   failed: 'red',
   incomplete: 'yellow',
+  // Orange, not red: a held job has not failed. It is waiting on us.
+  held: 'orange',
 };
 
 const LEDGER_COLORS: Record<LedgerEntry['type'], string> = {
@@ -28,7 +30,11 @@ export function JobStatusBadge({ status }: { status: JobStatus }) {
 const FAILURE_LABEL: Record<JobFailureKind, { label: string; help: string }> = {
   budget_exceeded: {
     label: 'cost ceiling',
-    help: 'We stopped this job at the per-job cost ceiling. The user was refunded — the spend is ours.',
+    help: 'This job passed its per-job cost ceiling. Continuing it costs more money, so it needs a decision.',
+  },
+  upload_failed: {
+    label: 'upload failed',
+    help: 'The report was produced and paid for but could not be stored. It needs re-uploading, not re-running — approve to retry.',
   },
 };
 
