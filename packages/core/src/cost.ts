@@ -67,9 +67,20 @@ export interface BudgetState {
 export class BudgetExceededError extends Error {
   readonly spentUsd: number;
   readonly limitUsd: number;
+  /**
+   * The same fact WITH the figures, for the trace and the logs.
+   *
+   * Kept out of `message` on purpose. An agent's `error` becomes the reason a
+   * degraded section carries, and that section is rendered to the buyer — so a
+   * dollar amount in this message would print our infrastructure spend inside a
+   * customer's report. The numbers are on the instance, in `trace.cost`, and in
+   * the `job.budget_exceeded` log; none of those is customer-facing.
+   */
+  readonly detail: string;
   constructor(spentUsd: number, limitUsd: number) {
-    super(`Job cost ceiling reached: spent $${spentUsd.toFixed(2)} of the $${limitUsd.toFixed(2)} allowed.`);
+    super('The job reached its cost ceiling.');
     this.name = 'BudgetExceededError';
+    this.detail = `Job cost ceiling reached: spent $${spentUsd.toFixed(2)} of the $${limitUsd.toFixed(2)} allowed.`;
     this.spentUsd = spentUsd;
     this.limitUsd = limitUsd;
   }

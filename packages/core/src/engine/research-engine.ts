@@ -328,8 +328,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         if (budget.exceeded) {
           const err = new BudgetExceededError(budget.spentUsd, budget.limitUsd ?? 0);
           at.status = 'failed';
+          // `message` here, `detail` in the note: the error travels to a degraded
+          // section the buyer reads, the note stays in the trace.
           at.error = err.message;
-          at.notes.push(`${new Date().toISOString()} ${err.message}`);
+          at.notes.push(`${new Date().toISOString()} ${err.detail}`);
           trace.budgetExceeded = true;
           await emit(agent.id, err.message);
           break;
@@ -429,11 +431,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
 
   // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
   if (budgetStopped) {
-    const b = jobSpend.budget();
-    warnings.push(
-      `Stopped at the per-job cost ceiling: spent $${b.spentUsd.toFixed(2)} of the ` +
-        `$${(b.limitUsd ?? 0).toFixed(2)} allowed. Remaining sections were degraded.`,
-    );
+    // No figures: `trace.warnings` is surfaced to the buyer verbatim today (F1).
+    // The amounts are in `trace.cost` and in the `job.budget_exceeded` ERROR log,
+    // both admin-side.
+    warnings.push('Stopped at the per-job cost ceiling; the remaining sections were degraded.');
   }
   for (const agent of pending) {
     const reason = agentReason(trace, agent.id);

@@ -139,6 +139,26 @@ describe('the engine stops a job at its ceiling', () => {
     expect(out.trace.warnings?.join(' ')).toMatch(/cost ceiling/i);
   });
 
+  it('never prints what we spent into the buyer’s report', async () => {
+    config.workflow.maxJobCostUsd = 1;
+    const resume: Checkpoint = { report: {}, sources: [], doneAgentIds: [], degraded: [], cost: usd(5) };
+    const out = await runResearch({
+      template, params: params(), jobId: 'b5', generatedAt: 't', resume, finalize: false,
+    });
+
+    // A failed agent's `error` becomes the reason text inside its degraded section,
+    // and that section is rendered to the customer. So the ceiling's own message
+    // must not carry figures: "spent $23.41 of the $20.00 allowed" is our
+    // infrastructure spend, printed in something the buyer paid for and reads.
+    const money = /\$\s?\d/;
+    expect(JSON.stringify(out.report)).not.toMatch(money);
+    expect((out.trace.warnings ?? []).join(' ')).not.toMatch(money);
+
+    // …while the figures stay where they are needed: the trace and the job total.
+    expect(out.trace.agents.some((a) => a.notes.some((n) => money.test(n)))).toBe(true);
+    expect(out.trace.cost.usd).toBeGreaterThan(0);
+  });
+
   it('stops mid-run, having spent about the ceiling and not the whole job', async () => {
     const full = await runResearch({ template, params: params(), jobId: 'b3', generatedAt: 't' });
     const fullCalls = mock.calls;
