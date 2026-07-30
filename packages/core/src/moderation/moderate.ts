@@ -23,7 +23,7 @@ import { config } from '../config.js';
 import { retryAsync } from '../util/retry.js';
 import { llmCost } from '../cost.js';
 import { logEvent } from '../obs/log.js';
-import { hasControlChars, screeningForms, squeezedPattern } from '../util/text.js';
+import { hasControlChars, screeningForms, tolerantPattern } from '../util/text.js';
 import { MODERATION_CATEGORIES, asModerationCategory, type ModerationCategory } from './copy.js';
 
 export interface ModerationVerdict {
@@ -54,43 +54,72 @@ export function collectFreeText(params: Record<string, unknown>): string {
 }
 
 /**
- * Obvious prompt-injection / override attempts (multi-language). The LLM catches
- * subtler cases; this layer only has to catch the blatant ones.
+ * Obvious prompt-injection / override attempts (multi-language).
  *
- * `squeezed` also tests the pattern against the separator-stripped form, which is
- * what catches "i.g.n.o.r.e a.l.l p.r.e.v.i.o.u.s". That form has no word
- * boundaries BY CONSTRUCTION — every separator is gone, including the ones between
- * real words — so it is only safe for phrases long enough that colliding with
- * ordinary prose is implausible. It is off for the short ones: "offices near the
- * county jail. Breakdown of revenue" squeezes to "…countyjailbreakdown…", which
- * contains "jailbreak", and this product sells research on bail-bonds offices.
+ * This list is tuned for PRECISION, not recall, and the asymmetry is deliberate:
+ * a false positive is a hard 422 for a paying customer (this layer rejects on its
+ * own, and it is the only layer running when the classifier is off, failing open,
+ * or skipped on a preview), while a miss reaches an engine that already fences
+ * client text as low-authority. So the ambiguous words are gone and the
+ * unmistakable shapes stay.
+ *
+ * What "ambiguous" turned out to mean here, from a review that ran the real
+ * function over the industries this product serves:
+ *  - "rules" is business vocabulary — "show the rules for transferring a liquor
+ *    license", "forget the rules about SBA loans". It is out of every family;
+ *    "instructions"/"prompt" carry the injection meaning on their own.
+ *  - instructions ATTRIBUTED to a third party are ordinary: "ignore any prior
+ *    instructions from the broker", "ignora las reglas anteriores que le di al
+ *    corredor". An injection addresses the reader; a buyer talks about a person.
+ *  - "system prompt" needs its determiner adjacent, or "the alarm system prompts
+ *    a code on entry" is an attack.
  */
-const INJECTION_PATTERNS: Array<{ re: RegExp; squeezed?: boolean }> = [
-  { re: /ignore (?:all|the|your|any)?\s*(?:previous|prior|above|preceding)\s+(?:instructions|prompts?|rules)/i, squeezed: true },
-  // "rules" needs a qualifier that points at OUR rules; bare "disregard the rules"
-  // is something a person writes about rules of thumb, asking prices, or a lease.
-  { re: /disregard\s+(?:all\s+)?(?:the|your|any)?\s*(?:previous|prior|above|preceding|system)?\s*(?:instructions|prompts?)\b/i, squeezed: true },
-  { re: /disregard\s+(?:all\s+)?(?:the|your)?\s*(?:previous|prior|above|preceding|system)\s+rules\b/i, squeezed: true },
-  { re: /forget\s+(?:everything|all|your|the)\s+(?:instructions|rules|above|previous)/i, squeezed: true },
-  // Word-bounded: without \b this matched "ecoSYSTEM PROMPTed growth".
-  { re: /\b(?:system|developer)\s+prompts?\b/i },
-  { re: /\byou\s+are\s+now\s+(?:a|an|the|dan|in)\b/i },
-  { re: /(?:reveal|print|show|repeat|output)\s+(?:your|the)\s+(?:system\s+)?(?:prompt|instructions|rules)/i, squeezed: true },
-  // Bare "jailbreak" is an escape-room theme as often as an attack, and "do
-  // anything now" is ordinary English ("the owner will not do anything now").
-  // Both need the framing that makes them an instruction to the model.
-  { re: /\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i },
-  { re: /\bdan\s+mode\b|\b(?:act\s+as|you\s+are|enter|enable)\b[^.!?]{0,40}\bdo\s+anything\s+now\b/i },
-  { re: /ignora(?:r)?\s+(?:las\s+)?(?:instrucciones|reglas)\s+(?:anteriores|previas)/i, squeezed: true }, // es
-  { re: /ignore[rz]?\s+les\s+(?:instructions|règles)\s+(?:précédentes|antérieures)/i, squeezed: true }, // fr
-  { re: /ignor(?:e|ar)\s+(?:as\s+)?(?:instruções|regras)\s+(?:anteriores|acima)/i, squeezed: true }, // pt
-  { re: /<\|.*?\|>|\[\/?(?:system|inst|assistant|user)\]/i }, // role/control markers
+
+/** Who a legitimate request attributes instructions TO — never the assistant. */
+const ATTRIBUTED = String.raw`(?!\s*(?:from|by|of|in|on|at|given|left|del|de\b|du|da|do|que|dos|en|na|no)\b)`;
+
+const INJECTION_PATTERNS: RegExp[] = [
+  new RegExp(String.raw`ignore\s+(?:all|the|your|any)?\s*(?:previous|prior|above|preceding)\s+(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
+  new RegExp(String.raw`disregard\s+(?:all\s+)?(?:the|your|any)?\s*(?:previous|prior|above|preceding|system)?\s*(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
+  new RegExp(String.raw`forget\s+(?:everything|all|your|the)\s+(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
+  /forget\s+(?:everything|all)\s+(?:above|previous|preceding)\b(?!\s*[$\d])/i, // "$1M above" is a price, not a prompt
+  /\b(?:your|the)\s+(?:system|developer)\s+prompt\b/i,
+  // Needs a PERSONA, not just a noun: "you are now the owner of record" and "since
+  // you are now in the research phase" are things a buyer writes.
+  /\byou\s+are\s+now\s+(?:dan\b|jailbroken\b|unrestricted\b|(?:a|an|the)\s+(?:\w+\s+)?(?:ai|assistant|model|bot|chatbot|llm)\b)/i,
+  /(?:reveal|print|show|repeat|output|dump)\s+(?:your|the\s+system)\s+(?:prompt|instructions)\b/i,
+  // Framings that make "jailbreak"/"do anything now" an instruction rather than an
+  // escape-room theme or a sentence about a seller who will not act today.
+  /\bjailbreak\b\s*(?::|mode\b)|\b(?:enable|activate|enter|in)\s+jailbreak\b|\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i,
+  // "act as" is too generic — "the new owner can act as manager and do anything now
+  // that hiring is frozen" is a sentence about a staffing agency.
+  /\bdan\s+mode\b|\b(?:you\s+(?:are|can|will)|from\s+now\s+on)\b[^.!?]{0,30}\bdo\s+anything\s+now\b/i,
+  // es / fr / pt — same two narrowings as the English family.
+  new RegExp(String.raw`ignora(?:r)?\s+(?:las\s+)?(?:instrucciones|indicaciones)\s+(?:anteriores|previas)\b${ATTRIBUTED}`, 'i'),
+  new RegExp(String.raw`ignore[rz]?\s+les\s+(?:instructions|consignes)\s+(?:précédentes|antérieures)\b${ATTRIBUTED}`, 'i'),
+  new RegExp(String.raw`ignor(?:e|ar)\s+(?:as\s+)?(?:instruções)\s+(?:anteriores|acima)\b${ATTRIBUTED}`, 'i'),
+  // Chat-template markers. A bare "[system]" is something a listing's error page
+  // says; the closing/opening INST forms are not prose in any language.
+  /<\|[^|]*\|>|\[\/(?:inst|system|assistant|user)\]|\[inst\]|\bim_start\b/i,
 ];
 
-/** Precomputed separator-insensitive twins, for the patterns that opted in. */
-const SQUEEZED_PATTERNS: Array<RegExp | undefined> = INJECTION_PATTERNS.map((p) =>
-  p.squeezed ? squeezedPattern(p.re) : undefined,
-);
+/**
+ * Shapes that are ambiguous in prose but unmistakable once someone has PADDED the
+ * text. Padding is itself the evidence: nobody writes "d.o a.n.y.t.h.i.n.g n.o.w"
+ * or "j.a.i.l.b.r.e.a.k" by accident, so these are tested only against the unpadded
+ * form, and only when unpadding actually changed something. That buys back the
+ * recall the precision-first list above gives up, at no false-positive cost.
+ */
+const PADDED_ONLY_PATTERNS: RegExp[] = [
+  /\bjailbreak\b/i,
+  /\bdo\s+anything\s+now\b/i,
+  /\b(?:system|developer)\s+prompt\b/i,
+  /\bignore\s+(?:all|the|your|any)?\s*(?:previous|prior|above)\s+rules\b/i,
+];
+
+/** Separator-tolerant twins — see `tolerantPattern`. */
+const TOLERANT_PATTERNS: RegExp[] = INJECTION_PATTERNS.map(tolerantPattern);
+const TOLERANT_PADDED_ONLY: RegExp[] = PADDED_ONLY_PATTERNS.map(tolerantPattern);
 
 /**
  * Deterministic checks over the normalized input. Returns the category on a hit,
@@ -100,11 +129,15 @@ export function preScreen(text: string): ModerationCategory | null {
   // Control characters (except tab/newline) are used to smuggle instructions.
   if (hasControlChars(text)) return 'control_chars';
 
-  const { normalized, squeezed } = screeningForms(text);
-  for (let i = 0; i < INJECTION_PATTERNS.length; i++) {
-    if (INJECTION_PATTERNS[i]!.re.test(normalized) || SQUEEZED_PATTERNS[i]?.test(squeezed)) {
-      return 'prompt_injection';
-    }
+  const { normalized, unpadded } = screeningForms(text);
+  // The tolerant twin covers both forms: it treats every inter-word gap as
+  // optional, so it matches "system-prompt" in the normalized text and the
+  // already-closed gap in the unpadded one.
+  for (const re of TOLERANT_PATTERNS) {
+    if (re.test(normalized) || re.test(unpadded)) return 'prompt_injection';
+  }
+  if (unpadded !== normalized) {
+    for (const re of TOLERANT_PADDED_ONLY) if (re.test(unpadded)) return 'prompt_injection';
   }
   return null;
 }

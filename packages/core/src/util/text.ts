@@ -57,32 +57,53 @@ export function foldConfusables(text: string): string {
 }
 
 /**
- * The two forms every screening pattern is tested against:
+ * The two forms every screening pattern is tested against.
+ *
  *  - `normalized`: NFKC, invisibles stripped, homoglyphs folded, lower-cased,
  *    whitespace collapsed — catches unicode tricks while keeping word boundaries;
- *  - `squeezed`: the same with EVERY non-alphanumeric removed — catches
- *    separator padding ("i.g.n.o.r.e  a l l"), which the normalized form misses.
+ *  - `unpadded`: the same, with PADDING RUNS collapsed ("i.g.n.o.r.e" → "ignore",
+ *    "j a i l b r e a k" → "jailbreak"). Only runs of single characters are
+ *    joined, so ordinary prose keeps every one of its word boundaries.
+ *
+ * The predecessor of `unpadded` removed EVERY separator in the text, which also
+ * removed the boundaries between real words: "county jail. Breakdown of revenue"
+ * became "…countyjailbreakdown…" and matched `jailbreak`, and "told them to
+ * ignore. All previous instructions from the fire marshal" matched across a
+ * sentence boundary. Padding is the thing to undo — not punctuation.
  */
-export function screeningForms(text: string): { normalized: string; squeezed: string } {
+export function screeningForms(text: string): { normalized: string; unpadded: string } {
   const normalized = foldConfusables(stripInvisible(text.normalize('NFKC')))
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
-  return { normalized, squeezed: normalized.replace(/[^\p{L}\p{N}]+/gu, '') };
+  return { normalized, unpadded: unpad(normalized) };
 }
 
 /**
- * The squeezed twin of a screening pattern: the same regex with its whitespace
- * matchers removed, so it can be tested against `screeningForms().squeezed`.
- * Lets a single pattern list cover both forms.
+ * A run of 3+ single characters separated by anything — the shape of "i.g.n.o.r.e"
+ * and "i g n o r e" — joined into one word. Nothing else is touched: a real word
+ * has multi-character tokens, so it never enters a run.
  */
-export function squeezedPattern(re: RegExp): RegExp {
-  const source = re.source
-    .replace(/\\s[+*]/g, '')
-    .replace(/\\s/g, '')
-    .replace(/\\b/g, '')
-    .replace(/ /g, ''); // literal spaces in the pattern are gone from the input too
-  return new RegExp(source, re.flags.replace('g', ''));
+const PADDING_RUN = /(?<![\p{L}\p{N}])(?:[\p{L}\p{N}][^\p{L}\p{N}]+){2,}[\p{L}\p{N}](?![\p{L}\p{N}])/gu;
+
+export function unpad(text: string): string {
+  return text.replace(PADDING_RUN, (run) => run.replace(/[^\p{L}\p{N}]+/gu, ''));
+}
+
+/**
+ * The separator-tolerant twin of a screening pattern: every inter-word gap becomes
+ * "any run of separators, or none at all". That covers `system-prompt`,
+ * `system_prompt`, `ignore***all***previous`, and — matched against `unpadded` —
+ * the de-padded forms, where the gap has already been closed.
+ *
+ * Word boundaries (`\b`) are KEPT, unlike the squeezed twin this replaces. They
+ * are what stops `\b(?:system|developer)\s+prompt\b` from firing on
+ * "ecoSYSTEM PROMPTed growth".
+ */
+const GAP = '[^\\p{L}\\p{N}]*';
+export function tolerantPattern(re: RegExp): RegExp {
+  const source = re.source.replace(/\\s\+/g, GAP).replace(/\\s\*/g, GAP).replace(/ /g, GAP);
+  return new RegExp(source, re.flags.includes('u') ? re.flags.replace('g', '') : `${re.flags.replace('g', '')}u`);
 }
 
 /** Levenshtein distance (iterative, two-row). */
