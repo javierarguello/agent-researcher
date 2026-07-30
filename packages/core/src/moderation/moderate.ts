@@ -30,6 +30,15 @@ export interface ModerationVerdict {
   ok: boolean;
   /** Closed-vocabulary categories. The user-facing wording is derived from these. */
   categories: ModerationCategory[];
+  /**
+   * Which layer decided. Callers use it to decide whether a rejection deserves a
+   * STRIKE: the pre-screen is a set of regexes with no notion of context, and its
+   * mistakes land on people describing an escape room or a bail-bonds office next
+   * to a jail. It is also free, so a repeat offender costs nothing to refuse — the
+   * strike counter exists to stop repeated billed classifier calls, which this
+   * layer never makes.
+   */
+  source?: 'prescreen' | 'llm';
   /** What the classifier cost, when it ran. Absent for the free pre-screen. */
   usage?: { inputTokens: number; outputTokens: number; usd: number };
 }
@@ -44,25 +53,44 @@ export function collectFreeText(params: Record<string, unknown>): string {
   return parts.join('\n');
 }
 
-// Obvious prompt-injection / override attempts (multi-language). Kept tight to
-// avoid false positives; the LLM catches subtler cases. Each pattern is also
-// matched in "squeezed" form, so separator padding does not evade it.
-const INJECTION_PATTERNS: RegExp[] = [
-  /ignore (?:all|the|your|any)?\s*(?:previous|prior|above|preceding)\s+(?:instructions|prompts?|rules)/i,
-  /disregard\s+(?:all|the|your|previous|above)?\s*(?:instructions|prompts?|rules)/i,
-  /forget\s+(?:everything|all|your|the)\s+(?:instructions|rules|above|previous)/i,
-  /(?:system|developer)\s+prompt/i,
-  /you\s+are\s+now\s+(?:a|an|the|dan|in)\b/i,
-  /(?:reveal|print|show|repeat|output)\s+(?:your|the)\s+(?:system\s+)?(?:prompt|instructions|rules)/i,
-  /\b(?:jailbreak|do\s+anything\s+now)\b/i,
-  /ignora(?:r)?\s+(?:las\s+)?(?:instrucciones|reglas)\s+(?:anteriores|previas)/i, // es
-  /ignore[rz]?\s+les\s+(?:instructions|règles)\s+(?:précédentes|antérieures)/i, // fr
-  /ignor(?:e|ar)\s+(?:as\s+)?(?:instruções|regras)\s+(?:anteriores|acima)/i, // pt
-  /<\|.*?\|>|\[\/?(?:system|inst|assistant|user)\]/i, // role/control markers
+/**
+ * Obvious prompt-injection / override attempts (multi-language). The LLM catches
+ * subtler cases; this layer only has to catch the blatant ones.
+ *
+ * `squeezed` also tests the pattern against the separator-stripped form, which is
+ * what catches "i.g.n.o.r.e a.l.l p.r.e.v.i.o.u.s". That form has no word
+ * boundaries BY CONSTRUCTION — every separator is gone, including the ones between
+ * real words — so it is only safe for phrases long enough that colliding with
+ * ordinary prose is implausible. It is off for the short ones: "offices near the
+ * county jail. Breakdown of revenue" squeezes to "…countyjailbreakdown…", which
+ * contains "jailbreak", and this product sells research on bail-bonds offices.
+ */
+const INJECTION_PATTERNS: Array<{ re: RegExp; squeezed?: boolean }> = [
+  { re: /ignore (?:all|the|your|any)?\s*(?:previous|prior|above|preceding)\s+(?:instructions|prompts?|rules)/i, squeezed: true },
+  // "rules" needs a qualifier that points at OUR rules; bare "disregard the rules"
+  // is something a person writes about rules of thumb, asking prices, or a lease.
+  { re: /disregard\s+(?:all\s+)?(?:the|your|any)?\s*(?:previous|prior|above|preceding|system)?\s*(?:instructions|prompts?)\b/i, squeezed: true },
+  { re: /disregard\s+(?:all\s+)?(?:the|your)?\s*(?:previous|prior|above|preceding|system)\s+rules\b/i, squeezed: true },
+  { re: /forget\s+(?:everything|all|your|the)\s+(?:instructions|rules|above|previous)/i, squeezed: true },
+  // Word-bounded: without \b this matched "ecoSYSTEM PROMPTed growth".
+  { re: /\b(?:system|developer)\s+prompts?\b/i },
+  { re: /\byou\s+are\s+now\s+(?:a|an|the|dan|in)\b/i },
+  { re: /(?:reveal|print|show|repeat|output)\s+(?:your|the)\s+(?:system\s+)?(?:prompt|instructions|rules)/i, squeezed: true },
+  // Bare "jailbreak" is an escape-room theme as often as an attack, and "do
+  // anything now" is ordinary English ("the owner will not do anything now").
+  // Both need the framing that makes them an instruction to the model.
+  { re: /\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i },
+  { re: /\bdan\s+mode\b|\b(?:act\s+as|you\s+are|enter|enable)\b[^.!?]{0,40}\bdo\s+anything\s+now\b/i },
+  { re: /ignora(?:r)?\s+(?:las\s+)?(?:instrucciones|reglas)\s+(?:anteriores|previas)/i, squeezed: true }, // es
+  { re: /ignore[rz]?\s+les\s+(?:instructions|règles)\s+(?:précédentes|antérieures)/i, squeezed: true }, // fr
+  { re: /ignor(?:e|ar)\s+(?:as\s+)?(?:instruções|regras)\s+(?:anteriores|acima)/i, squeezed: true }, // pt
+  { re: /<\|.*?\|>|\[\/?(?:system|inst|assistant|user)\]/i }, // role/control markers
 ];
 
-/** Precomputed separator-insensitive twins of the patterns above. */
-const SQUEEZED_PATTERNS: RegExp[] = INJECTION_PATTERNS.map(squeezedPattern);
+/** Precomputed separator-insensitive twins, for the patterns that opted in. */
+const SQUEEZED_PATTERNS: Array<RegExp | undefined> = INJECTION_PATTERNS.map((p) =>
+  p.squeezed ? squeezedPattern(p.re) : undefined,
+);
 
 /**
  * Deterministic checks over the normalized input. Returns the category on a hit,
@@ -74,7 +102,7 @@ export function preScreen(text: string): ModerationCategory | null {
 
   const { normalized, squeezed } = screeningForms(text);
   for (let i = 0; i < INJECTION_PATTERNS.length; i++) {
-    if (INJECTION_PATTERNS[i]!.test(normalized) || SQUEEZED_PATTERNS[i]!.test(squeezed)) {
+    if (INJECTION_PATTERNS[i]!.re.test(normalized) || SQUEEZED_PATTERNS[i]?.test(squeezed)) {
       return 'prompt_injection';
     }
   }
@@ -155,11 +183,12 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
     });
     return { ok: true, categories: [], ...(usage ? { usage } : {}) };
   }
-  if (parsed.allowed !== false) return { ok: true, categories: [], ...(usage ? { usage } : {}) };
+  if (parsed.allowed !== false) return { ok: true, categories: [], source: 'llm', ...(usage ? { usage } : {}) };
   const categories = Array.isArray(parsed.categories) ? parsed.categories.map(asModerationCategory) : [];
   return {
     ok: false,
     categories: categories.length ? Array.from(new Set(categories)) : ['other'],
+    source: 'llm',
     ...(usage ? { usage } : {}),
   };
 }
@@ -182,7 +211,7 @@ export async function moderateResearchParams(
 
   // Always runs: free, unforgeable, and the only pass allowed to reject alone.
   const pre = preScreen(text);
-  if (pre) return { ok: false, categories: [pre] };
+  if (pre) return { ok: false, categories: [pre], source: 'prescreen' };
 
   if (!config.moderation.llm || opts.llm === false) return { ok: true, categories: [] };
   try {

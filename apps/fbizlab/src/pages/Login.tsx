@@ -27,7 +27,7 @@ const T = {
     noAccount: 'Don’t have an account?', createOne: 'Create one',
     haveAccount: 'Already have an account?', signInLink: 'Sign in', backToSignin: '← Back to sign in',
     denied: 'This account can’t sign in yet.', back: '← Back to home',
-    errInvalid: 'Invalid email or password.', errUnverified: 'Please verify your email before signing in.',
+    errInvalid: 'Invalid email or password.', errUnverified: 'Please verify your email before signing in.', errCaptcha: 'We couldn’t confirm you’re human. Reload the page and try again.',
     errTaken: 'An account with this email already exists. Sign in instead.', errDisposable: 'You can’t register with a disposable or temporary email. Please use a permanent personal or work email.',
     resend: 'Resend verification email', busy: 'Please wait…',
     verifyTitle: 'Check your email', verifySub: 'We sent a verification link to',
@@ -51,7 +51,7 @@ const T = {
     noAccount: '¿No tienes cuenta?', createOne: 'Crea una',
     haveAccount: '¿Ya tienes cuenta?', signInLink: 'Ingresa', backToSignin: '← Volver al ingreso',
     denied: 'Esta cuenta aún no puede ingresar.', back: '← Volver al inicio',
-    errInvalid: 'Email o contraseña incorrectos.', errUnverified: 'Verifica tu email antes de ingresar.',
+    errInvalid: 'Email o contraseña incorrectos.', errUnverified: 'Verifica tu email antes de ingresar.', errCaptcha: 'No pudimos confirmar que eres una persona. Recarga la página e inténtalo de nuevo.',
     errTaken: 'Ya existe una cuenta con este email. Mejor ingresa.', errDisposable: 'No puedes registrarte con un email desechable o temporal. Usa un email personal o de trabajo permanente.',
     resend: 'Reenviar email de verificación', busy: 'Espera…',
     verifyTitle: 'Revisa tu email', verifySub: 'Enviamos un enlace de verificación a',
@@ -75,7 +75,7 @@ const T = {
     noAccount: 'Pas de compte ?', createOne: 'Créez-en un',
     haveAccount: 'Déjà un compte ?', signInLink: 'Se connecter', backToSignin: '← Retour à la connexion',
     denied: 'Ce compte ne peut pas encore se connecter.', back: '← Retour à l’accueil',
-    errInvalid: 'Email ou mot de passe incorrect.', errUnverified: 'Vérifiez votre email avant de vous connecter.',
+    errInvalid: 'Email ou mot de passe incorrect.', errUnverified: 'Vérifiez votre email avant de vous connecter.', errCaptcha: 'Nous n’avons pas pu confirmer que vous êtes une personne. Rechargez la page et réessayez.',
     errTaken: 'Un compte existe déjà pour cet email. Connectez-vous.', errDisposable: 'Vous ne pouvez pas vous inscrire avec un email jetable ou temporaire. Utilisez un email personnel ou professionnel permanent.',
     resend: 'Renvoyer l’email de vérification', busy: 'Patientez…',
     verifyTitle: 'Vérifiez votre email', verifySub: 'Nous avons envoyé un lien de vérification à',
@@ -99,7 +99,7 @@ const T = {
     noAccount: 'Não tem conta?', createOne: 'Crie uma',
     haveAccount: 'Já tem conta?', signInLink: 'Entrar', backToSignin: '← Voltar ao login',
     denied: 'Esta conta ainda não pode entrar.', back: '← Voltar ao início',
-    errInvalid: 'Email ou senha incorretos.', errUnverified: 'Verifique seu email antes de entrar.',
+    errInvalid: 'Email ou senha incorretos.', errUnverified: 'Verifique seu email antes de entrar.', errCaptcha: 'Não conseguimos confirmar que você é uma pessoa. Recarregue a página e tente novamente.',
     errTaken: 'Já existe uma conta com este email. Faça login.', errDisposable: 'Você não pode se registrar com um email descartável ou temporário. Use um email pessoal ou de trabalho permanente.',
     resend: 'Reenviar email de verificação', busy: 'Aguarde…',
     verifyTitle: 'Verifique seu email', verifySub: 'Enviamos um link de verificação para',
@@ -200,7 +200,11 @@ export function Login() {
         await afterLogin();
       }
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) { setUnverified(true); setError(t.errUnverified); }
+      // Before the unverified branch: a captcha failure is also a 403, and it was
+      // being reported as "verify your email" — complete with a resend button that
+      // sends another verification mail for a problem that has nothing to do with it.
+      if (err instanceof ApiError && err.code === 'captcha_failed') setError(t.errCaptcha);
+      else if (err instanceof ApiError && err.status === 403) { setUnverified(true); setError(t.errUnverified); }
       else if (err instanceof ApiError && err.status === 409) setError(t.errTaken);
       else if (err instanceof ApiError && err.code === 'disposable_email') setError(t.errDisposable);
       else if (err instanceof ApiError && err.status === 401) setError(t.errInvalid);

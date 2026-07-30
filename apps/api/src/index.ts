@@ -23,6 +23,7 @@ import {
   checkRateLimits,
   peekRateLimits,
   createJob,
+  markFailed,
   getJob,
   getSettings,
   listApps,
@@ -63,6 +64,7 @@ import {
   resolveModeCredits,
   type ModelPricing,
   consumeCredits,
+  refundForJob,
   getBalance,
   listTransactions,
   grantCredits,
@@ -719,6 +721,27 @@ async function moderateParams(
       .catch((err) => logEvent({ jobId: '-', appId, userId }, 'WARNING', 'stats.request_llm_failed', { message: (err as Error).message }));
   }
   if (verdict.ok) return null;
+
+  // A pre-screen rejection is REFUSED, but never punished. Those are regexes with
+  // no notion of context: "a jailbreak themed room", "offices near the county
+  // jail. Breakdown of revenue", "ignora las reglas anteriores que le di al
+  // corredor" all read as attacks to them and as ordinary business research to a
+  // person. Four of those over the LIFETIME of an account used to mean a permanent
+  // block that also stops the user buying credits — for requests that cost us
+  // nothing, since this layer makes no model call. Strikes exist to stop repeated
+  // BILLED classifier calls, so only the classifier's verdicts earn one.
+  if (verdict.source !== 'llm') {
+    logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.params_prescreened', { categories: verdict.categories });
+    return {
+      code: 422,
+      body: {
+        error: moderationMessage(verdict.categories[0] ?? 'other', lang),
+        code: 'params_rejected',
+        categories: verdict.categories,
+      },
+    };
+  }
+
   const strike = await recordModerationStrike(appId, userId, verdict.categories);
   logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories, strikes: strike.strikes, blocked: strike.blocked });
   if (strike.blocked) {
@@ -920,10 +943,20 @@ app.post(
     } catch (err) {
       logEvent(logCtx, 'ERROR', 'job.enqueue_failed', { message: (err as Error).message });
       req.log.error({ err, jobId }, 'failed to enqueue job');
-      return reply.code(202).send({
-        jobId,
-        status: 'queued',
-        warning: 'Job recorded but enqueue failed; retry the request.',
+      // Nothing will ever run this job: the worker is what refunds and fails a job,
+      // and it is exactly what we could not reach. Left as `queued` it counted
+      // against the user's one-in-flight cap forever — so they kept their spent
+      // credits and could never generate again — and the 202 above told the SPA it
+      // had succeeded, which navigated them to a dossier that would never appear.
+      await refundForJob(appId, userId, jobId, 'enqueue failed').catch((e) =>
+        logEvent(logCtx, 'ERROR', 'credits.refund_failed', { message: (e as Error).message }),
+      );
+      await markFailed(jobId, 'Could not be queued for processing.').catch((e) =>
+        logEvent(logCtx, 'ERROR', 'job.mark_failed_failed', { message: (e as Error).message }),
+      );
+      return reply.code(503).send({
+        error: 'We could not start your report just now. Your credits were not spent — please try again.',
+        code: 'enqueue_failed',
       });
     }
 
