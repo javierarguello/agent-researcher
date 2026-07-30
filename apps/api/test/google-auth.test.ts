@@ -22,7 +22,7 @@ vi.mock('@agent-researcher/core', async (importOriginal) => ({
 }));
 
 import { app } from '../src/index.js';
-import { createApp, getCredential, createPasswordUser, hashPassword } from '@agent-researcher/core';
+import { createApp, getCredential, createPasswordUser, hashPassword, setEmailVerified } from '@agent-researcher/core';
 
 const login = () =>
   app.inject({ method: 'POST', url: '/auth/session', payload: { appId: 'fbizlab', provider: 'google', idToken: 'stand-in' } });
@@ -56,6 +56,50 @@ describe('google sign-in — email_verified', () => {
     expect(r.statusCode).toBe(200);
     expect(r.json().user.email).toBe('victim@corp.com');
     expect(r.json().token).toBeTruthy();
+  });
+
+  it('discards a password nobody verified instead of promoting it (pre-hijack)', async () => {
+    // Anyone can register an address they don't own — registration only sends a
+    // mail, it proves nothing. If Google's verification then blesses that planted
+    // credential, whoever registered first owns the victim's account the moment
+    // the victim signs in with Google: the password gate asks for `passwordHash`
+    // + `emailVerified`, and after the merge both are satisfied.
+    await createPasswordUser({ appId: 'fbizlab', email: 'victim@corp.com', passwordHash: await hashPassword('Attacker-Pass-1!') });
+    googleClaims.emailVerified = true;
+
+    expect((await login()).statusCode).toBe(200); // the real owner signs in
+
+    const cred = await getCredential('fbizlab', 'victim@corp.com');
+    expect(cred?.emailVerified).toBe(true); // Google proved the ADDRESS…
+    expect(cred?.passwordHash).toBeUndefined(); // …not the password stapled to it
+    expect(cred?.providers ?? []).toEqual(['google']);
+
+    // And the planted password no longer opens the account.
+    const attacker = await app.inject({
+      method: 'POST', url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'password', email: 'victim@corp.com', password: 'Attacker-Pass-1!' },
+    });
+    expect(attacker.statusCode).toBe(401);
+  });
+
+  it('keeps a password the user DID verify when they later link Google', async () => {
+    // The counterpart: a legitimate user who verified their email and then signs in
+    // with the Google button must not silently lose password login.
+    await createPasswordUser({ appId: 'fbizlab', email: 'victim@corp.com', passwordHash: await hashPassword('Real-Pass-1!') });
+    await setEmailVerified('fbizlab', 'victim@corp.com');
+    googleClaims.emailVerified = true;
+
+    expect((await login()).statusCode).toBe(200);
+
+    const cred = await getCredential('fbizlab', 'victim@corp.com');
+    expect(cred?.passwordHash).toBeTruthy();
+    expect(cred?.providers ?? []).toEqual(expect.arrayContaining(['password', 'google']));
+
+    const byPassword = await app.inject({
+      method: 'POST', url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'password', email: 'victim@corp.com', password: 'Real-Pass-1!' },
+    });
+    expect(byPassword.statusCode).toBe(200);
   });
 
   it('normalizes the identity so it cannot sidestep a block keyed on the password identity', async () => {

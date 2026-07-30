@@ -79,6 +79,7 @@ import {
   verifyPassword,
   passwordProblem,
   normalizeEmail,
+  isSingleEmail,
   isDisposableEmail,
   getCredential,
   createPasswordUser,
@@ -330,7 +331,10 @@ app.post(
   async (req, reply) => {
     const b = req.body as { appId: string; email: string; password: string; name?: string };
     const email = normalizeEmail(b.email);
-    if (!email.includes('@')) return reply.code(400).send({ error: 'A valid email is required.' });
+    // Exactly ONE address. `To:` takes a comma-separated list, so without this the
+    // caller picks who we mail — and the per-target cap keys on the whole string,
+    // so every permutation of the list is a fresh bucket.
+    if (!isSingleEmail(email)) return reply.code(400).send({ error: 'A valid email is required.' });
 
     // Every registration sends an email on our Postmark account — the most
     // expensive unauthenticated action in the API, and to an address the caller
@@ -436,6 +440,9 @@ app.post(
   async (req, reply) => {
     const b = req.body as { appId: string; email: string };
     const email = normalizeEmail(b.email);
+    // One recipient, never a list (see /auth/register). Answered like every other
+    // rejection on this route — 202, revealing nothing about who exists.
+    if (!isSingleEmail(email)) return reply.code(202).send({ ok: true });
     // Sends an email to an address the caller chooses → limit per IP and per
     // target, so it can't be used to mail-bomb someone else's inbox.
     if (
@@ -532,6 +539,8 @@ app.post(
     const b = req.body as { appId: string; subject?: string; name: string; email: string; message: string };
     // Anonymous + sends an email on our account.
     if (await publicLimit(req, reply, { route: 'contact', perIp: config.publicLimits.contactPerHourPerIp })) return reply;
+    // Goes out as Reply-To, which is a recipient field like any other.
+    if (!isSingleEmail(normalizeEmail(b.email))) return reply.code(400).send({ error: 'A valid email is required.' });
     const appRec = await getApp(b.appId);
     if (!appRec || !appRec.active) return reply.code(404).send({ error: `Unknown or inactive app: ${b.appId}` });
     if (!appRec.emailFrom) return reply.code(500).send({ error: 'Contact is not configured for this app.' });
@@ -970,6 +979,16 @@ app.post(
     }
     const appId = req.auth!.appId;
     const userId = req.auth!.email;
+
+    // Same allow-list as /research and GET /templates/:id. Without it a preview is
+    // a way to read a model this app is not entitled to — its plan, its issue
+    // vocabulary, and an assisted pass against it — on the one route that omitted
+    // the check.
+    const allowed = req.appRecord?.allowedTemplates;
+    if (req.auth!.role !== 'admin' && allowed && allowed.length && !allowed.includes(validated.template)) {
+      return reply.code(403).send({ error: `App "${appId}" is not allowed to use model "${validated.template}".` });
+    }
+
     const params = validated.params as Record<string, unknown>;
     const lang = paramsLang(params);
     const tpl = getTemplate(validated.template)!;

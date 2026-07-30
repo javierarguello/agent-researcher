@@ -5,8 +5,9 @@
  * app (users are always per-app — the same email in another app is a different
  * user). Google logins mark the email verified automatically.
  */
-import { Firestore } from '@google-cloud/firestore';
+import { FieldValue, Firestore } from '@google-cloud/firestore';
 import { config } from '../config.js';
+import { logEvent } from '../obs/log.js';
 
 let db: Firestore | undefined;
 function firestore(): Firestore {
@@ -61,6 +62,18 @@ export const normalizeEmail = (email: string): string => {
   }
   return local ? `${local}@${domain}` : e;
 };
+/**
+ * ONE address, and nothing that can turn into a header or a recipient list.
+ *
+ * `To:` accepts a comma-separated list, so an address field that reaches Postmark
+ * unchecked is a mail-bomb primitive aimed at third parties from our verified
+ * sender — and it slips the per-target cap too, because the counter keys on the
+ * whole string, so every permutation of the list is a fresh bucket. Newlines and
+ * semicolons are refused for the same reason.
+ */
+export const isSingleEmail = (email: string): boolean =>
+  /^[^\s,;<>"@]+@[^\s,;<>"@]+\.[^\s,;<>"@]+$/.test(email) && email.length <= 320;
+
 const docId = (appId: string, email: string) => `${appId}__${normalizeEmail(email)}`;
 const nowIso = () => new Date().toISOString();
 
@@ -128,9 +141,40 @@ export async function upsertGoogleUser(input: { appId: string; email: string; na
       return rec;
     }
     const cur = snap.data() as UserCredential;
-    const providers = Array.from(new Set([...(cur.providers ?? []), 'google'])) as AuthProvider[];
-    const merged: UserCredential = { ...cur, emailVerified: true, providers, name: cur.name ?? input.name, updatedAt: now };
-    tx.set(ref, { emailVerified: true, providers, ...(cur.name ? {} : input.name ? { name: input.name } : {}), updatedAt: now }, { merge: true });
+    // PRE-HIJACK. Registration creates a credential for an address nobody has
+    // proven yet — anyone can plant one on someone else's email. Marking the
+    // record verified here would promote that planted password: the login gate
+    // only asks for `passwordHash` + `emailVerified`, so whoever registered first
+    // gets a session as the person who just signed in with Google. Google proves
+    // the ADDRESS, never the password attached to it, so an unverified credential
+    // is discarded rather than inherited. A real owner still has "forgot password".
+    const stale = cur.emailVerified !== true && !!cur.passwordHash;
+    const kept = stale ? (cur.providers ?? []).filter((p) => p !== 'password') : (cur.providers ?? []);
+    const providers = Array.from(new Set([...kept, 'google'])) as AuthProvider[];
+    const merged: UserCredential = {
+      ...cur,
+      ...(stale ? { passwordHash: undefined } : {}),
+      emailVerified: true,
+      providers,
+      name: cur.name ?? input.name,
+      updatedAt: now,
+    };
+    tx.set(
+      ref,
+      {
+        emailVerified: true,
+        providers,
+        ...(stale ? { passwordHash: FieldValue.delete() } : {}),
+        ...(cur.name ? {} : input.name ? { name: input.name } : {}),
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+    if (stale) {
+      logEvent({ jobId: '-', appId: input.appId, userId: email }, 'WARNING', 'auth.unverified_password_discarded', {
+        reason: 'google sign-in superseded a password nobody had verified',
+      });
+    }
     return merged;
   });
 }

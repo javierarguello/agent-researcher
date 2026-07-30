@@ -162,6 +162,7 @@ export {
   setPassword,
   upsertGoogleUser,
   normalizeEmail,
+  isSingleEmail,
   UserExistsError,
 } from './auth/users.js';
 export type { UserCredential, AuthProvider } from './auth/users.js';

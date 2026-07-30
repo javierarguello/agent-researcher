@@ -3,6 +3,7 @@
  * app, but each app sends from its own verified `emailFrom` (configured on the app
  * record in Firestore). Used for account emails (verify address, reset password).
  */
+import { isSingleEmail } from '../auth/users.js';
 import { config } from '../config.js';
 import type { AppRecord } from '../apps/types.js';
 
@@ -36,6 +37,16 @@ export async function sendAppEmail(input: SendEmailInput): Promise<void> {
   if (!token) throw new EmailNotConfiguredError('POSTMARK_SERVER_TOKEN is not configured.');
   const from = input.app.emailFrom;
   if (!from) throw new EmailNotConfiguredError(`App "${input.app.appId}" has no emailFrom configured.`);
+  // Last line of defence, at the only place that talks to Postmark. Every caller
+  // validates its own input, but `To:` takes a comma-separated LIST — one missed
+  // validation anywhere upstream turns a user-supplied field into a mail-bomb
+  // sent from our verified domain, and sender reputation is the one thing here
+  // that cannot be rolled back.
+  for (const [field, value] of [['to', input.to], ['replyTo', input.replyTo], ['cc', input.cc]] as const) {
+    if (value !== undefined && !isSingleEmail(value)) {
+      throw new Error(`Refusing to send: "${field}" must be exactly one email address.`);
+    }
+  }
 
   const res = await fetch(POSTMARK_URL, {
     method: 'POST',

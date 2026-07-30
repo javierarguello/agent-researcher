@@ -148,6 +148,17 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(ra.statusCode).not.toBe(403); // passes the model check (then 402 for no credits)
   });
 
+  it('the same model restriction applies to the preview route', async () => {
+    // /research/preflight omitted this check, so a preview returned a disallowed
+    // model's plan, its issue vocabulary, and an assisted pass against it — on the
+    // one route where GET /templates/:id already answers 403.
+    await updateApp('fbizlab', { allowedTemplates: ['some-other-model'] });
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 5 });
+    const t = await token('fbizlab', 'u@x.com');
+    const r = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(t), payload: research });
+    expect(r.statusCode).toBe(403);
+  });
+
   it('a read-only report token can ONLY read its one report, nothing else', async () => {
     await grantCredits({ appId: 'fbizlab', userId: 'owner@x.com', credits: 10 });
     const owner = await token('fbizlab', 'owner@x.com');

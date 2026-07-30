@@ -131,6 +131,27 @@ describe('auth — password register / verify / login / reset', () => {
     expect(await getCredential('fbizlab', 'throwaway@mailinator.com')).toBeUndefined();
   });
 
+  it('refuses to mail a recipient LIST, on every route that takes an address', async () => {
+    // `To:` is comma-separated, so an address field that reaches Postmark unchecked
+    // lets the caller pick who we mail — from our verified sender, and past the
+    // per-inbox cap, because the counter keys on the whole string and every
+    // permutation is a fresh bucket.
+    const list = 'attacker@evil.com,v1@victim.com,v2@victim.com';
+    const reg2 = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: list } });
+    expect(reg2.statusCode).toBe(400);
+
+    const reset = await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: list } });
+    expect(reset.statusCode).toBe(202); // this route never reveals anything…
+
+    const contact = await app.inject({
+      method: 'POST', url: '/contact',
+      payload: { appId: 'fbizlab', name: 'A', email: list, message: 'hi' },
+    });
+    expect(contact.statusCode).toBe(400); // …Reply-To is a recipient field too
+
+    expect(sent).toHaveLength(0); // …and nothing was sent by any of them
+  });
+
   it('rejects weak passwords (requires a letter+number; blocks common ones)', async () => {
     const noNum = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'weak1@x.com', password: 'onlyletters' } });
     expect(noNum.statusCode).toBe(400);
@@ -173,13 +194,20 @@ describe('auth — password register / verify / login / reset', () => {
     expect(sent).toHaveLength(0);
   });
 
-  it('Google login on the same email links the account and auto-verifies it', async () => {
+  it('Google login resolves to the same account, case-insensitively, and auto-verifies it', async () => {
     await createPasswordUser({ appId: 'fbizlab', email: 'dual@x.com', passwordHash: await hashPassword('pw12345678') });
     expect((await getCredential('fbizlab', 'dual@x.com'))?.emailVerified).toBe(false);
     await upsertGoogleUser({ appId: 'fbizlab', email: 'Dual@X.com', name: 'Dual' }); // same email, different case
     const cred = await getCredential('fbizlab', 'dual@x.com');
     expect(cred?.emailVerified).toBe(true);
-    expect([...(cred?.providers ?? [])].sort()).toEqual(['google', 'password']);
+    // This assertion used to read `['google', 'password']`, which is the pre-hijack
+    // itself written down as an expectation: registration proves nothing, so an
+    // UNVERIFIED password here belongs to whoever registered first, not to the
+    // person Google just authenticated. Google proves the address; it does not
+    // vouch for a password stapled to it. A verified password IS kept — both cases
+    // are pinned in google-auth.test.ts.
+    expect([...(cred?.providers ?? [])]).toEqual(['google']);
+    expect(cred?.passwordHash).toBeUndefined();
   });
 
   it('users are per-app: the same email in another app is a different account', async () => {
