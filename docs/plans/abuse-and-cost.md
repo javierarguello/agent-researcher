@@ -250,7 +250,7 @@ the failure is diagnosable; the job is then marked `failed`, which is the only s
 decision is visibility: `failureKind: 'budget_exceeded'` on the job (admin-only in
 the API, badged in the jobs list and detail), a `budgetStoppedReports` counter, and
 the spend booked as `failedCostUsd` so "what did our failures cost us" is a number
-you read rather than reconstruct.
+you read rather than reconstruct. Shipped in `244336b`.
 
 This decides only the ceiling case. D2 — a partial refund when a report degrades
 after exhausting retries — is still open.
