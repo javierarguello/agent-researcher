@@ -266,7 +266,7 @@ API and badged in the admin; a decision panel with the spend and the expiry; a
 
 The ceiling itself is now **per model and mode** (`modes[key].maxCostUsd`, falling
 back to `MAX_JOB_COST_USD`): this is a catalog, and a cheap scan and a deep report
-cannot share one number. Shipped in `244336b` and revised in the commit below.
+cannot share one number. Shipped in `244336b`, revised into the hold mechanism in `582949a`.
 
 This decides only the ceiling case. D2 — a partial refund when a report degrades
 after exhausting retries — is still open.
