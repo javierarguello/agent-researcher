@@ -184,6 +184,7 @@ export type { ModerationVerdict } from './moderation/moderate.js';
 export {
   moderationMessage,
   blockReasonFor,
+  blockedMessage,
   asModerationCategory,
   assistMessage,
   asLang,

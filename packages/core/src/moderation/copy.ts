@@ -97,6 +97,24 @@ export function blockReasonFor(categories: ModerationCategory[]): string {
   return `Blocked after repeated policy violations in report requests (categories: ${list}).`;
 }
 
+/**
+ * What a BLOCKED user reads. Separate from `blockReasonFor`, which is the stored,
+ * admin-facing line: that string names internal category codes and is English-only,
+ * and it was being sent to the customer verbatim — a Spanish user read "Tu cuenta
+ * está bloqueada: Blocked after repeated policy violations… (categories:
+ * prompt_injection)."
+ */
+const BLOCKED_COPY = {
+  en: 'Your account is blocked for report generation and purchases. Reply to your welcome email if you think this is a mistake.',
+  es: 'Tu cuenta está bloqueada para generar informes y comprar créditos. Responde a tu email de bienvenida si crees que es un error.',
+  fr: 'Votre compte est bloqué pour la génération de rapports et les achats. Répondez à votre email de bienvenue si vous pensez qu’il s’agit d’une erreur.',
+  pt: 'Sua conta está bloqueada para gerar relatórios e comprar créditos. Responda ao seu email de boas-vindas se achar que é um engano.',
+};
+
+export function blockedMessage(lang: Lang = 'en'): string {
+  return pick(BLOCKED_COPY, lang);
+}
+
 // --- Pre-flight issue codes --------------------------------------------------
 
 /**

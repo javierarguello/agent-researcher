@@ -27,7 +27,7 @@ const T = {
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
     youHave: 'You have', creditsLeft: 'credits',
     notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits', alreadyRunning: 'You already have a dossier in progress — wait for it to finish before starting another.',
-    rejected: 'Your request couldn’t be submitted:', blockedNote: 'Your account is blocked:', captchaFailed: 'We couldn’t confirm you’re human. Reload the page and try again.', emailNotice: 'We’ll email you when your dossier is ready.',
+    rejected: 'Your request couldn’t be submitted:', blockedNote: 'Your account is blocked:', captchaFailed: 'We couldn’t confirm you’re human. Reload the page and try again.', enqueueFailed: 'We couldn’t start your dossier just now. Please try again in a moment.', emailNotice: 'We’ll email you when your dossier is ready.',
     validateContinue: 'Validate & continue', preparing: 'Preparing summary…',
     whatWeWillSearch: 'What we’ll search', findingsTitle: 'Worth checking before you spend credits', fixesTitle: 'Suggested fixes', applyFixes: 'Apply suggested fixes', assistOff: 'Assisted review',
     noCredits: 'Not enough credits — buy more first.', yes: 'Yes',
@@ -50,7 +50,7 @@ const T = {
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
     youHave: 'Tienes', creditsLeft: 'créditos',
     notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos', alreadyRunning: 'Ya tienes un dossier en progreso — espera a que termine antes de iniciar otro.',
-    rejected: 'No pudimos enviar tu solicitud:', blockedNote: 'Tu cuenta está bloqueada:', captchaFailed: 'No pudimos confirmar que eres una persona. Recarga la página e inténtalo de nuevo.', emailNotice: 'Te enviaremos un email cuando tu dossier esté listo.',
+    rejected: 'No pudimos enviar tu solicitud:', blockedNote: 'Tu cuenta está bloqueada:', captchaFailed: 'No pudimos confirmar que eres una persona. Recarga la página e inténtalo de nuevo.', enqueueFailed: 'No pudimos iniciar tu dossier ahora mismo. Inténtalo de nuevo en un momento.', emailNotice: 'Te enviaremos un email cuando tu dossier esté listo.',
     validateContinue: 'Validar y continuar', preparing: 'Preparando resumen…',
     whatWeWillSearch: 'Lo que buscaremos', findingsTitle: 'Vale la pena revisar antes de gastar créditos', fixesTitle: 'Correcciones sugeridas', applyFixes: 'Aplicar correcciones', assistOff: 'Revisión asistida',
     noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí',
@@ -73,7 +73,7 @@ const T = {
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
     youHave: 'Vous avez', creditsLeft: 'crédits',
     notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits', alreadyRunning: 'Vous avez déjà un dossier en cours — attendez qu’il se termine avant d’en lancer un autre.',
-    rejected: 'Votre demande n’a pas pu être envoyée :', blockedNote: 'Votre compte est bloqué :', captchaFailed: 'Nous n’avons pas pu confirmer que vous êtes une personne. Rechargez la page et réessayez.', emailNotice: 'Nous vous enverrons un email quand votre dossier sera prêt.',
+    rejected: 'Votre demande n’a pas pu être envoyée :', blockedNote: 'Votre compte est bloqué :', captchaFailed: 'Nous n’avons pas pu confirmer que vous êtes une personne. Rechargez la page et réessayez.', enqueueFailed: 'Nous n’avons pas pu lancer votre dossier pour l’instant. Réessayez dans un moment.', emailNotice: 'Nous vous enverrons un email quand votre dossier sera prêt.',
     validateContinue: 'Valider et continuer', preparing: 'Préparation du résumé…',
     whatWeWillSearch: 'Ce que nous chercherons', findingsTitle: 'À vérifier avant de dépenser des crédits', fixesTitle: 'Corrections suggérées', applyFixes: 'Appliquer les corrections', assistOff: 'Relecture assistée',
     noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui',
@@ -96,7 +96,7 @@ const T = {
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
     youHave: 'Você tem', creditsLeft: 'créditos',
     notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos', alreadyRunning: 'Você já tem um dossiê em andamento — aguarde ele terminar antes de iniciar outro.',
-    rejected: 'Não foi possível enviar sua solicitação:', blockedNote: 'Sua conta está bloqueada:', captchaFailed: 'Não conseguimos confirmar que você é uma pessoa. Recarregue a página e tente novamente.', emailNotice: 'Enviaremos um email quando seu dossiê estiver pronto.',
+    rejected: 'Não foi possível enviar sua solicitação:', blockedNote: 'Sua conta está bloqueada:', captchaFailed: 'Não conseguimos confirmar que você é uma pessoa. Recarregue a página e tente novamente.', enqueueFailed: 'Não conseguimos iniciar seu dossiê agora. Tente novamente em instantes.', emailNotice: 'Enviaremos um email quando seu dossiê estiver pronto.',
     validateContinue: 'Validar e continuar', preparing: 'Preparando resumo…',
     whatWeWillSearch: 'O que vamos buscar', findingsTitle: 'Vale revisar antes de gastar créditos', fixesTitle: 'Correções sugeridas', applyFixes: 'Aplicar correções', assistOff: 'Revisão assistida',
     noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim',
@@ -283,7 +283,9 @@ export function NewReport() {
         setError(t.captchaFailed);
       } else if (err instanceof ApiError && err.status === 403) {
         setConfirming(false);
-        setError(`${t.blockedNote} ${err.message}`);
+        // The API's blocked copy is a full sentence in the user's language now, so
+        // the old `${t.blockedNote} ${err.message}` would say it twice.
+        setError(err.code === 'account_blocked' ? err.message : `${t.blockedNote} ${err.message}`);
         stats.refetch();
       } else {
         // The review is advisory, so a 5xx/network failure generates anyway — but
@@ -315,7 +317,8 @@ export function NewReport() {
           : err instanceof ApiError && err.status === 409 ? t.alreadyRunning
             : err instanceof ApiError && err.status === 422 ? `${t.rejected} ${err.message}`
               : err instanceof ApiError && err.code === 'captcha_failed' ? t.captchaFailed
-                : err instanceof ApiError && err.status === 403 ? `${t.blockedNote} ${err.message}`
+                : err instanceof ApiError && err.code === 'enqueue_failed' ? t.enqueueFailed
+                  : err instanceof ApiError && err.status === 403 ? (err.code === 'account_blocked' ? err.message : `${t.blockedNote} ${err.message}`)
                   : err instanceof ApiError ? err.message : 'Failed.',
       );
       if (err instanceof ApiError && err.status === 403) stats.refetch();

@@ -284,6 +284,13 @@ describe('API security — auth, credits gate, isolation', () => {
     const fourth = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: inj });
     expect(fourth.statusCode).toBe(403);
     expect(fourth.json().code).toBe('account_blocked');
+    // What the USER reads is our copy, in their language — not the stored
+    // admin line, which names internal category codes in English and was being
+    // shown verbatim ("Tu cuenta está bloqueada: Blocked after repeated policy
+    // violations… (categories: prompt_injection)").
+    expect(fourth.json().error).not.toContain('categories:');
+    expect(fourth.json().error).not.toContain('profanity_hate');
+    expect(fourth.json().reason).toContain('profanity_hate'); // …still there for support
 
     // A clean report is now blocked too (read-only from here).
     const clean = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: { template: 'florida-business-for-sale', params: { mode: 'essential', industry: 'laundromats' } } });

@@ -52,17 +52,30 @@ export const Turnstile = forwardRef<TurnstileHandle, Props>(function Turnstile({
   const token = useRef<string | undefined>(undefined);
   const ready = useRef(onReady);
   ready.current = onReady;
+  const fallback = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  /**
+   * Re-arm the "don't hold the form hostage" timer. It has to be armed on every
+   * reset, not just at mount: `reset()` disables the submit button and waits for a
+   * fresh token, so if none ever arrives — a blocked CDN, a widget that failed to
+   * render, a challenge the user never completes — the button stays dead with no
+   * way back except reloading the page. One failed sign-in used to be enough.
+   */
+  const armFallback = () => {
+    clearTimeout(fallback.current);
+    fallback.current = setTimeout(() => ready.current?.(true), READY_FALLBACK_MS);
+  };
 
   useEffect(() => {
     if (!captchaConfigured() || !host.current) return;
     let live = true;
     if (widget.current) return; // StrictMode mounts twice; never render two widgets
 
-    const fallback = setTimeout(() => ready.current?.(true), READY_FALLBACK_MS);
+    armFallback();
 
     void renderWidget(host.current, (t) => {
       token.current = t;
-      if (t) clearTimeout(fallback);
+      if (t) clearTimeout(fallback.current);
       ready.current?.(!!t);
     }).then((w) => {
       if (!live) {
@@ -76,7 +89,7 @@ export const Turnstile = forwardRef<TurnstileHandle, Props>(function Turnstile({
 
     return () => {
       live = false;
-      clearTimeout(fallback);
+      clearTimeout(fallback.current);
       widget.current?.remove();
       widget.current = null;
     };
@@ -97,8 +110,15 @@ export const Turnstile = forwardRef<TurnstileHandle, Props>(function Turnstile({
     },
     reset() {
       token.current = undefined;
+      // No widget means the script never loaded. Disabling the button here would
+      // be permanent: nothing is left to solve the challenge and call back.
+      if (!widget.current) {
+        ready.current?.(true);
+        return;
+      }
       ready.current?.(false);
-      widget.current?.reset();
+      armFallback();
+      widget.current.reset();
     },
   }));
 

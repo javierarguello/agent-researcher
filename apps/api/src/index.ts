@@ -47,6 +47,7 @@ import {
   validateRequest,
   moderateResearchParams,
   moderationMessage,
+  blockedMessage,
   asLang,
   runPreflight,
   modeLabel,
@@ -761,7 +762,9 @@ async function moderateParams(
   const strike = await recordModerationStrike(appId, userId, verdict.categories);
   logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.params_rejected', { categories: verdict.categories, strikes: strike.strikes, blocked: strike.blocked });
   if (strike.blocked) {
-    return { code: 403, body: { error: strike.blockedReason, code: 'account_blocked', reason: strike.blockedReason } };
+    // `blockedReason` names internal category codes in English and is what we
+    // STORE for an admin; the user gets copy written for them, in their language.
+    return { code: 403, body: { error: blockedMessage(lang), code: 'account_blocked', reason: strike.blockedReason } };
   }
   return {
     code: 422,
@@ -777,6 +780,14 @@ async function moderateParams(
 
 /** The report language a request asked for (drives every message we send back). */
 const paramsLang = (params: Record<string, unknown>): Lang => asLang(params.language);
+
+/**
+ * The language to answer an error in when the request carries no params to read it
+ * from — a checkout, a block. Falls back to the browser's `Accept-Language`, which
+ * is what the SPA sends, rather than to English for everyone.
+ */
+const headerLang = (req: { headers: Record<string, unknown> }): Lang =>
+  asLang(String(req.headers['accept-language'] ?? '').slice(0, 2).toLowerCase());
 
 app.post(
   '/research',
@@ -827,7 +838,7 @@ app.post(
       const flags = await getUserFlags(appId, userId);
       if (flags.blocked) {
         return reply.code(403).send({
-          error: flags.blockedReason ?? 'Your account is blocked from generating reports.',
+          error: blockedMessage(paramsLang(validated.params)),
           code: 'account_blocked',
           reason: flags.blockedReason,
         });
@@ -964,15 +975,24 @@ app.post(
       // against the user's one-in-flight cap forever — so they kept their spent
       // credits and could never generate again — and the 202 above told the SPA it
       // had succeeded, which navigated them to a dossier that would never appear.
-      await refundForJob(appId, userId, jobId, 'enqueue failed').catch((e) =>
-        logEvent(logCtx, 'ERROR', 'credits.refund_failed', { message: (e as Error).message }),
-      );
-      await markFailed(jobId, 'Could not be queued for processing.').catch((e) =>
-        logEvent(logCtx, 'ERROR', 'job.mark_failed_failed', { message: (e as Error).message }),
-      );
+      // Order matters. `markFailed` first, because it is what stops a task that DID
+      // get created from running a job we are about to refund — a free report, and
+      // the response would still say the credits were not spent. Refund only once
+      // the job can no longer run.
+      let refunded = false;
+      try {
+        await markFailed(jobId, 'Could not be queued for processing.');
+        refunded = await refundForJob(appId, userId, jobId, 'enqueue failed');
+      } catch (e) {
+        logEvent(logCtx, 'ERROR', 'job.enqueue_cleanup_failed', { message: (e as Error).message });
+      }
       return reply.code(503).send({
-        error: 'We could not start your report just now. Your credits were not spent — please try again.',
+        // Never claim a refund that did not happen: support can tell the two apart.
+        error: refunded
+          ? 'We could not start your report just now. Your credits were not spent — please try again.'
+          : 'We could not start your report just now. Please try again; contact us if your credits do not come back.',
         code: 'enqueue_failed',
+        creditsRefunded: refunded,
       });
     }
 
@@ -1050,7 +1070,7 @@ app.post(
       // 1. Account state. A blocked user previews nothing.
       const flags = await getUserFlags(appId, userId);
       if (flags.blocked) {
-        return reply.code(403).send({ error: flags.blockedReason ?? 'Your account is blocked.', code: 'account_blocked', reason: flags.blockedReason });
+        return reply.code(403).send({ error: blockedMessage(lang), code: 'account_blocked', reason: flags.blockedReason });
       }
 
       // 2. Allowance, BEFORE anything reaches a model. Both model-backed passes on
@@ -1544,7 +1564,7 @@ app.post(
     if (req.auth!.role !== 'admin') {
       const flags = await getUserFlags(appId, userId);
       if (flags.blocked) {
-        return reply.code(403).send({ error: flags.blockedReason ?? 'Your account is blocked.', code: 'account_blocked', reason: flags.blockedReason });
+        return reply.code(403).send({ error: blockedMessage(headerLang(req)), code: 'account_blocked', reason: flags.blockedReason });
       }
     }
 
