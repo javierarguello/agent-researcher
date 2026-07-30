@@ -9,7 +9,7 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { createApp, getCredential, createPasswordUser, upsertGoogleUser, hashPassword } from '@agent-researcher/core';
+import { createApp, getCredential, createPasswordUser, upsertGoogleUser, hashPassword, setPassword } from '@agent-researcher/core';
 
 // Capture the emails Postmark would send, so tests can pull the verify/reset link.
 const sent: Array<{ To: string; Subject: string; HtmlBody: string }> = [];
@@ -83,7 +83,10 @@ describe('auth — single-purpose tokens and unverified identities', () => {
 
   it('the session a real login returns still works everywhere', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    const session = (await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } })).json().token;
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    // The session has to come from a LOGIN — verifying an address no longer hands
+    // one out, because clicking a link does not prove you chose the password.
+    const session = (await login(reg.email, reg.password)).json().token;
     expect((await app.inject({ method: 'GET', url: '/credits/balance', headers: { authorization: `Bearer ${session}` } })).statusCode).toBe(200);
   });
 });
@@ -105,14 +108,58 @@ describe('auth — password register / verify / login / reset', () => {
     expect(l.json().code).toBe('email_unverified');
   });
 
-  it('verify-email logs the user in; then password login works', async () => {
+  it('verify-email verifies the address but does NOT sign anyone in', async () => {
+    // The pre-hijack's other half. Anyone can register an address they don't own,
+    // so the password on this record was not necessarily chosen by the person who
+    // opened the mail — and handing that person a session is what made the attack
+    // pay off: they would use and pay for an account a stranger can log into.
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
     const v = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
     expect(v.statusCode).toBe(200);
-    expect(v.json().token).toBeTruthy();
+    expect(v.json().status).toBe('verified');
+    expect(v.json().token).toBeUndefined();
+
+    // …and the person who does hold the password signs in normally.
     const l = await login(reg.email, reg.password);
     expect(l.statusCode).toBe(200);
     expect(l.json().user.email).toBe('new@x.com');
+  });
+
+  it('sends a reset link to someone whose password Google superseded', async () => {
+    // Jane registers, the verification mail lands in spam, she uses the Google
+    // button instead — which discards the password nobody verified. Thirty days
+    // later she types that password on a machine with no Google session. Before
+    // this, she got "Invalid email or password", then "check your email" with NO
+    // mail ever arriving (the route only sent when a `passwordHash` existed — the
+    // exact field the discard deletes), then "an account already exists" if she
+    // tried to sign up again. Three messages, no way forward.
+    await createPasswordUser({ appId: 'fbizlab', email: 'jane@corp.com', passwordHash: await hashPassword('Jane-Pass-1!') });
+    await upsertGoogleUser({ appId: 'fbizlab', email: 'jane@corp.com', name: 'Jane' });
+    sent.length = 0;
+
+    const r = await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: 'jane@corp.com' } });
+    expect(r.statusCode).toBe(202);
+    expect(sent).toHaveLength(1); // …the mail she was promised
+
+    const reset = await app.inject({ method: 'POST', url: '/auth/reset-password', payload: { token: tokenFromLast('reset'), password: 'Jane-New-9!' } });
+    expect(reset.statusCode).toBe(200);
+    expect((await login('jane@corp.com', 'Jane-New-9!')).statusCode).toBe(200);
+  });
+
+  it('a password write that lands after verification is refused (registration race)', async () => {
+    // Registration reads the record, spends ~40ms hashing, THEN writes. If the
+    // address gets verified inside that window — the owner clicks their link, or
+    // signs in with Google — a blind write would plant a stranger's password on a
+    // live account, and the login gate only checks `passwordHash` + `emailVerified`.
+    // Asserted at the guard rather than through the route, because the route's own
+    // 409 fires on the state BEFORE the pause and would pass either way.
+    await createPasswordUser({ appId: 'fbizlab', email: 'race@corp.com', passwordHash: await hashPassword('First-Pass-1!') });
+    await upsertGoogleUser({ appId: 'fbizlab', email: 'race@corp.com' }); // verifies mid-flight
+
+    const written = await setPassword('fbizlab', 'race@corp.com', await hashPassword('Attacker-B-1!'), { onlyIfUnverified: true });
+    expect(written).toBe(false);
+    expect((await getCredential('fbizlab', 'race@corp.com'))?.passwordHash).toBeUndefined();
+    expect((await login('race@corp.com', 'Attacker-B-1!')).statusCode).toBe(401);
   });
 
   it('a verified email cannot be re-registered (409 email_taken)', async () => {

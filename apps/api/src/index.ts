@@ -369,7 +369,11 @@ app.post(
 
     const passwordHash = await hashPassword(b.password);
     if (existing) {
-      await setPassword(appRec.appId, email, passwordHash); // stuck unverified → update + resend
+      // Guarded: hashing took ~40ms, and if the address became VERIFIED in that
+      // window — the owner clicked their link, or signed in with Google — this
+      // write would plant a stranger's password on a live account.
+      const written = await setPassword(appRec.appId, email, passwordHash, { onlyIfUnverified: true });
+      if (!written) return reply.code(409).send({ error: 'An account with this email already exists.', code: 'email_taken' });
     } else {
       try {
         await createPasswordUser({ appId: appRec.appId, email, name: b.name, passwordHash });
@@ -420,7 +424,14 @@ app.post(
     if (!cred) return reply.code(400).send({ error: 'Account not found.' });
     await setEmailVerified(claims.appId, claims.email);
     logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'INFO', 'auth.email_verified', {});
-    return issueSession(appRec, claims.email, cred.name);
+    // Verified, but NOT logged in — deliberately, and this is the other half of the
+    // pre-hijack. Anyone can register an address they don't own, so the password on
+    // this record was not necessarily chosen by the person reading the mail. Handing
+    // that person a session is what made the attack pay: they would go on to use and
+    // pay for an account whose password a stranger already knows. Signing in proves
+    // they hold it; if they don't, "forgot password" replaces it and locks the
+    // stranger out. The cost is one extra step for a legitimate user.
+    return reply.code(200).send({ status: 'verified', email: claims.email });
   },
 );
 
@@ -459,7 +470,12 @@ app.post(
     // return 202 so callers can't probe which emails are registered.
     if (appRec && appRec.active && appRec.emailFrom && appRec.webUrl) {
       const cred = await getCredential(appRec.appId, email);
-      if (cred && cred.passwordHash) {
+      // Any credential, not just one that already has a password. Requiring a
+      // `passwordHash` meant the two users who most need this got nothing: someone
+      // whose unverified password was discarded when they signed in with Google,
+      // and anyone who has only ever used the Google button. Both were told "check
+      // your email" and no mail was ever sent.
+      if (cred) {
         const token = await signActionToken({ email, appId: appRec.appId, scope: 'reset-password' }, config.auth.resetTtlSeconds);
         const link = `${appRec.webUrl}/reset?token=${encodeURIComponent(token)}`;
         const tpl = resetPasswordTemplate(appRec.name, link);
@@ -575,7 +591,7 @@ app.post(
         subject: `Solicitud de Info ${appRec.name}`,
         htmlBody: html,
         textBody: text,
-        replyTo: b.email,
+        replyTo: normalizeEmail(b.email), // the raw value can carry padding the sender refuses
       });
     } catch (err) {
       logEvent({ jobId: '-', appId: appRec.appId, userId: b.email }, 'ERROR', 'contact.send_failed', { error: (err as Error).message });
@@ -1059,8 +1075,9 @@ app.post(
         }
       }
 
-      // 3. Moderation. The deterministic pre-screen always runs and still records
-      //    strikes/blocks; the classifier is billed against the allowance above.
+      // 3. Moderation. The deterministic pre-screen always runs; only the
+      //    classifier's verdicts record a strike, and it is billed against the
+      //    allowance above.
       //    Skipping it here is safe because /research moderates in full — and that
       //    is the call that actually spends credits.
       const rej = await moderateParams(appId, userId, params, lang, { llm: assist === 'on' });

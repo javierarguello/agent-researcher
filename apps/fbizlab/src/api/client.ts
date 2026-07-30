@@ -133,8 +133,9 @@ export function register(email: string, password: string, name?: string, captcha
   return api('/auth/register', { method: 'POST', anonymous: true, body: { appId: config.appId, email, password, name, ...captchaBody(captcha) } });
 }
 
-/** Verify an email from the emailed link → returns a login session. */
-export function verifyEmail(token: string): Promise<SessionResponse> {
+/** Verify an email from the emailed link. Does NOT sign you in: the password on
+ *  that account was not necessarily chosen by whoever opened the mail. */
+export function verifyEmail(token: string): Promise<{ status: string; email: string }> {
   return api('/auth/verify-email', { method: 'POST', anonymous: true, body: { token } });
 }
 

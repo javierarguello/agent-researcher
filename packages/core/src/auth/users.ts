@@ -110,10 +110,35 @@ export async function setEmailVerified(appId: string, email: string): Promise<vo
   await credentials().doc(docId(appId, email)).set({ emailVerified: true, updatedAt: nowIso() }, { merge: true });
 }
 
-/** Update a password user's hash. Only called for records that already have the
- *  'password' provider (registration retry / reset), so `providers` is untouched. */
-export async function setPassword(appId: string, email: string, passwordHash: string): Promise<void> {
-  await credentials().doc(docId(appId, email)).set({ passwordHash, updatedAt: nowIso() }, { merge: true });
+/**
+ * Set a password on an existing record, adding the `password` provider.
+ *
+ * `onlyIfUnverified` is registration's guard. Registration reads the record, then
+ * spends ~40ms hashing (scrypt), then writes — and a blind write after that pause
+ * is a race: if the address got VERIFIED in between (the owner clicked the link,
+ * or signed in with Google), an unverified registrant's password would land on a
+ * now-verified account and be immediately usable. The write re-reads under a
+ * transaction and refuses.
+ *
+ * Password RESET has no such guard on purpose: the emailed link is itself proof of
+ * ownership, so it may set a password on a verified record — including one that
+ * has only ever used Google. That is the recovery path.
+ */
+export async function setPassword(
+  appId: string,
+  email: string,
+  passwordHash: string,
+  opts: { onlyIfUnverified?: boolean } = {},
+): Promise<boolean> {
+  const ref = credentials().doc(docId(appId, email));
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = (snap.exists ? snap.data() : {}) as Partial<UserCredential>;
+    if (opts.onlyIfUnverified && cur.emailVerified === true) return false;
+    const providers = Array.from(new Set([...(cur.providers ?? []), 'password'])) as AuthProvider[];
+    tx.set(ref, { passwordHash, providers, updatedAt: nowIso() }, { merge: true });
+    return true;
+  });
 }
 
 /**
@@ -147,7 +172,10 @@ export async function upsertGoogleUser(input: { appId: string; email: string; na
     // only asks for `passwordHash` + `emailVerified`, so whoever registered first
     // gets a session as the person who just signed in with Google. Google proves
     // the ADDRESS, never the password attached to it, so an unverified credential
-    // is discarded rather than inherited. A real owner still has "forgot password".
+    // is discarded rather than inherited. The owner's way back to a password is the
+    // reset link, which `/auth/request-password-reset` sends for any credential —
+    // it used to require an existing `passwordHash`, i.e. the exact field this line
+    // deletes, so the recovery this comment promised did not exist.
     const stale = cur.emailVerified !== true && !!cur.passwordHash;
     const kept = stale ? (cur.providers ?? []).filter((p) => p !== 'password') : (cur.providers ?? []);
     const providers = Array.from(new Set([...kept, 'google'])) as AuthProvider[];
