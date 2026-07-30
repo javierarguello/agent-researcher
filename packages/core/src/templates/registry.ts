@@ -21,6 +21,7 @@ export function listTemplates(): ResearchTemplate<any>[] {
 }
 
 import { LANGUAGE_LABELS } from '../languages.js';
+import { manifestDirectives } from './directives.js';
 import { planWaves } from '../engine/research-engine.js';
 import { LIFECYCLE_BEFORE, LIFECYCLE_AFTER, LIFECYCLE_OTHER, phaseLabel } from './phases.js';
 import type { ParamsUi, StepInfo, TemplateI18n } from './types.js';
@@ -92,6 +93,13 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     sections: t.sections.map((s) => ({ key: s.key, title: tr?.sectionTitles?.[s.key] ?? s.title })),
     paramsSchema: z.toJSONSchema(t.paramsSchema),
     ...(t.paramsUi ? { paramsUi: localizeParamsUi(t.paramsUi, tr) } : {}),
+    // Localized in the template, not in the client: a new directive field (or a
+    // new language for an existing one) reaches every front-end with no client
+    // change. Note what is NOT here — the prompt text these render into. That is
+    // built server-side from the submitted values; the client never sees or edits it.
+    ...(t.directives
+      ? { directives: manifestDirectives(t.directives, lang), directivesKey: t.directives.key }
+      : {}),
     modes: REPORT_MODES.map((key) => {
       const cfg = t.modes?.[key] ?? DEFAULT_MODES[key];
       return { key, label: tr?.modeLabels?.[key] ?? cfg.label ?? key, credits: creditsForMode(cfg, key) };

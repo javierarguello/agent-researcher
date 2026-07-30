@@ -5,7 +5,8 @@ import { dedupeSources } from '../tools/sources.js';
 import { chartSchema } from './chart.js';
 import { metricSchema, riskItemSchema, projectionTableSchema } from './blocks.js';
 import { floridaPreflight } from './florida-preflight.js';
-import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
+import { directivesSchema } from './directives.js';
+import type { AgentSpec, DirectiveField, ReportSection, ResearchTemplate } from './types.js';
 
 // --- Client params -----------------------------------------------------------
 
@@ -14,6 +15,241 @@ import type { AgentSpec, ReportSection, ResearchTemplate } from './types.js';
 const PRICE_MAX = 1_000_000_000; // $1B ceiling — well above any lower-middle-market deal.
 /** When no industry is given, instructions must be at least this long for context. */
 export const MIN_INSTRUCTIONS_LEN = 40;
+
+/**
+ * Structured directives — what a buyer can tell the analysts, as a closed
+ * vocabulary rather than prose.
+ *
+ * Each value is a research instruction we can act on ("prioritise retirement
+ * sales", "the buyer wants an absentee business") and none of them can express a
+ * quantity, so none can make a section's schema unsatisfiable. Every field is
+ * optional: an untouched form adds nothing to the prompt.
+ *
+ * Note what is deliberately absent: SBA eligibility and "real estate included"
+ * already have their own params (`sbaFriendly`, `includeRealEstate`). Repeating
+ * them here would let one request say both yes and no.
+ */
+const DIRECTIVE_FIELDS: DirectiveField[] = [
+  {
+    key: 'reasonForSale',
+    kind: 'multi',
+    maxSelected: 4,
+    values: [
+      'owner_retiring', 'health_or_family', 'relocation', 'partnership_split',
+      'burnout', 'new_venture', 'financial_distress', 'estate_sale',
+    ],
+    promptLabel: 'Reasons for sale the buyer wants prioritised',
+    text: {
+      en: {
+        label: 'Reason for sale',
+        description: 'Why the current owner is selling. Retirement sales are usually the cleanest.',
+        valueLabels: {
+          owner_retiring: 'Owner retiring',
+          health_or_family: 'Health or family reasons',
+          relocation: 'Owner relocating',
+          partnership_split: 'Partnership split',
+          burnout: 'Owner burnout',
+          new_venture: 'Moving on to a new venture',
+          financial_distress: 'Financial distress',
+          estate_sale: 'Estate sale',
+        },
+      },
+      es: {
+        label: 'Motivo de venta',
+        description: 'Por qué vende el dueño actual. Las ventas por jubilación suelen ser las más limpias.',
+        valueLabels: {
+          owner_retiring: 'El dueño se jubila',
+          health_or_family: 'Motivos de salud o familiares',
+          relocation: 'El dueño se muda',
+          partnership_split: 'Disolución de la sociedad',
+          burnout: 'Desgaste del dueño',
+          new_venture: 'Pasa a un nuevo emprendimiento',
+          financial_distress: 'Dificultades financieras',
+          estate_sale: 'Venta por sucesión',
+        },
+      },
+    },
+  },
+  {
+    key: 'ownerInvolvement',
+    kind: 'single',
+    values: ['absentee', 'semi_absentee', 'owner_operator', 'any'],
+    promptLabel: 'Day-to-day owner involvement the buyer wants',
+    text: {
+      en: {
+        label: 'Owner involvement',
+        description: 'How much of your own time the business should need.',
+        valueLabels: {
+          absentee: 'Absentee — a manager runs it',
+          semi_absentee: 'Semi-absentee — part-time',
+          owner_operator: 'Owner-operator — full-time',
+          any: 'No preference',
+        },
+      },
+      es: {
+        label: 'Participación del dueño',
+        description: 'Cuánto de tu tiempo debería requerir el negocio.',
+        valueLabels: {
+          absentee: 'Ausente — lo dirige un gerente',
+          semi_absentee: 'Semi-ausente — medio tiempo',
+          owner_operator: 'Dueño-operador — tiempo completo',
+          any: 'Sin preferencia',
+        },
+      },
+    },
+  },
+  {
+    key: 'dealStructure',
+    kind: 'multi',
+    maxSelected: 3,
+    values: ['seller_financing', 'earnout', 'asset_purchase', 'stock_purchase', 'all_cash'],
+    promptLabel: 'Deal structures the buyer prefers',
+    text: {
+      en: {
+        label: 'Preferred deal structure',
+        description: 'How you would rather pay for the business.',
+        valueLabels: {
+          seller_financing: 'Seller financing',
+          earnout: 'Earn-out tied to performance',
+          asset_purchase: 'Asset purchase',
+          stock_purchase: 'Stock purchase',
+          all_cash: 'All cash',
+        },
+      },
+      es: {
+        label: 'Estructura de la operación',
+        description: 'Cómo preferirías pagar el negocio.',
+        valueLabels: {
+          seller_financing: 'Financiamiento del vendedor',
+          earnout: 'Earn-out ligado al desempeño',
+          asset_purchase: 'Compra de activos',
+          stock_purchase: 'Compra de acciones',
+          all_cash: 'Pago de contado',
+        },
+      },
+    },
+  },
+  {
+    key: 'buyerProfile',
+    kind: 'single',
+    values: ['first_time_buyer', 'experienced_operator', 'strategic_addon', 'passive_investor'],
+    promptLabel: 'Who the buyer is — calibrate how much is explained and how risk is framed',
+    text: {
+      en: {
+        label: 'Buyer profile',
+        description: 'Who is buying — this sets how much the report explains.',
+        valueLabels: {
+          first_time_buyer: 'First-time buyer',
+          experienced_operator: 'Experienced operator',
+          strategic_addon: 'Add-on to a business I already own',
+          passive_investor: 'Passive investor',
+        },
+      },
+      es: {
+        label: 'Perfil del comprador',
+        description: 'Quién compra — define cuánto explica el reporte.',
+        valueLabels: {
+          first_time_buyer: 'Comprador primerizo',
+          experienced_operator: 'Operador con experiencia',
+          strategic_addon: 'Complemento de un negocio que ya tengo',
+          passive_investor: 'Inversionista pasivo',
+        },
+      },
+    },
+  },
+  {
+    key: 'timeline',
+    kind: 'single',
+    values: ['immediate', 'within_3_months', 'within_12_months', 'exploring'],
+    promptLabel: "The buyer's acquisition timeline",
+    text: {
+      en: {
+        label: 'Timeline',
+        description: 'When you want to close.',
+        valueLabels: {
+          immediate: 'Ready to close now',
+          within_3_months: 'Within 3 months',
+          within_12_months: 'Within 12 months',
+          exploring: 'Exploring the market',
+        },
+      },
+      es: {
+        label: 'Plazo',
+        description: 'Para cuándo quieres cerrar.',
+        valueLabels: {
+          immediate: 'Listo para cerrar ahora',
+          within_3_months: 'En menos de 3 meses',
+          within_12_months: 'En menos de 12 meses',
+          exploring: 'Explorando el mercado',
+        },
+      },
+    },
+  },
+  {
+    key: 'riskAppetite',
+    kind: 'single',
+    values: ['conservative', 'balanced', 'opportunistic'],
+    promptLabel: "The buyer's risk appetite",
+    text: {
+      en: {
+        label: 'Risk appetite',
+        description: 'Proven and steady, or higher risk for a lower price.',
+        valueLabels: {
+          conservative: 'Conservative — proven, steady cash flow',
+          balanced: 'Balanced',
+          opportunistic: 'Opportunistic — turnarounds and distressed deals',
+        },
+      },
+      es: {
+        label: 'Apetito de riesgo',
+        description: 'Probado y estable, o más riesgo a cambio de mejor precio.',
+        valueLabels: {
+          conservative: 'Conservador — flujo de caja probado y estable',
+          balanced: 'Equilibrado',
+          opportunistic: 'Oportunista — reestructuraciones y negocios en dificultad',
+        },
+      },
+    },
+  },
+  {
+    key: 'reportEmphasis',
+    kind: 'multi',
+    maxSelected: 3,
+    values: ['financials', 'market_demand', 'competition', 'regulatory', 'growth', 'risks', 'financing'],
+    // The phrasing matters: emphasis adds depth where asked, it never removes it
+    // elsewhere. Rendered directives repeat that rule; this line keeps it true
+    // even for a model that reads only the label.
+    promptLabel: 'Aspects to go deepest on (in addition to — never instead of — everything else required)',
+    text: {
+      en: {
+        label: 'Give extra depth to',
+        description: 'Up to 3 aspects to dig deepest into. Nothing else is dropped.',
+        valueLabels: {
+          financials: 'Financials and valuation',
+          market_demand: 'Market demand',
+          competition: 'Competition',
+          regulatory: 'Regulation and licensing',
+          growth: 'Growth opportunities',
+          risks: 'Risks and red flags',
+          financing: 'Financing',
+        },
+      },
+      es: {
+        label: 'Profundizar especialmente en',
+        description: 'Hasta 3 aspectos a los que dedicar más profundidad. No se omite nada más.',
+        valueLabels: {
+          financials: 'Finanzas y valoración',
+          market_demand: 'Demanda del mercado',
+          competition: 'Competencia',
+          regulatory: 'Regulación y licencias',
+          growth: 'Oportunidades de crecimiento',
+          risks: 'Riesgos y señales de alerta',
+          financing: 'Financiamiento',
+        },
+      },
+    },
+  },
+];
 
 const paramsSchema = z.object({
   location: z.string().trim().max(200).default('State of Florida, USA'),
@@ -27,6 +263,10 @@ const paramsSchema = z.object({
   includeRealEstate: z.boolean().optional(),
   preferredSources: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
   instructions: z.string().trim().max(2000).optional(),
+  // Built FROM `DIRECTIVE_FIELDS`, so what the manifest advertises and what the
+  // API accepts are the same declaration. Strict: an unknown directive key is a
+  // 400, not a silently ignored field.
+  directives: directivesSchema(DIRECTIVE_FIELDS),
   language: z.enum(['en', 'es', 'fr', 'pt']).default('en'),
   /** Public cost/scope knob. 'essential' (~half cost, core sections) | 'comprehensive' (full report). */
   mode: modeParamSchema,
@@ -54,6 +294,20 @@ export type FloridaBusinessParams = z.infer<typeof paramsSchema>;
 const md = (what: string) => `${what} (Markdown).`;
 
 // --- Typed sections ----------------------------------------------------------
+//
+// A note on array minimums, because they look too permissive on purpose.
+//
+// The TARGET count lives in each section's guidance and in `.describe()` — that is
+// what the model reads, and what it is asked for. The SCHEMA floor is 1: enough to
+// reject an empty section, not enough to be a weapon.
+//
+// The floor used to BE the target, which made the schema the enforcement
+// mechanism. A request saying "keep every list short; skip anything you can't
+// double-source" — a reasonable thing for a buyer to write — then made the schema
+// unsatisfiable: every agent threw, every attempt retried, every dispatch repeated,
+// and the job burned its budget before degrading into placeholders that satisfied
+// the floor anyway. A hard floor never produced the eighth risk. It only decided
+// how much was spent failing to.
 
 const listing = z.object({
   business: z.string().describe('Business or listing title.'),
@@ -82,7 +336,7 @@ const deepDive = z.object({
   leaseTerms: z.string().describe(md('Lease / real-estate terms in detail')),
   reasonForSale: z.string().describe(md('Stated reason for sale + analysis of what it signals')),
   growthOpportunities: z.string().describe(md('Concrete growth opportunities with reasoning')),
-  risks: z.array(riskItemSchema).min(3).describe('At least 3 specific prioritised risks (severity + title + detail), most-severe first.'),
+  risks: z.array(riskItemSchema).min(1).describe('At least 3 specific prioritised risks (severity + title + detail), most-severe first.'),
   sourceUrl: z.string(),
 });
 
@@ -103,11 +357,11 @@ const sections: ReportSection[] = [
       'headline prices/valuations, market signals), one top recommendation (a full paragraph), and ' +
       'immediate next steps. Derive strictly from the other finished sections.',
     schema: z.object({
-      metrics: z.array(metricSchema).min(3).describe('4-6 headline deal numbers as badges (e.g. targets found, price range, combined revenue/SDE, best ROI).'),
+      metrics: z.array(metricSchema).min(1).describe('4-6 headline deal numbers as badges (e.g. targets found, price range, combined revenue/SDE, best ROI).'),
       overview: z.string().describe(md('2-3 paragraph overview')),
-      keyFindings: z.array(z.string()).min(6).describe('≥6 findings (Markdown bullets).'),
+      keyFindings: z.array(z.string()).min(1).describe('≥6 findings (Markdown bullets).'),
       topRecommendation: z.string().describe(md('The single top recommendation, a full paragraph')),
-      immediateNextSteps: z.array(z.string()).min(4).describe('≥4 next steps (Markdown bullets).'),
+      immediateNextSteps: z.array(z.string()).min(1).describe('≥4 next steps (Markdown bullets).'),
     }),
   },
   {
@@ -139,7 +393,7 @@ const sections: ReportSection[] = [
       'YoY growth, typical ticket/deal size — so they can be shown at a glance.',
     schema: z.object({
       overview: z.string().describe(md('Market overview prose, ≥600 words')),
-      metrics: z.array(metricSchema).min(3).describe('4-6 headline market numbers as badges (size, seasonality, growth, typical ticket/deal size).'),
+      metrics: z.array(metricSchema).min(1).describe('4-6 headline market numbers as badges (size, seasonality, growth, typical ticket/deal size).'),
     }),
   },
   {
@@ -289,7 +543,7 @@ const sections: ReportSection[] = [
       'can be colour-coded and prioritised, and `detail` (claim + why it matters + how to test it): customer ' +
       'concentration, owner dependence, declining trends, lease risk, deferred capex, litigation/regulatory ' +
       'exposure, insurance/hurricane exposure, negative community signals. Order most-severe first.',
-    schema: z.array(riskItemSchema).min(8).describe('≥8 prioritised risks (severity + title + detail), most-severe first.'),
+    schema: z.array(riskItemSchema).min(1).describe('≥8 prioritised risks (severity + title + detail), most-severe first.'),
   },
   {
     key: 'due_diligence_checklist',
@@ -303,10 +557,10 @@ const sections: ReportSection[] = [
         .array(
           z.object({
             category: z.string(),
-            items: z.array(z.string()).min(3).describe('≥3 concrete diligence items (Markdown).'),
+            items: z.array(z.string()).min(1).describe('≥3 concrete diligence items (Markdown).'),
           }),
         )
-        .min(5),
+        .min(1),
     }),
   },
   {
@@ -317,11 +571,12 @@ const sections: ReportSection[] = [
       'operational improvements — grounded in the specific targets and market. Compose from the finished ' +
       'sections; ≥200 words of commentary.',
     schema: z.object({
-      first100Days: z.array(z.string()).min(5).describe('≥5 first-100-days actions (Markdown bullets).'),
+      first100Days: z.array(z.string()).min(1).describe('≥5 first-100-days actions (Markdown bullets).'),
       growthLevers: z
         .array(z.object({ lever: z.string(), rationale: z.string().describe(md('Why it works here')) }))
-        .min(4),
-      operationalImprovements: z.array(z.string()).min(4).describe('≥4 operational improvements (Markdown).'),
+        .min(1)
+        .describe('≥4 growth levers, each with its rationale.'),
+      operationalImprovements: z.array(z.string()).min(1).describe('≥4 operational improvements (Markdown).'),
       commentary: z.string().describe(md('Value-creation thesis, ≥200 words')),
     }),
   },
@@ -332,8 +587,8 @@ const sections: ReportSection[] = [
       'Which listings to pursue first and why (ranked, with rationale), then concrete next diligence steps. ' +
       'Compose from the finished sections. ≥3 ranked targets and ≥6 next steps.',
     schema: z.object({
-      pursueFirst: z.array(z.string()).min(3).describe('≥3 ranked targets with rationale (Markdown bullets).'),
-      nextSteps: z.array(z.string()).min(6).describe('≥6 concrete next steps (Markdown bullets).'),
+      pursueFirst: z.array(z.string()).min(1).describe('≥3 ranked targets with rationale (Markdown bullets).'),
+      nextSteps: z.array(z.string()).min(1).describe('≥6 concrete next steps (Markdown bullets).'),
     }),
   },
   {
@@ -600,6 +855,10 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     },
   },
   instructionsField: 'instructions',
+  // The structured half of "what the client wants". `instructions` stays as a
+  // narrow residual for the things no field covers; anything a buyer says often
+  // enough belongs here instead, where it cannot contradict a schema.
+  directives: { key: 'directives', fields: DIRECTIVE_FIELDS },
   // Confirm-step review: deterministic summary + rules, and the whitelist the
   // assisted (LLM) pass may propose corrections for. See florida-preflight.ts.
   preflight: floridaPreflight,
@@ -627,6 +886,11 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     ],
     // Secondary inputs live in a collapsed "Advanced" section.
     advanced: ['keywords', 'preferredSources', 'instructions'],
+    // Directives are in `paramsSchema` (so the API validates them) but must not be
+    // rendered by the generic form builder — a client that fell back to the JSON
+    // Schema would draw a raw object editor. They have their own localized block
+    // in the manifest (`directives`), which is what a client renders.
+    hidden: ['directives'],
     fields: {
       industry: {
         help: 'Type of business to search for. Pick a suggestion or type your own.',
@@ -654,7 +918,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         help: 'Marketplaces/brokers to prioritize (in addition to the defaults).',
         suggestions: ['bizbuysell.com', 'bizquest.com', 'loopnet.com', 'businessesforsale.com', 'sunbeltnetwork.com'],
       },
-      instructions: { help: 'Free-form guidance for the analysts (lower authority than the model’s base rules).' },
+      instructions: { help: 'Anything the options above don’t cover. Guidance only — it can’t change what the report contains.' },
     },
   },
   // Spanish translations of the client-facing manifest strings (fallback: English).
@@ -700,7 +964,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         includeRealEstate: { help: 'Preferir operaciones que incluyan inmueble comercial.' },
         keywords: { help: 'Palabras clave adicionales para orientar la búsqueda.' },
         preferredSources: { help: 'Marketplaces/brokers a priorizar (además de los predeterminados).' },
-        instructions: { help: 'Instrucciones libres para los analistas (menor autoridad que las reglas base del modelo).' },
+        instructions: { help: 'Lo que las opciones anteriores no cubran. Es orientación: no cambia el contenido del reporte.' },
       },
       agentLabels: {
         'market-analyst': { label: 'Analista de mercado', description: 'Establece el contexto del mercado en Florida y reformula los criterios de búsqueda.' },

@@ -5,7 +5,7 @@ import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { captchaConfigured } from '../auth/captcha';
 import { useBalance, useCreateJob, useMyStats, usePreflight, useTemplates, type PreflightResult } from '../api/hooks';
 import { ApiError, DRAFT_KEY, clearDraftId, draftId } from '../api/client';
-import type { ParamsUi } from '../api/types';
+import type { DirectiveFieldInfo, ParamsUi } from '../api/types';
 
 type Props = Record<string, unknown>;
 
@@ -16,6 +16,7 @@ const T = {
     s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
     s4: 'Instructions for the analyst', s4h: "Free-form guidance for the analysts (lower authority than the model's base rules).",
+    sd: 'Your preferences', sdh: 'Optional. Tells the analysts what to weigh — it never shortens the dossier.', sdCap: 'pick up to',
     s5: 'Advanced', show: '+ Show', hide: '− Hide', step: 'Step', of: 'of', back: 'Back', next: 'Next',
     reportLanguage: 'Dossier language', reportLangHelp: 'The language the final dossier is written in.',
     f: { industry: 'Industry', location: 'Location', askingPriceMin: 'Asking price · Min', askingPriceMax: 'Asking price · Max', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', keywords: 'Keywords', preferredSources: 'Preferred sources' } as Record<string, string>,
@@ -39,6 +40,7 @@ const T = {
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
     s4: 'Instrucciones para el analista', s4h: 'Guía libre para los analistas (menor autoridad que las reglas base del modelo).',
+    sd: 'Tus preferencias', sdh: 'Opcional. Le dice a los analistas qué priorizar — nunca acorta el dossier.', sdCap: 'elige hasta',
     s5: 'Avanzado', show: '+ Mostrar', hide: '− Ocultar', step: 'Paso', of: 'de', back: 'Atrás', next: 'Siguiente',
     reportLanguage: 'Idioma del dossier', reportLangHelp: 'El idioma en que se escribe el dossier final.',
     f: { industry: 'Industria', location: 'Ubicación', askingPriceMin: 'Precio · Mín', askingPriceMax: 'Precio · Máx', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas' } as Record<string, string>,
@@ -62,6 +64,7 @@ const T = {
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
     s4: "Instructions pour l'analyste", s4h: "Consignes libres pour les analystes (autorité inférieure aux règles de base du modèle).",
+    sd: 'Vos préférences', sdh: 'Optionnel. Indique aux analystes quoi privilégier — cela ne raccourcit jamais le dossier.', sdCap: 'choisissez jusqu’à',
     s5: 'Avancé', show: '+ Afficher', hide: '− Masquer', step: 'Étape', of: 'de', back: 'Retour', next: 'Suivant',
     reportLanguage: 'Langue du dossier', reportLangHelp: 'La langue de rédaction du dossier final.',
     f: { industry: 'Secteur', location: 'Localisation', askingPriceMin: 'Prix · Min', askingPriceMax: 'Prix · Max', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', keywords: 'Mots-clés', preferredSources: 'Sources préférées' } as Record<string, string>,
@@ -85,6 +88,7 @@ const T = {
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
     s4: 'Instruções para o analista', s4h: 'Orientação livre para os analistas (autoridade menor que as regras base do modelo).',
+    sd: 'Suas preferências', sdh: 'Opcional. Diz aos analistas o que priorizar — nunca encurta o dossiê.', sdCap: 'escolha até',
     s5: 'Avançado', show: '+ Mostrar', hide: '− Ocultar', step: 'Passo', of: 'de', back: 'Voltar', next: 'Próximo',
     reportLanguage: 'Idioma do dossiê', reportLangHelp: 'O idioma em que o dossiê final é escrito.',
     f: { industry: 'Setor', location: 'Localização', askingPriceMin: 'Preço · Mín', askingPriceMax: 'Preço · Máx', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas' } as Record<string, string>,
@@ -217,9 +221,79 @@ export function NewReport() {
   // Only one report may be in flight per user (until it finishes or fails).
   const hasLive = (stats.data?.inProgress ?? 0) >= 1;
   const blocked = stats.data?.blocked ?? false;
+  // --- Structured directives -------------------------------------------------
+  // Every label, help line and option name below comes from the manifest, already
+  // localized. Nothing about them is declared here on purpose: a new directive
+  // field (or a new language for an existing one) is a template change, and this
+  // form picks it up without a deploy of its own.
+  const directives = model?.directives ?? [];
+  const dirKey = model?.directivesKey ?? 'directives';
+  const dirVals = (params[dirKey] as Record<string, unknown>) ?? {};
+  const setDir = (k: string, v: unknown) => {
+    const next: Record<string, unknown> = { ...dirVals };
+    if (v === undefined || (Array.isArray(v) && v.length === 0)) delete next[k];
+    else next[k] = v;
+    setParams((p) => ({ ...p, [dirKey]: next }));
+  };
+  const dirField = (f: DirectiveFieldInfo) => {
+    if (f.kind === 'boolean') {
+      return (
+        <label className="checkcard" key={f.key}>
+          <input type="checkbox" checked={!!dirVals[f.key]} onChange={(e) => setDir(f.key, e.target.checked || undefined)} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{f.label}</div>
+            {f.description && <div className="desc" style={{ marginTop: 3 }}>{f.description}</div>}
+          </div>
+        </label>
+      );
+    }
+    const picked = f.kind === 'multi' ? ((dirVals[f.key] as string[]) ?? []) : [];
+    const atCap = f.kind === 'multi' && f.maxSelected != null && picked.length >= f.maxSelected;
+    return (
+      <div className="field" key={f.key}>
+        <label>
+          {f.label}
+          {f.kind === 'multi' && f.maxSelected != null && (
+            <span className="mono muted" style={{ marginLeft: 8, fontSize: 10, textTransform: 'none', letterSpacing: 0 }}>
+              ({t.sdCap} {f.maxSelected})
+            </span>
+          )}
+        </label>
+        <div className="chips">
+          {(f.options ?? []).map((o) => {
+            const on = f.kind === 'multi' ? picked.includes(o.value) : dirVals[f.key] === o.value;
+            return (
+              <button
+                type="button"
+                key={o.value}
+                className={`chip ${on ? 'sel' : ''}`}
+                // At the cap, an unpicked option is disabled rather than silently
+                // ignored — a click that does nothing reads as a broken form.
+                disabled={!on && atCap}
+                onClick={() =>
+                  f.kind === 'multi'
+                    ? setDir(f.key, on ? picked.filter((x) => x !== o.value) : [...picked, o.value])
+                    : setDir(f.key, on ? undefined : o.value) // clicking the picked one clears it
+                }
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+        {f.description && <div className="desc">{f.description}</div>}
+      </div>
+    );
+  };
+
   const cleanParams = (): Props => {
     const c: Props = { ...params };
     Object.keys(c).forEach((k) => { if (c[k] === undefined || c[k] === '') delete c[k]; });
+    // An untouched directive set is absent, not empty: it keeps the request (and
+    // the key the preflight cache is built from) identical to never having opened
+    // the section at all.
+    const d = c[dirKey] as Record<string, unknown> | undefined;
+    if (d && Object.keys(d).length === 0) delete c[dirKey];
     return c;
   };
   const paramsKey = JSON.stringify(cleanParams());
@@ -403,9 +477,17 @@ export function NewReport() {
               <div className="nr-row">{checkField('sbaFriendly', t.sba)}{checkField('includeRealEstate', t.realEstate)}</div>
             </section>
 
-            {/* 04 Instructions */}
+            {/* 04 Your preferences (structured directives) */}
+            {directives.length > 0 && (
+              <section className="nr-sec" style={stepOf(2)}>
+                <SecHead n="04" title={t.sd} hint={t.sdh} />
+                <div className="stack" style={{ gap: 18 }}>{directives.map(dirField)}</div>
+              </section>
+            )}
+
+            {/* 05 Instructions */}
             <section className="nr-sec" style={stepOf(3)}>
-              <SecHead n="04" title={needsInstr ? `${t.s4} *` : t.s4} hint={t.s4h} />
+              <SecHead n={directives.length ? '05' : '04'} title={needsInstr ? `${t.s4} *` : t.s4} hint={t.s4h} />
               <textarea className="textarea" rows={6} maxLength={instrMax} placeholder={ph('instructions')} value={instr} onChange={(e) => set('instructions', e.target.value)} />
               <div className="between" style={{ marginTop: 6 }}>
                 <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: needsInstr && !instrOk ? 'var(--risk)' : 'var(--muted)' }}>{needsInstr ? t.instrReq : t.optionalUseful}</span>
@@ -415,9 +497,9 @@ export function NewReport() {
               </div>
             </section>
 
-            {/* 05 Advanced */}
+            {/* 06 Advanced */}
             <section className="nr-sec" style={stepOf(3)}>
-              <SecHead n="05" title={t.s5} right={<button type="button" className="nr-hint" style={{ background: 'none', border: 0, cursor: 'pointer' }} onClick={() => setAdvOpen((o) => !o)}>{advOpen ? t.hide : t.show}</button>} />
+              <SecHead n={directives.length ? '06' : '05'} title={t.s5} right={<button type="button" className="nr-hint" style={{ background: 'none', border: 0, cursor: 'pointer' }} onClick={() => setAdvOpen((o) => !o)}>{advOpen ? t.hide : t.show}</button>} />
               {advOpen && (
                 <div className="stack" style={{ gap: 16, paddingTop: 4 }}>
                   <div className="field">

@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
-import { addCost, createCostSink, emptyCost, type Cost, type CostSink } from '../cost.js';
+import { BudgetExceededError, addCost, createCostSink, emptyCost, type Cost, type CostSink } from '../cost.js';
 import { resolveDepthProfile, type DepthProfile } from '../depth.js';
 import { resolveMode } from '../mode.js';
 import { resolveModel, type ResolvedModel } from '../llm/index.js';
@@ -108,6 +108,8 @@ export interface JobTrace {
   error?: string;
   /** Warnings worth reviewing later (e.g. sections degraded after exhausting retries). */
   warnings?: string[];
+  /** Set when the job hit its USD ceiling and stopped spending (see `config.workflow.maxJobCostUsd`). */
+  budgetExceeded?: boolean;
   /** Total wall-clock time so far (ms). */
   durationMs?: number;
   startedAt: string;
@@ -211,6 +213,17 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   const waves = topoSortAgents(effTemplate);
   const producers = producerOf(effTemplate);
   const byId = new Map(effTemplate.agents.map((a) => [a.id, a]));
+
+  // The job's one accumulator, and the thing the ceiling is checked against. Seeded
+  // with what earlier dispatches spent (carried in the checkpoint) — a per-dispatch
+  // ceiling would be no ceiling at all, since a job gets re-dispatched 8 times.
+  // Per-attempt sinks are `child()`ren of this: they scope an attempt's slice for
+  // the agent trace while the job total stays in a single place.
+  const jobSpend = createCostSink({
+    maxUsd: config.workflow.maxJobCostUsd,
+    seed: addCost(input.resume?.cost ?? emptyCost(), input.baseCost ?? emptyCost()),
+  });
+
   const trace: JobTrace = {
     jobId,
     template: template.id,
@@ -221,7 +234,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     // Restore prior dispatches' agent traces + accumulated cost so the final trace,
     // summary, and job cost reflect the WHOLE run — not just this resumed dispatch.
     agents: [...(input.resume?.agentTraces ?? [])],
-    cost: addCost(input.resume?.cost ?? emptyCost(), input.baseCost ?? emptyCost()),
+    cost: jobSpend.total(),
     status: 'running',
     startedAt: new Date().toISOString(),
   };
@@ -307,11 +320,25 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
 
       // In-run retries with exponential backoff — keep trying the step.
       for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
+        // Checked before every attempt, including the first: once the job has spent
+        // its ceiling there is nothing to retry INTO. This is the guard that makes
+        // 3 attempts × 8 dispatches a bounded number of dollars rather than a
+        // bounded number of tries.
+        const budget = jobSpend.budget();
+        if (budget.exceeded) {
+          const err = new BudgetExceededError(budget.spentUsd, budget.limitUsd ?? 0);
+          at.status = 'failed';
+          at.error = err.message;
+          at.notes.push(`${new Date().toISOString()} ${err.message}`);
+          trace.budgetExceeded = true;
+          await emit(agent.id, err.message);
+          break;
+        }
         at.attempts = attempt;
         // One sink per attempt, read on BOTH the success and the failure path: a
         // failed attempt still ran its whole research loop and its synthesis calls,
         // and a job that retries to exhaustion is the most expensive kind there is.
-        const spend = createCostSink();
+        const spend = jobSpend.child();
         let ok = false;
         let failure: Error | undefined;
         try {
@@ -330,9 +357,18 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
           // attempt is charged, whatever became of it" — a later early return or
           // `continue` cannot silently stop charging.
           at.cost = addCost(at.cost, spend.total());
-          trace.cost = addCost(trace.cost, spend.total());
+          // Read, not accumulated: `spend` is a child of `jobSpend`, so every call
+          // it recorded is already in the job total. Adding it again here is exactly
+          // the double-count the single-accumulator rule exists to prevent.
+          trace.cost = jobSpend.total();
         }
         if (ok) break;
+        // A ceiling reached mid-attempt ends the agent now. Retrying would just
+        // re-enter the guard above, after another backoff.
+        if (failure instanceof BudgetExceededError) {
+          trace.budgetExceeded = true;
+          break;
+        }
 
         // Backoff happens AFTER the charge is booked, not inside the catch. Siblings
         // run concurrently and checkpoint while this agent sleeps; a save during the
@@ -375,8 +411,14 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   });
   const checkpoint: Checkpoint = snapshot();
 
+  // A job that stopped on its ceiling must NOT come back as 'incomplete': the
+  // checkpoint carries the spend forward, so every one of the remaining dispatches
+  // would wake up already over the ceiling, fail every agent, and re-dispatch. It
+  // is finished — finalize it here instead of seven more times.
+  const budgetStopped = jobSpend.budget().exceeded;
+
   // Not finalizing yet → return 'incomplete' so a re-dispatch resumes the rest.
-  if (pending.length && !finalize) {
+  if (pending.length && !finalize && !budgetStopped) {
     trace.status = 'incomplete';
     trace.durationMs = Date.now() - Date.parse(trace.startedAt);
     trace.finishedAt = new Date().toISOString();
@@ -386,6 +428,13 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
+  if (budgetStopped) {
+    const b = jobSpend.budget();
+    warnings.push(
+      `Stopped at the per-job cost ceiling: spent $${b.spentUsd.toFixed(2)} of the ` +
+        `$${(b.limitUsd ?? 0).toFixed(2)} allowed. Remaining sections were degraded.`,
+    );
+  }
   for (const agent of pending) {
     const reason = agentReason(trace, agent.id);
     for (const key of ownedKeys(agent)) {
@@ -499,6 +548,12 @@ async function runAgent(ctx: {
     });
     counter.turns += gres.turns;
     trace.turnsUsed = gres.turns;
+
+    // `gather` stops at the ceiling rather than throwing, so the evidence it did
+    // buy is kept in the shared store for whoever runs next. Synthesis is the next
+    // paid call, so the ceiling is enforced here, before it.
+    const costBudget = ctx.spend.budget();
+    if (costBudget.exceeded) throw new BudgetExceededError(costBudget.spentUsd, costBudget.limitUsd ?? 0);
 
     await note(`Writing (${owned.join(', ')}).`);
     const enrichesOnly = (agent.enriches ?? []).filter((k) => k in report);

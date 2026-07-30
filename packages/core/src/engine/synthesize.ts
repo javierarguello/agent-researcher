@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { config } from '../config.js';
-import { llmCost, type CostSink } from '../cost.js';
+import { BudgetExceededError, llmCost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage } from '../llm/provider.js';
 
@@ -39,6 +39,13 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
   const messages: LlmMessage[] = [...input.messages];
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    // The repair round is a second full-size structured call. If the first one took
+    // the job past its ceiling, that is where it stops — the schema errors it would
+    // be fixing are not worth another 32k output tokens.
+    if (attempt > 0) {
+      const budget = input.spend?.budget();
+      if (budget?.exceeded) throw new BudgetExceededError(budget.spentUsd, budget.limitUsd ?? 0);
+    }
     const res = await model.provider.generate({
       system,
       messages,

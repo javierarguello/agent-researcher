@@ -3,8 +3,10 @@
  * sections, and models non-breaking. Run at registration time and in CI, so a
  * malformed template fails fast instead of corrupting a live run.
  */
+import { z } from 'zod';
 import { config } from '../config.js';
 import { modelAliases } from '../llm/models.js';
+import { validateDirectives } from './directives.js';
 import type { AgentSpec, ResearchTemplate } from './types.js';
 
 export function validateTemplate(t: ResearchTemplate<any>): string[] {
@@ -66,6 +68,18 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
       const p = producedBy.get(k);
       if (!p) err(`agent "${a.id}" enriches "${k}" but no agent produces it`);
       else if (p === a.id) err(`agent "${a.id}" enriches its own section "${k}"`);
+    }
+  }
+
+  // Structured directives: well-formed, and actually accepted by paramsSchema.
+  if (t.directives) {
+    for (const e of validateDirectives(t.directives)) err(e);
+    // The declaration and the schema are two halves of one contract: a field the
+    // manifest advertises but `paramsSchema` rejects fails only in production, on
+    // a real user's submit. Catch it at load instead.
+    const props = (z.toJSONSchema(t.paramsSchema) as { properties?: Record<string, unknown> }).properties ?? {};
+    if (!(t.directives.key in props)) {
+      err(`declares directives under "${t.directives.key}" but paramsSchema has no such property`);
     }
   }
 

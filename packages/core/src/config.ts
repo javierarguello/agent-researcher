@@ -244,6 +244,19 @@ export const config = {
     /** Upper bound for structured JSON output (avoids mid-JSON truncation).
      *  Long-form sections (deep dives, financials) need generous headroom. */
     maxOutputTokens: int('LLM_MAX_OUTPUT_TOKENS', 32768),
+    /**
+     * Cap on what ONE research (tool-calling) turn may emit. A turn's output is a
+     * short plan or a search query, so this is generous — but without any cap each
+     * of the `2×budget+6` turns per agent could emit up to the model default, and
+     * on Gemini 2.5 thinking tokens bill as output.
+     */
+    gatherMaxOutputTokens: int('LLM_GATHER_MAX_OUTPUT_TOKENS', 4096),
+    /**
+     * Thinking budget for those turns. Deliberately NOT 0 (unlike moderation and
+     * enrich, which are one-shot classifications): choosing the next query is the
+     * part of this loop that benefits from reasoning. Bounded, not unbounded.
+     */
+    gatherThinkingBudget: int('LLM_GATHER_THINKING_BUDGET', 1024),
     /** Max agents synthesizing/gathering concurrently (Vertex quota guard). */
     maxConcurrentAgents: int('LLM_MAX_CONCURRENT_AGENTS', 2),
   },
@@ -255,6 +268,19 @@ export const config = {
     agentRetryMaxMs: int('AGENT_RETRY_MAX_MS', 30000),
     /** Job re-dispatches (Cloud Tasks) before finalizing with degraded sections. */
     maxJobAttempts: int('MAX_JOB_ATTEMPTS', 8),
+    /**
+     * Hard per-job spend ceiling in USD, counted across ALL dispatches (the running
+     * total is carried in the checkpoint). A safety net, not a budget: a normal
+     * comprehensive report costs a small fraction of this. It exists because retry
+     * amplification (3 in-run attempts × 8 dispatches) has no other upper bound —
+     * once a job cannot satisfy its own schemas, every retry is pure loss.
+     *
+     * When it trips, the remaining steps fail with a BudgetExceededError and the
+     * job finalizes with degraded sections (the existing degrade policy — whether
+     * such a job should instead refund is an open product decision, see D2/F1 in
+     * docs/plans/abuse-and-cost.md). 0 or negative disables the ceiling.
+     */
+    maxJobCostUsd: float('MAX_JOB_COST_USD', 20),
   },
   search: {
     braveApiKey: str('BRAVE_API_KEY'),

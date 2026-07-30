@@ -27,6 +27,35 @@ rejects: unknown section/agent refs, two agents producing the same section,
 enriching a section nobody produces, self-enrichment, unknown model aliases, and
 dependency cycles.
 
+## Add a structured directive to a model
+
+Directives are how a client says what it wants **without free prose**: a closed
+vocabulary per field, declared once in the template and rendered by every client
+from the manifest.
+
+1. Add a `DirectiveField` to the template's field list: a `key`, a `kind`
+   (`single` | `multi` | `boolean`), the `values` (machine keys — never
+   translated), and `text` per language. `en` is required and is the fallback;
+   each language must label **every** value, or validation fails.
+2. Make sure the schema half exists: the params schema must include
+   `directivesSchema(FIELDS)` under the same key the template's
+   `directives.key` names. Load-time validation rejects a declaration
+   `paramsSchema` does not accept — the two are one contract.
+3. Add the key to `paramsUi.hidden` so a generic form builder skips the raw
+   object; clients render the localized `directives` block instead.
+4. `npm run templates:check`.
+
+Additive → same `version`, and no client change: a new field (or a new language
+for an old one) reaches every front-end through the manifest.
+
+**What must never go in one.** A directive says what to *weigh* — a reason for
+sale to prefer, a risk appetite, an aspect to go deeper on. It must never be able
+to say how *much* to return. Item counts, section lists and "keep it short" are
+exactly the instructions that made the report schemas unsatisfiable and burned a
+job's whole budget failing to satisfy them (C1 in
+[plans/abuse-and-cost.md](plans/abuse-and-cost.md)). If a proposed field would
+express a quantity, it is not a directive.
+
 ## Add a whole new research model
 
 1. Create `packages/core/src/templates/<id>.ts` exporting a `ResearchTemplate`

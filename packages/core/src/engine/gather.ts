@@ -108,12 +108,26 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   const note = async (m: string) => onNote?.(m);
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    // Stop, don't throw: the evidence bought so far is in the shared store and is
+    // useful to whoever runs next. The caller checks the same budget and decides
+    // whether this agent can still afford to write.
+    if (input.spend?.budget().exceeded) {
+      await note('Stopping research: the job reached its cost ceiling.');
+      break;
+    }
     const res = await model.provider.generate({
       system,
       messages,
       tools: RESEARCH_TOOLS,
       forceTools: turnsUsed === 0, // force real research before it can stop
       model: model.model,
+      // A research turn emits a plan or a query — nothing long. Without these two
+      // it could emit up to the model default on every one of `2×budget+6` turns,
+      // and on Gemini 2.5 thinking tokens bill as output. The thinking budget is
+      // bounded rather than zeroed: picking the next query is the part of this
+      // loop that actually benefits from reasoning.
+      maxOutputTokens: config.llm.gatherMaxOutputTokens,
+      thinkingBudget: config.llm.gatherThinkingBudget,
     });
     if (res.usage) charge(llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
 

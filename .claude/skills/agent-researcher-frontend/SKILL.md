@@ -62,8 +62,15 @@ translation fall back to English. `manifest.lang` echoes the resolved language.
     "ranges":   [{ "label": "Asking price", "minKey": "askingPriceMin", "maxKey": "askingPriceMax",
                    "min": 0, "max": 5000000, "step": 25000, "prefix": "$" }],  // render one slider
     "advanced": ["keywords", "preferredSources", "instructions"],             // collapse these
-    "hidden":   []
+    "hidden":   ["directives"]                                                // skip in the generic form
   },
+  "directives": [                                       // structured preferences (localized, closed sets)
+    { "key": "reasonForSale", "kind": "multi", "maxSelected": 4, "label": "Motivo de venta",
+      "description": "Por qué vende el dueño actual…",
+      "options": [{ "value": "owner_retiring", "label": "El dueño se jubila" }] },
+    { "key": "riskAppetite", "kind": "single", "label": "Apetito de riesgo", "options": [] }
+  ],
+  "directivesKey": "directives",                        // params key the selected values go under
   "modes": [ { "key": "essential", "label": "Esencial", "credits": 1 },        // report tiers + price
              { "key": "comprehensive", "label": "Completo", "credits": 2 } ],
   "steps": [ { "id": "planning", "label": "Planificando", "description": "…" },  // workflow phases (localized)
@@ -96,6 +103,24 @@ Walk `paramsSchema.properties`; pick a control per property (an `enum` wins):
 - **Limits are the server's** — mirror `maxLength`/`maximum`/`maxItems` in inputs
   for UX, but the API re-validates against `paramsSchema` and rejects anything out
   of bounds (`400`), so the client can be lenient.
+
+### Directives — render them, never invent them
+
+`manifest.directives` is a separate block from the generic form (the raw param is in
+`paramsUi.hidden` so the schema walker skips it). Render one control per field —
+`kind: "single"` → one-of, `"multi"` → a subset capped at `maxSelected`, `"boolean"`
+→ a switch — and submit under `manifest.directivesKey`:
+
+```jsonc
+"params": { "industry": "Laundromats",
+            "directives": { "reasonForSale": ["owner_retiring"], "riskAppetite": "conservative" } }
+```
+
+Every field is optional; omit the key when nothing is picked. The set is **strict**:
+an undeclared key or an out-of-vocabulary value is a `400`. All labels, help text and
+option names come from the manifest already localized — do not add your own copy for
+them, and do not offer a free-text alternative to a directive. That is the point of
+them: a user says what to weigh, never how much the report must return.
 
 Reference implementation: `apps/admin/src/components/JsonSchemaForm.tsx` in the repo.
 

@@ -141,7 +141,8 @@ await app.register(swagger, {
         '2. **List models** — `GET /templates?lang=<en|es|…>` → each item is a self-contained *manifest*:',
         '   `paramsSchema` (JSON Schema — validate + generate the input form), `paramsUi` (layout `rows`,',
         '   per-field `help`/`suggestions`/`optionLabels`/`placeholder`, `ranges` = min/max sliders, `advanced`',
-        '   = collapsed fields), `modes` (report tiers with their **credit cost**), and `sections`/`reportSchema`',
+        '   = collapsed fields), `directives` (structured preference fields with localized labels + options —',
+        '   submit the picks under `directivesKey`), `modes` (report tiers with their **credit cost**), and `sections`/`reportSchema`',
         '   (the report structure). All display texts are localized to `lang` (default `en`). The list is scoped',
         '   to the app’s allowed models.',
         '3. **Show credits** — `GET /credits/balance`; buy more via `GET /credits/plans` + `POST /credits/checkout`.',
@@ -682,7 +683,9 @@ app.get(
       summary: 'Get one research model manifest (form + texts + credits)',
       description:
         'The full manifest for one model: `paramsSchema` (JSON Schema — validate + generate the form), ' +
-        '`paramsUi` (layout, per-field help, suggestions, ranges, advanced section), `modes` (report tiers with ' +
+        '`paramsUi` (layout, per-field help, suggestions, ranges, advanced section), `directives` (structured ' +
+        'preference fields, each a closed set of localized options; submit picks under `directivesKey`), ' +
+        '`modes` (report tiers with ' +
         'their credit cost), `sections`/`reportSchema` (the report structure), all localized to `lang`. ' +
         '403 if the app is not allowed to use this model.',
       tags: ['templates'],

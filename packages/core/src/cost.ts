@@ -30,20 +30,81 @@ export interface Cost {
  * paid call writes here immediately, so a throw can no longer make money
  * invisible. Pass one down; read `total()` from either the success or the failure
  * path.
+ *
+ * A sink can also carry a JOB-WIDE ceiling. `child()` scopes one attempt's spend
+ * (its `total()` is that attempt's alone) while still recording into the parent,
+ * so the job total stays in ONE accumulator — the ceiling has to be checked
+ * against everything spent so far, not against one attempt's slice.
  */
 export interface CostSink {
   add(cost: Cost): void;
+  /** What THIS sink has recorded (a child sees only its own slice). */
   total(): Cost;
+  /**
+   * The job-wide view, whichever sink you happen to hold: what the WHOLE job has
+   * spent, its ceiling, and whether it has passed it. Always answered by the root,
+   * because that is the only question worth asking — one attempt being cheap says
+   * nothing about whether the job can afford another.
+   */
+  budget(): BudgetState;
+  /** A sink recording into this one as well — scopes one attempt's spend. */
+  child(): CostSink;
 }
 
-export function createCostSink(): CostSink {
-  let acc = emptyCost();
-  return {
+export interface BudgetState {
+  /** USD spent across the whole job (all dispatches, all agents). */
+  spentUsd: number;
+  /** The ceiling, or null when uncapped. */
+  limitUsd: number | null;
+  exceeded: boolean;
+}
+
+/**
+ * Thrown when a job has spent its ceiling. Distinct from a model/tool error so
+ * the engine can stop retrying instead of burning the remaining attempts: no
+ * amount of retrying makes money reappear.
+ */
+export class BudgetExceededError extends Error {
+  readonly spentUsd: number;
+  readonly limitUsd: number;
+  constructor(spentUsd: number, limitUsd: number) {
+    super(`Job cost ceiling reached: spent $${spentUsd.toFixed(2)} of the $${limitUsd.toFixed(2)} allowed.`);
+    this.name = 'BudgetExceededError';
+    this.spentUsd = spentUsd;
+    this.limitUsd = limitUsd;
+  }
+}
+
+export interface CostSinkOptions {
+  /** Job-wide USD ceiling. Null/0/negative = uncapped. */
+  maxUsd?: number | null;
+  /** Spend already incurred (prior dispatches), so the ceiling counts the WHOLE job. */
+  seed?: Cost;
+}
+
+export function createCostSink(opts: CostSinkOptions = {}): CostSink {
+  const max = opts.maxUsd != null && opts.maxUsd > 0 ? opts.maxUsd : null;
+  return makeSink(max, opts.seed ?? emptyCost());
+}
+
+function makeSink(maxUsd: number | null, seed: Cost, parent?: CostSink): CostSink {
+  let acc = seed;
+  const self: CostSink = {
     add: (c) => {
+      // Record before propagating: money already spent stays visible even when
+      // the ceiling has been passed. The ceiling stops FUTURE calls; it never
+      // hides a call that was already billed.
       acc = addCost(acc, c);
+      parent?.add(c);
     },
     total: () => acc,
+    budget: () =>
+      parent
+        ? parent.budget()
+        : { spentUsd: acc.usd, limitUsd: maxUsd, exceeded: maxUsd != null && acc.usd >= maxUsd },
+    child: () => makeSink(null, emptyCost(), self),
   };
+  return self;
 }
 
 export function emptyCost(): Cost {

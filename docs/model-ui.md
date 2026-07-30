@@ -21,6 +21,8 @@ app isn't allowed to use that model. Texts are localized to `lang` (default `en`
   "sections": [{ "key": "shortlist", "title": "Lista…" }, …],
   "paramsSchema": { /* JSON Schema (draft 2020-12), generated from the Zod schema */ },
   "paramsUi":     { /* optional presentation hints — see below */ },
+  "directives":   [ /* structured, localized preference fields — see below */ ],
+  "directivesKey": "directives",                 // params key the values go under
   "modes": [ { "key": "essential", "label": "Esencial", "credits": 1 },   // report tiers + price
              { "key": "comprehensive", "label": "Completo", "credits": 2 } ],
   "reportSchema": { /* JSON Schema of the report envelope's `report` object */ }
@@ -43,6 +45,41 @@ report tiers and their credit cost (`modes`), the report structure
   512 KB body limit and length caps on every other endpoint's fields.
 - **`paramsUi`** is purely cosmetic: layout, per-field help, and suggested values.
   Optional — without it the form still renders, one field per row.
+
+## `directives` — structured preferences instead of prose
+
+A model may declare **directives**: closed vocabularies a user picks from, in place
+of writing what they want in free text. They arrive localized and ready to render.
+
+```jsonc
+"directives": [
+  { "key": "reasonForSale", "kind": "multi", "maxSelected": 4,
+    "label": "Motivo de venta",
+    "description": "Por qué vende el dueño actual…",
+    "options": [ { "value": "owner_retiring", "label": "El dueño se jubila" }, … ] },
+  { "key": "riskAppetite", "kind": "single", "label": "Apetito de riesgo", "options": [ … ] },
+  { "key": "someSwitch",   "kind": "boolean", "label": "…" }
+]
+```
+
+- `kind` picks the control: `single` → one-of (select/chips), `multi` → a subset
+  capped at `maxSelected`, `boolean` → a switch.
+- **Send values under `manifest.directivesKey`**, e.g.
+  `params.directives = { reasonForSale: ["owner_retiring"], riskAppetite: "conservative" }`.
+  Every field is optional; omit the key entirely when nothing is picked.
+- The `directives` param is in `paramsSchema` too (that is what validates it), and
+  is listed in `paramsUi.hidden` — so a generic form builder skips it and you render
+  this block instead. It is **strict**: an undeclared key or an out-of-vocabulary
+  value is a `400`.
+- **Do not translate these in the client.** `label`, `description` and every option
+  `label` come from the model's own declaration, in the requested `lang`. Adding a
+  field or a language is a template change that every client picks up for free.
+
+Why they exist: free text can say *"keep every list to at most two items"*, which
+reads as reasonable scoping and instead makes the report's schemas unsatisfiable —
+the job then retries to exhaustion and degrades. A closed vocabulary lets a user say
+**what to weigh**, never **how much to return**. Keep any free-text field as a
+narrow residual for what the options don't cover.
 
 ## Generating the form (widget mapping)
 

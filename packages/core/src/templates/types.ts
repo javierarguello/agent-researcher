@@ -124,6 +124,80 @@ export interface ParamsUi {
   advanced?: string[];
 }
 
+// --- Structured client directives -------------------------------------------
+
+/**
+ * The client-facing text of one directive field, in ONE language.
+ *
+ * Declared in the template — never in a front-end. A client renders whatever the
+ * manifest hands it, so adding a field or a language is a template change and
+ * every consumer picks it up for free.
+ */
+export interface DirectiveFieldText {
+  label: string;
+  /** One short line of help under the field. */
+  description?: string;
+  /** Human label per raw enum value, e.g. { owner_retiring: 'Owner retiring' }. */
+  valueLabels?: Record<string, string>;
+}
+
+/**
+ * One structured directive a model accepts: a CLOSED vocabulary the client picks
+ * from, in place of free prose.
+ *
+ * This is the point of the whole mechanism. Free text can express "keep every
+ * list to at most two items", which reads as a legitimate scoping request and
+ * quietly makes the report's schemas unsatisfiable — every agent throws, every
+ * attempt retries, and the job burns its budget before degrading. A closed
+ * vocabulary cannot express that: the client says WHAT to weigh, never HOW MUCH
+ * to emit.
+ */
+export interface DirectiveField {
+  /** Key inside the directives object (and in the manifest). */
+  key: string;
+  /** `single` = one enum value; `multi` = a subset; `boolean` = a switch. */
+  kind: 'single' | 'multi' | 'boolean';
+  /** Allowed raw values for `single`/`multi` (machine keys — never translated). */
+  values?: string[];
+  /** Cap on selections for `multi`. Defaults to all values. */
+  maxSelected?: number;
+  /** Client-facing text by language code. `en` is required and is the fallback. */
+  text: Record<string, DirectiveFieldText>;
+  /**
+   * INTERNAL English phrasing used when rendering into the prompt. Never leaves
+   * the server. Falls back to the `en` text, so it is only worth setting when the
+   * analyst-facing phrasing should differ from the buyer-facing label.
+   */
+  promptLabel?: string;
+  /** INTERNAL English phrasing per raw value (falls back to the `en` valueLabels). */
+  promptValues?: Record<string, string>;
+}
+
+/**
+ * A model's structured directive set: the param that holds them, and the fields.
+ *
+ * `render()` is deliberately absent from this interface — rendering lives in
+ * `directives.ts` and runs server-side only. The API accepts values from the
+ * closed vocabulary and never accepts (or returns) the rendered prose, so a
+ * client cannot hand the engine a sentence it wrote.
+ */
+export interface DirectiveSpec {
+  /** Param key holding the directives object (e.g. 'directives'). */
+  key: string;
+  fields: DirectiveField[];
+}
+
+/** One directive field as a client sees it: localized, ready to render. */
+export interface DirectiveManifestField {
+  key: string;
+  kind: DirectiveField['kind'];
+  label: string;
+  description?: string;
+  maxSelected?: number;
+  /** Present for `single`/`multi`: the raw value plus its localized label. */
+  options?: Array<{ value: string; label: string }>;
+}
+
 /**
  * A research template ("model") = one research vertical: its base prompt, the
  * validated params clients may pass, the report's typed sections, and the agent
@@ -167,6 +241,12 @@ export interface ResearchTemplate<TParams = unknown> {
   buildBrief: (params: TParams) => string;
   /** Optional params field carrying lower-authority client instructions. */
   instructionsField?: string;
+  /**
+   * Structured directives this model accepts, as a closed per-field vocabulary.
+   * The values live inside `paramsSchema` under `directives.key` — build that part
+   * of the schema with `directivesSchema(fields)` so the two cannot drift.
+   */
+  directives?: DirectiveSpec;
   /** Presentation hints for rendering `paramsSchema` in a client UI. */
   paramsUi?: ParamsUi;
   /** Paid post-report deliverables this model offers (the add-on catalog). */
@@ -292,6 +372,14 @@ export interface TemplateManifest {
   paramsSchema: unknown;
   /** Presentation hints for rendering `paramsSchema` (see ParamsUi). */
   paramsUi?: ParamsUi;
+  /**
+   * Structured directive fields, localized — label, help text, and the option
+   * labels for each closed vocabulary. Values are submitted under
+   * `params[directivesKey]`.
+   */
+  directives?: DirectiveManifestField[];
+  /** The param key directive values go under (present iff `directives` is). */
+  directivesKey?: string;
   /** Report tiers the client picks from, with their credit cost. */
   modes: Array<{ key: ReportMode; label: string; credits: number }>;
   /** Paid add-on deliverables this model offers, with their credit cost. */

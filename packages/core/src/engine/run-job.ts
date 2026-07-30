@@ -200,6 +200,15 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     if (output.trace.warnings?.length) {
       log.warn('job.degraded', { degradedSections: output.meta.degradedSections, warnings: output.trace.warnings, attempts });
     }
+    // Its own ERROR, not folded into the warning above: a job that hit the spend
+    // ceiling is an incident (a runaway, or a ceiling set too low), not the ordinary
+    // "one agent couldn't finish" degradation.
+    if (output.trace.budgetExceeded) {
+      log.error('job.budget_exceeded', {
+        costUsd: output.meta.cost.usd, limitUsd: config.workflow.maxJobCostUsd,
+        degradedSections: output.meta.degradedSections, attempts,
+      });
+    }
 
     // Per-app analytics (best-effort).
     try {

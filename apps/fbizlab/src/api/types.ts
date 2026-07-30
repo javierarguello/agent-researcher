@@ -8,6 +8,23 @@ export interface ParamFieldUi { help?: string; suggestions?: string[]; optionLab
 export interface ParamRangeUi { label: string; minKey: string; maxKey: string; min: number; max: number; step?: number; prefix?: string; }
 export interface ParamsUi { rows?: string[][]; fields?: Record<string, ParamFieldUi>; hidden?: string[]; ranges?: ParamRangeUi[]; advanced?: string[]; }
 
+/**
+ * A structured directive the model accepts: a closed set of options, already
+ * localized by the API. Everything shown here — label, help, option labels — comes
+ * from the manifest, so a new field or a new language needs no change in here.
+ * Values are submitted under `params[manifest.directivesKey]`.
+ */
+export interface DirectiveOption { value: string; label: string; }
+export interface DirectiveFieldInfo {
+  key: string;
+  kind: 'single' | 'multi' | 'boolean';
+  label: string;
+  description?: string;
+  /** For `multi`: the most options that may be picked. */
+  maxSelected?: number;
+  options?: DirectiveOption[];
+}
+
 export interface TemplateManifest {
   id: string;
   name: string;
@@ -17,6 +34,9 @@ export interface TemplateManifest {
   sections: Array<{ key: string; title: string }>;
   paramsSchema: unknown;
   paramsUi?: ParamsUi;
+  directives?: DirectiveFieldInfo[];
+  /** The param key directive values go under (present iff `directives` is). */
+  directivesKey?: string;
   modes: ModeInfo[];
   addons: AddonInfo[];
   steps: StepInfo[];

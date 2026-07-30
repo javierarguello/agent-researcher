@@ -25,12 +25,35 @@ checklist, growth playbook, financing, and next steps.
 | `sbaFriendly` | bool | Prefer SBA 7(a)-eligible deals (default false). |
 | `includeRealEstate` | bool? | Prefer deals with / without real estate. |
 | `preferredSources` | string[] | Marketplaces/brokers to prioritize (default `[]`). |
-| `instructions` | string? | Lower-authority client guidance (the `instructionsField`). |
+| `directives` | object? | Structured buyer preferences — see below. |
+| `instructions` | string? | Lower-authority client guidance (the `instructionsField`). A **residual**: use `directives` for anything they cover. |
 | `language` | en \| es \| fr \| pt | Report language (default `en`; search stays English). |
 | `mode` | essential \| comprehensive | Cost/scope (default `essential`). See below. |
 
 `targetCount` (how many listings to profile in depth) is **not** a public param —
 it's set internally by the mode.
+
+### `directives` — what the buyer wants, as closed vocabularies
+
+Every field is optional; values are machine keys, and the manifest carries the
+localized labels a client renders (see [model-ui.md](../model-ui.md)). The set is
+**strict** — an undeclared key or an unlisted value is a `400`.
+
+| Field | Kind | Values |
+|---|---|---|
+| `reasonForSale` | multi (≤4) | `owner_retiring`, `health_or_family`, `relocation`, `partnership_split`, `burnout`, `new_venture`, `financial_distress`, `estate_sale` |
+| `ownerInvolvement` | single | `absentee`, `semi_absentee`, `owner_operator`, `any` |
+| `dealStructure` | multi (≤3) | `seller_financing`, `earnout`, `asset_purchase`, `stock_purchase`, `all_cash` |
+| `buyerProfile` | single | `first_time_buyer`, `experienced_operator`, `strategic_addon`, `passive_investor` |
+| `timeline` | single | `immediate`, `within_3_months`, `within_12_months`, `exploring` |
+| `riskAppetite` | single | `conservative`, `balanced`, `opportunistic` |
+| `reportEmphasis` | multi (≤3) | `financials`, `market_demand`, `competition`, `regulatory`, `growth`, `risks`, `financing` |
+
+The engine renders the selections into the system prompt itself, in its own words,
+above the fenced free-text block. Nothing the client typed reaches an agent through
+this path, and no directive can express a quantity — that is what keeps a scoping
+preference from turning into an unsatisfiable schema. SBA eligibility and real
+estate are deliberately absent here: they already have their own params.
 
 ### Modes (the only public cost knob)
 
