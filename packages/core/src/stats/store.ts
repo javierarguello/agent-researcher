@@ -15,6 +15,7 @@
 import { FieldValue, Firestore, Timestamp, type DocumentReference, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
 import { blockReasonFor, type ModerationCategory } from '../moderation/copy.js';
+import type { JobFailureKind } from '../jobs/types.js';
 
 let db: Firestore | undefined;
 function firestore(): Firestore {
@@ -79,6 +80,8 @@ export interface ReportStatsInput {
   durationMs: number;
   /** Whether the completed report had degraded sections. */
   degraded?: boolean;
+  /** For a failure, why — so the admin can tell a cost-ceiling stop from a model error. */
+  failureKind?: JobFailureKind;
 }
 
 /** Transactionally fold a duration into a doc's min/max gen time. */
@@ -146,6 +149,12 @@ export async function recordReportStats(input: ReportStatsInput): Promise<void> 
     [completed ? 'reportsCompleted' : 'reportsFailed']: FieldValue.increment(1),
     ...(input.degraded ? { degradedReports: FieldValue.increment(1) } : {}),
     costUsd: FieldValue.increment(input.costUsd || 0),
+    // The money we spent and gave back. Every failed job is refunded, so its cost
+    // is pure loss — but inside `costUsd` it is indistinguishable from spend that
+    // earned a report. Booked separately so "what did our failures cost us" is a
+    // number you can read rather than one you have to reconstruct.
+    ...(completed ? {} : { failedCostUsd: FieldValue.increment(input.costUsd || 0) }),
+    ...(input.failureKind === 'budget_exceeded' ? { budgetStoppedReports: FieldValue.increment(1) } : {}),
     reportsByTemplate: { [input.template]: FieldValue.increment(1) },
     // avg = genTimeMsTotal / genCount; min/max are maintained transactionally below.
     ...(completed
@@ -252,11 +261,15 @@ export interface AppStatsRollup {
   reports: number;
   reportsCompleted: number;
   reportsFailed: number; // total error count
+  /** Failures we stopped ourselves at the cost ceiling (refunded, but already paid for). */
+  budgetStoppedReports: number;
   degradedReports: number;
   users: number;
   /** Users who have ever purchased credits (the rest signed up but never paid). */
   payingUsers: number;
   costUsd: number;
+  /** Of `costUsd`, the part spent on jobs that failed and were refunded — pure loss. */
+  failedCostUsd: number;
   /** Request-path model spend (moderation + assisted review), separate from job cost. */
   requestLlmUsd: number;
   requestLlmCalls: number;
@@ -271,7 +284,7 @@ export interface AppStatsRollup {
 export interface AdminStats {
   totals: Omit<AppStatsRollup, 'appId'>;
   apps: AppStatsRollup[];
-  daily: Array<{ date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; revenueUsd: number }>;
+  daily: Array<{ date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; failedCostUsd: number; revenueUsd: number }>;
 }
 
 function rollup(d: Record<string, unknown>): AppStatsRollup {
@@ -282,10 +295,12 @@ function rollup(d: Record<string, unknown>): AppStatsRollup {
     reports: num(d, 'reports'),
     reportsCompleted: num(d, 'reportsCompleted'),
     reportsFailed: num(d, 'reportsFailed'),
+    budgetStoppedReports: num(d, 'budgetStoppedReports'),
     degradedReports: num(d, 'degradedReports'),
     users: num(d, 'users'),
     payingUsers: num(d, 'payingUsers'),
     costUsd: num(d, 'costUsd'),
+    failedCostUsd: num(d, 'failedCostUsd'),
     requestLlmUsd: num(d, 'requestLlmUsd'),
     requestLlmCalls: num(d, 'requestLlmCalls'),
     revenueUsd: num(d, 'revenueUsd'),
@@ -309,18 +324,21 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
   let genTotal = 0;
   let genCount = 0;
   const totals: Omit<AppStatsRollup, 'appId'> = {
-    reports: 0, reportsCompleted: 0, reportsFailed: 0, degradedReports: 0, users: 0, payingUsers: 0,
-    costUsd: 0, requestLlmUsd: 0, requestLlmCalls: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
+    reports: 0, reportsCompleted: 0, reportsFailed: 0, budgetStoppedReports: 0, degradedReports: 0,
+    users: 0, payingUsers: 0,
+    costUsd: 0, failedCostUsd: 0, requestLlmUsd: 0, requestLlmCalls: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
     avgGenMs: null, genTimeMsMin: null, genTimeMsMax: null,
   };
   for (const d of docs) {
     totals.reports += num(d, 'reports');
     totals.reportsCompleted += num(d, 'reportsCompleted');
     totals.reportsFailed += num(d, 'reportsFailed');
+    totals.budgetStoppedReports += num(d, 'budgetStoppedReports');
     totals.degradedReports += num(d, 'degradedReports');
     totals.users += num(d, 'users');
     totals.payingUsers += num(d, 'payingUsers');
     totals.costUsd += num(d, 'costUsd');
+    totals.failedCostUsd += num(d, 'failedCostUsd');
     totals.requestLlmUsd += num(d, 'requestLlmUsd');
     totals.requestLlmCalls += num(d, 'requestLlmCalls');
     totals.revenueUsd += num(d, 'revenueUsd');
@@ -338,17 +356,18 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
   totals.avgGenMs = genCount > 0 ? genTotal / genCount : null;
 
   // Merge each app's daily buckets by date (summed) → newest-first series.
-  const byDate = new Map<string, { date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; revenueUsd: number }>();
+  const byDate = new Map<string, { date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; failedCostUsd: number; revenueUsd: number }>();
   await Promise.all(
     apps.map(async (a) => {
       for (const b of await getDailyStats(a.appId, days)) {
         const date = String(b.date ?? '');
         if (!date) continue;
-        const cur = byDate.get(date) ?? { date, reports: 0, reportsCompleted: 0, reportsFailed: 0, costUsd: 0, revenueUsd: 0 };
+        const cur = byDate.get(date) ?? { date, reports: 0, reportsCompleted: 0, reportsFailed: 0, costUsd: 0, failedCostUsd: 0, revenueUsd: 0 };
         cur.reports += num(b, 'reports');
         cur.reportsCompleted += num(b, 'reportsCompleted');
         cur.reportsFailed += num(b, 'reportsFailed');
         cur.costUsd += num(b, 'costUsd');
+        cur.failedCostUsd += num(b, 'failedCostUsd');
         cur.revenueUsd += num(b, 'revenueUsd');
         byDate.set(date, cur);
       }

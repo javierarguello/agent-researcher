@@ -6,7 +6,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
-import { JobStatusBadge } from '../components/StatusBadge';
+import { FailureKindBadge, JobStatusBadge } from '../components/StatusBadge';
 import { useJob, useRetryJob, useTemplate } from '../api/hooks';
 import { api, ApiError, downloadFile, ensureReportPdf, fetchFileText } from '../api/client';
 import { config } from '../config';
@@ -120,6 +120,7 @@ export function JobDetail() {
         <Group justify="space-between" mb="md">
           <Group gap="sm">
             <JobStatusBadge status={job.status} />
+            {job.failureKind && <FailureKindBadge kind={job.failureKind} />}
             {live && <Badge variant="dot" color="blue">live</Badge>}
           </Group>
           <Mono size="sm" c="dimmed">{usd(job.cost?.usd)}</Mono>
@@ -159,6 +160,16 @@ export function JobDetail() {
         </Card>
       )}
 
+      {job.failureKind === 'budget_exceeded' && (
+        // The cost is the point of this alert: the job was refunded, so this figure
+        // is what the failure cost us with nothing to show for it.
+        <Alert color="orange" title="Stopped at the per-job cost ceiling">
+          <Text size="sm">
+            This job passed <Mono size="sm">MAX_JOB_COST_USD</Mono> and was stopped. The user's credits were
+            refunded — the <Mono size="sm">{usd(job.cost?.usd)}</Mono> below was still spent.
+          </Text>
+        </Alert>
+      )}
       {job.error && <Alert color="red" title="Job error">{job.error}</Alert>}
 
       {s?.warnings && s.warnings.length > 0 && (

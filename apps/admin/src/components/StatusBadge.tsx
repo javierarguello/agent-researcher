@@ -1,5 +1,5 @@
-import { Badge } from '@mantine/core';
-import type { JobStatus, LedgerEntry } from '../api/types';
+import { Badge, Tooltip } from '@mantine/core';
+import type { JobFailureKind, JobStatus, LedgerEntry } from '../api/types';
 
 const JOB_COLORS: Record<JobStatus, string> = {
   queued: 'gray',
@@ -22,6 +22,30 @@ export function JobStatusBadge({ status }: { status: JobStatus }) {
     <Badge color={JOB_COLORS[status] ?? 'gray'} variant="light" radius="sm" tt="none">
       {status}
     </Badge>
+  );
+}
+
+const FAILURE_LABEL: Record<JobFailureKind, { label: string; help: string }> = {
+  budget_exceeded: {
+    label: 'cost ceiling',
+    help: 'We stopped this job at the per-job cost ceiling. The user was refunded — the spend is ours.',
+  },
+};
+
+/**
+ * Why a job failed, when it was OUR limit rather than the model. Sits next to the
+ * `failed` badge instead of replacing it: the status is still failed, and this says
+ * that the failure cost money nobody paid for.
+ */
+export function FailureKindBadge({ kind }: { kind: JobFailureKind }) {
+  const it = FAILURE_LABEL[kind];
+  if (!it) return null;
+  return (
+    <Tooltip label={it.help} withArrow multiline w={260}>
+      <Badge color="orange" variant="outline" radius="sm" tt="none">
+        {it.label}
+      </Badge>
+    </Tooltip>
   );
 }
 

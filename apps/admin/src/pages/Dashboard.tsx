@@ -33,7 +33,12 @@ export function Dashboard() {
           value={int(t.users)}
           hint={`${int(t.payingUsers)} paying · ${int(Math.max(0, t.users - t.payingUsers))} never bought`}
         />
-        <Kpi label="Errors" value={int(t.reportsFailed)} hint="failed reports" accent={t.reportsFailed > 0 ? 'red' : undefined} />
+        <Kpi
+          label="Errors"
+          value={int(t.reportsFailed)}
+          hint={t.budgetStoppedReports > 0 ? `${int(t.budgetStoppedReports)} hit the cost ceiling` : 'failed reports'}
+          accent={t.reportsFailed > 0 ? 'red' : undefined}
+        />
         <Kpi label="Degraded" value={int(t.degradedReports)} hint="partial delivery" accent={t.degradedReports > 0 ? 'yellow' : undefined} />
         <Kpi label="Revenue" value={usd(t.revenueUsd)} hint={`${int(t.purchases)} purchases`} accent="teal" />
         {/* Jobs are not the whole bill: moderation and the assisted review run on
@@ -42,6 +47,15 @@ export function Dashboard() {
           label="Cost"
           value={usd(t.costUsd + t.requestLlmUsd)}
           hint={`${usd(t.costUsd)} jobs · ${usdFine(t.requestLlmUsd)} pre-flight`}
+        />
+        {/* Every failed job is refunded, so this is spend with no report and no
+            revenue behind it. Inside `Cost` it is invisible; on its own it is the
+            number that says whether the ceiling is set right. */}
+        <Kpi
+          label="Refunded spend"
+          value={usd(t.failedCostUsd)}
+          hint={`spent on ${int(t.reportsFailed)} failed reports`}
+          accent={t.failedCostUsd > 0 ? 'orange' : undefined}
         />
         <Kpi label="Avg gen" value={secs(t.avgGenMs)} hint={`${secs(t.genTimeMsMin)}–${secs(t.genTimeMsMax)}`} />
       </SimpleGrid>
@@ -58,6 +72,7 @@ export function Dashboard() {
                 <Table.Th>App</Table.Th>
                 <Table.Th ta="right">Reports</Table.Th>
                 <Table.Th ta="right">Errors</Table.Th>
+                <Table.Th ta="right">Refunded</Table.Th>
                 <Table.Th ta="right">Users</Table.Th>
                 <Table.Th ta="right">Revenue</Table.Th>
                 <Table.Th ta="right">Avg gen</Table.Th>
@@ -69,13 +84,14 @@ export function Dashboard() {
                   <Table.Td><Mono size="sm">{a.appId}</Mono></Table.Td>
                   <Table.Td ta="right"><Mono size="sm">{int(a.reports)}</Mono></Table.Td>
                   <Table.Td ta="right"><Mono size="sm" c={a.reportsFailed > 0 ? 'red' : undefined}>{int(a.reportsFailed)}</Mono></Table.Td>
+                  <Table.Td ta="right"><Mono size="sm" c={a.failedCostUsd > 0 ? 'orange' : undefined}>{usd(a.failedCostUsd)}</Mono></Table.Td>
                   <Table.Td ta="right"><Mono size="sm">{int(a.users)}</Mono></Table.Td>
                   <Table.Td ta="right"><Mono size="sm">{usd(a.revenueUsd)}</Mono></Table.Td>
                   <Table.Td ta="right"><Mono size="sm">{secs(a.avgGenMs)}</Mono></Table.Td>
                 </Table.Tr>
               ))}
               {data.apps.length === 0 && (
-                <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" size="sm">No activity yet.</Text></Table.Td></Table.Tr>
+                <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" size="sm">No activity yet.</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>

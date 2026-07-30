@@ -1234,7 +1234,9 @@ app.get(
       // showing what's being researched while the job runs.
       params: job.params,
       progress,
-      ...(isAdmin ? { cost: job.cost ?? null } : {}),
+      // Both admin-only, and for the same reason: what a job cost us, and which of
+      // our own limits stopped it, are operational facts. The buyer gets `error`.
+      ...(isAdmin ? { cost: job.cost ?? null, failureKind: job.failureKind ?? null } : {}),
       summary,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
@@ -1978,6 +1980,10 @@ app.get(
         template: j.template,
         title: j.title ?? null,
         status: j.status,
+        // Why it failed, when the reason is ours rather than the model's — a
+        // cost-ceiling stop is a refunded job that still cost money, and it should
+        // be findable in the list without opening each one.
+        failureKind: j.failureKind ?? null,
         cost: j.cost ?? null,
         attempts: j.attempts ?? null,
         createdAt: j.createdAt,

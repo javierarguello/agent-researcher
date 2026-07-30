@@ -63,8 +63,14 @@ from it rather than summed a second time. Seeded from the checkpoint — a
 per-dispatch cap is 8× no cap. A job that trips it finalizes instead of
 re-dispatching into the same wall.
 
-**Left alone on purpose:** a budget-stopped job still degrades and completes rather
-than failing and refunding. Same decision as D2/F1, and it is yours.
+**The refund call, taken (Javier, 2026-07-30):** a budget-stopped job **fails and
+refunds**. The partial report is still assembled and uploaded so the failure is
+diagnosable, then the job is marked `failed` — the only status `run-job` refunds on.
+Because that is generous to whoever provoked the spend, the same change makes it
+visible: `failureKind: 'budget_exceeded'` on the job (admin-only, badged in the
+admin jobs list and detail), a `budgetStoppedReports` counter, and the spend booked
+as `failedCostUsd` beside `costUsd`. D2 — a partial refund for the ordinary degraded
+report — is still open and still yours.
 
 **The SPA renders the directives** (`apps/fbizlab/src/pages/NewReport.tsx`, section
 04) entirely from the manifest — no field names, no option labels, no translations

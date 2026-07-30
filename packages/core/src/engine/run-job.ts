@@ -211,11 +211,13 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     }
 
     // Per-app analytics (best-effort).
+    const failureKind = output.trace.budgetExceeded ? ('budget_exceeded' as const) : undefined;
     try {
       await recordReportStats({
         appId: input.appId, userId: input.userId, template: input.template,
         status: output.trace.status === 'failed' ? 'failed' : 'completed',
         costUsd: output.meta.cost.usd, durationMs, degraded: !!output.meta.degradedSections,
+        ...(failureKind ? { failureKind } : {}),
       });
     } catch (err) {
       log.warn('stats.report_failed', { message: (err as Error).message });
@@ -224,9 +226,9 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     await deleteObject(input.jobId, CHECKPOINT).catch(() => {}); // clean up
 
     if (output.trace.status === 'failed') {
-      log.error('job.failed', { message: output.trace.error, attempts });
+      log.error('job.failed', { message: output.trace.error, attempts, ...(failureKind ? { failureKind } : {}) });
       await refundOnFailure(input, log);
-      await markFailed(input.jobId, output.trace.error ?? 'Report failed validation.', files);
+      await markFailed(input.jobId, output.trace.error ?? 'Report failed validation.', files, failureKind);
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'failed' };
     }
 

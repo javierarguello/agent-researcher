@@ -5,7 +5,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
-import { JobStatusBadge } from '../components/StatusBadge';
+import { FailureKindBadge, JobStatusBadge } from '../components/StatusBadge';
 import { NewJobModal } from '../components/NewJobModal';
 import { useApps, useJobs, useRetryJob, useTemplates } from '../api/hooks';
 import { ApiError } from '../api/client';
@@ -91,7 +91,12 @@ export function Jobs() {
                     <Mono size="xs">{j.appId}</Mono>
                     <Text size="xs" c="dimmed" lineClamp={1}>{j.userId}</Text>
                   </Table.Td>
-                  <Table.Td><JobStatusBadge status={j.status} /></Table.Td>
+                  <Table.Td>
+                    <Group gap={6} wrap="nowrap">
+                      <JobStatusBadge status={j.status} />
+                      {j.failureKind && <FailureKindBadge kind={j.failureKind} />}
+                    </Group>
+                  </Table.Td>
                   <Table.Td ta="right"><Mono size="sm">{usd(j.cost?.usd)}</Mono></Table.Td>
                   <Table.Td ta="right"><Mono size="sm">{j.attempts ?? '—'}</Mono></Table.Td>
                   <Table.Td ta="right"><Text size="xs" c="dimmed">{relative(j.createdAt)}</Text></Table.Td>

@@ -37,6 +37,8 @@ policy on the `daily` collection group auto-deletes buckets after
 | `degradedReports` | per report | Reports delivered with ≥1 section degraded (partial success). |
 | `reportsByTemplate.<templateId>` | per report | Count per template (nested map of counters). |
 | `costUsd` | per report | Sum of report generation cost (LLM + search). |
+| `failedCostUsd` | failed reports only | Of `costUsd`, the part spent on jobs that failed — and every failed job is refunded, so this is spend with no report and no revenue behind it. Read it next to `costUsd`, not inside it. |
+| `budgetStoppedReports` | per report | Jobs we stopped ourselves at `MAX_JOB_COST_USD`. A rising number means the ceiling is set below what real jobs cost, not that users are abusing it. |
 | `genTimeMsTotal` / `genCount` | completed reports only | For `avgGenMs = genTimeMsTotal / genCount`. |
 | `genTimeMsMin` / `genTimeMsMax` | completed reports only | Fastest / slowest total generation time (ms). |
 | `revenueUsd` | per purchase | Sum of money paid. |
@@ -54,9 +56,11 @@ credits (purchases). `firstSeenAt` is set once; `lastSeenAt` on every activity.
 - **`recordReportStats(input)`** — called from `run-job.ts` after every job
   (completed **or** failed; best-effort, wrapped in try/catch so it never breaks
   the job). Input: `{ appId, userId, template, status, costUsd, durationMs,
-  degraded? }`. It bumps `reports`, the outcome counter (`reportsFailed` is the
-  running **total error count**), `costUsd`, `reportsByTemplate[template]`,
-  `degradedReports` when `degraded`, and (only when completed)
+  degraded?, failureKind? }`. It bumps `reports`, the outcome counter
+  (`reportsFailed` is the running **total error count**), `costUsd`,
+  `reportsByTemplate[template]`, `degradedReports` when `degraded`,
+  `failedCostUsd` on any failure, `budgetStoppedReports` when
+  `failureKind === 'budget_exceeded'`, and (only when completed)
   `genTimeMsTotal`/`genCount` plus a transactional `genTimeMsMin`/`genTimeMsMax`
   update (min/max can't be done with `FieldValue.increment`), across app-stats +
   the day's bucket + the user doc; and ensures the user is counted.

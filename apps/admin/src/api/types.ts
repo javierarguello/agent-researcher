@@ -1,5 +1,12 @@
 /** Shared API response shapes (mirrors the API's admin endpoints). */
 
+/**
+ * Why a job failed, when it is worth telling apart at a glance. `budget_exceeded`
+ * = we stopped it at the per-job cost ceiling; the user was refunded and the spend
+ * is ours. Admin-only — the buyer's view never carries it.
+ */
+export type JobFailureKind = 'budget_exceeded';
+
 export interface SessionUser {
   email: string;
   name: string | null;
@@ -17,10 +24,14 @@ export interface AppStatsRollup {
   reports: number;
   reportsCompleted: number;
   reportsFailed: number;
+  /** Failures we stopped at the per-job cost ceiling — refunded, but already paid for. */
+  budgetStoppedReports: number;
   degradedReports: number;
   users: number;
   payingUsers: number;
   costUsd: number;
+  /** Of `costUsd`, the part spent on jobs that failed and were refunded — pure loss. */
+  failedCostUsd: number;
   /** Request-path model spend (moderation + assisted review), outside any job. */
   requestLlmUsd: number;
   requestLlmCalls: number;
@@ -37,6 +48,7 @@ export interface DailyPoint {
   reportsCompleted: number;
   reportsFailed: number;
   costUsd: number;
+  failedCostUsd: number;
   revenueUsd: number;
 }
 export interface AdminStats {
@@ -81,6 +93,7 @@ export interface AdminJob {
   template: string;
   title: string | null;
   status: JobStatus;
+  failureKind: JobFailureKind | null;
   cost: Cost | null;
   attempts: number | null;
   createdAt: string;
@@ -131,6 +144,8 @@ export interface JobDetail {
   title: string | null;
   shortDescription: string | null;
   status: JobStatus;
+  /** Admin-only, like `cost` — present only when the caller is an admin. */
+  failureKind?: JobFailureKind | null;
   progress: JobProgress | null;
   cost: Cost | null;
   summary: JobSummary | null;

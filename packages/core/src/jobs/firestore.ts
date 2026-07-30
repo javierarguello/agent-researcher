@@ -4,7 +4,7 @@
 import { FieldValue, Firestore, type Query } from '@google-cloud/firestore';
 import { config } from '../config.js';
 import type { Cost } from '../cost.js';
-import type { JobFile, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
+import type { JobFailureKind, JobFile, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
 
 let db: Firestore | undefined;
 function firestore(): Firestore {
@@ -147,9 +147,18 @@ export async function markCompleted(jobId: string, files: JobFile[]): Promise<vo
   await patch(jobId, { status: 'completed', files, finishedAt: nowIso() });
 }
 
-export async function markFailed(jobId: string, error: string, files?: JobFile[]): Promise<void> {
+export async function markFailed(
+  jobId: string,
+  error: string,
+  files?: JobFile[],
+  failureKind?: JobFailureKind,
+): Promise<void> {
   // Persist any diagnostic files (e.g. trace.json) even on failure.
-  await patch(jobId, { status: 'failed', error, finishedAt: nowIso(), ...(files ? { files } : {}) });
+  await patch(jobId, {
+    status: 'failed', error, finishedAt: nowIso(),
+    ...(files ? { files } : {}),
+    ...(failureKind ? { failureKind } : {}),
+  });
 }
 
 export function setJobStatus(jobId: string, status: JobStatus): Promise<void> {

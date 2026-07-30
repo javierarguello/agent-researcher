@@ -167,6 +167,13 @@ export interface RunResearchInput {
 /** Max notes kept per agent (bounds trace size). */
 const MAX_NOTES = 300;
 
+/**
+ * Why a budget-stopped job failed. No figures: it becomes `job.error`, which the
+ * buyer's client reads. What we spent is in `job.cost` (admin-only in the API) and
+ * in the `job.budget_exceeded` log.
+ */
+const BUDGET_STOPPED_ERROR = 'Stopped by the per-job cost ceiling before the report could be completed.';
+
 export async function runResearch(input: RunResearchInput): Promise<ResearchOutput> {
   const { template, params, jobId, generatedAt, onProgress, onTrace } = input;
 
@@ -430,11 +437,14 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
+  // A budget-stopped job is degraded the same way, but does NOT ship: the sections
+  // are assembled and uploaded so the failure is diagnosable, and the job is then
+  // marked failed (below) so `run-job` refunds. See the note on `failed`.
   if (budgetStopped) {
     // No figures: `trace.warnings` is surfaced to the buyer verbatim today (F1).
     // The amounts are in `trace.cost` and in the `job.budget_exceeded` ERROR log,
     // both admin-side.
-    warnings.push('Stopped at the per-job cost ceiling; the remaining sections were degraded.');
+    warnings.push('Stopped at the per-job cost ceiling before the report could be completed.');
   }
   for (const agent of pending) {
     const reason = agentReason(trace, agent.id);
@@ -463,15 +473,27 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     fatalError = `Assembled report failed schema validation: ${issues}`;
   }
 
-  const failed = !!fatalError;
+  // The ceiling FAILS the job; it does not degrade-and-complete it.
+  //
+  // `completed` is what keeps the credits, and a buyer whose report stopped
+  // half-way paid for something they did not get. `failed` is also the only status
+  // that refunds (`run-job.ts` calls `refundForJob` on it), so this line is the
+  // refund policy. It cuts the other way for someone provoking the spend on
+  // purpose — they get their credits back while we keep the bill — which is why
+  // it is a decision and not a default: Javier's, taken 2026-07-30.
+  //
+  // Composed rather than folded into `fatalError` so a schema problem found on the
+  // way out is still reported, instead of being hidden by the ceiling that caused it.
+  const reason = [budgetStopped ? BUDGET_STOPPED_ERROR : '', fatalError ?? ''].filter(Boolean).join(' ');
+  const failed = !!reason;
   trace.status = failed ? 'failed' : 'completed';
-  if (fatalError) trace.error = fatalError;
+  if (reason) trace.error = reason;
   if (warnings.length) trace.warnings = warnings;
   trace.durationMs = Date.now() - Date.parse(trace.startedAt);
   trace.finishedAt = new Date().toISOString();
   await persistTrace();
 
-  await emit(failed ? 'failed' : 'done', failed ? `Report failed: ${fatalError}` : 'Report complete.');
+  await emit(failed ? 'failed' : 'done', failed ? `Report failed: ${reason}` : 'Report complete.');
   return {
     report: parsed.success ? parsed.data : report,
     meta: makeMeta(),

@@ -2,6 +2,15 @@ import type { Cost } from '../cost.js';
 
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
 
+/**
+ * Why a job failed, when the reason is worth telling apart at a glance.
+ *
+ * Only set for failures that are OURS rather than the model's: `budget_exceeded`
+ * means the job hit the per-job cost ceiling, was refunded, and still cost real
+ * money — the one failure mode where the money spent is the point.
+ */
+export type JobFailureKind = 'budget_exceeded';
+
 export interface JobFile {
   /** File name, e.g. "report.md". */
   name: string;
@@ -75,6 +84,8 @@ export interface ResearchJob {
   /** Bucket prefix for this job: researchs/{jobId}. */
   bucketPath: string;
   error?: string;
+  /** Set on failures worth distinguishing in the admin (see JobFailureKind). */
+  failureKind?: JobFailureKind;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;

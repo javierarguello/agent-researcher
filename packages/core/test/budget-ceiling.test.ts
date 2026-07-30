@@ -124,7 +124,7 @@ describe('the engine stops a job at its ceiling', () => {
     for (const a of failed) expect(a.error).toMatch(/cost ceiling/i);
   });
 
-  it('finalizes instead of asking to be re-dispatched into the same wall', async () => {
+  it('fails instead of asking to be re-dispatched into the same wall', async () => {
     config.workflow.maxJobCostUsd = 1;
     const resume: Checkpoint = { report: {}, sources: [], doneAgentIds: [], degraded: [], cost: usd(5) };
 
@@ -132,9 +132,20 @@ describe('the engine stops a job at its ceiling', () => {
       template, params: params(), jobId: 'b2', generatedAt: 't', resume, finalize: false,
     });
 
-    // `finalize: false` normally means "come back and finish the rest". Out of money
-    // there is no rest to finish, so it degrades and completes here.
-    expect(out.trace.status).toBe('completed');
+    // Two things at once, and both matter.
+    //
+    // NOT 'incomplete': `finalize: false` normally means "come back and finish the
+    // rest", but the checkpoint carries the spend forward, so every remaining
+    // dispatch would wake up already over the ceiling and re-dispatch again.
+    //
+    // 'failed', not 'completed': `failed` is the only status that refunds
+    // (`run-job.ts`), and a buyer whose report stopped half-way paid for something
+    // they did not get. This assertion IS the refund policy.
+    expect(out.trace.status).toBe('failed');
+    expect(out.trace.error).toMatch(/cost ceiling/i);
+
+    // The partial work is still assembled and returned, so the failure is
+    // diagnosable from `report.json` rather than only from the trace.
     expect(out.meta.degradedSections?.length).toBeGreaterThan(0);
     expect(out.trace.warnings?.join(' ')).toMatch(/cost ceiling/i);
   });
