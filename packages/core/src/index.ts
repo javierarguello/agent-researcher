@@ -42,10 +42,7 @@ export {
   markHeld,
   approveHold,
   rejectHold,
-  listExpiredHolds,
 } from './jobs/firestore.js';
-export { expireHolds, holdExpiryFrom } from './jobs/holds.js';
-export type { ExpireHoldsResult } from './jobs/holds.js';
 export type { ResearchJob, JobStatus, JobFailureKind, JobHold, JobFile, JobProgress, JobSummary } from './jobs/types.js';
 export { generateHeadline } from './jobs/headline.js';
 export type { Headline } from './jobs/headline.js';

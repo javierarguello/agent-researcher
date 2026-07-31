@@ -15,14 +15,12 @@ import { getTemplate } from '../templates/registry.js';
 import {
   getJob, markCompleted, markFailed, markHeld, markRunning, setJobAttempts, setJobCost, setJobHeadline, setJobSummary, setProgress,
 } from '../jobs/firestore.js';
-import { holdExpiryFrom } from '../jobs/holds.js';
 import { retryAsync } from '../util/retry.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
 import { createCostSink, emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
-import { refundForJob } from '../credits/store.js';
 import { recordReportStats } from '../stats/store.js';
 import { jobLogger } from '../obs/log.js';
 import { runResearch, type Checkpoint, type JobTrace } from './research-engine.js';
@@ -179,8 +177,8 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       const hold = {
         reason: 'budget_exceeded' as const,
         heldAt: new Date().toISOString(),
-        expiresAt: holdExpiryFrom(),
         spentUsd: output.meta.cost.usd,
+        detail: `Passed the per-job ceiling of $${config.workflow.maxJobCostUsd.toFixed(2)}.`,
       };
       // No refund and no checkpoint deletion, both on purpose: the credits are what
       // an approval spends, and the checkpoint is what it resumes from. Nor any
@@ -192,8 +190,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
       });
       log.error('job.held', {
-        reason: hold.reason, costUsd: output.meta.cost.usd, limitUsd: config.workflow.maxJobCostUsd,
-        expiresAt: hold.expiresAt, attempts,
+        reason: hold.reason, costUsd: output.meta.cost.usd, limitUsd: config.workflow.maxJobCostUsd, attempts,
       });
       return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'held' };
     }
@@ -223,13 +220,12 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       const hold = {
         reason: 'upload_failed' as const,
         heldAt: new Date().toISOString(),
-        expiresAt: holdExpiryFrom(),
         spentUsd: output.meta.cost.usd,
+        detail: `Could not store the report: ${(err as Error).message}`.slice(0, 500),
       };
       await markHeld(input.jobId, hold);
       log.error('job.held', {
-        reason: hold.reason, costUsd: output.meta.cost.usd, expiresAt: hold.expiresAt, attempts,
-        message: (err as Error).message,
+        reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: (err as Error).message,
       });
       return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'held' };
     }
@@ -269,27 +265,36 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       });
     }
 
-    // Per-app analytics (best-effort).
-    const failureKind = output.trace.budgetExceeded ? ('budget_exceeded' as const) : undefined;
+    // A job that could not be assembled does NOT fail and does NOT refund. It goes
+    // to the alert state with everything it produced already uploaded, and an admin
+    // decides: continue it, refund, top the buyer up, or close it. Every refund in
+    // this system is a decision someone made (Javier, 2026-07-31).
+    if (output.trace.status === 'failed') {
+      const hold = {
+        reason: 'run_failed' as const,
+        heldAt: new Date().toISOString(),
+        spentUsd: output.meta.cost.usd,
+        detail: (output.trace.error ?? 'The report could not be assembled.').slice(0, 500),
+      };
+      await markHeld(input.jobId, hold, files);
+      log.error('job.held', { reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: output.trace.error });
+      return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'held' };
+    }
+
+    // Stats are booked when a job FINISHES. A held job has not: booking it now and
+    // again when it resolves would count one report twice. The resolution path
+    // books the ones that end badly (see `/admin/jobs/:id/resolve`).
     try {
       await recordReportStats({
         appId: input.appId, userId: input.userId, template: input.template,
-        status: output.trace.status === 'failed' ? 'failed' : 'completed',
+        status: 'completed',
         costUsd: output.meta.cost.usd, durationMs, degraded: !!output.meta.degradedSections,
-        ...(failureKind ? { failureKind } : {}),
       });
     } catch (err) {
       log.warn('stats.report_failed', { message: (err as Error).message });
     }
 
     await deleteObject(input.jobId, CHECKPOINT).catch(() => {}); // clean up
-
-    if (output.trace.status === 'failed') {
-      log.error('job.failed', { message: output.trace.error, attempts, ...(failureKind ? { failureKind } : {}) });
-      await refundOnFailure(input, log);
-      await markFailed(input.jobId, output.trace.error ?? 'Report failed validation.', files, failureKind);
-      return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'failed' };
-    }
 
     log.info('job.completed', {
       sourcesFound: output.sources.length, turnsUsed: output.turnsUsed, durationMs, attempts,
@@ -299,19 +304,15 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     await markCompleted(input.jobId, files);
     return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'completed' };
   } catch (error) {
+    // Same rule as above: an unexpected throw parks the job for a person. Nothing
+    // here refunds, and the checkpoint is left alone so an approval can resume.
     log.error('job.error', { message: (error as Error).stack ?? (error as Error).message ?? String(error) });
-    await refundOnFailure(input, log);
-    await markFailed(input.jobId, (error as Error).message ?? String(error));
+    await markHeld(input.jobId, {
+      reason: 'run_failed',
+      heldAt: new Date().toISOString(),
+      spentUsd: 0,
+      detail: ((error as Error).message ?? String(error)).slice(0, 500),
+    }).catch(() => {});
     throw error;
-  }
-}
-
-/** Refund any credits consumed for a failed job (idempotent; no-op if none were). */
-async function refundOnFailure(input: RunJobInput, log: ReturnType<typeof jobLogger>): Promise<void> {
-  try {
-    const refunded = await refundForJob(input.appId, input.userId, input.jobId, 'job failed');
-    if (refunded) log.info('credits.refunded', { jobId: input.jobId });
-  } catch (err) {
-    log.warn('credits.refund_failed', { message: (err as Error).message });
   }
 }

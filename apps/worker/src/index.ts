@@ -11,7 +11,7 @@
  * instances up to the queue's cap.
  */
 import Fastify from 'fastify';
-import { config, expireHolds, getApp, getJob, runJob, sendAppEmail, reportReadyTemplate } from '@agent-researcher/core';
+import { config, getApp, getJob, runJob, sendAppEmail, reportReadyTemplate } from '@agent-researcher/core';
 import { renderJobPdf } from './pdf.js';
 
 /** Notify the user by email that their report is ready (best-effort). */
@@ -28,21 +28,6 @@ async function notifyReportReady(jobId: string): Promise<void> {
 const app = Fastify({ logger: { level: config.server.logLevel } });
 
 app.get('/health', async () => ({ ok: true }));
-
-/**
- * Resolve holds past their expiry: fail the job, refund the buyer.
- *
- * It lives here rather than behind the admin API because a scheduler has no admin
- * session to present — the worker is already private and OIDC-authenticated at the
- * platform level, which is exactly the trust a cron needs. Idempotent and bounded,
- * so an overlapping run or a retry is harmless. Without something calling this, a
- * hold waits forever and the buyer never gets their credits back.
- */
-app.post('/expire-holds', async (req, reply) => {
-  const result = await expireHolds({ limit: 200 });
-  if (result.expired > 0) app.log.warn(result, 'worker: expired holds');
-  return reply.code(200).send(result);
-});
 
 // On-demand PDF: the API enqueues this the first time a user downloads the report
 // PDF. Renders `report.pdf` (idempotent — a second request for an existing PDF is a

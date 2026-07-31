@@ -34,7 +34,11 @@ const FAILURE_LABEL: Record<JobFailureKind, { label: string; help: string }> = {
   },
   upload_failed: {
     label: 'upload failed',
-    help: 'The report was produced and paid for but could not be stored. It needs re-uploading, not re-running — approve to retry.',
+    help: 'The report was produced and paid for but could not be stored. It needs re-uploading, not re-running — continue to retry.',
+  },
+  run_failed: {
+    label: 'run failed',
+    help: 'The job could not be completed. Continue retries from the checkpoint; refund or close it if it is not worth another run.',
   },
 };
 

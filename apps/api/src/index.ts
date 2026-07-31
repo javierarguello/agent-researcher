@@ -33,7 +33,6 @@ import {
   requeueJob,
   approveHold,
   rejectHold,
-  expireHolds,
   getAdminStats,
   queryUsers,
   listTemplates,
@@ -69,6 +68,7 @@ import {
   type ModelPricing,
   consumeCredits,
   refundForJob,
+  recordReportStats,
   getBalance,
   listTransactions,
   grantCredits,
@@ -2034,7 +2034,7 @@ app.post(
     schema: {
       summary: 'Approve a held job to continue',
       description:
-        'Lets a job that was PAUSED for review continue: it resumes from its checkpoint (finished steps are ' +
+        'Lets a job that is PAUSED for a decision continue: it resumes from its checkpoint (finished steps are ' +
         'not re-run) with NO cost ceiling, and the credits already consumed are not re-charged. ' +
         'Only valid on a job whose status is `held`; 409 otherwise, including when another admin or the ' +
         'expiry sweep resolved it first.',
@@ -2064,57 +2064,66 @@ app.post(
 );
 
 app.post(
-  '/admin/jobs/:jobId/reject',
+  '/admin/jobs/:jobId/resolve',
   {
     preHandler: requireAdmin,
     schema: {
-      summary: 'Reject a held job (fail it and refund the buyer)',
+      summary: 'Close a held job — with or without a refund',
       description:
-        'Resolves a PAUSED job the other way: it is marked failed and the credits are refunded. What it ' +
-        'already spent stays on the job and in the stats — the money went out regardless. 409 if the job ' +
-        'is not held.',
+        'Resolves a PAUSED job against the buyer: it is marked failed, and `outcome` decides the money. ' +
+        '`refund` returns the credits this job consumed; `dismiss` closes it without returning anything ' +
+        '(use it when the buyer was topped up instead, or when the job was abusive). Either way the spend ' +
+        'stays on the job and is booked in the stats — the money went out regardless. ' +
+        'To top a buyer up instead, POST /admin/credits/grant and then dismiss. 409 if the job is not held.',
       tags: ['admin'],
       security: sec,
       params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
+      body: {
+        type: 'object',
+        required: ['outcome'],
+        additionalProperties: false,
+        properties: {
+          outcome: { type: 'string', enum: ['refund', 'dismiss'] },
+          reason: { type: 'string', maxLength: 500, description: 'Why (audit; never shown to the buyer).' },
+        },
+      },
     },
   },
   async (req, reply) => {
     const { jobId } = req.params as { jobId: string };
+    const { outcome, reason } = req.body as { outcome: 'refund' | 'dismiss'; reason?: string };
     const job = await getJob(jobId);
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
     if (job.status !== 'held') return reply.code(409).send({ error: `Job is ${job.status}, not held.` });
 
-    // Flip first, refund only if this call is the one that flipped it — otherwise a
-    // reject racing the expiry sweep refunds the same job twice.
-    if (!(await rejectHold(jobId, 'Not approved to continue; the credits were refunded.'))) {
+    // Flip first, act only if this call is the one that flipped it — otherwise two
+    // admins resolving at once both move money.
+    const closed = outcome === 'refund'
+      ? 'This report could not be completed, and the credits were returned.'
+      : 'This report could not be completed.';
+    if (!(await rejectHold(jobId, closed))) {
       return reply.code(409).send({ error: 'Job is no longer held.' });
     }
-    const refunded = await refundForJob(job.appId, job.userId, jobId, 'hold rejected');
-    logEvent({ jobId, appId: job.appId, userId: job.userId }, 'WARNING', 'job.hold_rejected', {
-      by: req.auth!.email, reason: job.hold?.reason, spentUsd: job.hold?.spentUsd ?? 0, refunded,
+
+    const refunded = outcome === 'refund'
+      ? await refundForJob(job.appId, job.userId, jobId, reason ?? 'admin resolved a held job')
+      : false;
+
+    // Booked here, not in the worker: this is where the job actually finished.
+    try {
+      await recordReportStats({
+        appId: job.appId, userId: job.userId, template: job.template,
+        status: 'failed', costUsd: job.cost?.usd ?? 0, durationMs: 0,
+        ...(job.hold?.reason ? { failureKind: job.hold.reason } : {}),
+      });
+    } catch {
+      /* analytics are best-effort; the decision already happened */
+    }
+
+    logEvent({ jobId, appId: job.appId, userId: job.userId }, 'WARNING', 'job.hold_resolved', {
+      by: req.auth!.email, outcome, refunded, reason: job.hold?.reason, spentUsd: job.hold?.spentUsd ?? 0,
     });
     return { jobId, status: 'failed', refunded };
-  },
-);
-
-app.post(
-  '/admin/jobs/expire-holds',
-  {
-    preHandler: requireAdmin,
-    schema: {
-      summary: 'Resolve every hold past its expiry (fail + refund)',
-      description:
-        'Sweeps jobs left PAUSED longer than `JOB_HOLD_TTL_HOURS`: each is failed and its buyer refunded. ' +
-        'Idempotent and bounded, so it is safe to call on a schedule and safe to call twice. This is what ' +
-        'makes the hold expiry real — without something calling it, a hold waits forever.',
-      tags: ['admin'],
-      security: sec,
-      body: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } } },
-    },
-  },
-  async (req) => {
-    const { limit } = (req.body ?? {}) as { limit?: number };
-    return expireHolds({ limit });
   },
 );
 

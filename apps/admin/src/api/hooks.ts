@@ -11,8 +11,10 @@ import type {
   TemplateManifest,
 } from './types';
 
-// `held` polls too: an approval elsewhere puts the job back in the queue.
-const LIVE_STATUSES = new Set(['queued', 'running', 'incomplete', 'held']);
+// `held` is deliberately absent: it changes only when an admin acts, and that
+// happens in this very UI, which invalidates the query itself. Polling it would be
+// a request every 3s for a state waiting on a human.
+const LIVE_STATUSES = new Set(['queued', 'running', 'incomplete']);
 
 // --- Queries ---------------------------------------------------------------
 
@@ -158,25 +160,30 @@ export function useRetryJob() {
 }
 
 /**
- * Resolve a held job. `approve` lets it continue past its ceiling (resuming from
- * the checkpoint, no re-charge); `reject` fails it and refunds the buyer. Both
- * 409 if someone — another admin, or the expiry sweep — got there first, which is
- * why the job and the list are both refetched either way.
+ * Act on a held job. `approve` lets it continue (resuming from the checkpoint, no
+ * re-charge); `refund` and `dismiss` close it, with and without giving the credits
+ * back. A 409 means another admin got there first, which is why the job and the
+ * list are both refetched either way.
+ *
+ * Nothing here happens on its own: a held job waits until one of these is called.
  */
 export function useResolveHold() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ jobId, action }: { jobId: string; action: 'approve' | 'reject' }) =>
-      api<{ jobId: string; status: string; refunded?: boolean }>(
-        `/admin/jobs/${encodeURIComponent(jobId)}/${action}`,
-        { method: 'POST' },
-      ),
+    mutationFn: ({ jobId, action, reason }: { jobId: string; action: 'approve' | 'refund' | 'dismiss'; reason?: string }) =>
+      action === 'approve'
+        ? api<{ jobId: string; status: string }>(`/admin/jobs/${encodeURIComponent(jobId)}/approve`, { method: 'POST' })
+        : api<{ jobId: string; status: string; refunded?: boolean }>(
+            `/admin/jobs/${encodeURIComponent(jobId)}/resolve`,
+            { method: 'POST', body: { outcome: action, ...(reason ? { reason } : {}) } },
+          ),
     onSettled: (_res, _err, { jobId }) => {
       qc.invalidateQueries({ queryKey: ['job', jobId] });
       qc.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 }
+
 
 export function useBlockUser() {
   const qc = useQueryClient();

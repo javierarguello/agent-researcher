@@ -32,7 +32,6 @@ import {
   __clearTestTemplates,
   __registerTemplateForTests,
   config,
-  expireHolds,
   getBalance,
   getJob,
   grantCredits,
@@ -129,7 +128,7 @@ describe('a job held for budget, decided over the API', () => {
     const seen = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(adminToken) });
     expect(seen.json().hold.reason).toBe('budget_exceeded');
     expect(seen.json().hold.spentUsd).toBeGreaterThan(0);
-    expect(Date.parse(seen.json().hold.expiresAt)).toBeGreaterThan(Date.now());
+    expect(seen.json().hold.detail).toBeTruthy();
 
     // And it is findable without opening every job.
     const list = await app.inject({ method: 'GET', url: '/admin/jobs?status=held', headers: auth(adminToken) });
@@ -153,12 +152,15 @@ describe('a job held for budget, decided over the API', () => {
     expect((await listTransactions(APP, BUYER, 20)).filter((t) => t.type === 'refund')).toHaveLength(0);
   });
 
-  it('reject: fails the job and gives the credits back', { timeout: RUN_TIMEOUT }, async () => {
+  it('resolve → refund: fails the job and gives the credits back', { timeout: RUN_TIMEOUT }, async () => {
     const before = await getBalance(APP, BUYER);
     const jobId = await heldJob();
     expect(await getBalance(APP, BUYER)).toBeLessThan(before);
 
-    const res = await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/reject`, headers: auth(adminToken) });
+    const res = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund', reason: 'not worth continuing' },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().refunded).toBe(true);
 
@@ -168,13 +170,52 @@ describe('a job held for budget, decided over the API', () => {
     expect(await getBalance(APP, BUYER)).toBe(before);
   });
 
+  it('resolve → dismiss: closes the job and keeps the credits', { timeout: RUN_TIMEOUT }, async () => {
+    const jobId = await heldJob();
+    const afterCharge = await getBalance(APP, BUYER);
+
+    const res = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'dismiss' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().refunded).toBe(false);
+
+    // The other half of "every refund is a decision": so is every non-refund. This
+    // is the path for a buyer who was topped up instead, or a job that was abusive.
+    expect((await getJob(jobId))!.status).toBe('failed');
+    expect(await getBalance(APP, BUYER)).toBe(afterCharge);
+  });
+
+  it('top-up: grants credits without touching the job, then the job is closed', { timeout: RUN_TIMEOUT }, async () => {
+    const jobId = await heldJob();
+    const afterCharge = await getBalance(APP, BUYER);
+
+    const grant = await app.inject({
+      method: 'POST', url: '/admin/credits/grant', headers: auth(adminToken),
+      payload: { appId: APP, userId: BUYER, credits: 3, reason: `top-up for held job ${jobId}` },
+    });
+    expect(grant.statusCode).toBe(200);
+    expect(await getBalance(APP, BUYER)).toBe(afterCharge + 3);
+    // Granting is not resolving: the job is still waiting on a decision.
+    expect((await getJob(jobId))!.status).toBe('held');
+
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'dismiss', reason: 'topped up instead' },
+    });
+    expect((await getJob(jobId))!.status).toBe('failed');
+    expect(await getBalance(APP, BUYER)).toBe(afterCharge + 3);
+  });
+
   it('a hold resolves once: the second decision is a 409, not a second refund', { timeout: RUN_TIMEOUT }, async () => {
     const before = await getBalance(APP, BUYER);
     const jobId = await heldJob();
 
-    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/reject`, headers: auth(adminToken) })).statusCode).toBe(200);
-    // Whatever arrives second — another admin, or the sweep — must not refund again.
-    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/reject`, headers: auth(adminToken) })).statusCode).toBe(409);
+    const reject = { outcome: 'refund' as const };
+    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken), payload: reject })).statusCode).toBe(200);
+    // Whatever arrives second — another admin, another tab — must not refund again.
+    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken), payload: reject })).statusCode).toBe(409);
     expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) })).statusCode).toBe(409);
 
     expect(await getBalance(APP, BUYER)).toBe(before);
@@ -187,17 +228,6 @@ describe('a job held for budget, decided over the API', () => {
     // no test here can exercise it — the in-memory Firestore does not model
     // transaction contention. Its unit tests pin the return value (`false` for the
     // loser); the refund itself is idempotent on `refund_<jobId>` regardless.
-  });
-
-  it('expiry: nobody decides, and the buyer is made whole anyway', { timeout: RUN_TIMEOUT }, async () => {
-    const before = await getBalance(APP, BUYER);
-    const jobId = await heldJob();
-
-    const after = new Date(Date.parse((await getJob(jobId))!.hold!.expiresAt) + 1000);
-    expect(await expireHolds({ now: after })).toMatchObject({ expired: 1, refunded: 1 });
-
-    expect((await getJob(jobId))!.status).toBe('failed');
-    expect(await getBalance(APP, BUYER)).toBe(before);
   });
 
   it('a held job does not lock the buyer out of starting another', { timeout: RUN_TIMEOUT }, async () => {
@@ -215,9 +245,10 @@ describe('a job held for budget, decided over the API', () => {
 
   it('only an admin can decide', { timeout: RUN_TIMEOUT }, async () => {
     const jobId = await heldJob();
-    for (const url of [`/admin/jobs/${jobId}/approve`, `/admin/jobs/${jobId}/reject`]) {
-      expect((await app.inject({ method: 'POST', url, headers: auth(buyerToken) })).statusCode).toBe(403);
-    }
+    expect((await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(buyerToken) })).statusCode).toBe(403);
+    expect((await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(buyerToken), payload: { outcome: 'refund' },
+    })).statusCode).toBe(403);
     expect((await getJob(jobId))!.status).toBe('held');
   });
 });

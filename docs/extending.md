@@ -76,8 +76,9 @@ costs — the admin dashboard's per-job `cost` and the `budgetStoppedReports` co
 are the evidence. A rising count means the ceiling is below real cost, not that
 anyone is abusing it.
 
-A job that trips its ceiling is **held** for an admin (approve → continue uncapped
-from the checkpoint; reject → fail + refund), never silently degraded.
+A job that trips its ceiling is **held** for an admin — continue it uncapped from
+the checkpoint, refund it, top the buyer up, or close it — never silently degraded
+and never refunded on its own.
 
 ## Add a whole new research model
 

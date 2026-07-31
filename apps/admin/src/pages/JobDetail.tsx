@@ -1,17 +1,26 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Alert, Anchor, Badge, Button, Card, Code, CopyButton, Group, Loader, Modal, ScrollArea, SimpleGrid, Stack, Table, Text, Progress,
+  Alert, Anchor, Badge, Button, Card, Code, CopyButton, Group, Loader, Modal, NumberInput, ScrollArea, SimpleGrid, Stack, Table, Text, Progress,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { FailureKindBadge, JobStatusBadge } from '../components/StatusBadge';
-import { useJob, useResolveHold, useRetryJob, useTemplate } from '../api/hooks';
+import { useJob, useGrantCredits, useResolveHold, useRetryJob, useTemplate } from '../api/hooks';
 import { api, ApiError, downloadFile, ensureReportPdf, fetchFileText } from '../api/client';
 import { config } from '../config';
 import { int, relative, secs, shortDateTime, usd } from '../lib/format';
-import type { StepInfo } from '../api/types';
+import type { JobFailureKind, StepInfo } from '../api/types';
+
+/** What each hold means, in one line, for whoever has to decide. */
+const HOLD_BLURB: Record<JobFailureKind, string> = {
+  budget_exceeded:
+    'It passed its cost ceiling. Continuing costs more money and resumes from where it stopped — nothing already done is re-run.',
+  upload_failed:
+    'The report was produced but could not be stored. Continuing re-uploads it; the research is not re-run.',
+  run_failed: 'It could not be completed. Continuing retries the steps that failed, from the checkpoint.',
+};
 
 const AGENT_COLOR: Record<string, string> = { ok: 'teal', failed: 'red', pending: 'yellow', running: 'blue' };
 const fmtParam = (v: unknown): string =>
@@ -32,6 +41,8 @@ export function JobDetail() {
   const { data: job, isLoading, error } = useJob(jobId);
   const retry = useRetryJob();
   const resolve = useResolveHold();
+  const grant = useGrantCredits();
+  const [topUp, setTopUp] = useState(1);
   const template = useTemplate(job?.template ?? null);
   const [viewer, setViewer] = useState<{ name: string; url: string; content: string } | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
@@ -164,45 +175,80 @@ export function JobDetail() {
       {job.status === 'held' && job.hold && (
         <Card padding="lg" withBorder style={{ borderColor: 'var(--mantine-color-orange-5)' }}>
           <Group justify="space-between" mb="xs">
-            <Text fw={650}>Paused — needs your decision</Text>
-            <Badge color="orange" variant="light" radius="sm" tt="none">
-              expires {relative(job.hold.expiresAt)}
-            </Badge>
+            <Text fw={650}>Needs a decision</Text>
+            <Text size="xs" c="dimmed">held {relative(job.hold.heldAt)}</Text>
           </Group>
-          <Text size="sm" c="dimmed" mb="md">
-            {job.hold.reason === 'budget_exceeded' ? (
-              <>
-                This job passed its cost ceiling with <Mono size="sm">{usd(job.hold.spentUsd)}</Mono> already spent.
-                Approving lets it finish from where it stopped, with no ceiling — it does not re-run what is
-                already done, and the buyer is not charged again.
-              </>
-            ) : (
-              <>
-                The report was produced (<Mono size="sm">{usd(job.hold.spentUsd)}</Mono> spent) but could not be
-                stored. Approving retries the upload from the checkpoint — the research is not re-run.
-              </>
-            )}{' '}
-            Rejecting fails the job and refunds the buyer. If nobody decides, it expires and refunds by itself.
+
+          <Text size="sm" c="dimmed" mb="xs">
+            {HOLD_BLURB[job.hold.reason] ?? 'This job stopped and needs a decision.'}{' '}
+            <Mono size="sm">{usd(job.hold.spentUsd)}</Mono> was already spent. Nothing happens until you
+            choose — the buyer&apos;s credits stay consumed while it waits.
           </Text>
+          {job.hold.detail && (
+            <Code block mb="md" style={{ fontSize: 12 }}>
+              {job.hold.detail}
+            </Code>
+          )}
+
           <Group gap="sm">
             <Button
               color="orange"
               loading={resolve.isPending && resolve.variables?.action === 'approve'}
               onClick={() => resolve.mutate({ jobId, action: 'approve' })}
             >
-              Approve &amp; continue
+              Continue the job
             </Button>
             <Button
               variant="default"
-              loading={resolve.isPending && resolve.variables?.action === 'reject'}
-              onClick={() => resolve.mutate({ jobId, action: 'reject' })}
+              loading={resolve.isPending && resolve.variables?.action === 'refund'}
+              onClick={() => resolve.mutate({ jobId, action: 'refund' })}
             >
-              Reject &amp; refund
+              Refund &amp; close
+            </Button>
+            <Button
+              variant="subtle"
+              color="gray"
+              loading={resolve.isPending && resolve.variables?.action === 'dismiss'}
+              onClick={() => resolve.mutate({ jobId, action: 'dismiss' })}
+            >
+              Close without refund
             </Button>
           </Group>
-          {resolve.isError && (
+
+          {/* Top-up is a grant, not a refund: it goes on the ledger as its own kind
+              of entry, with the amount and the reason you chose. Closing the job is
+              still a separate call, because giving credits and deciding this job's
+              fate are two different judgements. */}
+          <Group gap="sm" mt="md" align="flex-end">
+            <NumberInput
+              label="Top up instead"
+              description="Credits to grant this buyer"
+              min={1}
+              max={1000}
+              w={190}
+              value={topUp}
+              onChange={(v: string | number) => setTopUp(typeof v === 'number' ? v : Number(v) || 1)}
+            />
+            <Button
+              variant="light"
+              loading={grant.isPending}
+              onClick={() =>
+                grant.mutate({
+                  appId: job.appId,
+                  userId: job.userId,
+                  credits: topUp,
+                  reason: `top-up for held job ${jobId} (${job.hold?.reason})`,
+                })
+              }
+            >
+              Grant {topUp} credits
+            </Button>
+            {grant.isSuccess && <Text size="sm" c="teal">Granted.</Text>}
+          </Group>
+
+          {(resolve.isError || grant.isError) && (
             <Text size="sm" c="red" mt="sm">
-              {(resolve.error as Error).message}
+              {((resolve.error ?? grant.error) as Error).message}
             </Text>
           )}
         </Card>

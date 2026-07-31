@@ -39,11 +39,11 @@ import { getTemplate } from '../src/templates/registry.js';
 import { __setProviderForTests } from '../src/llm/models.js';
 import { MockLlmProvider } from './mocks/llm.js';
 
-describe('run-job — a hard failure is recorded + credits refunded', () => {
+describe('run-job — a job that cannot finish is parked, not refunded', () => {
   beforeEach(() => __setProviderForTests('gemini-vertex', new MockLlmProvider()));
 
-  it('marks the job failed, refunds the consumed credit, and logs job.failed', async () => {
-    // Simulate the API gate: credit was consumed for this job.
+  it('holds the job for a decision, keeps the credits, and logs it as an incident', async () => {
+    // Simulate the API gate: a credit was consumed for this job.
     await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 5 });
     await consumeCredits('fbizlab', 'u@x.com', 1, 'j2');
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(4);
@@ -57,23 +57,26 @@ describe('run-job — a hard failure is recorded + credits refunded', () => {
 
     l.mockRestore();
     e.mockRestore();
-    const logs = lines.map((s) => { try { return JSON.parse(s); } catch { return {}; } });
+    const logs = lines.map((s) => { try { return JSON.parse(s); } catch { return {} as Record<string, unknown>; } });
 
-    // Job doc records the failure.
-    expect(result.status).toBe('failed');
+    // Held, not failed: a job that could not be assembled is a decision waiting to
+    // be made, not an outcome. Nothing in this system refunds on its own.
+    expect(result.status).toBe('held');
     const job = (await getJob('j2'))!;
-    expect(job.status).toBe('failed');
-    expect(String(job.error)).toContain('schema validation');
+    expect(job.status).toBe('held');
+    expect(job.hold?.reason).toBe('run_failed');
+    // The admin gets the real reason; the buyer never sees this string.
+    expect(String(job.hold?.detail)).toContain('schema validation');
 
-    // Credit refunded (idempotent refund ledger entry).
-    expect(await getBalance('fbizlab', 'u@x.com')).toBe(5);
-    const ledger = await listTransactions('fbizlab', 'u@x.com', 10);
-    expect(ledger.some((t) => t.type === 'refund' && t.jobId === 'j2')).toBe(true);
+    // Credits untouched — an approval has to have something to spend, and the
+    // refund is a call someone makes.
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(4);
+    expect((await listTransactions('fbizlab', 'u@x.com', 10)).some((t) => t.type === 'refund')).toBe(false);
 
-    // Failure logged at ERROR severity, bound to the ids.
-    const jf = logs.find((x) => x.event === 'job.failed');
-    expect(jf).toBeTruthy();
-    expect(jf!.severity).toBe('ERROR');
-    expect(jf!.jobId).toBe('j2');
+    // Logged at ERROR, bound to the ids, so it surfaces as an incident.
+    const held = logs.find((x) => x.event === 'job.held');
+    expect(held).toBeTruthy();
+    expect(held!.severity).toBe('ERROR');
+    expect(held!.jobId).toBe('j2');
   });
 });

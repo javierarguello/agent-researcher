@@ -1,20 +1,24 @@
 /** Shared API response shapes (mirrors the API's admin endpoints). */
 
 /**
- * Why a job failed, when it is worth telling apart at a glance. `budget_exceeded`
- * = we stopped it at the per-job cost ceiling; the user was refunded and the spend
- * is ours. Admin-only — the buyer's view never carries it.
+ * Why a job is parked, and why it failed if it ends that way. Admin-only — the
+ * buyer's view never carries it.
  */
-export type JobFailureKind = 'budget_exceeded' | 'upload_failed';
+export type JobFailureKind = 'budget_exceeded' | 'upload_failed' | 'run_failed';
 
-/** A job parked for an admin decision. Present while `status === 'held'`. */
+/**
+ * A job parked for an admin decision. Present while `status === 'held'`.
+ *
+ * There is no expiry: nothing resolves it but a person. That is the point — every
+ * refund in this system is a decision someone made.
+ */
 export interface JobHold {
   reason: JobFailureKind;
   heldAt: string;
-  /** When it resolves itself: the job fails and the buyer is refunded. */
-  expiresAt: string;
   /** What it had already spent when it was parked — the number the call rests on. */
   spentUsd: number;
+  /** One line on what went wrong. Admin-only; the buyer never sees it. */
+  detail?: string;
   approvedBy?: string;
   approvedAt?: string;
 }

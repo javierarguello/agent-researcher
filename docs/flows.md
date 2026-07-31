@@ -128,33 +128,38 @@ Worker  runJob → runResearch                                     Core credits
    │  ◀── worker acks 200 (deterministic failure ⇒ don't re-run)  │
 ```
 
-### (d2) Held for a decision — the third outcome
+### (d2) Held — the alert state, and the only thing that moves it
 
-Two situations are neither success nor failure, and refunding on the spot would be
-wrong for both:
+**Every refund in this system is a decision someone made** (Javier, 2026-07-31). A
+job that cannot finish does not fail and does not refund itself; it is parked for an
+admin, with the buyer's credits still consumed:
 
 ```
 Worker  runJob                                                    Core jobs/credits
-   │  trace.status = 'held'   (the job passed its cost ceiling)    │
-   │     …or the report ran but report.json would not upload       │
-   │  markHeld(jobId, {reason, expiresAt, spentUsd})  ───────────▶ jobs/{jobId}.status='held'
+   │  trace.status = 'held'    passed its cost ceiling            │
+   │  …or report.json would not upload after retries              │
+   │  …or the run could not be assembled / threw                  │
+   │  markHeld(jobId, {reason, spentUsd, detail})    ───────────▶ jobs/{jobId}.status='held'
    │  checkpoint KEPT, credits NOT refunded, no report stats       │
    │  ◀── worker acks 200 (re-dispatching walks into the same wall)│
                                                                    │
-Admin   POST /admin/jobs/:id/approve ─▶ approveHold (transaction)  │
+Admin   POST /admin/jobs/:id/approve  ─▶ approveHold (transaction) │
    │      status='queued', budgetOverride=true, attempts=0         │
    │      enqueue → runJob resumes from the checkpoint, UNCAPPED   │
-Admin   POST /admin/jobs/:id/reject  ─▶ rejectHold (transaction)   │
-   │      won? → refundForJob(...)                                 │
-Cron    POST /expire-holds (worker, hourly, OIDC) ─▶ expireHolds() │
-   │      past expiresAt → rejectHold + refundForJob               │
+Admin   POST /admin/jobs/:id/resolve {outcome:'refund'|'dismiss'}  │
+   │      rejectHold (transaction); won? → refundForJob on 'refund'│
+   │      books the report stats — this is where the job finished  │
+Admin   POST /admin/credits/grant  ─▶ top the buyer up instead     │
+   │      (a `grant` ledger entry; resolving the job is separate)  │
 ```
 
-- The credits stay consumed **while it waits** — refunding first would let the buyer
-  spend the balance elsewhere and leave an approval with nothing to charge.
-- Every resolution goes through a transactional status flip that answers whether it
-  won, and only the winner refunds. An approval racing the expiry sweep produces one
-  outcome, not both.
+- **No expiry and no sweep.** A hold waits indefinitely. That is the deliberate cost
+  of manual-only refunds, and it makes the admin's held-jobs view the only thing that
+  moves them.
+- One exception, upstream: an **enqueue failure** still refunds automatically
+  (`index.ts`). Nothing ran and nothing was spent, so there is nothing to decide.
+- Every resolution is a transactional status flip that reports whether it won, and
+  only the winner moves money.
 - `held` is **not** counted as in-flight, so the buyer is never locked out of
   starting another report while we deliberate (that was E2's shape).
 

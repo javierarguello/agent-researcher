@@ -3,11 +3,11 @@ import type { Cost } from '../cost.js';
 /**
  * `held` = paused, waiting for a person.
  *
- * Not a failure and not in flight: the work is parked mid-way, the credits are
- * still consumed, and an admin decides whether it continues. It resolves either
- * way — approved (back to `queued`) or rejected/expired (`failed`, refunded) — so
- * it is never a resting place. Deliberately NOT counted as in-flight: a job
- * waiting on us must not lock the buyer out of starting another (that was E2).
+ * Not a failure and not in flight: the work is parked, the credits are still
+ * consumed, and an ADMIN decides what happens — continue it, refund it, top the
+ * buyer up, or close it. Nothing else resolves it, so it is a resting place until
+ * someone looks. Deliberately NOT counted as in-flight: a job waiting on us must
+ * not lock the buyer out of starting another (that was E2).
  */
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'held';
 
@@ -18,20 +18,30 @@ export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'held';
  *   so the call is whether this particular job is worth it.
  * - `upload_failed`  — the report was produced and paid for, but could not be
  *   stored. Nothing is wrong with the work; it needs re-uploading, not re-running.
+ * - `run_failed`     — it could not be completed at all (the assembled report
+ *   failed validation, or the run threw).
  *
- * The same values name a hold and, if the hold is not approved, the failure it
- * becomes — so a job's history reads the same before and after it resolves.
+ * The same values name a hold and, if the hold is resolved against the buyer, the
+ * failure it becomes — so a job's history reads the same before and after.
  */
-export type JobFailureKind = 'budget_exceeded' | 'upload_failed';
+export type JobFailureKind = 'budget_exceeded' | 'upload_failed' | 'run_failed';
 
-/** A job parked for an admin decision. */
+/**
+ * A job parked for an admin decision — the alert state.
+ *
+ * NOTHING resolves a hold except a person. There is no expiry and no sweep: a job
+ * that cannot finish waits, with the buyer's credits still consumed, until an admin
+ * continues it, refunds it, tops the buyer up, or closes it. That is the deliberate
+ * cost of "every refund is a decision someone made" (Javier, 2026-07-31) — so the
+ * admin's held-jobs view is not a convenience, it is the only thing that moves them.
+ */
 export interface JobHold {
   reason: JobFailureKind;
   heldAt: string;
-  /** When it auto-resolves: the job fails and the buyer is refunded. */
-  expiresAt: string;
   /** What the job had already spent (USD) when it was held — the number the call rests on. */
   spentUsd: number;
+  /** One line about what went wrong, for the admin (never shown to the buyer). */
+  detail?: string;
   /** Audit: who let it continue, and when. Set on approval; the job goes back to `queued`. */
   approvedBy?: string;
   approvedAt?: string;

@@ -282,16 +282,6 @@ export const config = {
      * money went out regardless. 0 or negative disables the ceiling.
      */
     maxJobCostUsd: float('MAX_JOB_COST_USD', 20),
-    /**
-     * How long a held job waits for an admin before it resolves itself: the job
-     * fails and the buyer is refunded.
-     *
-     * A hold keeps the credits consumed, so this is the promise that the buyer
-     * gets an answer even if nobody looks. It runs from `expireHolds()` — which
-     * needs something to call it (a scheduler; see docs/deployment.md), so treat
-     * this as the ceiling on the wait, not a guarantee of punctuality.
-     */
-    holdTtlHours: int('JOB_HOLD_TTL_HOURS', 72),
   },
   search: {
     braveApiKey: str('BRAVE_API_KEY'),

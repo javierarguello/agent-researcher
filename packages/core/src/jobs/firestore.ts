@@ -227,16 +227,6 @@ export async function rejectHold(jobId: string, error: string): Promise<boolean>
   });
 }
 
-/** Held jobs whose hold has expired, oldest first (the expiry sweep's input). */
-export async function listExpiredHolds(nowIso_: string, limit = 100): Promise<ResearchJob[]> {
-  const snap = await collection()
-    .where('status', '==', 'held')
-    .where('hold.expiresAt', '<=', nowIso_)
-    .limit(limit)
-    .get();
-  return snap.docs.map((d) => d.data() as ResearchJob);
-}
-
 export function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
   return patch(jobId, { status });
 }

@@ -1,16 +1,15 @@
 /**
  * What happens to the money when a job hits the cost ceiling.
  *
- * The decision (Javier, 2026-07-30): the job is PARKED for an admin, not failed
- * and not shipped. The credits stay consumed while it waits — that is the point,
- * because an approval must not depend on the buyer still holding a balance we
- * already gave back. The cost of that choice is that a hold nobody resolves is a
- * buyer who paid for nothing, so every hold carries an expiry that refunds.
+ * The decision (Javier, 2026-07-30, extended 2026-07-31): the job is PARKED for an
+ * admin, not failed and not shipped, and NOTHING resolves it but a person. The
+ * credits stay consumed while it waits — an approval must not depend on the buyer
+ * still holding a balance we already gave back — and there is no expiry, because
+ * every refund in this system is a decision someone made.
  *
- * Three outcomes, one of which always happens:
+ * Two outcomes, both requiring an admin:
  *   approve → resumes from the checkpoint, uncapped, credits untouched,
- *   reject  → failed + refunded,
- *   expire  → failed + refunded, without anyone deciding.
+ *   resolve → failed, with or without a refund.
  *
  * End-to-end through `runJob`, because none of the refund/mark/stats machinery
  * lives inside the engine.
@@ -40,7 +39,6 @@ vi.mock('../src/storage/gcs.js', () => ({
 import { config } from '../src/config.js';
 import { runJob } from '../src/engine/run-job.js';
 import { approveHold, createJob, getJob, getUserJobStats, rejectHold } from '../src/jobs/firestore.js';
-import { expireHolds } from '../src/jobs/holds.js';
 import { grantCredits, consumeCredits, getBalance, listTransactions, refundForJob } from '../src/credits/store.js';
 import { getAppStats } from '../src/stats/store.js';
 import { getTemplate } from '../src/templates/registry.js';
@@ -86,7 +84,6 @@ describe('a job stopped by the cost ceiling', () => {
     const job = (await getJob('jb1'))!;
     expect(job.status).toBe('held');
     expect(job.hold?.reason).toBe('budget_exceeded');
-    expect(job.hold?.expiresAt).toBeTruthy();
     // The money is on the job and on the hold, because it was spent whatever we decide.
     expect(job.cost?.usd).toBeGreaterThan(0);
     expect(job.hold?.spentUsd).toBeGreaterThan(0);
@@ -232,7 +229,7 @@ describe('resolving a hold', () => {
     expect(await approveHold('ja2', 'second@x.com')).toBe(false);
   });
 
-  it('reject: fails the job and refunds, and the loser of the race does not refund again', async () => {
+  it('resolve with a refund: fails the job and gives the credits back, exactly once', async () => {
     await grantCredits({ appId: APP, userId: USER, credits: 5 });
     await consumeCredits(APP, USER, 1, 'jr1');
     await runCapped('jr1');
@@ -249,30 +246,5 @@ describe('resolving a hold', () => {
 
     // The status flip is the gate. A second resolver must not produce a second refund.
     expect(await rejectHold('jr1', 'Not approved.')).toBe(false);
-  });
-
-  it('expiry: an unattended hold refunds itself once its time is up', async () => {
-    await grantCredits({ appId: APP, userId: USER, credits: 5 });
-    await consumeCredits(APP, USER, 1, 'je1');
-    await runCapped('je1');
-
-    // Nothing due yet — the sweep must not touch a hold still inside its window.
-    expect(await expireHolds({ now: new Date(Date.parse((await getJob('je1'))!.hold!.expiresAt) - 1000) }))
-      .toMatchObject({ found: 0, expired: 0 });
-    expect((await getJob('je1'))!.status).toBe('held');
-    expect(await getBalance(APP, USER)).toBe(4);
-
-    const after = new Date(Date.parse((await getJob('je1'))!.hold!.expiresAt) + 1000);
-    expect(await expireHolds({ now: after })).toMatchObject({ found: 1, expired: 1, refunded: 1 });
-
-    const job = (await getJob('je1'))!;
-    expect(job.status).toBe('failed');
-    expect(job.failureKind).toBe('budget_exceeded');
-    expect(String(job.error)).toMatch(/refunded/i);
-    expect(String(job.error)).not.toMatch(/\$\s?\d/); // the buyer reads this
-    expect(await getBalance(APP, USER)).toBe(5);
-
-    // Idempotent: running the sweep again finds nothing left to do.
-    expect(await expireHolds({ now: after })).toMatchObject({ found: 0, expired: 0 });
   });
 });
