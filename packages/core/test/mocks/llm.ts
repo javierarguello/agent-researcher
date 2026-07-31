@@ -50,18 +50,18 @@ export class MockLlmProvider implements LlmProvider {
 
 type Node = Record<string, unknown>;
 
-export function sampleFromSchema(root: Node, node: Node = root, depth = 0): unknown {
+export function sampleFromSchema(root: Node, node: Node = root, depth = 0, prose = LOREM): unknown {
   const defs = (root.$defs ?? root.definitions ?? {}) as Record<string, Node>;
 
   if (typeof node.$ref === 'string') {
     const name = node.$ref.replace(/^#\/(?:\$defs|definitions)\//, '');
-    return sampleFromSchema(root, defs[name] ?? {}, depth);
+    return sampleFromSchema(root, defs[name] ?? {}, depth, prose);
   }
   // nullable union → pick the non-null branch
   const union = (node.anyOf ?? node.oneOf) as Node[] | undefined;
   if (Array.isArray(union)) {
     const branch = union.find((s) => s.type !== 'null') ?? union[0] ?? {};
-    return sampleFromSchema(root, branch, depth);
+    return sampleFromSchema(root, branch, depth, prose);
   }
   if (Array.isArray(node.enum)) return (node.enum as unknown[])[0];
 
@@ -70,14 +70,14 @@ export function sampleFromSchema(root: Node, node: Node = root, depth = 0): unkn
     case 'object': {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries((node.properties ?? {}) as Record<string, Node>)) {
-        out[k] = sampleFromSchema(root, v, depth + 1);
+        out[k] = sampleFromSchema(root, v, depth + 1, prose);
       }
       return out;
     }
     case 'array': {
       const items = (node.items ?? {}) as Node;
       const min = typeof node.minItems === 'number' ? node.minItems : 1;
-      return Array.from({ length: Math.max(min, 1) }, () => sampleFromSchema(root, items, depth + 1));
+      return Array.from({ length: Math.max(min, 1) }, () => sampleFromSchema(root, items, depth + 1, prose));
     }
     case 'number':
     case 'integer':
@@ -86,7 +86,9 @@ export function sampleFromSchema(root: Node, node: Node = root, depth = 0): unkn
       return true;
     case 'string':
     default:
-      return LOREM;
+      // `prose` lets a measurement generate realistically LONG sections; the
+      // default keeps every other test's fixtures small and fast.
+      return prose;
   }
 }
 
