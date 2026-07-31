@@ -133,6 +133,12 @@ export interface ResearchJob {
    * again the moment it resumes.
    */
   budgetOverride?: boolean;
+  /**
+   * This job is holding one of its user's in-flight slots. The flag is the record
+   * that makes releasing exactly-once — see `jobs/slots.ts`. Cleared on every
+   * terminal path: completed, held, failed, or an enqueue that never happened.
+   */
+  slotHeld?: boolean;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;

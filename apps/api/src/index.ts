@@ -23,6 +23,11 @@ import {
   checkRateLimits,
   peekRateLimits,
   createJob,
+  inFlightSlots,
+  claimJobSlot,
+  releaseJobSlot,
+  releaseUnclaimedSlot,
+  setJobSlotHeld,
   markFailed,
   getJob,
   getSettings,
@@ -720,6 +725,14 @@ app.get(
 const MAX_CONCURRENT_JOBS_PER_USER = 1;
 
 /**
+ * How many refused `/research` calls one user may make in an hour before the
+ * refusals themselves are rate-limited. Generous: a person editing a request that
+ * keeps tripping the pre-screen is a normal, frustrating afternoon, and this is
+ * only here so the refusal path is not a free loop.
+ */
+const REFUSALS_PER_HOUR = 30;
+
+/**
  * Content moderation for research params, shared by /research and /research/preflight.
  * On a violation it records a strike (blocking at MODERATION_STRIKE_LIMIT) and returns
  * a reply spec; returns null when the params are clean.
@@ -744,6 +757,27 @@ async function moderateParams(
       .catch((err) => logEvent({ jobId: '-', appId, userId }, 'WARNING', 'stats.request_llm_failed', { message: (err as Error).message }));
   }
   if (verdict.ok) return null;
+
+  // E4: count the refusal somewhere. A rejected `/research` used to write to NO
+  // counter at all — the authoritative quota transaction runs after moderation, so
+  // a refused request left no trace and the loop was free (a few Firestore reads
+  // and a captcha verify per turn). Its own per-user bucket, deliberately not the
+  // report quota: a false positive already costs that user their request, and
+  // spending their hourly reports on top would punish them twice for our regex.
+  const refusals = await checkRateLimits([
+    { key: `research_refused:${appId}:${userId}`, limit: REFUSALS_PER_HOUR, scope: 'refusals' },
+  ]).catch(() => ({ allowed: true }) as { allowed: boolean });
+  if (!refusals.allowed) {
+    logEvent({ jobId: '-', appId, userId }, 'WARNING', 'research.refusal_limit', { limit: REFUSALS_PER_HOUR });
+    return {
+      code: 429,
+      body: {
+        error: moderationMessage(verdict.categories[0] ?? 'other', lang),
+        code: 'refusal_limit',
+        retryAfterSeconds: 3600,
+      },
+    };
+  }
 
   // A pre-screen rejection is REFUSED, but never punished. Those are regexes with
   // no notion of context: "a jailbreak themed room", "offices near the county
@@ -851,159 +885,192 @@ app.post(
       }
     }
 
-    // Concurrency: at most N reports in flight per user (queued/running). Enforced
-    // before consuming credits so a rejected request costs nothing. Admins exempt.
-    if (req.auth!.role !== 'admin') {
-      const { inProgress } = await getUserJobStats(appId, userId);
-      if (inProgress >= MAX_CONCURRENT_JOBS_PER_USER) {
+    // Concurrency: at most N reports in flight per user. TAKEN, not observed — a
+    // `count()` read here was separated from the job document that makes the count
+    // go up by a moderation model call, so requests a second apart all read zero
+    // and all passed (C6). The claim is a transaction on one doc per user, so a
+    // burst serializes against itself.
+    //
+    // It is also the first gate for a reason: everything expensive is downstream,
+    // so a burst gets its 409 before any of it pays for a classifier call (C7).
+    //
+    // Admins claim nothing. An admin generates for support, testing and demos, and
+    // is not who these caps exist for (Javier, 2026-07-31).
+    const isAdmin = req.auth!.role === 'admin';
+    let slotHeld = false;
+    if (!isAdmin) {
+      const slot = await claimJobSlot(appId, userId, MAX_CONCURRENT_JOBS_PER_USER);
+      if (!slot.ok) {
         return reply.code(409).send({
           error: 'You already have a report in progress. Please wait for it to finish before starting another.',
           code: 'concurrency_limit',
           limit: MAX_CONCURRENT_JOBS_PER_USER,
-          inProgress,
+          inProgress: slot.inFlight,
         });
       }
+      slotHeld = true;
     }
 
-    // Rate limits (reports per hour) — per app and per user. Skipped in local dev.
-    //
-    // Two-stage on purpose. This peek is a cheap early rejection that writes
-    // nothing; the authoritative, serializing check runs further down, after the
-    // balance read and moderation. That ordering is what stops a request that dies
-    // for want of credits or on rejected params from spending a slot in the
-    // APP-WIDE bucket every other customer draws from — which is how five
-    // zero-balance accounts used to 429 the paying ones, for free.
-    let rateEntries: RateLimitEntry[] = [];
-    if (config.server.appEnv !== 'local') {
-      const settings = await getSettings();
-      const appLimit = req.appRecord?.rateLimitPerHour ?? settings.appRateLimitPerHour;
-      rateEntries = [
-        { key: `app:${appId}`, limit: appLimit, scope: 'app' },
-        { key: `user:${userId}`, limit: settings.userRateLimitPerHour, scope: 'user' },
-      ];
-      const rl = await peekRateLimits(rateEntries);
-      // Read-only: rejects a caller who is ALREADY over without writing anything,
-      // so an over-limit request doesn't pay for moderation. The authoritative,
-      // serializing check runs later — see `checkRateLimits` below.
-      if (!rl.allowed && rl.violation) {
-        reply.header('Retry-After', '3600');
-        return reply.code(429).send({
-          error: `Rate limit exceeded: ${rl.violation.limit} reports/hour per ${rl.violation.scope}.`,
-          scope: rl.violation.scope,
-          limit: rl.violation.limit,
-          used: rl.violation.count,
-        });
-      }
-    }
-
-    const jobId = randomUUID();
-    const logCtx = { jobId, appId, userId, template: validated.template };
-
-    // Resolve the mode + its credit cost (stored on the job so the UI can show
-    // "X credits · Comprehensive" per report).
-    const tmpl = getTemplate(validated.template);
-    const mode = resolveMode(tmpl?.modes, (validated.params as Record<string, unknown>).mode);
-    const pricing = await getModelPricing(validated.template); // Firestore override → code default
-    const creditsSpent = resolveModeCredits(pricing, mode.config, mode.key);
-
-    // Affordability BEFORE moderation. `consumeCredits` below is the authority —
-    // this read is only here so a caller who provably cannot pay doesn't cost us a
-    // model call on the way to the same 402 they were always going to get.
-    if (config.server.appEnv !== 'local' && req.auth!.role !== 'admin') {
-      const balance = await getBalance(appId, userId);
-      if (balance < creditsSpent) {
-        return reply.code(402).send({ error: 'Insufficient credits.', required: creditsSpent, balance });
-      }
-    }
-
-    // Content moderation: reject prompt-injection / profanity / off-topic params
-    // BEFORE spending credits or creating a job. Cheapest model; fails open on an
-    // LLM outage (the engine still fences user instructions as low-authority).
-    if (req.auth!.role !== 'admin') {
-      const rej = await moderateParams(appId, userId, validated.params, paramsLang(validated.params));
-      if (rej) return reply.code(rej.code).send(rej.body);
-    }
-
-    // The authoritative quota check, and the last gate before we start spending.
-    //
-    // It is a Firestore transaction, and that is load-bearing beyond the count:
-    // contended transactions on the same document serialize, which is what stops a
-    // simultaneous burst from all reading "0 used" and all proceeding. A previous
-    // version of this handler replaced it with a read-only peek plus a later
-    // increment, which removed the only serialization point in the request and
-    // quietly turned both this cap and the concurrency cap into advisory ones.
-    //
-    // It sits after the balance read and after moderation, so the requests that
-    // used to spend the shared app bucket for free — no credits, or rejected
-    // params — never reach it. A request that passes here and then loses a race at
-    // `consumeCredits` does spend a slot; that costs the caller credits they had,
-    // so it is not a lever.
-    if (config.server.appEnv !== 'local') {
-      const rl = await checkRateLimits(rateEntries);
-      if (!rl.allowed && rl.violation) {
-        reply.header('Retry-After', '3600');
-        return reply.code(429).send({
-          error: `Rate limit exceeded: ${rl.violation.limit} reports/hour per ${rl.violation.scope}.`,
-          scope: rl.violation.scope,
-          limit: rl.violation.limit,
-          used: rl.violation.count,
-        });
-      }
-    }
-
-    // Credits gate: consume the mode's credit cost up front (refunded if the job fails).
-    if (config.server.appEnv !== 'local') {
-      try {
-        await consumeCredits(appId, userId, creditsSpent, jobId);
-        logEvent(logCtx, 'INFO', 'credits.consumed', { credits: creditsSpent, mode: mode.key });
-      } catch (err) {
-        if (err instanceof InsufficientCreditsError) {
-          return reply.code(402).send({ error: 'Insufficient credits.', required: err.required, balance: err.balance });
-        }
-        throw err;
-      }
-    }
-
-    await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent });
-    logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
-    // The user generated: the assisted previews they ran paid off, so give the
-    // allowance back (and pay off one cooldown step). Best-effort.
-    if (req.auth!.role !== 'admin') await resetAssistAllowance(appId, userId).catch(() => {});
-
+    // From here the slot is owed back on EVERY path that does not end with a job
+    // document. `finally` is the whole mechanism: a leaked slot locks a buyer out
+    // of the product permanently, and the handler has half a dozen early returns
+    // that would each have to remember (E2's shape, exactly).
+    let jobCreated = false;
     try {
-      const { enqueueJob } = await import('./enqueue.js');
-      await enqueueJob(jobId);
-    } catch (err) {
-      logEvent(logCtx, 'ERROR', 'job.enqueue_failed', { message: (err as Error).message });
-      req.log.error({ err, jobId }, 'failed to enqueue job');
-      // Nothing will ever run this job: the worker is what refunds and fails a job,
-      // and it is exactly what we could not reach. Left as `queued` it counted
-      // against the user's one-in-flight cap forever — so they kept their spent
-      // credits and could never generate again — and the 202 above told the SPA it
-      // had succeeded, which navigated them to a dossier that would never appear.
-      // Order matters. `markFailed` first, because it is what stops a task that DID
-      // get created from running a job we are about to refund — a free report, and
-      // the response would still say the credits were not spent. Refund only once
-      // the job can no longer run.
-      let refunded = false;
-      try {
-        await markFailed(jobId, 'Could not be queued for processing.');
-        refunded = await refundForJob(appId, userId, jobId, 'enqueue failed');
-      } catch (e) {
-        logEvent(logCtx, 'ERROR', 'job.enqueue_cleanup_failed', { message: (e as Error).message });
+      // Rate limits (reports per hour) — per app and per user. Skipped in local dev.
+      //
+      // Two-stage on purpose. This peek is a cheap early rejection that writes
+      // nothing; the authoritative, serializing check runs further down, after the
+      // balance read and moderation. That ordering is what stops a request that dies
+      // for want of credits or on rejected params from spending a slot in the
+      // APP-WIDE bucket every other customer draws from — which is how five
+      // zero-balance accounts used to 429 the paying ones, for free.
+      let rateEntries: RateLimitEntry[] = [];
+      if (config.server.appEnv !== 'local') {
+        const settings = await getSettings();
+        const appLimit = req.appRecord?.rateLimitPerHour ?? settings.appRateLimitPerHour;
+        rateEntries = [
+          { key: `app:${appId}`, limit: appLimit, scope: 'app' },
+          { key: `user:${userId}`, limit: settings.userRateLimitPerHour, scope: 'user' },
+        ];
+        const rl = await peekRateLimits(rateEntries);
+        // Read-only: rejects a caller who is ALREADY over without writing anything,
+        // so an over-limit request doesn't pay for moderation. The authoritative,
+        // serializing check runs later — see `checkRateLimits` below.
+        if (!rl.allowed && rl.violation) {
+          reply.header('Retry-After', '3600');
+          return reply.code(429).send({
+            error: `Rate limit exceeded: ${rl.violation.limit} reports/hour per ${rl.violation.scope}.`,
+            scope: rl.violation.scope,
+            limit: rl.violation.limit,
+            used: rl.violation.count,
+          });
+        }
       }
-      return reply.code(503).send({
-        // Never claim a refund that did not happen: support can tell the two apart.
-        error: refunded
-          ? 'We could not start your report just now. Your credits were not spent — please try again.'
-          : 'We could not start your report just now. Please try again; contact us if your credits do not come back.',
-        code: 'enqueue_failed',
-        creditsRefunded: refunded,
-      });
-    }
 
-    logEvent(logCtx, 'INFO', 'job.queued', {});
-    return reply.code(202).send({ jobId, status: 'queued' });
+      const jobId = randomUUID();
+      const logCtx = { jobId, appId, userId, template: validated.template };
+
+      // Resolve the mode + its credit cost (stored on the job so the UI can show
+      // "X credits · Comprehensive" per report).
+      const tmpl = getTemplate(validated.template);
+      const mode = resolveMode(tmpl?.modes, (validated.params as Record<string, unknown>).mode);
+      const pricing = await getModelPricing(validated.template); // Firestore override → code default
+      const creditsSpent = resolveModeCredits(pricing, mode.config, mode.key);
+
+      // Affordability BEFORE moderation. `consumeCredits` below is the authority —
+      // this read is only here so a caller who provably cannot pay doesn't cost us a
+      // model call on the way to the same 402 they were always going to get.
+      if (config.server.appEnv !== 'local' && req.auth!.role !== 'admin') {
+        const balance = await getBalance(appId, userId);
+        if (balance < creditsSpent) {
+          return reply.code(402).send({ error: 'Insufficient credits.', required: creditsSpent, balance });
+        }
+      }
+
+      // Content moderation: reject prompt-injection / profanity / off-topic params
+      // BEFORE spending credits or creating a job. Cheapest model; fails open on an
+      // LLM outage (the engine still fences user instructions as low-authority).
+      if (req.auth!.role !== 'admin') {
+        const rej = await moderateParams(appId, userId, validated.params, paramsLang(validated.params));
+        if (rej) return reply.code(rej.code).send(rej.body);
+      }
+
+      // The authoritative quota check, and the last gate before we start spending.
+      //
+      // It is a Firestore transaction, and that is load-bearing beyond the count:
+      // contended transactions on the same document serialize, which is what stops a
+      // simultaneous burst from all reading "0 used" and all proceeding. A previous
+      // version of this handler replaced it with a read-only peek plus a later
+      // increment, which removed the only serialization point in the request and
+      // quietly turned both this cap and the concurrency cap into advisory ones.
+      //
+      // It sits after the balance read and after moderation, so the requests that
+      // used to spend the shared app bucket for free — no credits, or rejected
+      // params — never reach it. A request that passes here and then loses a race at
+      // `consumeCredits` does spend a slot; that costs the caller credits they had,
+      // so it is not a lever.
+      if (config.server.appEnv !== 'local' && !isAdmin) {
+        const rl = await checkRateLimits(rateEntries);
+        if (!rl.allowed && rl.violation) {
+          reply.header('Retry-After', '3600');
+          return reply.code(429).send({
+            error: `Rate limit exceeded: ${rl.violation.limit} reports/hour per ${rl.violation.scope}.`,
+            scope: rl.violation.scope,
+            limit: rl.violation.limit,
+            used: rl.violation.count,
+          });
+        }
+      }
+
+      // Credits gate: consume the mode's credit cost up front.
+      //
+      // Admins are exempt, like every other check above. The balance READ already
+      // skipped them, so leaving this one in place meant an admin with no credits
+      // sailed past four gates and then got a 402 — after paying for a model call.
+      if (config.server.appEnv !== 'local' && !isAdmin) {
+        try {
+          await consumeCredits(appId, userId, creditsSpent, jobId);
+          logEvent(logCtx, 'INFO', 'credits.consumed', { credits: creditsSpent, mode: mode.key });
+        } catch (err) {
+          if (err instanceof InsufficientCreditsError) {
+            return reply.code(402).send({ error: 'Insufficient credits.', required: err.required, balance: err.balance });
+          }
+          throw err;
+        }
+      }
+
+      await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent, slotHeld });
+      jobCreated = true;
+      logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
+      // The user generated: the assisted previews they ran paid off, so give the
+      // allowance back (and pay off one cooldown step). Best-effort.
+      if (req.auth!.role !== 'admin') await resetAssistAllowance(appId, userId).catch(() => {});
+
+      try {
+        const { enqueueJob } = await import('./enqueue.js');
+        await enqueueJob(jobId);
+      } catch (err) {
+        logEvent(logCtx, 'ERROR', 'job.enqueue_failed', { message: (err as Error).message });
+        req.log.error({ err, jobId }, 'failed to enqueue job');
+        // Nothing will ever run this job: the worker is what refunds and fails a job,
+        // and it is exactly what we could not reach. Left as `queued` it counted
+        // against the user's one-in-flight cap forever — so they kept their spent
+        // credits and could never generate again — and the 202 above told the SPA it
+        // had succeeded, which navigated them to a dossier that would never appear.
+        // Order matters. `markFailed` first, because it is what stops a task that DID
+        // get created from running a job we are about to refund — a free report, and
+        // the response would still say the credits were not spent. Refund only once
+        // the job can no longer run.
+        let refunded = false;
+        try {
+          await markFailed(jobId, 'Could not be queued for processing.');
+          // Nothing will ever run this job, so nothing downstream will release its
+          // slot. This is the one refund that stays automatic: no work was done and
+          // no money was spent, so there is nothing for an admin to decide.
+          await releaseJobSlot(jobId);
+          refunded = await refundForJob(appId, userId, jobId, 'enqueue failed');
+        } catch (e) {
+          logEvent(logCtx, 'ERROR', 'job.enqueue_cleanup_failed', { message: (e as Error).message });
+        }
+        return reply.code(503).send({
+          // Never claim a refund that did not happen: support can tell the two apart.
+          error: refunded
+            ? 'We could not start your report just now. Your credits were not spent — please try again.'
+            : 'We could not start your report just now. Please try again; contact us if your credits do not come back.',
+          code: 'enqueue_failed',
+          creditsRefunded: refunded,
+        });
+      }
+
+      logEvent(logCtx, 'INFO', 'job.queued', {});
+      return reply.code(202).send({ jobId, status: 'queued' });
+    } finally {
+      // The job document now owns the slot (`slotHeld`), and every terminal path —
+      // completed, held, the enqueue failure below — releases it through the job.
+      // Anything that got here WITHOUT a job owes it back now.
+      if (slotHeld && !jobCreated) await releaseUnclaimedSlot(appId, userId).catch(() => {});
+    }
   },
 );
 
@@ -1389,11 +1456,16 @@ app.get(
     },
   },
   async (req) => {
-    const [stats, flags] = await Promise.all([
+    const [stats, flags, inFlight] = await Promise.all([
       getUserJobStats(req.auth!.appId, req.auth!.email),
       getUserFlags(req.auth!.appId, req.auth!.email),
+      inFlightSlots(req.auth!.appId, req.auth!.email),
     ]);
-    return { ...stats, blocked: flags.blocked, blockedReason: flags.blockedReason ?? null };
+    // `inProgress` comes from the SLOT, not from counting job documents, because the
+    // slot is what refuses the next request. Reporting a count that can disagree
+    // with it is how a user ends up reading "no reports in progress" next to "you
+    // already have a report in progress".
+    return { ...stats, inProgress: inFlight, blocked: flags.blocked, blockedReason: flags.blockedReason ?? null };
   },
 );
 
@@ -2051,11 +2123,20 @@ app.post(
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
     if (job.status !== 'held') return reply.code(409).send({ error: `Job is ${job.status}, not held.` });
 
-    // The transaction is the gate: two admins clicking approve, or an approval
-    // racing the expiry sweep, must produce exactly one outcome.
+    // The transaction is the gate: two admins clicking approve at once must
+    // produce exactly one outcome.
     if (!(await approveHold(jobId, req.auth!.email))) {
       return reply.code(409).send({ error: 'Job is no longer held.' });
     }
+
+    // Take the slot back for the resumed job, and take it whether or not the buyer
+    // has something else running. An admin has already decided this job finishes;
+    // refusing on the buyer's one-at-a-time cap would make the decision unactionable
+    // exactly when the buyer got tired of waiting and started another (Javier,
+    // 2026-07-31). The job carries the claim, so the release path is the usual one.
+    await claimJobSlot(job.appId, job.userId, MAX_CONCURRENT_JOBS_PER_USER, { force: true });
+    await setJobSlotHeld(jobId, true);
+
     const { enqueueJob } = await import('./enqueue.js');
     await enqueueJob(jobId, { unique: true });
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'WARNING', 'job.hold_approved', {

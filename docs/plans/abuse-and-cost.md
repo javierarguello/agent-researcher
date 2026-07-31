@@ -9,8 +9,8 @@ Every entry cites `file:line` and states how it was established. Line numbers
 drift — treat them as a starting point, not gospel.
 
 Groups A (cheap external denial-of-service) and B (cost visibility) are done, as is
-the security round; C1 and C3 (spend) closed in `d89f081`. What follows is what is
-left.
+the security round. C1 + C3 closed in `d89f081`; C6 + C7 + E4 closed 2026-07-31.
+What follows is what is left.
 
 **Nothing open here is a door standing open.** The one finding that was — every
 per-IP limit bypassable with a forged header — was confirmed against the running
@@ -57,36 +57,6 @@ Worker timeout 1800s (`infra/deploy.sh:62`), `dispatchDeadlineSeconds` 1800
 Adjacent: a failed checkpoint upload only warns (`run-job.ts:119`), and an
 unreadable checkpoint only warns and leaves `resume` undefined (`:86-88`) — a
 corrupted checkpoint silently replays the entire job up to 8 times.
-
-### C6 · The one-in-flight job cap is advisory under a burst
-`open (2026-07-30 review)` · established by reading the ordering; not reproduced,
-because the in-memory Firestore mock does not model transaction contention
-
-`index.ts` reads `inProgress` via plain `count()` aggregations before ANY write
-that would make a job visible — the job document is created much later, after the
-balance read, after the moderation call, after the rate-limit transaction. So N
-concurrent (or even ~1s-apart) `POST /research` calls all read zero, all pass, and
-all get distinct jobIds. The cap is not a lock.
-
-This matters because C1's cost model rests on it: "bounded today only by
-`MAX_CONCURRENT_JOBS_PER_USER = 1` and 20 reports/hour". Only the second bound is
-real, and a job takes many minutes — so the documented worst case is reachable in
-one burst rather than never. The credits are paid, so this is a spend-RATE bypass,
-not theft.
-
-Fix: claim the slot inside the transaction that already serializes the handler
-(`checkRateLimits`), and release it on every terminal path — completion, failure,
-and the enqueue failure now handled in E2. That release requirement is why it is
-its own change and not a rider on a fix pass.
-
-### C7 · The moderation classifier runs past the hourly cap under the same burst
-`open (2026-07-30 review)` · established by reading the ordering
-
-Same root cause as C6, cheaper consequence. The peek before the classifier is
-explicitly non-atomic, so a burst that arrives while the counter reads 0 all pass
-it, all pay for a billed `flash` call, and only then does the authoritative check
-admit 20 and refuse the rest. Cents per burst, repeatable hourly per account.
-Fixed as a by-product of C6: reserve before the model call, not after.
 
 ---
 
@@ -187,19 +157,6 @@ a strike — is still blocked, including from buying credits, and nothing identi
 them. Needs a one-off pass over `app-users` clearing `blocked` + `moderationStrikes`
 where `blockedReason` names moderation. A data migration, not a code change.
 
-### E4 · A pre-screen refusal is counted by nothing
-`open (2026-07-30)` · established by reading the ordering in `index.ts`
-
-Now that a refusal earns no strike, a rejected `/research` writes to no counter at
-all: the authoritative `checkRateLimits` transaction runs after moderation, and
-`/research` is not behind the public burst guard. One account can loop it for the
-cost of ~6-8 Firestore reads and a Turnstile verify per call. The same free loop
-already exists for the 402 and 409 rejections, so this is a widening, not a new
-class — and each iteration needs a fresh single-use captcha token, which is the
-practical limiter today. Fix belongs with C6: reserve atomically, count the refusal
-in a cheap per-user bucket rather than in the report quota (which would punish the
-false-positive user twice).
-
 ### ~~E5 · Directive labels fall back to English for fr/pt users~~
 `done (2026-07-31)` — fr + pt written for all seven fields and every value.
 
@@ -214,6 +171,45 @@ Fixing it means writing fr/pt business copy for ~60 short strings — worth doin
 someone who writes those languages natively, not inventing here.
 
 ## Closed
+
+### ~~C6 + C7 + E4 · The one-in-flight cap was advisory, and a refusal was free~~
+`done (2026-07-31)`
+
+The cap was a `count()` of the user's queued/running jobs, read at the top of
+`POST /research` — and the job document that makes the count go up was not written
+until the end of the handler, after the balance read, after a billed moderation
+call, after the rate-limit transaction. Requests a second apart all read zero and
+all passed. The cap was not a lock, and the spend model that rested on it
+("bounded by 1 in flight and 20/hour") was only half true. C7 was the same root
+cause one layer cheaper: a burst all paid for the classifier on the way to a 409.
+
+The slot is now TAKEN, in a transaction on one document per (app, user), as the
+FIRST gate in the handler — so a burst serializes against itself and gets its 409
+before anything expensive runs. That closes C7 without touching the deliberate
+ordering that keeps a broke or refused caller out of the app-wide hourly bucket (A2).
+
+**The release is the dangerous half**, and it is why this was its own change: a
+leaked slot locks a buyer out of the product permanently (E2's exact shape). The
+job document carries the claim (`slotHeld`) and every release goes through it in a
+transaction, so it is exactly-once from anywhere. Released on: completion, a hold,
+an enqueue that never happened, and — via one `finally` rather than six early
+returns — any rejection between the claim and the job's creation.
+
+**E4**: a refused `/research` now lands in its own per-user hourly bucket
+(`REFUSALS_PER_HOUR = 30`), deliberately not the report quota — a false positive
+already costs that user their request, and spending their hourly reports for our
+regex would punish them twice.
+
+**Rules Javier set (2026-07-31), each with its own test:**
+- An admin claims no slot, is not rate-limited, and does not consume credits. The
+  balance read already skipped admins, so leaving the consume in place meant an
+  admin sailed past four gates and got a 402 after paying for a model call.
+- An admin resuming a parked job takes the slot by FORCE — the buyer having started
+  something else while they waited must not make the decision unactionable.
+- `/me/stats` reports the slot, not a job count, so the dashboard can never say
+  "no reports in progress" next to a 409 saying there is one.
+
+18 tests, one per rule, each verified by reverting its fix.
 
 ### ~~C1 · Free-text `instructions` could make every section schema unsatisfiable~~
 `done (d89f081)`

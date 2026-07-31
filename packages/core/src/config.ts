@@ -61,6 +61,8 @@ export const config = {
   },
   jobs: {
     collection: str('JOBS_COLLECTION', 'jobs'),
+    /** One doc per (app, user) holding the in-flight count — see jobs/slots.ts. */
+    slotsCollection: str('JOB_SLOTS_COLLECTION', 'job-slots'),
   },
   apps: {
     collection: str('APPS_COLLECTION', 'apps'),

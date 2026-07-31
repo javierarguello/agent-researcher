@@ -16,6 +16,7 @@ import {
   getJob, markCompleted, markFailed, markHeld, markRunning, setJobAttempts, setJobCost, setJobHeadline, setJobSummary, setProgress,
 } from '../jobs/firestore.js';
 import { retryAsync } from '../util/retry.js';
+import { releaseJobSlot } from '../jobs/slots.js';
 import { degradedNotice } from '../jobs/report-copy.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
@@ -186,6 +187,10 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // report stats — this job has not finished, and booking it now would count it
       // twice when it does.
       await markHeld(input.jobId, hold, traceFile ? [traceFile] : undefined);
+      // A parked job is not in flight — it is waiting on us, and holding the
+      // buyer's only slot while it waits would lock them out of the product for as
+      // long as nobody looks. Idempotent, so a re-dispatch cannot double-release.
+      await releaseJobSlot(input.jobId).catch(() => {});
       await setProgress(input.jobId, {
         phase: 'held', message: 'Paused for review before spending more.',
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
@@ -225,6 +230,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         detail: `Could not store the report: ${(err as Error).message}`.slice(0, 500),
       };
       await markHeld(input.jobId, hold);
+      await releaseJobSlot(input.jobId).catch(() => {});
       log.error('job.held', {
         reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: (err as Error).message,
       });
@@ -281,6 +287,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         detail: (output.trace.error ?? 'The report could not be assembled.').slice(0, 500),
       };
       await markHeld(input.jobId, hold, files);
+      await releaseJobSlot(input.jobId).catch(() => {});
       log.error('job.held', { reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: output.trace.error });
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'held' };
     }
@@ -306,6 +313,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       ...(output.meta.degradedSections ? { degradedSections: output.meta.degradedSections } : {}),
     });
     await markCompleted(input.jobId, files);
+    await releaseJobSlot(input.jobId).catch(() => {});
     return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'completed' };
   } catch (error) {
     // Same rule as above: an unexpected throw parks the job for a person. Nothing
@@ -317,6 +325,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       spentUsd: 0,
       detail: ((error as Error).message ?? String(error)).slice(0, 500),
     }).catch(() => {});
+    await releaseJobSlot(input.jobId).catch(() => {});
     throw error;
   }
 }

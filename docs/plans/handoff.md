@@ -95,35 +95,27 @@ Still open from group C, in order:
   budget; `prompt.ts` `JSON.stringify`s all upstream sections with no size cap.
 - **C5** — the 30-minute dispatch deadline is shorter than a real job.
 
-## 3. Do this next: C6 + C7 + E4, which are one change
+## 3. Do this next
 
-The in-flight job cap is **advisory**. `index.ts` reads `inProgress` via plain
-`count()` aggregations before anything writes a job document — the job is created
-much later, after the balance read, after the moderation call, after the
-rate-limit transaction. N concurrent (or even ~1s-apart) `POST /research` calls all
-read zero and all pass. C7 is the same root cause one layer cheaper: the peek
-before the classifier is explicitly non-atomic, so a burst all pays for a billed
-`flash` call before the authoritative check admits 20 and refuses the rest.
+C6 + C7 + E4 are **closed** (2026-07-31): the one-in-flight cap is a claim taken in
+a transaction as the first gate in the handler, released through the job document
+on every terminal path. What is left, in order:
 
-This matters because the cap is load-bearing for the whole spend model: C1's
-estimate rested on "bounded today only by `MAX_CONCURRENT_JOBS_PER_USER = 1` and 20
-reports/hour", and only the second bound is real. The per-job ceiling added in
-`d89f081` bounds one job's spend; it does nothing about N jobs at once.
+- **C2's real multiplier** — a retry re-runs the agent's ENTIRE `gather` loop with
+  a fresh budget even when only the synthesis failed. The ceiling bounds the damage;
+  the waste is still there. Cache the evidence for the retry and re-run only synthesis.
+- **C4** — `gather` never trims `messages`, so input cost is quadratic in the
+  budget; `prompt.ts` `JSON.stringify`s all upstream sections with no size cap.
+- **C5** — the 30-minute dispatch deadline is shorter than a real job, and a
+  corrupted checkpoint silently replays the whole job up to 8 times while only
+  warning.
 
-The fix: claim the slot inside the transaction that already serializes the handler
-(`checkRateLimits` in `packages/core/src/apps/store.ts`), and **release it on every
-terminal path** — completion, failure, and the enqueue failure now handled in the
-API. That release requirement is why this is its own change and not a rider on
-something else; a half-done version leaks slots and locks users out permanently,
-which is exactly the bug that was just fixed (E2).
-
-Fold **E4** in while you are there: a pre-screen refusal now earns no strike (by
-design — that layer is free and its mistakes hit real customers), but it is also
-counted by nothing, so a rejected `/research` writes to no counter at all. Count it
-in a cheap per-user bucket — *not* the report quota, which would punish a
-false-positive user twice.
-
----
+Rules that now constrain this area, each with a test in
+`apps/api/test/job-slots.test.ts`:
+- An admin claims no slot, is not rate-limited, and does not consume credits.
+- An admin resuming a parked job takes the slot by FORCE.
+- Every path that ends without a running job releases the slot — a leak locks the
+  buyer out permanently, which is E2's exact shape.
 
 ## 4. Owner decisions, not bugs
 

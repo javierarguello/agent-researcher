@@ -28,6 +28,8 @@ export interface CreateJobInput {
   params: Record<string, unknown>;
   mode?: string;
   creditsSpent?: number;
+  /** True when the caller claimed an in-flight slot for this job (see slots.ts). */
+  slotHeld?: boolean;
 }
 
 export async function createJob(input: CreateJobInput): Promise<ResearchJob> {
@@ -40,6 +42,7 @@ export async function createJob(input: CreateJobInput): Promise<ResearchJob> {
     params: input.params,
     ...(input.mode ? { mode: input.mode } : {}),
     ...(input.creditsSpent != null ? { creditsSpent: input.creditsSpent } : {}),
+    ...(input.slotHeld ? { slotHeld: true } : {}),
     status: 'queued',
     files: [],
     bucketPath: `${config.storage.rootPrefix}/${input.jobId}`,
