@@ -2096,8 +2096,16 @@ app.post(
     const { jobId } = req.params as { jobId: string };
     const job = await getJob(jobId);
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
-    if (job.status === 'queued' || job.status === 'running') {
-      return reply.code(409).send({ error: `Job is already ${job.status}.` });
+    // Only a FAILED job. `queued`/`running` was the wrong shape of guard: it let
+    // retry re-run a COMPLETED job (a whole report's infra cost, charged to
+    // nobody, per click — the checkpoint is deleted on completion, so it starts
+    // from zero), and it let a HELD job resume around `approve`, skipping the
+    // approval transaction, the budget override and the slot claim while leaving
+    // `hold` on the document so the admin still saw it as parked.
+    if (job.status !== 'failed') {
+      return reply.code(409).send({
+        error: `Job is ${job.status}. Only a failed job can be retried${job.status === 'held' ? ' — approve it instead' : ''}.`,
+      });
     }
     // A refunded job is an UNPAID job. Re-running it does not re-charge (that is
     // what makes retry safe for a job that is still paid for), so without this it
@@ -2112,7 +2120,17 @@ app.post(
         code: 'job_refunded',
       });
     }
-    await requeueJob(jobId);
+    // Transactional, and it re-checks the refund inside: the read above is a read,
+    // so a `resolve{refund}` committing between the two would leave this job queued
+    // and unpaid — the exact outcome the refund guard exists to prevent.
+    if (!(await requeueJob(jobId, { onlyIfStatus: 'failed', refuseIfRefunded: true }))) {
+      return reply.code(409).send({ error: 'Job is no longer retryable.', code: 'job_refunded' });
+    }
+    // A failed job gave its slot back. Running again means holding one again —
+    // forced, like an approval, because an admin has decided this job runs.
+    await claimJobSlot(job.appId, job.userId, MAX_CONCURRENT_JOBS_PER_USER, { force: true });
+    await setJobSlotHeld(jobId, true);
+
     const { enqueueJob } = await import('./enqueue.js');
     await enqueueJob(jobId, { unique: true });
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'INFO', 'job.retry', { by: req.auth!.email });
@@ -2215,7 +2233,7 @@ app.post(
     try {
       await recordReportStats({
         appId: job.appId, userId: job.userId, template: job.template,
-        status: 'failed', costUsd: job.cost?.usd ?? 0, durationMs: 0,
+        status: 'failed', costUsd: job.cost?.usd ?? 0, durationMs: 0, refunded,
         ...(job.hold?.reason ? { failureKind: job.hold.reason } : {}),
       });
     } catch {

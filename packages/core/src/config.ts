@@ -284,11 +284,10 @@ export const config = {
      * amplification (3 in-run attempts × 8 dispatches) has no other upper bound —
      * once a job cannot satisfy its own schemas, every retry is pure loss.
      *
-     * When it trips, the remaining steps fail, the partial report is still
-     * assembled and uploaded for diagnosis, and the job is marked FAILED — which
-     * refunds the buyer (`run-job.ts`). It is also marked `failureKind:
-     * 'budget_exceeded'` and its spend is booked as `failedCostUsd`, because the
-     * money went out regardless. 0 or negative disables the ceiling.
+     * When it trips the job is HELD — parked for an admin, credits still consumed,
+     * checkpoint kept — not failed and not refunded. Nothing resolves it but a
+     * person: continue it (uncapped, from the checkpoint), refund it, top the buyer
+     * up, or close it. 0 or negative disables the ceiling.
      */
     maxJobCostUsd: float('MAX_JOB_COST_USD', 20),
   },

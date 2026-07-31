@@ -666,7 +666,7 @@ async function runAgent(ctx: {
         spend: ctx.spend,
         model: gatherModel,
         system,
-        messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, handoffs: context.handoffs, sites }) }],
+        messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, handoffs: context.handoffs, current: context.current, sites }) }],
         maxTurns: budget,
         evidence,
         onNote: (m) => note(m),
@@ -710,6 +710,7 @@ async function runAgent(ctx: {
             extracted: evidence.extracted,
             context: context.sections,
             handoffs: context.handoffs,
+            current: context.current,
             lang: language,
             depthDirective,
           });
@@ -800,7 +801,7 @@ function contextFor(
   agent: AgentSpec,
   report: Record<string, unknown>,
   handoffs: Record<string, string>,
-): { sections: Record<string, unknown>; handoffs: Record<string, string> } {
+): { sections: Record<string, unknown>; handoffs: Record<string, string>; current: Record<string, unknown> } {
   const producers = producerOf(template);
   const byId = new Map(template.agents.map((a) => [a.id, a]));
   const keys = new Set<string>();
@@ -810,7 +811,12 @@ function contextFor(
     const note = handoffs[depId];
     if (note) notes[byId.get(depId)?.label ?? depId] = note;
   }
-  return { sections: pick(report, [...keys]), handoffs: notes };
+  // What this agent OWNS is carried separately and never trimmed: its output
+  // replaces those sections, so a trimmed copy deletes whatever fell past the cut.
+  // Removing them from the budgeted set also stops them being sent twice.
+  const own = new Set(ownedKeys(agent));
+  for (const k of own) keys.delete(k);
+  return { sections: pick(report, [...keys]), handoffs: notes, current: pick(report, [...own]) };
 }
 
 // --- utils -------------------------------------------------------------------

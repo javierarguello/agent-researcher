@@ -17,7 +17,7 @@ import {
 } from '../jobs/firestore.js';
 import { retryAsync } from '../util/retry.js';
 import { releaseJobSlot } from '../jobs/slots.js';
-import { degradedNotice } from '../jobs/report-copy.js';
+import { degradedNotice, heldNotice } from '../jobs/report-copy.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
@@ -192,7 +192,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // long as nobody looks. Idempotent, so a re-dispatch cannot double-release.
       await releaseJobSlot(input.jobId).catch(() => {});
       await setProgress(input.jobId, {
-        phase: 'held', message: 'Paused for review before spending more.',
+        phase: 'held', message: heldNotice(output.language),
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
       });
       log.error('job.held', {
@@ -312,7 +312,15 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       costUsd: output.meta.cost.usd, tokensIn: output.meta.cost.inputTokens, tokensOut: output.meta.cost.outputTokens,
       ...(output.meta.degradedSections ? { degradedSections: output.meta.degradedSections } : {}),
     });
-    await markCompleted(input.jobId, files);
+    // If something ended this job while we were running it — the enqueue-failure
+    // cleanup is the one that does — the delivery is refused and the work is lost.
+    // Losing work we already paid for is the correct outcome next to handing out a
+    // report whose credits were refunded.
+    if (!(await markCompleted(input.jobId, files))) {
+      log.warn('job.completion_refused', { reason: 'the job was already resolved while it was running', attempts });
+      await releaseJobSlot(input.jobId).catch(() => {});
+      return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'failed' };
+    }
     await releaseJobSlot(input.jobId).catch(() => {});
     return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'completed' };
   } catch (error) {

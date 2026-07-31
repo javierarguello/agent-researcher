@@ -21,7 +21,12 @@ import { MemoryRouter } from 'react-router-dom';
 const { hooks } = vi.hoisted(() => ({
   hooks: {
     createJob: vi.fn(async () => ({ jobId: 'j1' })),
-    preflight: vi.fn(async () => ({ ok: true, summary: 'We will research X.', findings: [] })),
+    // The real endpoint always returns these; a fixture that omits them tests a
+    // response the API never sends, and blew up the render instead of the code.
+    preflight: vi.fn(async () => ({
+      ok: true, summary: 'We will research X.', quality: 'ok',
+      issues: [], corrections: [], assist: { state: 'on' },
+    })),
   },
 }));
 

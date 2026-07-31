@@ -82,6 +82,8 @@ export interface ReportStatsInput {
   degraded?: boolean;
   /** For a failure, why — so the admin can tell a cost-ceiling stop from a model error. */
   failureKind?: JobFailureKind;
+  /** Whether the buyer got their credits back. Only a refunded failure is a loss. */
+  refunded?: boolean;
 }
 
 /** Transactionally fold a duration into a doc's min/max gen time. */
@@ -149,11 +151,11 @@ export async function recordReportStats(input: ReportStatsInput): Promise<void> 
     [completed ? 'reportsCompleted' : 'reportsFailed']: FieldValue.increment(1),
     ...(input.degraded ? { degradedReports: FieldValue.increment(1) } : {}),
     costUsd: FieldValue.increment(input.costUsd || 0),
-    // The money we spent and gave back. Every failed job is refunded, so its cost
-    // is pure loss — but inside `costUsd` it is indistinguishable from spend that
-    // earned a report. Booked separately so "what did our failures cost us" is a
-    // number you can read rather than one you have to reconstruct.
-    ...(completed ? {} : { failedCostUsd: FieldValue.increment(input.costUsd || 0) }),
+    // The money we spent and GAVE BACK. Not every failure is refunded any more —
+    // an admin can close a job without one — so this counts the refunded ones only.
+    // Counting every failure overstated the loss by the cost of each dismissal, in
+    // our disfavour, which misleads pricing rather than hiding anything.
+    ...(!completed && input.refunded ? { failedCostUsd: FieldValue.increment(input.costUsd || 0) } : {}),
     ...(input.failureKind === 'budget_exceeded' ? { budgetStoppedReports: FieldValue.increment(1) } : {}),
     reportsByTemplate: { [input.template]: FieldValue.increment(1) },
     // avg = genTimeMsTotal / genCount; min/max are maintained transactionally below.

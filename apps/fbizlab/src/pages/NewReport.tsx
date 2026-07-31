@@ -596,11 +596,11 @@ export function NewReport() {
                   <p className="soft" style={{ fontSize: 14, lineHeight: 1.6 }}>{pf.summary || t.confirmSub}</p>
 
                   {/* Proposed corrections, as a diff the user can decline. */}
-                  {pf.corrections.length > 0 && (
+                  {(pf.corrections?.length ?? 0) > 0 && (
                     <div className="pf-suggest">
                       <div className="rev__k" style={{ marginBottom: 8 }}>{t.fixesTitle}</div>
                       <ul>
-                        {pf.corrections.map((c) => (
+                        {pf.corrections!.map((c) => (
                           <li key={c.field}>
                             <span className="mono muted">{t.f[c.field] ?? c.field}: </span>
                             <s className="muted">{c.from}</s> <span aria-hidden>→</span> <b>{c.to}</b>
@@ -614,15 +614,15 @@ export function NewReport() {
                     </div>
                   )}
 
-                  {pf.issues.length > 0 && (
+                  {(pf.issues?.length ?? 0) > 0 && (
                     <div className="pf-suggest">
                       <div className="rev__k" style={{ marginBottom: 8 }}>{t.findingsTitle}</div>
-                      <ul>{pf.issues.map((i) => <li key={i.code}>{i.message}</li>)}</ul>
+                      <ul>{pf.issues!.map((i) => <li key={i.code}>{i.message}</li>)}</ul>
                     </div>
                   )}
 
                   {/* Why the assisted layer didn't run — informational, never an error. */}
-                  {pf.assist.message && (
+                  {pf.assist?.message && (
                     <div className="mono muted" style={{ fontSize: 11.5, marginTop: 12, lineHeight: 1.5 }}>
                       {t.assistOff}: {pf.assist.message}
                     </div>

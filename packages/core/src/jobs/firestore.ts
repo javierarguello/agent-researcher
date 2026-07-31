@@ -151,8 +151,28 @@ export async function setJobHeadline(jobId: string, headline: { title: string; s
   await patch(jobId, { title: headline.title, shortDescription: headline.shortDescription });
 }
 
-export async function markCompleted(jobId: string, files: JobFile[]): Promise<void> {
-  await patch(jobId, { status: 'completed', files, finishedAt: nowIso() });
+/**
+ * Deliver the report — unless something already ended this job.
+ *
+ * Transactional, because a blind write here hands out a free report. If
+ * `enqueueJob` throws AFTER Cloud Tasks accepted the task, the API refunds the
+ * buyer and marks the job failed while the worker is already running it; the
+ * worker then finished and overwrote `failed` with `completed`, and every download
+ * route gates on that status. The buyer kept the refund and got the report.
+ *
+ * Returns false when the job was already resolved, so the caller can say so.
+ */
+export async function markCompleted(jobId: string, files: JobFile[]): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    const status = (snap.data() as ResearchJob).status;
+    // `held` too: a parked job is resolved by a person, never by a straggler run.
+    if (status === 'failed' || status === 'completed' || status === 'held') return false;
+    tx.set(ref, { status: 'completed', files, finishedAt: nowIso(), updatedAt: nowIso() }, { merge: true });
+    return true;
+  });
 }
 
 export async function markFailed(
@@ -264,11 +284,30 @@ export async function addJobFiles(jobId: string, files: JobFile[]): Promise<Rese
  * caller re-enqueues it. Credits are NOT re-charged (consumption is idempotent
  * by jobId).
  */
-export async function requeueJob(jobId: string): Promise<void> {
-  await collection()
-    .doc(jobId)
-    .set(
+/**
+ * Put a job back in the queue. Transactional and precondition-checked, because the
+ * caller's own status read happened in an earlier request: without this, a
+ * `resolve{refund}` committing in between leaves a refunded job queued and unpaid.
+ *
+ * Returns false when a precondition no longer holds, so the caller can refuse
+ * rather than enqueue.
+ */
+export async function requeueJob(
+  jobId: string,
+  opts: { onlyIfStatus?: JobStatus; refuseIfRefunded?: boolean } = {},
+): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  const refundRef = firestore().collection(config.credits.ledgerCollection).doc(`refund_${jobId}`);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    if (opts.onlyIfStatus && (snap.data() as ResearchJob).status !== opts.onlyIfStatus) return false;
+    if (opts.refuseIfRefunded && (await tx.get(refundRef)).exists) return false;
+    tx.set(
+      ref,
       { status: 'queued', attempts: 0, error: FieldValue.delete(), finishedAt: FieldValue.delete(), updatedAt: nowIso() },
       { merge: true },
     );
+    return true;
+  });
 }

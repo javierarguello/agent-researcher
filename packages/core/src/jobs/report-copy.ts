@@ -57,3 +57,21 @@ export function degradedNotice(lang: unknown, degradedCount: number): string {
   const l = asLang(lang);
   return degradedCount === 1 ? pick(NOTICE_ONE, l) : pick(NOTICE_MANY, l).replace('{n}', String(degradedCount));
 }
+
+const HELD_NOTICE: Copy = {
+  en: 'Paused while we review it. Nothing more is being spent, and we will come back to you.',
+  es: 'En pausa mientras lo revisamos. No se está gastando nada más y volvemos contigo.',
+  fr: 'En pause pendant que nous l’examinons. Rien de plus n’est dépensé, et nous revenons vers vous.',
+  pt: 'Em pausa enquanto revisamos. Nada mais está sendo gasto e voltaremos a você.',
+};
+
+/**
+ * The progress line a buyer sees on a parked job.
+ *
+ * It is rendered raw by the client, so it has to be the buyer's language and it
+ * must not name an internal limit — "held at the cost ceiling" tells a customer
+ * about our budget, which is neither their business nor their problem.
+ */
+export function heldNotice(lang: unknown): string {
+  return pick(HELD_NOTICE, asLang(lang));
+}

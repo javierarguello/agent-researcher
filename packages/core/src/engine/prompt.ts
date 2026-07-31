@@ -124,6 +124,26 @@ const MAX_CONTEXT_CHARS = 40_000;
 export const MAX_HANDOFF_CHARS = 1_500;
 
 /**
+ * The sections this agent is about to REWRITE, verbatim and never trimmed.
+ *
+ * An agent that both produces and enriches (valuation-analyst enriches
+ * `deep_dives` while producing two sections of its own) is schema-forced to emit
+ * the enriched section, and its output REPLACES what is in the report. Handing it
+ * a trimmed copy therefore does not just weaken the rewrite — it deletes whatever
+ * fell past the cut, permanently, with the job completing green. Anything an agent
+ * overwrites has to arrive whole.
+ */
+function currentBlock(current: Record<string, unknown>): string {
+  if (!Object.keys(current).length) return '';
+  return (
+    `\n\nTHE CURRENT VERSION OF YOUR OWN SECTIONS — you are REWRITING these, and what you ` +
+    `return replaces them. Keep every entry that is already correct, improve what you can, and ` +
+    `NEVER drop an item because you have nothing to add to it:\n"""\n` +
+    `${JSON.stringify(current, null, 2)}\n"""`
+  );
+}
+
+/**
  * The upstream context: every dependency's HANDOFF, then as much of the raw
  * sections as the budget allows.
  *
@@ -152,10 +172,17 @@ function contextBlock(context: Record<string, unknown>, handoffs: Record<string,
   if (keys.length) {
     // Shared evenly, so one long section cannot starve the others, and never below
     // a floor that would make a share meaningless.
-    const share = Math.max(2_000, Math.floor(MAX_CONTEXT_CHARS / keys.length));
+    // A running budget, not a per-key share with a floor. `max(2_000, total/keys)`
+    // silently became `2_000 × keys` past twenty dependencies — the floor
+    // overriding the very total it was meant to enforce.
+    let remaining = MAX_CONTEXT_CHARS;
+    let left = keys.length;
     const trimmed: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(context)) {
+      const share = Math.max(500, Math.floor(remaining / left));
+      left -= 1;
       const json = JSON.stringify(value);
+      remaining -= Math.min(json?.length ?? 0, share);
       trimmed[key] =
         json && json.length > share
           ? `[Trimmed to fit: ${json.length.toLocaleString('en-US')} characters, of which the opening is ` +
@@ -179,9 +206,11 @@ export function buildAgentKickoff(input: {
   maxTurns: number;
   /** What the earlier steps reported. NOT their sections — see below. */
   handoffs: Record<string, string>;
+  /** Sections this agent already owns and will rewrite. Passed whole. */
+  current?: Record<string, unknown>;
   sites?: string[];
 }): string {
-  const { agent, brief, sections, maxTurns, handoffs, sites } = input;
+  const { agent, brief, sections, maxTurns, handoffs, sites, current = {} } = input;
   return (
     `RESEARCH BRIEF (shared goal):\n${brief}\n\n` +
     `YOUR ROLE: ${agent.objective}\n` +
@@ -197,6 +226,10 @@ export function buildAgentKickoff(input: {
     // to know what is already covered, not the text of it. Measured at 68% of a
     // comprehensive report's total input.
     contextBlock({}, handoffs) +
+    // …but its OWN sections, whole. A refiner's job is to fill the gaps in what is
+    // already there — the listing URLs it must re-open, the figures still marked
+    // n/a — and it cannot look for them if it cannot see them.
+    currentBlock(current) +
     `\n\nSearch the web in ENGLISH (best recall; the report is written in the target language later). ` +
     `Proceed: (1) call \`update_plan\` with an initial plan scoped to YOUR sections; (2) \`web_search\` ` +
     `for focused queries, then \`fetch_page\` on the most promising URLs to read details snippets omit; ` +
@@ -216,10 +249,12 @@ export function buildProducerSynthPrompt(input: {
   extracted: ExtractedPage[];
   context: Record<string, unknown>;
   handoffs?: Record<string, string>;
+  /** Sections this agent already owns and will rewrite. Passed whole, never trimmed. */
+  current?: Record<string, unknown>;
   lang: Language;
   depthDirective?: string;
 }): string {
-  const { agent, brief, sections, evidence, extracted, context, lang, handoffs = {} } = input;
+  const { agent, brief, sections, evidence, extracted, context, lang, handoffs = {}, current = {} } = input;
   const depthDirective = input.depthDirective ?? DEFAULT_DEPTH_DIRECTIVE;
   const dossier =
     !evidence.length && !extracted.some((p) => p.ok && p.content)
@@ -230,6 +265,7 @@ export function buildProducerSynthPrompt(input: {
     `RESEARCH BRIEF:\n${brief}\n\n` +
     `YOUR SECTIONS (the JSON MUST have exactly these top-level keys, matching the provided schema):\n` +
     `${sectionGuidance(sections)}\n` +
+    currentBlock(current) +
     contextBlock(context, handoffs) +
     `\n\nEVIDENCE:\n${dossier}\n\n` +
     `${depthDirective}\n\n${MARKDOWN_DIRECTIVE}\n\n${languageDirective(lang)}\n\n` +

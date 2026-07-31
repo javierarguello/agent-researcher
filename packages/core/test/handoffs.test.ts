@@ -22,7 +22,8 @@ import { runResearch, type Checkpoint } from '../src/engine/research-engine.js';
 import { buildAgentKickoff, buildProducerSynthPrompt } from '../src/engine/prompt.js';
 import { compactModel } from './fixtures/compact-model.js';
 import { installMockProvider } from './mocks/llm.js';
-import type { AgentSpec, ReportSection } from '../src/templates/types.js';
+import { z } from 'zod';
+import type { AgentSpec, ReportSection, ResearchTemplate } from '../src/templates/types.js';
 import type { GenerateOptions } from '../src/llm/provider.js';
 
 const params = () => compactModel.paramsSchema.parse({}) as Record<string, unknown>;
@@ -151,6 +152,92 @@ describe('a long handoff never costs an agent its sections', () => {
     expect(out.trace.agents.every((a) => a.attempts === 1)).toBe(true);
     // Kept, but bounded — a briefing that ran long is still a useful briefing.
     expect(out.checkpoint.handoffs!.scout!.length).toBeLessThan(2_000);
+  });
+});
+
+describe('a section an agent will REWRITE is never trimmed', () => {
+  // The worst thing trimming can do. An agent that both produces and enriches —
+  // valuation-analyst enriches `deep_dives` while producing two sections of its
+  // own — is schema-forced to emit the enriched section, and its output REPLACES
+  // what is in the report. Hand it a trimmed copy and whatever fell past the cut
+  // is deleted from the customer's report, permanently, with the job green.
+  const SIX_PROFILES = {
+    deep_dives: Array.from({ length: 6 }, (_, i) => ({ business: `Laundromat ${i}`, overview: 'z'.repeat(5_000) })),
+  };
+
+  it('arrives whole in the write, however long it is', () => {
+    const prompt = buildProducerSynthPrompt({
+      agent, brief: 'b', sections, evidence: [], extracted: [], context: {}, current: SIX_PROFILES, lang: 'en',
+    });
+
+    for (let i = 0; i < 6; i++) expect(prompt).toContain(`Laundromat ${i}`);
+    expect(prompt).toMatch(/you are REWRITING these/i);
+    expect(prompt).toMatch(/NEVER drop an item/i);
+  });
+
+  it('arrives whole in the research loop too', () => {
+    // A refiner's job is to fill the gaps in what is already there — the listing
+    // URLs to re-open, the figures still marked n/a. It cannot look for them if it
+    // cannot see them, and its search budget is spent by the time the write runs.
+    const kickoff = buildAgentKickoff({
+      agent, brief: 'b', sections, maxTurns: 4, handoffs: {}, current: SIX_PROFILES,
+    });
+    for (let i = 0; i < 6; i++) expect(kickoff).toContain(`Laundromat ${i}`);
+  });
+
+  it('survives a real run: the agent that rewrites it sees every entry', async () => {
+    // Through the ENGINE, because the protection lives in `contextFor` — a
+    // prompt-level test passes `current` by hand and so cannot see whether the
+    // engine actually routed it there.
+    const LONG = 'z'.repeat(6_000);
+    const twoStep: ResearchTemplate<Record<string, unknown>> = {
+      id: 'e2e-enrich', name: 'Enrich', description: 'x', version: 1,
+      basePrompt: 'Be useful.',
+      paramsSchema: z.object({}),
+      sections: [
+        { key: 'items', title: 'Items', guidance: 'List them.', schema: z.array(z.object({ name: z.string(), detail: z.string() })) },
+        { key: 'notes', title: 'Notes', guidance: 'Note them.', schema: z.object({ text: z.string() }) },
+      ],
+      agents: [
+        { id: 'lister', role: 'producer', objective: 'List.', produces: ['items'], researchBudget: 1 },
+        { id: 'reviser', role: 'producer', objective: 'Revise.', produces: ['notes'], enriches: ['items'], dependsOn: ['lister'], researchBudget: 1 },
+      ],
+      buildBrief: () => 'Find things.',
+    };
+
+    const seen: GenerateOptions[] = [];
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    mock.generate = async (opts) => {
+      seen.push(opts);
+      if (opts.responseSchema && JSON.stringify(opts.responseSchema).includes('items')) {
+        const value = JSON.parse((await base(opts)).text) as Record<string, unknown>;
+        // Six long entries — over any per-section share the budget would allow.
+        value.items = Array.from({ length: 6 }, (_, i) => ({ name: `Item ${i}`, detail: LONG }));
+        return { text: JSON.stringify(value), toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+      return base(opts);
+    };
+
+    await runResearch({ template: twoStep, params: {}, jobId: 'enrich1', generatedAt: 't' });
+
+    // The reviser's write is the last call carrying `items` in its schema.
+    const revise = seen.filter((o) => o.responseSchema && JSON.stringify(o.responseSchema).includes('items')).at(-1)!;
+    const prompt = revise.messages.map((m) => m.text ?? '').join('\n');
+    for (let i = 0; i < 6; i++) expect(prompt).toContain(`Item ${i}`);
+    expect(prompt).not.toMatch(/trimmed to fit/i);
+    // Exactly once: the engine drops it from the budgeted context because it is
+    // already carried whole. Sending it twice loses nothing, it just pays twice.
+    expect(prompt.match(/Item 0/g)).toHaveLength(1);
+  });
+
+  it('is not also sent as budgeted context, which would send it twice', () => {
+    const prompt = buildProducerSynthPrompt({
+      agent, brief: 'b', sections, evidence: [], extracted: [],
+      context: { other_dep: { note: 'from upstream' } }, current: SIX_PROFILES, lang: 'en',
+    });
+    expect(prompt).toContain('from upstream');
+    expect(prompt.match(/Laundromat 0/g)).toHaveLength(1);
   });
 });
 

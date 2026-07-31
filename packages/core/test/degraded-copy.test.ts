@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 
 import { runResearch } from '../src/engine/research-engine.js';
-import { degradedNotice, degradedSectionNote } from '../src/jobs/report-copy.js';
+import { degradedNotice, degradedSectionNote, heldNotice } from '../src/jobs/report-copy.js';
 import { getTemplate } from '../src/templates/registry.js';
 import { installMockProvider } from './mocks/llm.js';
 import type { MockLlmProvider } from './mocks/llm.js';
@@ -50,6 +50,19 @@ describe('the copy itself', () => {
     expect(degradedNotice('en', 1)).toMatch(/one section/i);
     expect(degradedNotice('en', 3)).toMatch(/^3 sections/);
     expect(degradedNotice('es', 2)).toMatch(/^2 secciones/);
+  });
+
+  it('tells a buyer their job is paused without naming our budget', () => {
+    for (const lang of ['en', 'es', 'fr', 'pt']) {
+      const text = heldNotice(lang);
+      expect(text.length).toBeGreaterThan(20);
+      // It is rendered raw by the client, so it has to be their language — and
+      // "held at the cost ceiling" tells a customer about our budget, which is
+      // neither their business nor their problem.
+      expect(text).not.toMatch(/ceiling|budget|cost|held|presupuesto|techo/i);
+    }
+    expect(heldNotice('es')).toMatch(/en pausa/i);
+    expect(heldNotice('de')).toBe(heldNotice('en'));
   });
 
   it('says nothing at all when nothing degraded', () => {
