@@ -138,6 +138,17 @@ export function consumeCredits(appId: string, userId: string, credits: number, j
 // Plans are NOT stored in Firestore — the catalog lives entirely in Stripe
 // (Products/Prices with lookup_key `<appId>_<planId>` + metadata { app, credits }).
 
+/**
+ * Have this job's credits been given back?
+ *
+ * The question a caller must ask before RE-RUNNING someone's job: a refunded job
+ * is an unpaid job, and re-running it hands out a report nobody paid for. The
+ * refund marker is the record, so this is a single read.
+ */
+export async function wasJobRefunded(jobId: string): Promise<boolean> {
+  return (await ledger().doc(`refund_${jobId}`).get()).exists;
+}
+
 /** Refund the credits a job consumed (only if it was consumed and not already refunded). */
 export async function refundForJob(appId: string, userId: string, jobId: string, note?: string): Promise<boolean> {
   const consumeRef = ledger().doc(`consume_${jobId}`);

@@ -73,6 +73,7 @@ import {
   type ModelPricing,
   consumeCredits,
   refundForJob,
+  wasJobRefunded,
   recordReportStats,
   getBalance,
   listTransactions,
@@ -2097,6 +2098,19 @@ app.post(
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
     if (job.status === 'queued' || job.status === 'running') {
       return reply.code(409).send({ error: `Job is already ${job.status}.` });
+    }
+    // A refunded job is an UNPAID job. Re-running it does not re-charge (that is
+    // what makes retry safe for a job that is still paid for), so without this it
+    // hands the owner a full report they were already given the credits back for —
+    // a free report, created the moment refunds became a decision an admin makes.
+    // Every job pays, so the way back is the owner paying: grant them credits and
+    // let them submit again.
+    if (await wasJobRefunded(jobId)) {
+      return reply.code(409).send({
+        error:
+          'This job was refunded, so it is no longer paid for. Grant the owner credits and have them submit a new request.',
+        code: 'job_refunded',
+      });
     }
     await requeueJob(jobId);
     const { enqueueJob } = await import('./enqueue.js');

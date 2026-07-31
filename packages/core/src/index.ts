@@ -114,6 +114,7 @@ export {
   recordPurchase,
   consumeCredits,
   refundForJob,
+  wasJobRefunded,
 } from './credits/store.js';
 export { InsufficientCreditsError } from './credits/types.js';
 export type { CreditLedgerEntry, CreditBalance, LedgerEntryType } from './credits/types.js';

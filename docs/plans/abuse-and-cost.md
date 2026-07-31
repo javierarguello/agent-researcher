@@ -203,6 +203,12 @@ regex would punish them twice.
 **Rules Javier set (2026-07-31), each with its own test:**
 - An admin claims no slot and is not rate-limited. Those are LIMITS — how fast,
   how many — and an admin is not who they exist for.
+- **A job an admin re-runs is still a job someone paid for.** `retry` deliberately
+  does not re-charge, which is right for a job that is still paid for and wrong for
+  a refunded one — that combination handed the owner a full report they had already
+  been given the credits back for. A free report, created the moment refunds became
+  a decision an admin makes. `retry` now refuses on a refunded job (`job_refunded`)
+  and says what to do: grant the owner credits and let them submit again.
 - **Every job pays credits, admins included.** A credit is not a limit: it is what
   the report costs, and it always comes off the balance of whoever the job belongs
   to. An admin who wants to run one tops up their own account first — which is what

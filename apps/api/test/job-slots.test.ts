@@ -17,6 +17,7 @@ vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueue
 
 import {
   getBalance,
+  getJob,
   grantCredits,
   inFlightSlots,
   listJobs,
@@ -237,6 +238,63 @@ describe('an admin resuming a parked job overrides the buyer’s cap', () => {
     await markCompleted(job!.jobId, []);
     await releaseJobSlot(job!.jobId);
     expect(await inFlightSlots(APP, USER)).toBe(0);
+  });
+});
+
+describe('a job an admin re-runs is still a job someone paid for', () => {
+  /** Take a job all the way to the alert state, where an admin can decide on it. */
+  async function heldJob(): Promise<string> {
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markHeld(job!.jobId, { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
+    await releaseJobSlot(job!.jobId);
+    return job!.jobId;
+  }
+
+  it('refuses to re-run one whose credits were given back', async () => {
+    const jobId = await heldJob();
+    const before = await getBalance(APP, USER);
+
+    const resolved = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken), payload: { outcome: 'refund' },
+    });
+    expect(resolved.json().refunded).toBe(true);
+    expect(await getBalance(APP, USER)).toBe(before + 5);
+
+    // Retry does not re-charge — that is what makes it safe for a job that is
+    // still paid for. On a refunded one it would hand the owner a full report they
+    // already got the credits back for.
+    const retry = await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/retry`, headers: auth(adminToken) });
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().code).toBe('job_refunded');
+    expect((await getJob(jobId))!.status).toBe('failed');
+    expect(await getBalance(APP, USER)).toBe(before + 5); // and nothing was charged to anyone
+  });
+
+  it('still re-runs one that was closed WITHOUT a refund', async () => {
+    const jobId = await heldJob();
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken), payload: { outcome: 'dismiss' },
+    });
+    const balance = await getBalance(APP, USER);
+
+    // Dismissed means the owner kept paying for it, so re-running it is free of
+    // this problem — the report they get is the one they bought.
+    const retry = await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/retry`, headers: auth(adminToken) });
+    expect(retry.statusCode).toBe(202);
+    expect(await getBalance(APP, USER)).toBe(balance);
+  });
+
+  it('never bills the admin for the owner’s re-run', async () => {
+    await grantCredits({ appId: 'admin', userId: ADMIN, credits: 50 });
+    const jobId = await heldJob();
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken), payload: { outcome: 'dismiss' },
+    });
+    await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/retry`, headers: auth(adminToken) });
+
+    // The owner of the job is the buyer, whoever pressed the button.
+    expect(await getBalance('admin', ADMIN)).toBe(50);
   });
 });
 
