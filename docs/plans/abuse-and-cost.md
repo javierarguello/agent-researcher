@@ -9,7 +9,7 @@ Every entry cites `file:line` and states how it was established. Line numbers
 drift — treat them as a starting point, not gospel.
 
 Groups A (cheap external denial-of-service) and B (cost visibility) are done, as is
-the security round. C1 + C3 closed in `d89f081`; C2, C6, C7 and E4 closed 2026-07-31.
+the security round. C1 + C3 closed in `d89f081`; C2, C4, C6, C7 and E4 closed 2026-07-31.
 What follows is what is left.
 
 **Nothing open here is a door standing open.** The one finding that was — every
@@ -21,17 +21,6 @@ we spend, and several ways spend can run away.
 ---
 
 ## C. Spend can run away — 1-2 days
-
-### C4 · Two unbounded context growers
-`open` · verified by reading the code
-
-`gather.ts` never trims `messages`, so every search result and every 6,000-char
-page stays in context for all later turns — input cost is **quadratic in the
-budget**. `prompt.ts:97-103` `JSON.stringify`s all upstream sections with no size
-cap, and `exec-summary-writer` depends on 12 agents.
-
-(The evidence dossier itself *is* capped — `MAX_SNIPPETS = 48`, `MAX_PAGES = 14`,
-`EXTRACT_CHAR_CAP = 6000`. That part is fine.)
 
 ### C5 · The 30-minute dispatch deadline is shorter than a real job
 `open` · reasoned from config, not measured
@@ -158,6 +147,30 @@ Fixing it means writing fr/pt business copy for ~60 short strings — worth doin
 someone who writes those languages natively, not inventing here.
 
 ## Closed
+
+### ~~C4 · Two unbounded context growers~~
+`done (2026-07-31)`
+
+Both invisible: nothing failed, the bill just grew the longer a job ran.
+
+**The research loop kept every tool result for every later turn.** A fetched page
+is 6,000 characters, so by turn twelve the model re-read eleven full pages to
+decide one more query — the loop's input cost grew with the SQUARE of the budget.
+Now at most `KEEP_FULL_PAGES` (2) bodies travel in any one request, trimmed
+immediately before the call so the bound is exact. Older ones become a stub that
+says where the text went; a blanked-out page reads to an agent as "this link says
+nothing", which is a different claim from "we already read it". Nothing is lost:
+the full text stays in the evidence store, which is what the write-up renders.
+
+**An agent's context was its dependencies serialized whole, with no cap**, and the
+exec-summary writer depends on twelve agents — so it received the entire report as
+input. Capped per SECTION (12,000 chars): a blanket cut of the blob drops whatever
+sorts last, while this keeps every dependency represented, stays valid JSON, and
+says what was left out and where to find it.
+
+8 tests, each verified by reverting — measuring characters ACTUALLY SENT, off the
+provider, because that is the thing being paid for.
+
 
 ### ~~C2 · A retry re-ran work that had already succeeded~~
 `done (2026-07-31)`

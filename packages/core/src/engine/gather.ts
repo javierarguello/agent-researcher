@@ -114,6 +114,43 @@ export function gatherCompleted(result: GatherResult): boolean {
   return (result.stop === 'done' || result.stop === 'budget') && result.turns > 0;
 }
 
+/**
+ * Page bodies kept verbatim in the LOOP's context. Older ones are replaced by a
+ * stub that names the URL.
+ *
+ * Every tool result stays in `messages` for every later turn, and a page is 6,000
+ * characters — so by turn 12 the model re-reads eleven full pages to decide one
+ * more query, and the input cost of the loop grows with the SQUARE of the budget.
+ *
+ * Nothing is lost: the full text lives in the shared evidence store and is what the
+ * synthesis prompt renders. The loop only needs to know what it has already looked
+ * at, and the last couple of pages are what a next query is usually reasoning from.
+ */
+const KEEP_FULL_PAGES = 2;
+
+const PAGE_STUB = '[Full text omitted here to keep this loop small — it is kept in full for the write-up.]';
+
+/**
+ * Replace the bodies of all but the most recent `KEEP_FULL_PAGES` fetched pages.
+ *
+ * Mutates in place: `messages` is the conversation the loop is building, and the
+ * point is that the NEXT turn is cheaper.
+ */
+function trimOldPages(messages: LlmMessage[]): void {
+  const fetches: Array<{ pages: Array<{ content?: string }> }> = [];
+  for (const m of messages) {
+    const res = m.toolResult;
+    if (m.role !== 'tool' || res?.name !== 'fetch_page') continue;
+    const body = res.response as { pages?: Array<{ content?: string }> };
+    if (Array.isArray(body?.pages)) fetches.push({ pages: body.pages });
+  }
+  for (const f of fetches.slice(0, Math.max(0, fetches.length - KEEP_FULL_PAGES))) {
+    for (const page of f.pages) {
+      if (page.content && page.content !== PAGE_STUB) page.content = PAGE_STUB;
+    }
+  }
+}
+
 /** Run one budgeted research loop, appending to the shared evidence. Spend goes to `input.spend`. */
 export async function gather(input: GatherInput): Promise<GatherResult> {
   const { model, system, messages, maxTurns, evidence, onNote } = input;
@@ -139,6 +176,10 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       stop = 'ceiling';
       break;
     }
+    // Immediately before the call, so the bound is exact: at most KEEP_FULL_PAGES
+    // page bodies travel in any single request, however long the loop runs.
+    trimOldPages(messages);
+
     const res = await model.provider.generate({
       system,
       messages,

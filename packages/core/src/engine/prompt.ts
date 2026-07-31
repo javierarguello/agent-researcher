@@ -109,12 +109,33 @@ function sectionGuidance(sections: ReportSection[]): string {
     .join('\n');
 }
 
+/**
+ * Characters one upstream section may contribute to another agent's context.
+ *
+ * The block used to be every dependency serialized whole, with no cap at all —
+ * and the exec-summary writer depends on twelve agents, so it received the entire
+ * report as input. One long section (deep dives, financials) could crowd out every
+ * other one and cost more than the writing it is meant to inform.
+ */
+const MAX_CONTEXT_SECTION_CHARS = 12_000;
+
 /** JSON of already-completed sections that this agent depends on / will enrich. */
 function contextBlock(context: Record<string, unknown>): string {
   if (!Object.keys(context).length) return '';
+  // Trimmed per SECTION rather than by cutting the whole blob: a blanket cut drops
+  // whatever happens to sort last, while this keeps every dependency represented.
+  const trimmed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(context)) {
+    const json = JSON.stringify(value);
+    trimmed[key] =
+      json && json.length > MAX_CONTEXT_SECTION_CHARS
+        ? `[This section is summarised here: ${json.length.toLocaleString('en-US')} characters were too long to ` +
+          `include. It is complete in the report. Opening extract: ${json.slice(0, MAX_CONTEXT_SECTION_CHARS)}]`
+        : value;
+  }
   return (
     `\n\nCONTEXT — sections already produced by upstream agents (read-only; build on them, stay ` +
-    `consistent, do not contradict):\n"""\n${JSON.stringify(context, null, 2)}\n"""`
+    `consistent, do not contradict):\n"""\n${JSON.stringify(trimmed, null, 2)}\n"""`
   );
 }
 
