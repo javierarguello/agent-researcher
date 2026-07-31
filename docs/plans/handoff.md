@@ -85,27 +85,13 @@ rising means the ceiling is too low, not that anyone is abusing it.
 04) entirely from the manifest — no field names, no option labels, no translations
 in the client. A new field or a new language needs no front-end deploy.
 
-Still open from group C, in order:
-
-- **C2's real multiplier** — a retry re-runs the agent's ENTIRE `gather` loop with a
-  fresh budget even when only the synthesis failed. The ceiling bounds the damage
-  now; the waste is still there. Cache the evidence for the retry and re-run only
-  synthesis.
-- **C4** — `gather` never trims `messages`, so input cost is quadratic in the
-  budget; `prompt.ts` `JSON.stringify`s all upstream sections with no size cap.
-- **C5** — the 30-minute dispatch deadline is shorter than a real job.
-
 ## 3. Do this next
 
-C6 + C7 + E4 are **closed** (2026-07-31): the one-in-flight cap is a claim taken in
-a transaction as the first gate in the handler, released through the job document
-on every terminal path. What is left, in order:
+C2, C4, C6, C7 and E4 are all **closed** (2026-07-31). What is left:
 
-- **C4** — `gather` never trims `messages`, so input cost is quadratic in the
-  budget; `prompt.ts` `JSON.stringify`s all upstream sections with no size cap.
 - **C5** — the 30-minute dispatch deadline is shorter than a real job, and a
   corrupted checkpoint silently replays the whole job up to 8 times while only
-  warning.
+  warning. The last one open in group C.
 
 Rules that now constrain this area, each with a test in
 `apps/api/test/job-slots.test.ts`:
