@@ -104,4 +104,8 @@ const start = async () => {
   }
 };
 
-start();
+// Don't bind a port under test — tests drive routes via app.inject(), the same
+// way the API's suite does.
+if (!process.env.VITEST) start();
+
+export { app };

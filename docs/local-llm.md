@@ -100,7 +100,7 @@ both vitest configs so no file can forget to stub them) and the LLM is a stub
 provider installed in `apps/api/test/setup.ts`:
 
 ```bash
-npm test                                          # core + api, fully mocked
+npm test                                          # core + api + worker, fully mocked
 npm run test -w @agent-researcher/core -- moderation
 ```
 
