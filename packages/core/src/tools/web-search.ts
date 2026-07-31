@@ -96,10 +96,39 @@ export interface ExtractedPage {
   content: string;
   ok: boolean;
   error?: string;
+  /**
+   * The page was longer than the cap and what we have is the beginning of it.
+   *
+   * It matters because the agent reasons on this text: reading 6,000 characters of
+   * a 40,000-character page and being told nothing, it concludes a figure is
+   * absent when the figure is further down. A page half-read has to SAY it is half
+   * read — see `TRUNCATION_NOTE`, which is appended to the content itself so the
+   * warning cannot be separated from the text it is about.
+   */
+  truncated?: boolean;
 }
 
 /** Max characters kept per extracted page (bounds model + synthesis context). */
 const EXTRACT_CHAR_CAP = 6000;
+
+/**
+ * Cut a page to the cap, and SAY SO when we did. Exported because the saying-so is
+ * the part worth pinning: the cut itself is arithmetic, the note is the contract.
+ */
+export function capContent(raw: string): { content: string; truncated?: boolean } {
+  if (raw.length <= EXTRACT_CHAR_CAP) return { content: raw };
+  return { content: raw.slice(0, EXTRACT_CHAR_CAP) + TRUNCATION_NOTE, truncated: true };
+}
+
+/**
+ * Appended to a page we had to cut. In the content rather than beside it, because
+ * every path that shows an agent a page shows it the content — a flag on the object
+ * would be silently dropped by the first one that forgot to render it.
+ */
+const TRUNCATION_NOTE =
+  '\n\n[...] This page was longer than we could read and is CUT OFF here. Anything you cannot ' +
+  'find above may simply be further down: do not conclude it is missing. Search for the specific ' +
+  'figure instead, or say the page could not be read in full.';
 
 /**
  * Fetches the full text of specific pages (e.g. a business listing) so the agent
@@ -131,7 +160,7 @@ export async function extractPages(urls: string[]): Promise<ExtractedPage[]> {
     };
     const ok: ExtractedPage[] = (data.results ?? []).map((r) => ({
       url: r.url,
-      content: (r.raw_content ?? '').slice(0, EXTRACT_CHAR_CAP),
+      ...capContent(r.raw_content ?? ''),
       ok: true,
     }));
     const failed: ExtractedPage[] = (data.failed_results ?? []).map((r) => ({

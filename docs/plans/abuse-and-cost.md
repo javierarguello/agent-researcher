@@ -191,6 +191,23 @@ the within-dispatch re-buy and the page re-download; treating a new dispatch as
 threw, a loop that never concluded, the stop reason, the trace note, the checkpoint
 carrying pages, seeding them back, and the cap.
 
+**Nothing half-done, one level down** (Javier: "no quiero que una sección quede a
+medio hacer o un link a medio revisar"). Two units below the research pass, where
+partial is easy to create and invisible once created:
+
+- A page longer than `EXTRACT_CHAR_CAP` was cut at 6,000 characters **in silence**.
+  An agent reading the first 6,000 of a 40,000-character page concludes a figure is
+  absent when it is further down. The cut now says so, in the CONTENT rather than on
+  a flag beside it — a flag is what the first renderer forgets.
+- Already true, now pinned: a fetch that failed or came back empty never enters the
+  evidence store, and a section is merged only after passing its schema, so an agent
+  contributes all of its sections or none.
+
+7 more tests in `nothing-half-done.test.ts`, each verified by reverting — including
+one that took two attempts: the first revert of the section rule was a no-op, and
+the honest version makes the write return well-formed JSON that violates the schema,
+which is the shape a half-made section actually arrives in.
+
 
 ### ~~C6 + C7 + E4 · The one-in-flight cap was advisory, and a refusal was free~~
 `done (2026-07-31)`
