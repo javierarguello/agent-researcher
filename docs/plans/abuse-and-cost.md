@@ -101,13 +101,20 @@ Fixed as a by-product of C6: reserve before the model call, not after.
 Fix is re-pricing or trimming its budget — a decision, not a patch.
 
 ### D2 · Refunds are all-or-nothing, after the work is done
-`open` · verified by reading the code
+`half-closed (582949a)` · verified by reading the code
 
-`refundOnFailure` (`run-job.ts:238-245`) refunds 100% whenever the job failed or
-`runJob` threw — by which point the workflow has already run. The outer `catch`
-covers `uploadJson('report.json')` at `:165`, so a transient GCS error after a
-fully successful run returns every credit and we eat the entire cost. No partial
-refund, no check on what was spent.
+`refundOnFailure` refunds 100% whenever the job failed or `runJob` threw — by which
+point the workflow has already run. No partial refund, no check on what was spent.
+
+**The wrong-direction half is closed.** A transient storage error after a fully
+successful run used to return every credit and leave us the whole bill, discarding
+a finished report. Uploads are retried now, and a persistent failure HOLDS the job
+(`upload_failed`) instead: the work is in the checkpoint, and an admin approval
+re-uploads it without re-running anything.
+
+**What is left is the product decision**, and it is the same one as F1: a report
+that degrades after exhausting retries still completes at full price. Proportional
+to the degraded sections? A threshold? Nothing? That number is Javier's.
 
 ---
 

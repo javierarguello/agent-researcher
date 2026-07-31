@@ -43,7 +43,8 @@ gcloud services enable \
   firestore.googleapis.com \
   storage.googleapis.com \
   cloudtasks.googleapis.com \
-  iamcredentials.googleapis.com
+  iamcredentials.googleapis.com \
+  cloudscheduler.googleapis.com
 
 echo ">> Artifact Registry repo (agent-researcher, shared across envs)..."
 gcloud artifacts repositories create agent-researcher \

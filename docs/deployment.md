@@ -28,7 +28,8 @@ Both containers are `node:22-slim` running TypeScript directly via `tsx`
 `ENV=dev bash infra/setup-gcp.sh`. Idempotent-ish. It:
 
 1. **Enables APIs**: cloudresourcemanager, serviceusage, iam, run, cloudbuild,
-   artifactregistry, aiplatform, firestore, storage, cloudtasks, iamcredentials.
+   artifactregistry, aiplatform, firestore, storage, cloudtasks, iamcredentials,
+   cloudscheduler (the hold sweep).
 2. Creates the **Artifact Registry** repo (shared).
 3. Creates the **Firestore** named DB (Native mode).
 4. Creates **composite indexes** on collection groups `jobs` and `credit-ledger`:
