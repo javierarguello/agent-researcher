@@ -162,23 +162,40 @@ describe('every path that ends without a running job gives the slot back', () =>
 
 describe('an admin is not who these caps are for', () => {
   it('claims no slot, and can start report after report', async () => {
+    await grantCredits({ appId: 'admin', userId: ADMIN, credits: 100 });
     for (let i = 0; i < 3; i++) expect((await post(adminToken)).statusCode).toBe(202);
     expect(await inFlightSlots('admin', ADMIN)).toBe(0);
   });
 
   it('is not stopped by the hourly report quota', async () => {
+    await grantCredits({ appId: 'admin', userId: ADMIN, credits: 100 });
     await updateApp('admin', { rateLimitPerHour: 1 });
     expect((await post(adminToken)).statusCode).toBe(202);
     expect((await post(adminToken)).statusCode).toBe(202);
   });
 
-  it('is not stopped by having no credits', async () => {
-    // The balance READ already skipped admins, so leaving the consume in place
-    // meant an admin sailed past four gates and got a 402 — after paying for a
-    // model call.
+  it('still pays for what it runs, and must top up first', async () => {
+    // The exemptions above are LIMITS — how fast, how many. A credit is not a
+    // limit, it is what the report costs, and it comes off the balance of whoever
+    // the job belongs to (Javier, 2026-07-31). An admin running one is that
+    // someone, so they top up their own account first.
     expect(await getBalance('admin', ADMIN)).toBe(0);
+    expect((await post(adminToken)).statusCode).toBe(402);
+    expect(await listJobs('admin', ADMIN)).toHaveLength(0);
+
+    await grantCredits({ appId: 'admin', userId: ADMIN, credits: 10 });
     expect((await post(adminToken)).statusCode).toBe(202);
-    expect(await getBalance('admin', ADMIN)).toBe(0);
+    expect(await getBalance('admin', ADMIN)).toBe(5); // essential = 5
+  });
+
+  it('never charges its own balance for someone else’s report', async () => {
+    // Identity comes from the token, so an admin's own job is billed to the admin
+    // and a buyer's job is billed to the buyer. Neither ever absorbs the other's.
+    await grantCredits({ appId: 'admin', userId: ADMIN, credits: 10 });
+    expect((await post(userToken)).statusCode).toBe(202);
+
+    expect(await getBalance('admin', ADMIN)).toBe(10);
+    expect(await getBalance(APP, USER)).toBe(495); // 500 - 5
   });
 });
 

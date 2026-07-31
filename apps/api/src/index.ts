@@ -959,9 +959,11 @@ app.post(
       const creditsSpent = resolveModeCredits(pricing, mode.config, mode.key);
 
       // Affordability BEFORE moderation. `consumeCredits` below is the authority —
-      // this read is only here so a caller who provably cannot pay doesn't cost us a
-      // model call on the way to the same 402 they were always going to get.
-      if (config.server.appEnv !== 'local' && req.auth!.role !== 'admin') {
+      // this read is only here so a caller who provably cannot pay doesn't cost us
+      // a model call on the way to the same 402 they were always going to get.
+      // Admins are NOT skipped: they pay like everyone, so they get the cheap 402
+      // too rather than one that arrives after a billed classifier call.
+      if (config.server.appEnv !== 'local') {
         const balance = await getBalance(appId, userId);
         if (balance < creditsSpent) {
           return reply.code(402).send({ error: 'Insufficient credits.', required: creditsSpent, balance });
@@ -1005,10 +1007,13 @@ app.post(
 
       // Credits gate: consume the mode's credit cost up front.
       //
-      // Admins are exempt, like every other check above. The balance READ already
-      // skipped them, so leaving this one in place meant an admin with no credits
-      // sailed past four gates and then got a 402 — after paying for a model call.
-      if (config.server.appEnv !== 'local' && !isAdmin) {
+      // EVERY job pays, admins included (Javier, 2026-07-31). The exemptions above
+      // are LIMITS — how fast, how many — and an admin is not who those exist for.
+      // A credit is not a limit: it is what the report costs, and it always comes
+      // off the balance of whoever the job belongs to. An admin who wants to run
+      // one tops up their own account first, which is what the admin app has told
+      // them to do all along.
+      if (config.server.appEnv !== 'local') {
         try {
           await consumeCredits(appId, userId, creditsSpent, jobId);
           logEvent(logCtx, 'INFO', 'credits.consumed', { credits: creditsSpent, mode: mode.key });

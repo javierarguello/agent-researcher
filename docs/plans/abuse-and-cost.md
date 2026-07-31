@@ -201,9 +201,14 @@ already costs that user their request, and spending their hourly reports for our
 regex would punish them twice.
 
 **Rules Javier set (2026-07-31), each with its own test:**
-- An admin claims no slot, is not rate-limited, and does not consume credits. The
-  balance read already skipped admins, so leaving the consume in place meant an
-  admin sailed past four gates and got a 402 after paying for a model call.
+- An admin claims no slot and is not rate-limited. Those are LIMITS — how fast,
+  how many — and an admin is not who they exist for.
+- **Every job pays credits, admins included.** A credit is not a limit: it is what
+  the report costs, and it always comes off the balance of whoever the job belongs
+  to. An admin who wants to run one tops up their own account first — which is what
+  the admin app's 402 message has said all along. (The balance pre-read applies to
+  them too now, so their 402 arrives before a billed classifier call rather than
+  after it.)
 - An admin resuming a parked job takes the slot by FORCE — the buyer having started
   something else while they waited must not make the decision unactionable.
 - `/me/stats` reports the slot, not a job count, so the dashboard can never say

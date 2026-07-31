@@ -112,7 +112,9 @@ on every terminal path. What is left, in order:
 
 Rules that now constrain this area, each with a test in
 `apps/api/test/job-slots.test.ts`:
-- An admin claims no slot, is not rate-limited, and does not consume credits.
+- An admin claims no slot and is not rate-limited — those are limits.
+- Every job pays credits, admins included: a credit is what the report costs, and
+  it comes off the balance of whoever the job belongs to. An admin tops up first.
 - An admin resuming a parked job takes the slot by FORCE.
 - Every path that ends without a running job releases the slot — a leak locks the
   buyer out permanently, which is E2's exact shape.
