@@ -155,7 +155,14 @@ export const config = {
   publicLimits: {
     /** In-process burst guard per IP (requests/minute across all public routes). */
     burstPerMinute: int('PUBLIC_BURST_PER_MINUTE', 30),
-    registerPerHourPerIp: int('PUBLIC_REGISTER_PER_HOUR_IP', 5),
+    /**
+     * Per CLIENT IP. Raised from 5 (Javier, 2026-07-31): one office, one
+     * co-working floor or one CGNAT carrier is many people behind a single
+     * address, and 5/h turned a normal Monday morning into a lockout. The cap that
+     * actually stops mail-bombing is the per-TARGET one below — this one only
+     * catches a single machine hammering the route.
+     */
+    registerPerHourPerIp: int('PUBLIC_REGISTER_PER_HOUR_IP', 30),
     /** Per TARGET address. Registration emails a link to an address the caller
      *  chooses, so without this one inbox can be mail-bombed from many IPs — the
      *  same reason the reset route has a per-target cap. */

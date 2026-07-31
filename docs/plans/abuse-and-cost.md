@@ -93,7 +93,7 @@ Fixed as a by-product of C6: reserve before the model call, not after.
 ## D. Numbers someone has to choose — product decisions, not bugs
 
 ### D1 · `essential` costs ~60% more per credit than `comprehensive`
-`open` · modelled
+`open — deferred by Javier (2026-07-31): "el costo de essential luego lo revisamos"` · modelled
 
 5 credits vs 18 implies essential is 28% of comprehensive; it is actually ~45%
 (8 of 10 producers, 40 vs 92 search turns). Modelled at ~$0.39/credit vs
@@ -147,22 +147,39 @@ says the credits were not spent.
 follows is what remains, and each one is a judgement call rather than a defect.
 
 ### F1 · A degraded report costs full price, and explains itself in developer English
-The system is designed to degrade sections after exhausting retries, and a degraded
-job finalizes as `completed` — so no refund path runs, and the buyer pays 18 credits
-for a dossier with placeholder sections. The only explanation they get is
-`trace.warnings`, rendered verbatim: `Degraded [risks_red_flags] from agent
-"market-analyst" after exhausting retries…`, in English, to es/pt/fr customers.
-Two decisions: a partial-refund policy, and localized copy for the user-facing
-summary (keep the raw warnings admin-side).
+`half-closed` — the copy half is done; the price half is D2's open question.
 
-### F2 · `registerPerHourPerIp = 5` counts an office, a co-working space or a
-CGNAT carrier as one person
-The per-email cap (3/h) is what stops mail-bombing one inbox; the per-IP cap mostly
-catches shared egress. It is an env var, so raising it is a config change, not code.
-Related: the 429 body is English-only and the login page renders it raw.
+**The copy is fixed.** A degraded report used to explain itself with
+`trace.warnings` verbatim — `Degraded [risks_red_flags] from agent
+"market-analyst" after exhausting retries…` — in English, to es/pt/fr customers,
+naming our agents and section keys; and each missing section read
+`_Section unavailable: <internal error>._`. Both now come from
+`jobs/report-copy.ts`, in the report's own language, saying the one thing the buyer
+needs. The diagnostics are unchanged and still in the trace and the admin; the API
+simply stops handing `warnings` to a non-admin caller.
+
+**What is left is the price**: a report delivered with placeholder sections still
+costs full price. Same decision as D2.
+
+### ~~F2 · `registerPerHourPerIp = 5` counts an office as one person~~
+`done (2026-07-31)` — raised to 30.
+
+The per-EMAIL cap (3/h) is what stops mail-bombing one inbox; the per-IP cap only
+catches a single machine hammering the route, and at 5/h it turned a co-working
+floor or a CGNAT carrier into a lockout.
+
+Still open, and unrelated to the number: the 429 body is English-only and the login
+page renders it raw.
 
 ### E3 · Users blocked by the pre-screen before `ada33e8` are still blocked
-`open (2026-07-30)` · established by reading `stats/store.ts:418-447`
+`script written, approved to run (Javier, 2026-07-31); not yet run` · established by
+reading `stats/store.ts`
+
+`npm run unblock:moderation` — dry run by default, `-- --confirm` writes. It clears
+`blocked` + `moderationStrikes` only where `blockedReason` starts with the sentence
+the moderation path writes (derived from `blockReasonFor`, not copied), so a block a
+person decided on is left alone. Approved because there is no production data yet;
+the dry run still needs to be read before confirming.
 
 Strikes never decay and the fix is not retroactive. Anyone who accumulated four
 pre-screen rejections — which, by the fix's own reasoning, should never have earned
@@ -183,8 +200,8 @@ practical limiter today. Fix belongs with C6: reserve atomically, count the refu
 in a cheap per-user bucket rather than in the report quota (which would punish the
 false-positive user twice).
 
-### E5 · Directive labels fall back to English for fr/pt users
-`open (2026-07-30, introduced with d89f081)` · known at the time, not a regression
+### ~~E5 · Directive labels fall back to English for fr/pt users~~
+`done (2026-07-31)` — fr + pt written for all seven fields and every value.
 
 The new directive fields declare `en` + `es`, matching the rest of the manifest —
 `i18n` has only ever had `es`, so a French or Portuguese user already reads English

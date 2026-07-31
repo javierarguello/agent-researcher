@@ -81,8 +81,11 @@ export interface JobSummary {
   attempts?: number;
   /** Per-agent timing + retries (heavy detail lives in trace.json). */
   agents?: Array<{ id: string; wave: number; status: string; durationMs: number | null; attempts: number; costUsd: number }>;
-  /** Warnings to review later (e.g. sections degraded after exhausting retries). */
+  /** Warnings to review later (e.g. sections degraded after exhausting retries).
+   *  INTERNAL: names agents and section keys, in English. Admin surfaces only. */
   warnings?: string[];
+  /** The buyer-facing line for an incomplete report, in the report's language. */
+  notice?: string;
   /** Sections filled with a degraded placeholder (an agent failed). */
   degradedSections?: string[];
   /** Per-agent failures (message only; full stack is in trace.json). */

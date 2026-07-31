@@ -70,10 +70,10 @@ export function JobView() {
 
       {job.status === 'failed' && <div className="card" style={{ padding: 18, borderColor: '#e6c3bd' }}><span className="risk">{t.failed}</span></div>}
 
-      {job.summary?.warnings && job.summary.warnings.length > 0 && (
+      {job.summary?.notice && (
         <div className="card" style={{ padding: 16, background: 'var(--accent-tint)', borderColor: '#efdcb8' }}>
           <div className="eyebrow" style={{ color: 'var(--muted)', marginBottom: 6 }}>{t.warnings}</div>
-          {job.summary.warnings.map((w, i) => <div key={i} className="soft" style={{ fontSize: 13.5 }}>{w}</div>)}
+          <div className="soft" style={{ fontSize: 13.5 }}>{job.summary.notice}</div>
         </div>
       )}
 

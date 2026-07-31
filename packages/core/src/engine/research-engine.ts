@@ -22,6 +22,7 @@ import {
   type ReportSection,
   type ResearchTemplate,
 } from '../templates/types.js';
+import { degradedSectionNote } from '../jobs/report-copy.js';
 import { createEvidence, gather, type Evidence } from './gather.js';
 import { synthesizeStructured } from './synthesize.js';
 import {
@@ -473,8 +474,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
   for (const agent of pending) {
     const reason = agentReason(trace, agent.id);
+    // The placeholder the BUYER reads is ours and localized; the internal reason
+    // goes to `warnings` (admin-side) on the next line, never into the report.
     for (const key of ownedKeys(agent)) {
-      report[key] = degradedValue(effTemplate, key, reason);
+      report[key] = degradedValue(effTemplate, key, degradedSectionNote(language));
       if (!degraded.includes(key)) degraded.push(key);
     }
     warnings.push(`Degraded [${ownedKeys(agent).join(', ')}] from agent "${agent.id}" after exhausting retries/re-dispatches: ${reason}`);
@@ -721,10 +724,9 @@ async function runPool<T>(items: T[], limit: number, fn: (item: T) => Promise<vo
 }
 
 /** A schema-valid placeholder for a failed section, from its JSON Schema shape. */
-function degradedValue(template: ResearchTemplate<any>, key: string, reason: string): unknown {
+function degradedValue(template: ResearchTemplate<any>, key: string, note: string): unknown {
   const section = sectionByKey(template, key);
   if (!section) return null;
-  const note = `_Section unavailable: ${reason}._`;
   return emptyFromJsonSchema(z.toJSONSchema(section.schema) as Record<string, unknown>, note);
 }
 

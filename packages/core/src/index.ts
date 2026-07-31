@@ -44,6 +44,7 @@ export {
   rejectHold,
 } from './jobs/firestore.js';
 export type { ResearchJob, JobStatus, JobFailureKind, JobHold, JobFile, JobProgress, JobSummary } from './jobs/types.js';
+export { degradedNotice, degradedSectionNote } from './jobs/report-copy.js';
 export { generateHeadline } from './jobs/headline.js';
 export type { Headline } from './jobs/headline.js';
 

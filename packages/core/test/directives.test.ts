@@ -122,11 +122,29 @@ describe('the manifest carries the directives, localized in the template', () =>
     }
   });
 
-  it('falls back to English for a language with no translation yet', () => {
-    const fr = toManifest(template, 'fr');
-    const reason = fr.directives!.find((d) => d.key === 'reasonForSale')!;
+  it('is written in every language the product supports', () => {
+    // E5: these shipped en+es only, matching the rest of the manifest, and a French
+    // buyer read an English block inside an otherwise French form.
+    for (const [lang, label, value] of [
+      ['fr', 'Motif de la vente', 'Le propriétaire part à la retraite'],
+      ['pt', 'Motivo da venda', 'O dono vai se aposentar'],
+    ] as const) {
+      const m = toManifest(template, lang);
+      const reason = m.directives!.find((d) => d.key === 'reasonForSale')!;
+      expect(reason.label).toBe(label);
+      expect(reason.options!.find((o) => o.value === 'owner_retiring')!.label).toBe(value);
+      // Every field, every option — a half-translated block is the thing to avoid.
+      for (const field of m.directives!) {
+        expect(field.description).toBeTruthy();
+        for (const opt of field.options ?? []) expect(opt.label).not.toBe(opt.value);
+      }
+    }
+  });
+
+  it('still falls back to English for a language nobody has written yet', () => {
+    const de = toManifest(template, 'de');
+    const reason = de.directives!.find((d) => d.key === 'reasonForSale')!;
     expect(reason.label).toBe('Reason for sale');
-    expect(reason.options!.find((o) => o.value === 'owner_retiring')!.label).toBe('Owner retiring');
   });
 
   it('hides the raw directives param from the generic form builder', () => {

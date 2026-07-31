@@ -16,6 +16,7 @@ import {
   getJob, markCompleted, markFailed, markHeld, markRunning, setJobAttempts, setJobCost, setJobHeadline, setJobSummary, setProgress,
 } from '../jobs/firestore.js';
 import { retryAsync } from '../util/retry.js';
+import { degradedNotice } from '../jobs/report-copy.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
@@ -241,6 +242,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     const agentErrors = output.trace.agents
       .filter((a) => a.status === 'failed')
       .map((a) => ({ agentId: a.id, error: ((a.error ?? '').split('\n')[0] ?? '').slice(0, 500) }));
+    const notice = degradedNotice(output.language, output.meta.degradedSections?.length ?? 0);
     const summary: JobSummary = {
       schemaVersion: output.meta.schemaVersion, language: output.language, mode: output.meta.mode, depth: output.meta.depth,
       turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, reportBytes: report.size ?? 0,
@@ -248,6 +250,8 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       ...(output.trace.warnings ? { warnings: output.trace.warnings } : {}),
       ...(output.meta.degradedSections ? { degradedSections: output.meta.degradedSections } : {}),
       ...(agentErrors.length ? { agentErrors } : {}),
+      // What the buyer is shown instead of the warnings above.
+      ...(notice ? { notice } : {}),
     };
     await setJobSummary(input.jobId, summary);
 

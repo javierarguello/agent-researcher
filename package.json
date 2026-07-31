@@ -19,6 +19,7 @@
     "research:local": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/run-local.ts",
     "templates:check": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/validate-templates.ts",
     "reset:dev": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/reset-dev.ts",
+    "unblock:moderation": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/unblock-moderation.ts",
     "apps": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/apps.ts",
     "test": "npm run test -w @agent-researcher/core && npm run test -w @agent-researcher/api",
     "test:local-llm": "TEST_LLM=ollama npm run test -w @agent-researcher/core && TEST_LLM=ollama npm run test -w @agent-researcher/api",

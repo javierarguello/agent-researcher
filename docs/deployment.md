@@ -183,7 +183,7 @@ sends, password hashing), so they are capped per client IP and per target email.
 | Var | Default | Purpose |
 |---|---|---|
 | `PUBLIC_BURST_PER_MINUTE` | `30` | In-process burst guard per IP, across all public routes. |
-| `PUBLIC_REGISTER_PER_HOUR_IP` | `5` | Registrations per IP per hour. |
+| `PUBLIC_REGISTER_PER_HOUR_IP` | `30` | Registrations per IP per hour. One office or CGNAT carrier is many people behind one address; the per-TARGET cap below is what stops mail-bombing. |
 | `PUBLIC_LOGIN_PER_HOUR_IP` / `_EMAIL` | `30` / `10` | Login attempts per IP / per targeted account. |
 | `PUBLIC_RESET_PER_HOUR_IP` / `_EMAIL` | `5` / `3` | Password-reset emails per IP / per target inbox. |
 | `PUBLIC_CONTACT_PER_HOUR_IP` | `5` | Contact-form submissions per IP. |
