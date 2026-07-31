@@ -9,7 +9,7 @@ Every entry cites `file:line` and states how it was established. Line numbers
 drift — treat them as a starting point, not gospel.
 
 Groups A (cheap external denial-of-service) and B (cost visibility) are done, as is
-the security round. C1 + C3 closed in `d89f081`; C6 + C7 + E4 closed 2026-07-31.
+the security round. C1 + C3 closed in `d89f081`; C2, C6, C7 and E4 closed 2026-07-31.
 What follows is what is left.
 
 **Nothing open here is a door standing open.** The one finding that was — every
@@ -21,19 +21,6 @@ we spend, and several ways spend can run away.
 ---
 
 ## C. Spend can run away — 1-2 days
-
-### C2 · 24× retry amplification, and a retry re-runs work that succeeded
-`open` · verified by reading the code
-
-`agentMaxAttempts` (3) × `maxJobAttempts` (8) = 24 passes per agent, and each
-retry re-runs the agent's **entire `gather` loop with a fresh budget**
-(`research-engine.ts`, the attempt loop) even when only the synthesis failed.
-
-**Half-closed in `d89f081`.** Total spend is now bounded — `MAX_JOB_COST_USD`
-(default $20) is checked before every attempt, inside the gather loop, and before
-a synthesis repair round, counting the whole job across dispatches. What remains is
-the waste, not the runaway: a synthesis-only failure still re-buys the whole
-research loop. Cache the evidence for the agent's retry and re-run only synthesis.
 
 ### C4 · Two unbounded context growers
 `open` · verified by reading the code
@@ -171,6 +158,36 @@ Fixing it means writing fr/pt business copy for ~60 short strings — worth doin
 someone who writes those languages natively, not inventing here.
 
 ## Closed
+
+### ~~C2 · A retry re-ran work that had already succeeded~~
+`done (2026-07-31)`
+
+An agent is two halves: a budgeted research loop that buys searches and page
+bodies, and one structured call that writes the sections. The retry loop wrapped
+BOTH — so a write that failed re-ran the whole loop, buying fresh searches and
+fresh fetches for evidence that was already paid for and still sitting in the
+shared store. `agentMaxAttempts` (3) × `maxJobAttempts` (8) made that up to 24
+research loops for one agent. The ceiling (`d89f081`) bounded the dollars; it did
+nothing about the waste, and every dollar re-buying is one not spent finishing.
+
+A retry now reuses what the last attempt bought. The flag is set only when the
+loop RETURNS having spent turns, which keeps the two cases that must still
+research: a loop that threw, and a pass that found nothing (reusing "nothing"
+would hand the write an empty dossier for good).
+
+Second half: the checkpoint carried `sources` but not the fetched page BODIES, so
+every re-dispatch re-downloaded them — the most expensive call in the loop, for
+text the job already had. It now carries them, capped at 60 (it is rewritten after
+every agent, so unbounded growth is a cost of its own; an evicted page is a cache
+miss, not a correctness problem).
+
+Deliberately unchanged: a fresh DISPATCH still researches again. The saving here is
+the within-dispatch re-buy and the page re-download; treating a new dispatch as
+"already researched" would change what recovery means, which is a different call.
+
+7 tests, each verified by reverting: the reuse itself, the empty pass, a loop that
+threw, the trace note, the checkpoint carrying pages, seeding them back, and the cap.
+
 
 ### ~~C6 + C7 + E4 · The one-in-flight cap was advisory, and a refusal was free~~
 `done (2026-07-31)`

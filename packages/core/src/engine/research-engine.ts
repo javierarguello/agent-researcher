@@ -13,7 +13,7 @@ import { BudgetExceededError, addCost, createCostSink, emptyCost, type Cost, typ
 import { resolveDepthProfile, type DepthProfile } from '../depth.js';
 import { maxCostForMode, resolveMode } from '../mode.js';
 import { resolveModel, type ResolvedModel } from '../llm/index.js';
-import type { SearchResult } from '../tools/web-search.js';
+import type { ExtractedPage, SearchResult } from '../tools/web-search.js';
 import {
   reportSchemaOf,
   sectionByKey,
@@ -126,6 +126,16 @@ export interface Checkpoint {
   report: Record<string, unknown>;
   /** Evidence sources gathered so far (for the derived `sources` section). */
   sources: SearchResult[];
+  /**
+   * Page bodies already fetched. Carried so a re-dispatch does not BUY THEM AGAIN:
+   * `sources` alone survived, so every resumed dispatch re-fetched every page — the
+   * most expensive call in the loop, for text we already had (C2).
+   *
+   * Capped: a long job can fetch far more pages than any prompt renders, and the
+   * checkpoint is written after every agent. Oldest are dropped, so a re-dispatch
+   * may still re-fetch an old page — a cache miss, not a correctness problem.
+   */
+  extracted?: ExtractedPage[];
   /** Agent ids already completed — skipped on resume. */
   doneAgentIds: string[];
   degraded: string[];
@@ -178,6 +188,13 @@ export interface RunResearchInput {
 /** Max notes kept per agent (bounds trace size). */
 const MAX_NOTES = 300;
 
+/**
+ * Page bodies carried in the checkpoint. Generous next to what any prompt renders
+ * (14), because the point is to avoid re-buying them, and mean next to what a long
+ * job can fetch — the checkpoint is re-uploaded after every agent.
+ */
+const CHECKPOINT_MAX_PAGES = 60;
+
 
 export async function runResearch(input: RunResearchInput): Promise<ResearchOutput> {
   const { template, params, jobId, generatedAt, onProgress, onTrace } = input;
@@ -219,6 +236,14 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     if (s.url && !evidence.seenUrls.has(s.url)) {
       evidence.seenUrls.add(s.url);
       evidence.sources.push(s);
+    }
+  }
+  // …and the page bodies, so `fetch_page` hits the shared cache instead of paying
+  // again for text this job already downloaded.
+  for (const p of input.resume?.extracted ?? []) {
+    if (p.url && p.ok && p.content && !evidence.extractedUrls.has(p.url)) {
+      evidence.extractedUrls.add(p.url);
+      evidence.extracted.push(p);
     }
   }
 
@@ -265,8 +290,15 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Slim agent traces for the checkpoint: drop `output` (already in `report`) and
   // `notes` to keep checkpoint.json small; keep status/cost/timing for the summary.
   const slimAgents = (): AgentTrace[] => trace.agents.map((a) => ({ ...a, output: undefined, notes: [] }));
-  const snapshot = (): Checkpoint =>
-    ({ report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost });
+  const snapshot = (): Checkpoint => ({
+    report,
+    sources: evidence.sources,
+    extracted: evidence.extracted.slice(-CHECKPOINT_MAX_PAGES),
+    doneAgentIds: [...done],
+    degraded,
+    agentTraces: slimAgents(),
+    cost: trace.cost,
+  });
 
   // Checkpoint writes are last-writer-wins in storage, and a wave finishes several
   // agents concurrently — so two overlapping saves can land in the wrong order and
@@ -337,6 +369,16 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         return;
       }
 
+      // Whether THIS agent has already bought its evidence in this dispatch.
+      //
+      // The retry loop wraps both halves of an agent — the research loop and the
+      // structured write — so a write that failed used to re-buy the whole loop:
+      // fresh searches, fresh page fetches, fresh tokens, for evidence that was
+      // already paid for and still sitting in the shared store. Set only when
+      // `gather` RETURNS with turns, so a failure inside the loop still re-runs it
+      // and an empty pass gets one more go (C2).
+      const research = { done: false };
+
       // In-run retries with exponential backoff — keep trying the step.
       for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
         // Checked before every attempt, including the first: once the job has spent
@@ -363,7 +405,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         let ok = false;
         let failure: Error | undefined;
         try {
-          const { slice } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend });
+          const { slice } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend, research });
           Object.assign(report, slice);
           at.status = 'ok';
           at.output = slice;
@@ -518,7 +560,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     language,
     turnsUsed: counter.turns,
     trace,
-    checkpoint: { report, sources: evidence.sources, doneAgentIds: [...done], degraded, agentTraces: slimAgents(), cost: trace.cost },
+    checkpoint: snapshot(),
   };
 }
 
@@ -554,6 +596,8 @@ async function runAgent(ctx: {
   /** Every paid call inside this agent writes here as it happens, so a failed
    *  attempt's spend is still known to the caller. */
   spend: CostSink;
+  /** Cross-attempt state for THIS agent: has its research loop already run? */
+  research: { done: boolean };
   // Returns the slice only. Cost lives in the sink, read by the caller on BOTH
   // paths — returning it as well would invite someone tidying this signature to
   // add it back, doubling every agent's cost with the suite still green.
@@ -576,18 +620,29 @@ async function runAgent(ctx: {
     const budget = Math.max(2, Math.round((agent.researchBudget ?? config.search.maxTurns) * depth.budgetScale));
     const sites = effectiveSites(template, agent);
     if (sites.length) await note(`Suggested sources (additive): ${sites.join(', ')}.`);
-    await note(`Researching (${owned.join(', ')}).`);
-    const gres = await gather({
-      spend: ctx.spend,
-      model: gatherModel,
-      system,
-      messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, context, sites }) }],
-      maxTurns: budget,
-      evidence,
-      onNote: (m) => note(m),
-    });
-    counter.turns += gres.turns;
-    trace.turnsUsed = gres.turns;
+    // A retry after a failed WRITE reuses what the last attempt bought. The
+    // evidence store is shared and still holds it; re-running the loop would not
+    // recover anything, it would go and buy more of the same.
+    if (ctx.research.done) {
+      await note(`Reusing evidence already gathered (${evidence.sources.length} sources, ${evidence.extracted.length} pages).`);
+    } else {
+      await note(`Researching (${owned.join(', ')}).`);
+      const gres = await gather({
+        spend: ctx.spend,
+        model: gatherModel,
+        system,
+        messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, context, sites }) }],
+        maxTurns: budget,
+        evidence,
+        onNote: (m) => note(m),
+      });
+      counter.turns += gres.turns;
+      trace.turnsUsed = gres.turns;
+      // Only a loop that RETURNED and actually spent turns counts as done: a
+      // throw mid-loop, or a pass that found nothing, both deserve another go.
+      // Set after the await, so a failure above leaves it false.
+      ctx.research.done = gres.turns > 0;
+    }
 
     // `gather` stops at the ceiling rather than throwing, so the evidence it did
     // buy is kept in the shared store for whoever runs next. Synthesis is the next
