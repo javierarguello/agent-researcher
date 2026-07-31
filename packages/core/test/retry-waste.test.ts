@@ -33,6 +33,7 @@ vi.mock('../src/tools/web-search.js', () => ({
   },
 }));
 
+import { gatherCompleted } from '../src/engine/gather.js';
 import { runResearch, type Checkpoint } from '../src/engine/research-engine.js';
 import { compactModel } from './fixtures/compact-model.js';
 import { installMockProvider, MockLlmProvider } from './mocks/llm.js';
@@ -152,6 +153,60 @@ describe('but a retry after a failed SEARCH still researches', () => {
     // pass is not evidence, so it does not count as research already done.
     expect(out.trace.agents.find((a) => a.id === 'scout')!.attempts).toBe(2);
     expect(web.searches).toBeGreaterThan(0);
+  });
+});
+
+describe('a retry only reuses research that FINISHED', () => {
+  it('re-researches when the last loop never actually concluded', async () => {
+    // Javier, 2026-07-31: a retry takes what is FINISHED, never something half
+    // done. An agent that kept calling tools until the loop ran out of iterations
+    // never decided it had enough — treating that as "already researched" freezes
+    // a half-built dossier in place for every later attempt.
+    //
+    // (The cost ceiling is the other unfinished ending, and it is unreachable from
+    // here by design: a ceiling stop ends the job rather than retrying into it.)
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    let writes = 0;
+
+    mock.generate = async (opts) => {
+      // Never stops asking for tools → the loop ends by exhausting its iterations.
+      if (opts.tools?.length) {
+        return {
+          text: '',
+          usage: { inputTokens: 1, outputTokens: 1 },
+          toolCalls: [{ id: 's', name: 'web_search', args: { query: 'again' } }],
+        };
+      }
+      if (opts.responseSchema && WRITES_FINDINGS(opts.responseSchema) && writes < 2) {
+        writes += 1;
+        return { text: 'not json', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+      return base(opts);
+    };
+
+    const out = await runResearch({ template: compactModel, params: params(), jobId: 'w9', generatedAt: 't' });
+
+    const scout = out.trace.agents.find((a) => a.id === 'scout')!;
+    expect(scout.attempts).toBe(2);
+    const notes = scout.notes.join(' ');
+    expect(notes).not.toMatch(/reusing evidence already gathered/i);
+    // Two passes, so it genuinely went back out rather than reusing an unfinished one.
+    expect(notes.match(/Researching/g)?.length).toBe(2);
+  });
+
+  it('reports how the loop ended, so the caller can tell the two apart', async () => {
+    // The distinction has to come from `gather`, not from guessing at the turn
+    // count: a full allowance and a loop cut off at the same turn look identical
+    // from outside.
+    installMockProvider();
+    const out = await runResearch({ template: compactModel, params: params(), jobId: 'w10', generatedAt: 't' });
+    expect(out.trace.status).toBe('completed');
+    expect(gatherCompleted({ turns: 3, stop: 'done' })).toBe(true);
+    expect(gatherCompleted({ turns: 3, stop: 'budget' })).toBe(true);
+    expect(gatherCompleted({ turns: 3, stop: 'ceiling' })).toBe(false);
+    expect(gatherCompleted({ turns: 3, stop: 'stalled' })).toBe(false);
+    expect(gatherCompleted({ turns: 0, stop: 'done' })).toBe(false);
   });
 });
 

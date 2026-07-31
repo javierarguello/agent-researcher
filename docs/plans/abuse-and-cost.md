@@ -170,10 +170,12 @@ shared store. `agentMaxAttempts` (3) × `maxJobAttempts` (8) made that up to 24
 research loops for one agent. The ceiling (`d89f081`) bounded the dollars; it did
 nothing about the waste, and every dollar re-buying is one not spent finishing.
 
-A retry now reuses what the last attempt bought. The flag is set only when the
-loop RETURNS having spent turns, which keeps the two cases that must still
-research: a loop that threw, and a pass that found nothing (reusing "nothing"
-would hand the write an empty dossier for good).
+A retry now reuses what the last attempt bought — but **only work that FINISHED**
+(Javier, 2026-07-31: a retry takes what is finished, never something half done).
+`gather` reports how it ended, and only `done` (the agent stopped asking for tools)
+or `budget` (it spent its full allowance) count. A loop cut off by the job's cost
+ceiling, one that ran out of iterations without ever concluding, one that threw, and
+one that bought nothing all mean the same thing: research again.
 
 Second half: the checkpoint carried `sources` but not the fetched page BODIES, so
 every re-dispatch re-downloaded them — the most expensive call in the loop, for
@@ -185,8 +187,9 @@ Deliberately unchanged: a fresh DISPATCH still researches again. The saving here
 the within-dispatch re-buy and the page re-download; treating a new dispatch as
 "already researched" would change what recovery means, which is a different call.
 
-7 tests, each verified by reverting: the reuse itself, the empty pass, a loop that
-threw, the trace note, the checkpoint carrying pages, seeding them back, and the cap.
+9 tests, each verified by reverting: the reuse itself, the empty pass, a loop that
+threw, a loop that never concluded, the stop reason, the trace note, the checkpoint
+carrying pages, seeding them back, and the cap.
 
 
 ### ~~C6 + C7 + E4 · The one-in-flight cap was advisory, and a refusal was free~~

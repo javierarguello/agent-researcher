@@ -90,9 +90,28 @@ export interface GatherInput {
   onNote?: (note: string) => void | Promise<void>;
 }
 
+/**
+ * Why the research loop stopped. It decides whether the evidence may be REUSED by
+ * a retry, so the distinction is between a loop that finished and one that was cut
+ * off mid-way:
+ *
+ * - `done`    the agent stopped calling tools — it decided it had enough.
+ * - `budget`  it spent its full search allowance. Also a finished pass.
+ * - `ceiling` the JOB's cost ceiling stopped it. Cut off.
+ * - `stalled` it ran out of loop iterations without concluding. Cut off.
+ */
+export type GatherStop = 'done' | 'budget' | 'ceiling' | 'stalled';
+
 export interface GatherResult {
   /** No `cost` here on purpose — see `StructuredResult`: the sink is the only accumulator. */
   turns: number;
+  /** How the loop ended. Only `done` and `budget` mean the pass finished. */
+  stop: GatherStop;
+}
+
+/** A finished pass — the only kind a retry may reuse instead of re-running. */
+export function gatherCompleted(result: GatherResult): boolean {
+  return (result.stop === 'done' || result.stop === 'budget') && result.turns > 0;
 }
 
 /** Run one budgeted research loop, appending to the shared evidence. Spend goes to `input.spend`. */
@@ -106,6 +125,10 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   const charge = (c: Cost) => input.spend?.add(c);
   const maxIterations = maxTurns * 2 + 6;
   const note = async (m: string) => onNote?.(m);
+  // Assume the worst until the loop ends for a reason: an unexpected exit is a
+  // half-finished pass, and a half-finished pass must not be handed to a retry as
+  // if it were research already done.
+  let stop: GatherStop = 'stalled';
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     // Stop, don't throw: the evidence bought so far is in the shared store and is
@@ -113,6 +136,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     // whether this agent can still afford to write.
     if (input.spend?.budget().exceeded) {
       await note('Stopping research: the job reached its cost ceiling.');
+      stop = 'ceiling';
       break;
     }
     const res = await model.provider.generate({
@@ -144,6 +168,9 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
         });
         continue;
       }
+      // The agent stopped asking for tools: it is done, whether it spent the whole
+      // allowance or decided it had enough.
+      stop = turnsUsed >= maxTurns ? 'budget' : 'done';
       break;
     }
 
@@ -238,5 +265,5 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     }
   }
 
-  return { turns: turnsUsed };
+  return { turns: turnsUsed, stop };
 }

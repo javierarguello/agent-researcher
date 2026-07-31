@@ -23,7 +23,7 @@ import {
   type ResearchTemplate,
 } from '../templates/types.js';
 import { degradedSectionNote } from '../jobs/report-copy.js';
-import { createEvidence, gather, type Evidence } from './gather.js';
+import { createEvidence, gather, gatherCompleted, type Evidence } from './gather.js';
 import { synthesizeStructured } from './synthesize.js';
 import {
   buildAgentKickoff,
@@ -638,10 +638,13 @@ async function runAgent(ctx: {
       });
       counter.turns += gres.turns;
       trace.turnsUsed = gres.turns;
-      // Only a loop that RETURNED and actually spent turns counts as done: a
-      // throw mid-loop, or a pass that found nothing, both deserve another go.
-      // Set after the await, so a failure above leaves it false.
-      ctx.research.done = gres.turns > 0;
+      // Only a FINISHED pass may be reused (Javier, 2026-07-31: a retry takes what
+      // is finished, never something half-done). `gatherCompleted` is the whole
+      // rule: the agent stopped asking for tools, or spent its full allowance, and
+      // it actually bought something. A loop cut off by the cost ceiling or by
+      // running out of iterations is unfinished work, and a throw never reaches
+      // this line at all.
+      ctx.research.done = gatherCompleted(gres);
     }
 
     // `gather` stops at the ceiling rather than throwing, so the evidence it did
