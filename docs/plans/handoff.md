@@ -63,24 +63,23 @@ from it rather than summed a second time. Seeded from the checkpoint — a
 per-dispatch cap is 8× no cap. A job that trips it finalizes instead of
 re-dispatching into the same wall.
 
-**The ceiling's policy, decided by Javier (2026-07-30):** a job that trips it is
-**held** — parked for an admin, credits still consumed, checkpoint kept and NOT
-degraded. Approve → resumes uncapped from where it stopped, nothing re-charged.
-Reject → failed + refunded. Nobody decides within `JOB_HOLD_TTL_HOURS` → the same,
-via an hourly sweep (`/expire-holds` on the worker, wired in `infra/deploy.sh`;
-without a scheduler, holds never expire on their own). A held job does NOT count
-against the one-in-flight cap — that was E2's shape.
+**Refunds are manual. All of them (Javier, 2026-07-31).** A job that cannot finish
+— cost ceiling, unstorable report, or a run that could not be assembled — goes to
+the alert state (`held`): credits still consumed, checkpoint kept, report stats NOT
+booked. An admin then has four moves and the job moves no other way: continue
+(uncapped, from the checkpoint), refund & close, close without refund, or top the
+buyer up via `/admin/credits/grant`.
 
-The same hold covers a report that ran, was paid for, and could not be uploaded:
-that used to refund 100% and throw the report away. Uploads retry now, and a
-persistent failure holds instead.
+There is **no expiry and no sweep** — an expiry that refunds is the automatic
+refund this decision removes. A hold waits indefinitely, which makes
+`GET /admin/jobs?status=held` the queue rather than a report. One exception,
+upstream: an enqueue failure still refunds inline, because nothing ran.
 
 **The ceiling is per model and mode** (`modes[key].maxCostUsd` → `MAX_JOB_COST_USD`).
 This is a catalog; one global number is a safety net for one model and a wall for
-another. Set it from measured cost — `budgetStoppedReports` rising means the ceiling
-is too low, not that anyone is abusing it. `MAX_JOB_COST_USD` still defaults to $20,
-which was picked without a measured per-job figure. That is the one number here
-still resting on a guess.
+another. `MAX_JOB_COST_USD` still defaults to $20, picked without a measured
+per-job figure — the one number here still resting on a guess. `budgetStoppedReports`
+rising means the ceiling is too low, not that anyone is abusing it.
 
 **The SPA renders the directives** (`apps/fbizlab/src/pages/NewReport.tsx`, section
 04) entirely from the manifest — no field names, no option labels, no translations
