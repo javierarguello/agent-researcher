@@ -32,8 +32,18 @@ import {
   buildSynthesizerPrompt,
   buildSystemPrompt,
   isLanguage,
+  MAX_HANDOFF_CHARS,
   type Language,
 } from './prompt.js';
+
+/**
+ * The key an agent writes its handoff under, alongside its sections.
+ *
+ * Underscored and stripped before the slice is merged: it is a message between
+ * steps, not part of the report, and a report that suddenly grew a `_handoff`
+ * section would break every consumer of the schema contract.
+ */
+const HANDOFF_KEY = '_handoff';
 
 export interface ResearchProgress {
   /** Agent id, or a lifecycle phase ('planning' | 'assembling' | 'done'). */
@@ -138,6 +148,8 @@ export interface Checkpoint {
   extracted?: ExtractedPage[];
   /** Agent ids already completed — skipped on resume. */
   doneAgentIds: string[];
+  /** What each finished agent reported to the steps after it, by agent id. */
+  handoffs?: Record<string, string>;
   degraded: string[];
   /** Traces of agents already completed on prior dispatches — restored so the final
    *  trace/summary reflects the WHOLE run, not just the last resumed dispatch. */
@@ -226,6 +238,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   const evidence = createEvidence();
   const report: Record<string, unknown> = { ...(input.resume?.report ?? {}) };
   const degraded: string[] = [...(input.resume?.degraded ?? [])];
+  // What each finished agent told the ones after it. Carried in the checkpoint, so
+  // a resumed dispatch does not hand later steps an empty summary of the work its
+  // predecessors already did.
+  const handoffs: Record<string, string> = { ...(input.resume?.handoffs ?? {}) };
   const done = new Set<string>(input.resume?.doneAgentIds ?? []);
   const warnings: string[] = [];
   const counter = { turns: 0 };
@@ -295,6 +311,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     sources: evidence.sources,
     extracted: evidence.extracted.slice(-CHECKPOINT_MAX_PAGES),
     doneAgentIds: [...done],
+    handoffs,
     degraded,
     agentTraces: slimAgents(),
     cost: trace.cost,
@@ -405,8 +422,9 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         let ok = false;
         let failure: Error | undefined;
         try {
-          const { slice } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend, research });
+          const { slice, handoff } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend, research, handoffs });
           Object.assign(report, slice);
+          if (handoff) handoffs[agent.id] = handoff;
           at.status = 'ok';
           at.output = slice;
           done.add(agent.id);
@@ -598,17 +616,34 @@ async function runAgent(ctx: {
   spend: CostSink;
   /** Cross-attempt state for THIS agent: has its research loop already run? */
   research: { done: boolean };
+  /** What every finished agent reported, keyed by agent id. */
+  handoffs: Record<string, string>;
   // Returns the slice only. Cost lives in the sink, read by the caller on BOTH
   // paths — returning it as well would invite someone tidying this signature to
   // add it back, doubling every agent's cost with the suite still green.
-}): Promise<{ slice: Record<string, unknown> }> {
+}): Promise<{ slice: Record<string, unknown>; handoff: string }> {
   const { template, agent, brief, language, depth, system, evidence, report, counter, trace } = ctx;
   const depthDirective = depth.directive;
   const owned = ownedKeys(agent);
   const sections = owned.map((k) => sectionByKey(template, k)).filter(Boolean) as ReportSection[];
-  const schema = sectionSubsetSchema(template, owned);
+  // The agent writes its own handoff in the SAME call that writes its sections:
+  // no extra model call, and the summary is written by whoever did the work rather
+  // than by something reading its output afterwards.
+  const schema = sectionSubsetSchema(template, owned).extend({
+    // No `.max()` here on purpose. A length limit in the SCHEMA makes the model's
+    // verbosity a failure mode for the whole write: one over-long briefing and the
+    // agent's sections fail validation, retry, and eventually degrade. The limit is
+    // enforced where it belongs — on the way in, by cutting it (see splitHandoff).
+    [HANDOFF_KEY]: z
+      .string()
+      .describe(
+        'A short briefing for the LATER steps that build on your work: what you found, the figures that ' +
+          'matter, and anything they should not repeat or contradict. Written for a colleague who will not ' +
+          'read your sections in full. Plain prose, no headings.',
+      ),
+  });
   const synthModel = resolveModel(agent.model ?? config.llm.defaultSynthModel);
-  const context = contextFor(template, agent, report);
+  const context = contextFor(template, agent, report, ctx.handoffs);
 
   const note = (m: string) => {
     if (trace.notes.length < MAX_NOTES) trace.notes.push(`${new Date().toISOString()} ${m}`);
@@ -631,7 +666,7 @@ async function runAgent(ctx: {
         spend: ctx.spend,
         model: gatherModel,
         system,
-        messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, context, sites }) }],
+        messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, handoffs: context.handoffs, sites }) }],
         maxTurns: budget,
         evidence,
         onNote: (m) => note(m),
@@ -673,19 +708,32 @@ async function runAgent(ctx: {
             sections,
             evidence: evidence.sources,
             extracted: evidence.extracted,
-            context,
+            context: context.sections,
+            handoffs: context.handoffs,
             lang: language,
             depthDirective,
           });
     const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-    return { slice: sres.value as Record<string, unknown> };
+    return splitHandoff(sres.value as Record<string, unknown>);
   }
 
   // synthesizer — compose from upstream only.
   await note(`Composing (${owned.join(', ')}).`);
-  const text = buildSynthesizerPrompt({ agent, brief, sections, context, lang: language, depthDirective });
+  const text = buildSynthesizerPrompt({ agent, brief, sections, context: context.sections, handoffs: context.handoffs, lang: language, depthDirective });
   const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-  return { slice: sres.value as Record<string, unknown> };
+  return splitHandoff(sres.value as Record<string, unknown>);
+}
+
+/**
+ * Separate the between-steps message from the report sections, and bound it here.
+ *
+ * Cutting rather than rejecting: a briefing that ran long is still a useful
+ * briefing, and it must never be the reason an agent's sections are thrown away.
+ */
+function splitHandoff(value: Record<string, unknown>): { slice: Record<string, unknown>; handoff: string } {
+  const { [HANDOFF_KEY]: handoff, ...slice } = value;
+  const text = typeof handoff === 'string' ? handoff.trim() : '';
+  return { slice, handoff: text.length > MAX_HANDOFF_CHARS ? `${text.slice(0, MAX_HANDOFF_CHARS)}…` : text };
 }
 
 // --- DAG ---------------------------------------------------------------------
@@ -751,14 +799,18 @@ function contextFor(
   template: ResearchTemplate<any>,
   agent: AgentSpec,
   report: Record<string, unknown>,
-): Record<string, unknown> {
+  handoffs: Record<string, string>,
+): { sections: Record<string, unknown>; handoffs: Record<string, string> } {
   const producers = producerOf(template);
   const byId = new Map(template.agents.map((a) => [a.id, a]));
   const keys = new Set<string>();
+  const notes: Record<string, string> = {};
   for (const depId of depsOf(agent, producers)) {
     for (const k of ownedKeys(byId.get(depId) ?? ({} as AgentSpec))) keys.add(k);
+    const note = handoffs[depId];
+    if (note) notes[byId.get(depId)?.label ?? depId] = note;
   }
-  return pick(report, [...keys]);
+  return { sections: pick(report, [...keys]), handoffs: notes };
 }
 
 // --- utils -------------------------------------------------------------------

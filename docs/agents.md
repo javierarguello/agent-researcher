@@ -149,10 +149,52 @@ An agent receives, in its prompt:
 
 - the shared **research brief** (`buildBrief(effectiveParams)`),
 - its **section guidance** (each section's `guidance` text),
-- **context** — the current JSON of the sections produced by its dependency agents
-  (read-only; "build on these, stay consistent, don't contradict"),
+- the **handoffs** of its dependencies — what each earlier step reported, in its own
+  words (see below),
+- **context** — the JSON of the sections its dependencies produced, read-only and
+  bounded (see below),
 - for producers, the **evidence dossier** — up to 48 search snippets (`[S#]`) + up
   to 14 fetched full pages (`[P#]`), instructed to cite real URLs inline.
+
+### Handoffs — what one step tells the next
+
+Every agent writes a short briefing for the steps that follow, **in the same call
+that writes its sections** (`_handoff`, stripped before the slice is merged — it is
+a message between steps, never a report section). No extra model call, and it is
+written by whoever did the work rather than by something reading its output
+afterwards.
+
+Handoffs and raw sections are **additive**, because they carry different things: a
+handoff is what the agent thought mattered, the sections carry the FIGURES that
+prose loses and that the chart and financial agents cannot work without.
+
+Where each goes:
+
+| | handoffs | raw sections |
+|---|---|---|
+| research loop (`buildAgentKickoff`) | ✅ | ❌ |
+| the write (synthesis prompts) | ✅ | ✅, bounded |
+
+The research loop gets no raw sections at all. It decides what to SEARCH FOR next
+and it re-sends its whole prompt on every turn, so carrying the sections meant
+paying for them once per turn to inform a decision that only needs to know what is
+already covered. Measured on a comprehensive report, that re-sending was **68% of
+the job's entire input**.
+
+The write gets both, with the raw half sharing a **total** budget
+(`MAX_CONTEXT_CHARS`) across all dependencies, split evenly and each cut with a
+marker saying where the rest lives. Bounding the total rather than each section is
+the point: almost no single section is oversized, and the exec-summary writer
+depends on twelve of them.
+
+Handoffs are carried in the checkpoint, so a resumed dispatch does not hand its
+later steps an empty summary of work its predecessors already did. A handoff that
+runs long is **cut, never rejected** — a length limit in the schema would make a
+model's verbosity a validation failure for the agent's whole write.
+
+Measured effect on one comprehensive report: total input 2,304k → 1,336k
+characters (−42%), and the largest single call 114k → 65k. See
+`packages/core/test/context-size.measure.test.ts` (`MEASURE=1`).
 
 The shared **system prompt** (`buildSystemPrompt`) is identical for every agent:
 the template `basePrompt` plus, if the template sets `instructionsField`, the

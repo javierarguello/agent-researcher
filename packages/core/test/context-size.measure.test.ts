@@ -30,8 +30,9 @@ const PROSE = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do e
 
 /** Which agent owns a set of section keys, so a call can be attributed. */
 function agentFor(keys: string[]): string {
+  const sectionKeys = keys.filter((k) => !k.startsWith('_')); // drop the handoff
   const owned = (a: { produces?: string[]; enriches?: string[] }) => [...(a.produces ?? []), ...(a.enriches ?? [])];
-  return template.agents.find((a) => keys.every((k) => owned(a).includes(k)))?.id ?? keys.join('+');
+  return template.agents.find((a) => sectionKeys.every((k) => owned(a).includes(k)))?.id ?? sectionKeys.join('+');
 }
 
 interface Row { agent: string; systemChars: number; contextChars: number; totalChars: number }
@@ -50,7 +51,8 @@ class Measuring implements LlmProvider {
     if (opts.responseSchema) {
       const keys = Object.keys((opts.responseSchema as { properties?: object }).properties ?? {});
       const text = JSON.stringify(opts.messages.map((m) => m.text ?? '').join(''));
-      const context = text.includes('CONTEXT —') ? text.slice(text.indexOf('CONTEXT —')) : '';
+      const marker = 'SECTIONS ALREADY PRODUCED';
+      const context = text.includes(marker) ? text.slice(text.indexOf(marker)) : '';
       this.writes.push({
         agent: agentFor(keys),
         systemChars: opts.system.length,
@@ -67,7 +69,7 @@ class Measuring implements LlmProvider {
       // The kickoff carries the agent's upstream context, and it is re-sent on
       // EVERY turn — so its share is the multiplier worth knowing.
       const kickoff = opts.messages[0]?.text ?? '';
-      const ctx = kickoff.includes('CONTEXT —') ? kickoff.slice(kickoff.indexOf('CONTEXT —')) : '';
+      const ctx = kickoff.includes('SECTIONS ALREADY PRODUCED') ? kickoff.slice(kickoff.indexOf('SECTIONS ALREADY PRODUCED')) : '';
       this.loopContext.push(ctx.length);
       const toolMsgs = opts.messages.filter((m) => m.role === 'tool').length;
       if (toolMsgs === 0) {

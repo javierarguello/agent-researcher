@@ -123,25 +123,33 @@ const promptWith = (context: Record<string, unknown>) =>
   buildProducerSynthPrompt({ agent, brief: 'b', sections, evidence: [], extracted: [], context, lang: 'en' });
 
 describe('an agent’s context does not carry the whole report', () => {
-  it('trims a section that is too long, and says it did', () => {
-    const huge = { overview: 'z'.repeat(80_000) };
-    const prompt = promptWith({ deep_dives: huge });
+  it('trims a section that is too long, and says where the rest is', () => {
+    const prompt = promptWith({ deep_dives: { overview: 'z'.repeat(80_000) } });
 
-    expect(prompt.length).toBeLessThan(40_000);
-    expect(prompt).toMatch(/too long to include/i);
-    // Where the rest is, so the agent does not treat the gap as missing data.
+    expect(prompt.length).toBeLessThan(60_000);
+    expect(prompt).toMatch(/trimmed to fit/i);
+    // Where the rest is, so the agent does not read the gap as missing data.
     expect(prompt).toMatch(/complete in the report/i);
   });
 
-  it('trims per section, so one long one cannot crowd out the others', () => {
+  it('bounds the TOTAL, not each section on its own', () => {
+    // The per-section cap was the wrong shape: measured on a comprehensive report
+    // almost no single section exceeded it, so the exec-summary writer still got
+    // 109k across a dozen dependencies that were each individually fine.
+    const many = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [`section_${i}`, { overview: 'z'.repeat(20_000) }]),
+    );
+    const prompt = promptWith(many);
+    expect(prompt.length).toBeLessThan(70_000);
+  });
+
+  it('gives every dependency a share, so none of them vanishes', () => {
     const prompt = promptWith({
       big: { overview: 'z'.repeat(80_000) },
       small_one: { note: 'first' },
       small_two: { note: 'second' },
     });
 
-    // A blanket cut of the whole blob drops whatever sorts last. Every dependency
-    // an agent was given still has to be there.
     expect(prompt).toContain('first');
     expect(prompt).toContain('second');
   });
@@ -149,16 +157,19 @@ describe('an agent’s context does not carry the whole report', () => {
   it('leaves an ordinary context untouched', () => {
     const prompt = promptWith({ market: { overview: 'A normal section.' } });
     expect(prompt).toContain('A normal section.');
-    expect(prompt).not.toMatch(/too long to include/i);
+    expect(prompt).not.toMatch(/trimmed to fit/i);
   });
 
   it('keeps the block valid JSON, trimmed or not', () => {
-    const prompt = promptWith({ big: { overview: 'z'.repeat(80_000) }, small: { note: 'x' } });
+    const many = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [`s${i}`, { overview: 'z'.repeat(20_000) }]),
+    );
+    const prompt = promptWith({ ...many, small: { note: 'x' } });
     const block = prompt.split('"""')[1]!;
     const parsed = JSON.parse(block) as Record<string, unknown>;
 
-    expect(Object.keys(parsed)).toEqual(['big', 'small']);
-    expect(typeof parsed.big).toBe('string'); // the trimmed stand-in
+    expect(Object.keys(parsed)).toHaveLength(13);
+    expect(typeof parsed.s0).toBe('string'); // the trimmed stand-in
     expect(parsed.small).toEqual({ note: 'x' });
   });
 });

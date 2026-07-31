@@ -110,33 +110,64 @@ function sectionGuidance(sections: ReportSection[]): string {
 }
 
 /**
- * Characters one upstream section may contribute to another agent's context.
+ * How much RAW upstream section text one agent may be handed, across all of its
+ * dependencies together.
  *
- * The block used to be every dependency serialized whole, with no cap at all —
- * and the exec-summary writer depends on twelve agents, so it received the entire
- * report as input. One long section (deep dives, financials) could crowd out every
- * other one and cost more than the writing it is meant to inform.
+ * A per-section cap was the wrong shape: measured on a comprehensive report, almost
+ * no single section exceeds it, so it saved ~15% while the exec-summary writer
+ * still received 109k characters — a dozen dependencies, none of them individually
+ * large. The budget that matters is the total.
  */
-const MAX_CONTEXT_SECTION_CHARS = 12_000;
+const MAX_CONTEXT_CHARS = 40_000;
 
-/** JSON of already-completed sections that this agent depends on / will enrich. */
-function contextBlock(context: Record<string, unknown>): string {
-  if (!Object.keys(context).length) return '';
-  // Trimmed per SECTION rather than by cutting the whole blob: a blanket cut drops
-  // whatever happens to sort last, while this keeps every dependency represented.
-  const trimmed: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(context)) {
-    const json = JSON.stringify(value);
-    trimmed[key] =
-      json && json.length > MAX_CONTEXT_SECTION_CHARS
-        ? `[This section is summarised here: ${json.length.toLocaleString('en-US')} characters were too long to ` +
-          `include. It is complete in the report. Opening extract: ${json.slice(0, MAX_CONTEXT_SECTION_CHARS)}]`
-        : value;
+/** What an agent tells the ones that come after it. Bounded by the schema it writes. */
+export const MAX_HANDOFF_CHARS = 1_500;
+
+/**
+ * The upstream context: every dependency's HANDOFF, then as much of the raw
+ * sections as the budget allows.
+ *
+ * Additive rather than either/or, because the two carry different things. A handoff
+ * is what the agent that did the work decided mattered — always small, always
+ * present, and the only thing the biggest consumers (a summary writer) actually
+ * need. The raw sections carry the FIGURES, which a prose digest loses and which
+ * the chart and financial agents cannot work without; they get as much as fits.
+ *
+ * So a context that no longer fits degrades to "every dependency is represented,
+ * the detailed ones are cut" rather than "the last few dependencies vanish".
+ */
+function contextBlock(context: Record<string, unknown>, handoffs: Record<string, string> = {}): string {
+  const notes = Object.entries(handoffs).filter(([, v]) => v?.trim());
+  if (!Object.keys(context).length && !notes.length) return '';
+
+  let out = '';
+  if (notes.length) {
+    out +=
+      `\n\nWHAT THE EARLIER STEPS REPORTED (each in its own words — this is the summary of ` +
+      `the work so far, and it is complete):\n` +
+      notes.map(([id, note]) => `- ${id}: ${note}`).join('\n');
   }
-  return (
-    `\n\nCONTEXT — sections already produced by upstream agents (read-only; build on them, stay ` +
-    `consistent, do not contradict):\n"""\n${JSON.stringify(trimmed, null, 2)}\n"""`
-  );
+
+  const keys = Object.keys(context);
+  if (keys.length) {
+    // Shared evenly, so one long section cannot starve the others, and never below
+    // a floor that would make a share meaningless.
+    const share = Math.max(2_000, Math.floor(MAX_CONTEXT_CHARS / keys.length));
+    const trimmed: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(context)) {
+      const json = JSON.stringify(value);
+      trimmed[key] =
+        json && json.length > share
+          ? `[Trimmed to fit: ${json.length.toLocaleString('en-US')} characters, of which the opening is ` +
+            `below. This section is complete in the report, and the summary above covers it. ` +
+            `Extract: ${json.slice(0, share)}]`
+          : value;
+    }
+    out +=
+      `\n\nSECTIONS ALREADY PRODUCED (read-only; build on them, stay consistent, do not ` +
+      `contradict). Use these for exact figures:\n"""\n${JSON.stringify(trimmed, null, 2)}\n"""`;
+  }
+  return out;
 }
 
 // --- Producer: research kickoff ---------------------------------------------
@@ -146,10 +177,11 @@ export function buildAgentKickoff(input: {
   brief: string;
   sections: ReportSection[];
   maxTurns: number;
-  context: Record<string, unknown>;
+  /** What the earlier steps reported. NOT their sections — see below. */
+  handoffs: Record<string, string>;
   sites?: string[];
 }): string {
-  const { agent, brief, sections, maxTurns, context, sites } = input;
+  const { agent, brief, sections, maxTurns, handoffs, sites } = input;
   return (
     `RESEARCH BRIEF (shared goal):\n${brief}\n\n` +
     `YOUR ROLE: ${agent.objective}\n` +
@@ -159,7 +191,12 @@ export function buildAgentKickoff(input: {
         `Prioritize them (e.g. a few \`site:\` queries) IN ADDITION TO open web search; never limit yourself to them.\n`
       : '') +
     `\nYou are responsible ONLY for these report sections:\n${sectionGuidance(sections)}\n` +
-    contextBlock(context) +
+    // Handoffs only. This loop decides what to SEARCH FOR next; it does not write
+    // anything, and it re-sends its whole prompt on every turn — so the raw
+    // sections were being paid for once per turn to inform a decision that needs
+    // to know what is already covered, not the text of it. Measured at 68% of a
+    // comprehensive report's total input.
+    contextBlock({}, handoffs) +
     `\n\nSearch the web in ENGLISH (best recall; the report is written in the target language later). ` +
     `Proceed: (1) call \`update_plan\` with an initial plan scoped to YOUR sections; (2) \`web_search\` ` +
     `for focused queries, then \`fetch_page\` on the most promising URLs to read details snippets omit; ` +
@@ -178,10 +215,11 @@ export function buildProducerSynthPrompt(input: {
   evidence: SearchResult[];
   extracted: ExtractedPage[];
   context: Record<string, unknown>;
+  handoffs?: Record<string, string>;
   lang: Language;
   depthDirective?: string;
 }): string {
-  const { agent, brief, sections, evidence, extracted, context, lang } = input;
+  const { agent, brief, sections, evidence, extracted, context, lang, handoffs = {} } = input;
   const depthDirective = input.depthDirective ?? DEFAULT_DEPTH_DIRECTIVE;
   const dossier =
     !evidence.length && !extracted.some((p) => p.ok && p.content)
@@ -192,7 +230,7 @@ export function buildProducerSynthPrompt(input: {
     `RESEARCH BRIEF:\n${brief}\n\n` +
     `YOUR SECTIONS (the JSON MUST have exactly these top-level keys, matching the provided schema):\n` +
     `${sectionGuidance(sections)}\n` +
-    contextBlock(context) +
+    contextBlock(context, handoffs) +
     `\n\nEVIDENCE:\n${dossier}\n\n` +
     `${depthDirective}\n\n${MARKDOWN_DIRECTIVE}\n\n${languageDirective(lang)}\n\n` +
     `Return ONLY the JSON object for your sections — no preamble, no code fences.`
@@ -233,17 +271,18 @@ export function buildSynthesizerPrompt(input: {
   brief: string;
   sections: ReportSection[];
   context: Record<string, unknown>;
+  handoffs?: Record<string, string>;
   lang: Language;
   depthDirective?: string;
 }): string {
-  const { agent, brief, sections, context, lang } = input;
+  const { agent, brief, sections, context, lang, handoffs = {} } = input;
   const depthDirective = input.depthDirective ?? DEFAULT_DEPTH_DIRECTIVE;
   return (
     `Compose your assigned report sections as a single JSON object, based ONLY on the brief and the ` +
     `already-produced sections below. ${agent.objective}\n\n` +
     `RESEARCH BRIEF:\n${brief}\n\n` +
     `YOUR SECTIONS (exact top-level JSON keys, matching the schema):\n${sectionGuidance(sections)}\n` +
-    contextBlock(context) +
+    contextBlock(context, handoffs) +
     `\n\n${depthDirective}\n\n${MARKDOWN_DIRECTIVE}\n\n${languageDirective(lang)}\n\n` +
     `Do not introduce facts or figures absent from the context. Return ONLY the JSON object — no preamble, ` +
     `no code fences.`
