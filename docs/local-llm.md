@@ -94,13 +94,24 @@ on (all of them are also covered in `apps/api/test/preflight.test.ts`):
 
 ## Tests: mocked by default, local model on request
 
-Everything runs offline with no Docker and no Ollama. Firestore and Cloud Storage
-are in-memory fakes (`packages/core/test/mocks/{firestore,storage}.ts`, aliased in
-both vitest configs so no file can forget to stub them) and the LLM is a stub
-provider installed in `apps/api/test/setup.ts`:
+Everything runs offline with no Docker and no Ollama, and **no test can spend
+money** — that is enforced, not assumed:
+
+- Firestore and Cloud Storage are in-memory fakes
+  (`packages/core/test/mocks/{firestore,storage}.ts`), aliased in every vitest
+  config so no file can forget to stub them.
+- The paid model providers are replaced by one that **throws**
+  (`mocks/no-paid-calls.ts`). A test that forgets its stub fails loudly with the
+  reason instead of quietly billing a live model. `no-paid-calls.test.ts` proves it
+  fires, and that no search credentials exist in the test environment either.
+- Anything genuinely end-to-end runs against the LOCAL model: `TEST_LLM=ollama`
+  points every alias at the server in `docker-compose.local.yml`. Live mode keeps
+  the paid-provider guard installed, so even there nothing can reach Vertex.
+
+The LLM stub for the request path lives in `apps/api/test/setup.ts`:
 
 ```bash
-npm test                                          # core + api + worker, fully mocked
+npm test                                          # core + api + worker + web app, fully mocked
 npm run test -w @agent-researcher/core -- moderation
 ```
 
@@ -119,6 +130,8 @@ npm run test:local-llm  # TEST_LLM=ollama → core + api suites against qwen2.5:
 | Request review | `apps/api/test/preflight.test.ts` | `preflight.live.test.ts` |
 | Report generation | `packages/core/test/report.test.ts` | `report.live.test.ts` |
 | Held job → admin decision | `apps/api/test/hold-e2e.test.ts` | the same file, `TEST_LLM=ollama` |
+| Queue dispatch (ack vs retry) | `apps/worker/test/run.test.ts` | — (no model involved) |
+| The buyer's form + job view | `apps/fbizlab/test/*.test.tsx` | — (no model involved) |
 
 The two are complements. The stub can force answers a real model rarely
 produces — prose where a code belongs, a correction that swaps the city, an enum

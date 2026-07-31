@@ -6,6 +6,7 @@ import { __setProviderForTests, type GenerateResult } from '@agent-researcher/co
 import { __resetBurst } from '../src/public-limit.js';
 import { clearPublicCache } from '../src/cache.js';
 import { isLive } from './llm-mode.js';
+import { forbidPaidProviders } from '../../../packages/core/test/mocks/no-paid-calls.js';
 
 /**
  * Stand-in for the cheap model, so the assisted pre-flight pass can be exercised
@@ -24,6 +25,9 @@ export const fakeLlm = {
   },
 };
 if (!isLive) __setProviderForTests('gemini-vertex', fakeLlm.provider);
+// In LIVE mode every alias points at the local server, so nothing should reach
+// Vertex — this makes that a hard failure rather than a silent bill.
+if (isLive) forbidPaidProviders();
 
 beforeEach(() => {
   __resetDb();
