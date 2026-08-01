@@ -637,9 +637,10 @@ async function runAgent(ctx: {
     [HANDOFF_KEY]: z
       .string()
       .describe(
-        'A short briefing for the LATER steps that build on your work: what you found, the figures that ' +
-          'matter, and anything they should not repeat or contradict. Written for a colleague who will not ' +
-          'read your sections in full. Plain prose, no headings.',
+        'A short briefing for the LATER steps that build on your work: what you found, the figures and ' +
+          'names that matter, and anything they should not repeat or contradict. Written for a colleague ' +
+          'who will not read your sections in full. Full sentences — not a list of links, not citations, ' +
+          'not headings. A briefing made of bare URLs tells the next step nothing.',
       ),
   });
   const synthModel = resolveModel(agent.model ?? config.llm.defaultSynthModel);

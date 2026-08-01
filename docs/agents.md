@@ -192,9 +192,22 @@ later steps an empty summary of work its predecessors already did. A handoff tha
 runs long is **cut, never rejected** — a length limit in the schema would make a
 model's verbosity a validation failure for the agent's whole write.
 
+**Anything an agent will REWRITE is exempt from all of this** and arrives whole, in
+the loop as well as the write (`currentBlock`). An agent that both produces and
+enriches is schema-forced to re-emit the enriched section and its output REPLACES
+what is in the report — so a trimmed copy does not weaken the rewrite, it deletes
+whatever fell past the cut, permanently, with the job completing green.
+
 Measured effect on one comprehensive report: total input 2,304k → 1,336k
 characters (−42%), and the largest single call 114k → 65k. See
 `packages/core/test/context-size.measure.test.ts` (`MEASURE=1`).
+
+**Residual risk, observed against a real 3B model:** a small model can write a
+degenerate handoff (one run answered with two bare markdown links). The design
+absorbs it at the WRITE, where the raw sections still travel — but a producer's
+research loop sees handoffs only, so a degenerate one from a dependency leaves that
+loop under-informed. The schema description now argues against exactly that shape.
+Worth re-checking on a stronger model before assuming it is theoretical.
 
 The shared **system prompt** (`buildSystemPrompt`) is identical for every agent:
 the template `basePrompt` plus, if the template sets `instructionsField`, the
