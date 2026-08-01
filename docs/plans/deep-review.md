@@ -95,7 +95,7 @@ together, and `store.ts` is the only writer. What is left is who is trusted.
   traces**, and the prompt `brief`; `metadata.json` and `report.json` hold the cost
   block. It works with a `report-read` token too — the one the docs describe as
   unable to read anything else.
-- ~~**J2 — Account pre-hijack survives.**~~ **Closed `PENDING`.** `index.ts:437`. **Reproduced.** Register the
+- ~~**J2 — Account pre-hijack survives.**~~ **Closed `e375a65`.** `index.ts:437`. **Reproduced.** Register the
   victim's address with the attacker's password; the victim clicks a genuine
   "verify your email"; the attacker signs in. Reaches admin only if the admin app is
   given `emailFrom`/`webUrl`.
