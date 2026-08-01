@@ -163,3 +163,34 @@ describe('a refund reads the job, and the ledger, not the caller', () => {
     expect(await getBalance('other-app', 'stranger@x.com')).toBe(other);
   });
 });
+
+describe('the ledger refuses what a count cannot be', () => {
+  it('rejects a non-positive consumption instead of raising the balance', async () => {
+    await grantCredits({ appId: APP, userId: USER, credits: 10, idempotencyKey: `neg-${Math.random()}` });
+    const before = await getBalance(APP, USER);
+
+    // The sign lives in the entry TYPE, not the number. A "consumption" of -5 used
+    // to pass the sufficiency check trivially and then add five.
+    await expect(consumeCredits(APP, USER, -5, 'neg1')).rejects.toThrow(/positive whole numbers/i);
+    await expect(consumeCredits(APP, USER, 0, 'neg2')).rejects.toThrow(/positive whole numbers/i);
+    await expect(consumeCredits(APP, USER, 1.5, 'neg3')).rejects.toThrow(/positive whole numbers/i);
+
+    expect(await getBalance(APP, USER)).toBe(before);
+  });
+
+  it('scopes a grant key to the person it grants to', async () => {
+    // One global namespace meant the same key for two users silently no-opped the
+    // second: `applied: false` if the admin looked, and nothing at all if not.
+    await grantCredits({ appId: APP, userId: 'a@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
+    await grantCredits({ appId: APP, userId: 'b@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
+
+    expect(await getBalance(APP, 'a@x.com')).toBe(7);
+    expect(await getBalance(APP, 'b@x.com')).toBe(7);
+  });
+
+  it('still refuses the same key twice for the SAME person', async () => {
+    await grantCredits({ appId: APP, userId: 'c@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
+    await grantCredits({ appId: APP, userId: 'c@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
+    expect(await getBalance(APP, 'c@x.com')).toBe(7);
+  });
+});

@@ -70,6 +70,15 @@ interface DeltaInput {
 
 /** Apply one ledger entry + balance change atomically. Idempotent by entry id. */
 async function applyEntry(entry: DeltaInput): Promise<{ applied: boolean; balance: number }> {
+  // Every amount in this file is a COUNT of credits, and the sign is carried by the
+  // entry type, not the number. Without this a "consumption" of -5 raises the
+  // balance by five: the `current < entry.credits` check passes trivially and the
+  // delta flips. Unreachable through the API today — the admin route's schema is
+  // `integer, minimum 1` and the mode costs are code — so this is the invariant
+  // being stated rather than left to hold by convention.
+  if (!Number.isInteger(entry.credits) || entry.credits <= 0) {
+    throw new Error(`Credit amounts must be positive whole numbers; got ${entry.credits}`);
+  }
   const balRef = balances().doc(balKey(entry.appId, entry.userId));
   const ledRef = ledger().doc(entry.id);
   return firestore().runTransaction(async (tx) => {
@@ -112,7 +121,13 @@ export function grantCredits(input: {
   idempotencyKey?: string;
 }) {
   const { idempotencyKey, ...rest } = input;
-  const id = idempotencyKey ? `grant_${idempotencyKey}` : `grant_${ledger().doc().id}`;
+  // Scoped to the recipient. A bare `grant_<key>` is one global namespace, so the
+  // same key for two different users silently no-ops the second — the admin sees
+  // `applied: false` if they look, and nothing at all if they don't. A key means
+  // "this grant, to this person", never "this key, anywhere".
+  const id = idempotencyKey
+    ? `grant_${balKey(input.appId, input.userId)}_${idempotencyKey}`
+    : `grant_${ledger().doc().id}`;
   return applyEntry({ id, type: 'grant', ...rest });
 }
 

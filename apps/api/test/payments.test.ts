@@ -32,7 +32,14 @@ import { getBalance, listTransactions, grantCredits, createApp } from '@agent-re
 import { listStripePlans } from '../src/stripe.js';
 import { seedApp, token, auth } from './helpers.js';
 
-function purchaseEvent(paymentId: string, credits = 15, amount = 10000) {
+function purchaseEvent(
+  paymentId: string,
+  credits = 15,
+  amount = 10000,
+  // Real sessions always carry this; the fixture used to omit it, which is why
+  // "credit only what was actually paid for" had nothing to assert against.
+  paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' = 'paid',
+) {
   return {
     id: `evt_${paymentId}`,
     type: 'checkout.session.completed',
@@ -42,6 +49,7 @@ function purchaseEvent(paymentId: string, credits = 15, amount = 10000) {
         payment_intent: paymentId,
         amount_total: amount,
         currency: 'usd',
+        payment_status: paymentStatus,
         metadata: { appId: 'fbizlab', userId: 'u@x.com', planId: 'investor', credits: String(credits) },
       },
     },
@@ -79,7 +87,8 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
   });
 
   it('checkout returns a session and the plan credit amount', async () => {
-    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 0 });
+    // No seeding: `getBalance` reports 0 for an account with no ledger, and a
+    // zero-credit grant is a no-op write the store now refuses outright.
     const t = await token('fbizlab', 'u@x.com');
     const r = await app.inject({
       method: 'POST',
@@ -200,5 +209,42 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     const results = await Promise.all(Array.from({ length: 5 }, () => webhook(purchaseEvent('pi_race', 15))));
     expect(results.every((r) => r.statusCode === 200)).toBe(true);
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(15); // once, not 5×
+  });
+});
+
+describe('credits wait for the money', () => {
+  beforeEach(async () => {
+    await createApp({ appId: 'fbizlab', name: 'F', active: true } as never).catch(() => {});
+  });
+
+  it('does not credit a session whose payment has not landed', async () => {
+    // `checkout.session.completed` fires when the CHECKOUT finished, not when the
+    // money arrived: a delayed-notification method (bank debits, vouchers) arrives
+    // `unpaid`, and the payment can still fail afterwards.
+    const before = await getBalance('fbizlab', 'u@x.com');
+    const res = await webhook(purchaseEvent('pi_pending', 15, 10000, 'unpaid'));
+
+    expect(res.statusCode).toBe(200);
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(before);
+  });
+
+  it('credits it once the async payment succeeds', async () => {
+    const before = await getBalance('fbizlab', 'u@x.com');
+    await webhook(purchaseEvent('pi_slow', 15, 10000, 'unpaid'));
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(before);
+
+    // Same session object, the event that says it landed.
+    const paid = purchaseEvent('pi_slow', 15, 10000, 'paid');
+    paid.type = 'checkout.session.async_payment_succeeded';
+    await webhook(paid);
+
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(before + 15);
+  });
+
+  it('still credits a zero-cost checkout', async () => {
+    // A 100% promo code settles as `no_payment_required`, and that IS paid.
+    const before = await getBalance('fbizlab', 'u@x.com');
+    await webhook(purchaseEvent('pi_free', 5, 0, 'no_payment_required'));
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(before + 5);
   });
 });

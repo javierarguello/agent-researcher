@@ -106,15 +106,15 @@ together, and `store.ts` is the only writer. What is left is who is trusted.
 - ~~**I2 — `refundForJob` credits the caller's `(appId, userId)`,**~~ **Closed `63c1626`.** while the amount
   comes from the consume entry. `store.ts:153-176`. **Reproduced.** Unreachable via
   the API today; the transaction already reads the entry that holds the right pair.
-- **I3 — Partial failure between `consumeCredits` and `createJob`.**
+- ~~**I3 — Partial failure between `consumeCredits` and `createJob`.**~~ **Closed `PENDING`.**
   `apps/api/src/index.ts:1020-1030`. **Traced.** Charged, no job document, and no
   admin endpoint can refund it — `resolve` needs a held job. Same class: a crash
   between `rejectHold` and `refundForJob` loses the refund the admin chose.
-- **I4 — The store accepts non-positive amounts.** `store.ts:81-85`. **Reproduced**
+- ~~**I4 — The store accepts non-positive amounts.**~~ **Closed `PENDING`.** `store.ts:81-85`. **Reproduced**
   (`consume(-5)` raises the balance). Unreachable today; convention-only.
-- **I5 — Grant idempotency keys share one global namespace.** `store.ts:115`.
+- ~~**I5 — Grant idempotency keys share one global namespace.**~~ **Closed `PENDING`.** `store.ts:115`.
   Same key for two users silently no-ops the second.
-- **I6 — Stripe: credits minted on `checkout.session.completed` without checking
+- ~~**I6 — Stripe: credits minted on `checkout.session.completed` without checking~~ **Closed `PENDING`.**
   `payment_status`,** and no clawback on refunds or disputes.
   `apps/api/src/index.ts:1718-1743`. Config-dependent; policy gap.
 

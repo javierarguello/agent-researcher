@@ -444,3 +444,23 @@ describe('a refused request is counted somewhere (E4)', () => {
     expect((await post(userToken)).statusCode).toBe(202);
   });
 });
+
+describe('charged but no job is not a state we leave anyone in', () => {
+  it('refunds inline when the job document cannot be written', async () => {
+    // The one failure with no way back: `resolve` needs a HELD job document to act
+    // on, so an admin cannot refund something that does not exist — only read the
+    // ledger and grant by hand. Nothing has run at this point, so it refunds itself.
+    const before = await getBalance(APP, USER);
+    const jobs = await import('@agent-researcher/core');
+    const spy = vi.spyOn(jobs, 'createJob').mockRejectedValueOnce(new Error('firestore unavailable'));
+
+    const res = await post(userToken);
+    expect(res.statusCode).toBe(503);
+    expect(res.json().creditsRefunded).toBe(true);
+    expect(await getBalance(APP, USER)).toBe(before);
+
+    // …and the slot goes back too, or the buyer is locked out of retrying.
+    expect(await inFlightSlots(APP, USER)).toBe(0);
+    spy.mockRestore();
+  });
+});

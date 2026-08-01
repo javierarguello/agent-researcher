@@ -1077,7 +1077,22 @@ app.post(
         }
       }
 
-      await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent, slotHeld });
+      // Charged but no job is the one failure with no way back: `resolve` needs a
+      // HELD job document to act on, so an admin cannot refund something that does
+      // not exist — only read the ledger and grant by hand. Refund inline instead,
+      // exactly as the enqueue failure below already does, since nothing has run.
+      try {
+        await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent, slotHeld });
+      } catch (err) {
+        if (config.server.appEnv !== 'local') {
+          const refunded = await refundForJob(appId, userId, jobId, 'Job could not be created').catch(() => false);
+          logEvent(logCtx, 'ERROR', 'job.create_failed', { message: (err as Error).message, refunded });
+        }
+        return reply.code(503).send({
+          error: 'Could not start the report. Nothing was charged — please try again.',
+          creditsRefunded: config.server.appEnv !== 'local',
+        });
+      }
       jobCreated = true;
       logEvent(logCtx, 'INFO', 'job.created', { params: validated.params });
       // The user generated: the assisted previews they ran paid off, so give the
@@ -1765,6 +1780,19 @@ app.post(
 
     // Catalog changed in Stripe → drop the cached plans so every client sees the
     // new price/product on their next request (no waiting out the 30min TTL).
+    // A payment that never landed. Nothing was credited (the guard below refuses an
+    // unpaid session), so this only needs to be visible.
+    if (event.type === 'checkout.session.async_payment_failed') {
+      const s = event.data.object as Stripe.Checkout.Session;
+      const m = (s.metadata ?? {}) as Record<string, string>;
+      logEvent(
+        { jobId: s.id, appId: m.appId ?? '-', userId: m.userId ?? '-' },
+        'WARNING',
+        'credits.purchase_failed',
+        { plan: m.planId, credits: m.credits },
+      );
+    }
+
     if (event.type.startsWith('product.') || event.type.startsWith('price.')) {
       const obj = event.data.object as { metadata?: Record<string, string> };
       const appId = obj.metadata?.appId;
@@ -1772,9 +1800,23 @@ app.post(
       logEvent({ jobId: '-', appId: appId ?? '-', userId: '-' }, 'INFO', 'plans.cache_busted', { event: event.type });
     }
 
-    if (event.type === 'checkout.session.completed') {
+    // `checkout.session.completed` fires when the CHECKOUT finished, which is not
+    // the same as the money arriving: with a delayed-notification method it arrives
+    // `payment_status: 'unpaid'`, and crediting there hands out credits for a
+    // payment that may still fail. `async_payment_succeeded` is the event that says
+    // it landed — it carries the same session object, so one branch serves both.
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const s = event.data.object as Stripe.Checkout.Session;
       const m = (s.metadata ?? {}) as Record<string, string>;
+      if (s.payment_status !== 'paid' && s.payment_status !== 'no_payment_required') {
+        logEvent(
+          { jobId: s.id, appId: m.appId ?? '-', userId: m.userId ?? '-' },
+          'INFO',
+          'credits.purchase_pending',
+          { paymentStatus: s.payment_status, plan: m.planId },
+        );
+        return reply.code(200).send({ received: true });
+      }
       if (m.appId && m.userId && m.credits) {
         const amountUsd = (s.amount_total ?? 0) / 100;
         const credits = Number(m.credits);
