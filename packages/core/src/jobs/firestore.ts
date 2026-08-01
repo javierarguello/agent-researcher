@@ -213,12 +213,17 @@ export async function approveHold(jobId: string, by: string): Promise<boolean> {
     const snap = await tx.get(ref);
     const job = snap.exists ? (snap.data() as ResearchJob) : undefined;
     if (!job || job.status !== 'held') return false;
+    // Uncap ONLY a job that was parked for money. Approving is the admin answering
+    // "is this worth finishing?" — for a transient failure or an upload that could
+    // not complete, that is not also an answer to "may it spend without limit?",
+    // and the ceiling is the only thing bounding 3 attempts × 8 dispatches.
+    const uncap = job.hold?.reason === 'budget_exceeded';
     tx.set(
       ref,
       {
         status: 'queued',
         attempts: 0,
-        budgetOverride: true,
+        ...(uncap ? { budgetOverride: true } : {}),
         hold: { ...job.hold, approvedBy: by, approvedAt: nowIso() },
         error: FieldValue.delete(),
         finishedAt: FieldValue.delete(),
@@ -226,6 +231,31 @@ export async function approveHold(jobId: string, by: string): Promise<boolean> {
       },
       { merge: true },
     );
+    return true;
+  });
+}
+
+/**
+ * Park a job that is queued or running, so a stuck one can be decided on.
+ *
+ * The queue gives up on its own schedule (`--max-retry-duration`), and a job whose
+ * dispatches are slow can exhaust that window before the engine's own finalize
+ * pass. The worker returned a retryable status, the queue dropped the task, and
+ * nothing ever touched the job again: `running` forever, the buyer's slot held, the
+ * credits spent, and `retry` refusing because the job looks alive. It was the one
+ * path that ended without a decision — which is the thing the hold exists to
+ * prevent. This is the way back in.
+ *
+ * Safe against a job that IS still running: `markCompleted` refuses to deliver a
+ * job something else already resolved.
+ */
+export async function parkJob(jobId: string, hold: JobHold): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const job = snap.exists ? (snap.data() as ResearchJob) : undefined;
+    if (!job || (job.status !== 'running' && job.status !== 'queued')) return false;
+    tx.set(ref, { status: 'held', hold, updatedAt: nowIso() }, { merge: true });
     return true;
   });
 }

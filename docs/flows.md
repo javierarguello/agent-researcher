@@ -150,9 +150,18 @@ Admin   POST /admin/jobs/:id/resolve {outcome:'refund'|'dismiss'}  │
    │      rejectHold (transaction); won? → refundForJob on 'refund'│
    │      books the report stats — this is where the job finished  │
 Admin   POST /admin/credits/grant  ─▶ top the buyer up instead     │
+Admin   POST /admin/jobs/:id/park  ─▶ parkJob (transaction)        │
+   │      a stuck `running`/`queued` job → 'held', slot released    │
    │      (a `grant` ledger entry; resolving the job is separate)  │
 ```
 
+- **The queue can give up before the engine finalizes** (Cloud Tasks stops on its
+  own `--max-retry-duration`), leaving a job `running` with nothing to touch it
+  again. `park` is the way back into the decision surface: it frees the buyer's slot
+  immediately, and a straggler run cannot deliver a job something else resolved.
+- **Approving lifts the cost ceiling only for a `budget_exceeded` hold.** For any
+  other reason the ceiling stays: "was that blip worth retrying?" is not also
+  "may it spend without limit?".
 - **No expiry and no sweep.** A hold waits indefinitely. That is the deliberate cost
   of manual-only refunds, and it makes the admin's held-jobs view the only thing that
   moves them.

@@ -38,6 +38,7 @@ import {
   requeueJob,
   approveHold,
   rejectHold,
+  parkJob,
   getAdminStats,
   queryUsers,
   listTemplates,
@@ -2180,6 +2181,53 @@ app.post(
       by: req.auth!.email, reason: job.hold?.reason, spentUsd: job.hold?.spentUsd ?? 0,
     });
     return reply.code(202).send({ jobId, status: 'queued' });
+  },
+);
+
+app.post(
+  '/admin/jobs/:jobId/park',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Park a stuck job so it can be decided on',
+      description:
+        'Moves a `queued` or `running` job into the PAUSED state and frees the slot it was holding. ' +
+        'For a job the queue has given up on: Cloud Tasks stops re-dispatching on its own schedule, and a ' +
+        'job whose dispatches are slow can exhaust that window before the engine finalizes — leaving it ' +
+        '`running` forever, with the buyer locked out of starting another and their credits spent. Once ' +
+        'parked, the ordinary decision applies: approve, refund, or close. Safe on a job that really is ' +
+        'still running: a straggler cannot deliver a job something else already resolved. 409 otherwise.',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', properties: { jobId: { type: 'string', maxLength: 128 } }, required: ['jobId'] },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { reason: { type: 'string', maxLength: 500, description: 'Why (admin-only note).' } },
+      },
+    },
+  },
+  async (req, reply) => {
+    const { jobId } = req.params as { jobId: string };
+    const { reason } = (req.body ?? {}) as { reason?: string };
+    const job = await getJob(jobId);
+    if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
+
+    const parked = await parkJob(jobId, {
+      reason: 'run_failed',
+      heldAt: new Date().toISOString(),
+      spentUsd: job.cost?.usd ?? 0,
+      detail: (reason ?? 'Parked by an admin: the job stopped making progress.').slice(0, 500),
+    });
+    if (!parked) return reply.code(409).send({ error: `Job is ${job.status}, not queued or running.` });
+
+    // Free the buyer immediately. A stuck job held their only slot, so they could
+    // not start anything at all until someone noticed.
+    await releaseJobSlot(jobId).catch(() => {});
+    logEvent({ jobId, appId: job.appId, userId: job.userId }, 'WARNING', 'job.parked', {
+      by: req.auth!.email, from: job.status, costUsd: job.cost?.usd ?? 0,
+    });
+    return { jobId, status: 'held' };
   },
 );
 

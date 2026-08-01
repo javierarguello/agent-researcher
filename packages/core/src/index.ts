@@ -40,6 +40,7 @@ export {
   setJobHeadline,
   setJobStatus,
   markHeld,
+  parkJob,
   approveHold,
   rejectHold,
 } from './jobs/firestore.js';

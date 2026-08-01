@@ -18,6 +18,7 @@ vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueue
 import {
   getBalance,
   getJob,
+  markRunning,
   grantCredits,
   inFlightSlots,
   listJobs,
@@ -295,6 +296,90 @@ describe('a job an admin re-runs is still a job someone paid for', () => {
 
     // The owner of the job is the buyer, whoever pressed the button.
     expect(await getBalance('admin', ADMIN)).toBe(50);
+  });
+});
+
+describe('a job the queue gave up on can be rescued', () => {
+  it('parks a stuck running job and frees the buyer immediately', async () => {
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markRunning(job!.jobId);
+    expect(await inFlightSlots(APP, USER)).toBe(1);
+
+    // Cloud Tasks stops re-dispatching on its own schedule, and a slow job can
+    // exhaust that window before the engine finalizes. Nothing then touches the
+    // job again: `running` forever, slot held, credits spent, and `retry` refusing
+    // because it looks alive. It was the one path that ended without a decision.
+    const res = await app.inject({
+      method: 'POST', url: `/admin/jobs/${job!.jobId}/park`, headers: auth(adminToken),
+      payload: { reason: 'queue gave up' },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const parked = (await getJob(job!.jobId))!;
+    expect(parked.status).toBe('held');
+    expect(parked.hold?.detail).toContain('queue gave up');
+    // The buyer was locked out of the whole product until someone noticed.
+    expect(await inFlightSlots(APP, USER)).toBe(0);
+    expect((await post(userToken)).statusCode).toBe(202);
+  });
+
+  it('then takes the ordinary decision, like any other parked job', async () => {
+    const before = await getBalance(APP, USER);
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markRunning(job!.jobId);
+    await app.inject({ method: 'POST', url: `/admin/jobs/${job!.jobId}/park`, headers: auth(adminToken) });
+
+    const res = await app.inject({
+      method: 'POST', url: `/admin/jobs/${job!.jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    expect(res.json().refunded).toBe(true);
+    expect(await getBalance(APP, USER)).toBe(before);
+  });
+
+  it('refuses to park a job that already finished', async () => {
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markCompleted(job!.jobId, []);
+
+    const res = await app.inject({ method: 'POST', url: `/admin/jobs/${job!.jobId}/park`, headers: auth(adminToken) });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('only an admin can park', async () => {
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    const res = await app.inject({ method: 'POST', url: `/admin/jobs/${job!.jobId}/park`, headers: auth(userToken) });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('approving a hold only lifts the ceiling when the hold was about money', () => {
+  async function heldFor(reason: 'budget_exceeded' | 'run_failed'): Promise<string> {
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markHeld(job!.jobId, { reason, heldAt: new Date().toISOString(), spentUsd: 1 });
+    await releaseJobSlot(job!.jobId);
+    return job!.jobId;
+  }
+
+  it('lifts it for a job stopped by the ceiling — that IS the decision', async () => {
+    const jobId = await heldFor('budget_exceeded');
+    await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) });
+    expect((await getJob(jobId))!.budgetOverride).toBe(true);
+  });
+
+  it('leaves it in place for a job that merely failed', async () => {
+    const jobId = await heldFor('run_failed');
+    await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) });
+
+    // An admin answering "was that blip worth retrying?" is not also answering
+    // "may this job spend without limit?" — and the ceiling is the only thing
+    // bounding 3 attempts × 8 dispatches once it is off.
+    expect((await getJob(jobId))!.budgetOverride).toBeFalsy();
+    expect((await getJob(jobId))!.status).toBe('queued');
   });
 });
 
