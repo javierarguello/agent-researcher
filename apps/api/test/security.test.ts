@@ -490,12 +490,12 @@ describeMock('API security — model-call accounting', () => {
 });
 
 describe('a report is the buyer\u2019s; the diagnostics are ours', () => {
-  const FILES = [
-    { name: 'report.json', contentType: 'application/json', size: 1 },
-    { name: 'sources.json', contentType: 'application/json', size: 1 },
-    { name: 'metadata.json', contentType: 'application/json', size: 1 },
-    { name: 'trace.json', contentType: 'application/json', size: 1 },
-  ];
+  const FILES = ['report.json', 'sources.json', 'metadata.json', 'trace.json'].map((name) => ({
+    name,
+    path: `researchs/seed/${name}`,
+    contentType: 'application/json',
+    size: 1,
+  }));
   // What the artifacts actually hold — the reason none of this may be served.
   const REPORT = { meta: { mode: 'essential', cost: { usd: 3.41, inputTokens: 900_000 } }, report: { market: 'x' } };
   const TRACE = {
