@@ -20,7 +20,12 @@
  *   202A-202E bidi embedding/override      2060-2064 invisible operators
  *   FEFF      BOM / zero-width no-break     FE00-FE0F variation selectors
  */
-const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\uFE00-\uFE0F]/g;
+// Includes U+00AD SOFT HYPHEN and the U+E0000 tag block: NFKC preserves both, a
+// browser renders both as nothing, and a single one inside a word is not a padding
+// run — so `ig\u00ADnore all previous instructions` walked past the pre-screen
+// while the file above claimed every pattern is tested against normalized text.
+// The `u` flag is what lets the tag range be written as a code point.
+const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\uFE00-\uFE0F\u00AD\u{E0000}-\u{E007F}]/gu;
 /** C0/C1 control characters, except tab (09) and newline (0A / 0D). */
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
@@ -100,7 +105,16 @@ export function unpad(text: string): string {
  * are what stops `\b(?:system|developer)\s+prompt\b` from firing on
  * "ecoSYSTEM PROMPTed growth".
  */
-const GAP = '[^\\p{L}\\p{N}]*';
+/**
+ * A gap between two words of a pattern — any run of separators, or none.
+ *
+ * Sentence terminators are EXCLUDED. Without that, a gap spans the end of one
+ * sentence and the start of the next, so "the attraction locks guests in.
+ * Jailbreak themes are popular" matched a pattern written for "in jailbreak", and
+ * two innocent array elements matched across the `, ` that joins them. A pattern
+ * describes a phrase; a phrase does not cross a full stop.
+ */
+const GAP = '[^\\p{L}\\p{N}.!?;\\n]*';
 export function tolerantPattern(re: RegExp): RegExp {
   const source = re.source.replace(/\\s\+/g, GAP).replace(/\\s\*/g, GAP).replace(/ /g, GAP);
   return new RegExp(source, re.flags.includes('u') ? re.flags.replace('g', '') : `${re.flags.replace('g', '')}u`);

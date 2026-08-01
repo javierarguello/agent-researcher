@@ -116,23 +116,23 @@ together, and `store.ts` is the only writer. What is left is who is trusted.
 
 **Too strict** (each **reproduced**; a hard 422 for an ordinary customer):
 
-- **K1 — `in jailbreak` fires on ordinary prose,** across sentence *and* array
+- ~~**K1 — `in jailbreak` fires on ordinary prose,**~~ **Closed `PENDING`.** across sentence *and* array
   boundaries. `moderation/moderate.ts:93` via `tolerantPattern`. "escape rooms in
   Orlando that specialise in jailbreak and heist themes" is rejected — an escape
   room is a plausible acquisition target for this product.
-- **K2 — The attribution whitelist is 17 closed tokens.** `moderate.ts:79`.
+- ~~**K2 — The attribution whitelist is 17 closed tokens.**~~ **Closed `PENDING`.** `moderate.ts:79`.
   13 legitimate strings blocked across en/es/fr/pt; French `de\b` does not cover
   `des`. "instructions from the broker" passes, "instructions provided by the
   listing agent" does not.
-- **K3 — One article defeats the price lookahead.** `moderate.ts:85`. "Forget
+- ~~**K3 — One article defeats the price lookahead.**~~ **Closed `PENDING`.** `moderate.ts:85`. "Forget
   everything above **the** $1M asking price" is rejected; the corpus entry without
   the article passes.
-- **K4 — "the system prompt/instructions" in equipment prose.** `moderate.ts:86,90`.
+- ~~**K4 — "the system prompt/instructions" in equipment prose.**~~ **Closed `PENDING`.** `moderate.ts:86,90`.
   Alarm, POS and security businesses are described exactly this way.
 
 **Too permissive:**
 
-- **K5 — Soft hyphen and Unicode tag characters walk past the pre-screen.**
+- ~~**K5 — Soft hyphen and Unicode tag characters walk past the pre-screen.**~~ **Closed `PENDING`.**
   `util/text.ts:23`. **Reproduced.** One line: add `­` and
   `\u{E0000}-\u{E007F}` to `INVISIBLE`.
 - **K6 — `/research/preflight` has no request meter at all.**

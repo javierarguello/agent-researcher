@@ -75,22 +75,64 @@ export function collectFreeText(params: Record<string, unknown>): string {
  *    a code on entry" is an attack.
  */
 
-/** Who a legitimate request attributes instructions TO — never the assistant. */
-const ATTRIBUTED = String.raw`(?!\s*(?:from|by|of|in|on|at|given|left|del|de\b|du|da|do|que|dos|en|na|no)\b)`;
+/**
+ * Who a legitimate request attributes instructions TO — never the assistant.
+ *
+ * This was seventeen tokens, and one synonym away from the corpus was a hard 422:
+ * "instructions from the broker" passed while "instructions provided by the listing
+ * agent" did not, and French `de` did not cover `des`, its commonest plural. The
+ * corpus looked green because each of its four entries happened to use a listed
+ * token.
+ *
+ * So it covers the three ways people actually attribute: a preposition, a
+ * PARTICIPLE ("provided by", "written by", "dadas por"), and a determiner or
+ * relative pronoun opening a clause ("the instructions the broker gave me",
+ * "instructions that mention seller financing"). What is left blocked is the shape
+ * an injection has: the phrase ends, or a new command follows it.
+ */
+const ATTRIBUTED_WORDS = [
+  // prepositions
+  'from', 'by', 'of', 'in', 'on', 'at', 'for', 'to', 'with', 'about', 'regarding', 'concerning',
+  // participles — the gap that produced most of the false positives
+  'given', 'left', 'provided', 'written', 'sent', 'shared', 'printed', 'issued', 'posted',
+  'listed', 'attached', 'included', 'mentioned', 'received', 'signed',
+  // a clause about a third party, not an address to the reader
+  'that', 'which', 'who', 'whom', 'the', 'a', 'an', 'I', 'we', 'my', 'our', 'his', 'her', 'their',
+  // es
+  'del', 'de', 'du', 'da', 'do', 'dos', 'das', 'en', 'na', 'no', 'que', 'sobre', 'para',
+  'dadas', 'dados', 'compartidas', 'compartidos', 'entregadas', 'enviadas', 'escritas', 'firmadas',
+  // fr
+  'des', 'données', 'fournies', 'écrites', 'envoyées', 'signées', 'qui',
+  // pt
+  'fornecidas', 'assinadas', 'recebidas',
+];
+const ATTRIBUTED = String.raw`(?!\s*(?:${ATTRIBUTED_WORDS.join('|')})\b)`;
 
 const INJECTION_PATTERNS: RegExp[] = [
   new RegExp(String.raw`ignore\s+(?:all|the|your|any)?\s*(?:previous|prior|above|preceding)\s+(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
   new RegExp(String.raw`disregard\s+(?:all\s+)?(?:the|your|any)?\s*(?:previous|prior|above|preceding|system)?\s*(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
   new RegExp(String.raw`forget\s+(?:everything|all|your|the)\s+(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
-  /forget\s+(?:everything|all)\s+(?:above|previous|preceding)\b(?!\s*[$\d])/i, // "$1M above" is a price, not a prompt
-  /\b(?:your|the)\s+(?:system|developer)\s+prompt\b/i,
+  // "forget everything above $1M" is a price ceiling — and so is "above THE $1M
+  // asking price", which one article used to turn into a hard rejection.
+  /forget\s+(?:everything|all)\s+(?:above|previous|preceding)\b(?!\s*(?:the|that|a|an)?\s*(?:[$\d]|price|budget|band|range|asking|cost))/i,
+  // `your`, not `the`: a buyer says "the system prompt on the POS terminal" about a
+  // machine they are buying, and never says "your system prompt" about one. The
+  // extraction verbs below still cover "reveal THE system prompt".
+  /\byour\s+(?:system|developer)\s+prompt\b/i,
   // Needs a PERSONA, not just a noun: "you are now the owner of record" and "since
   // you are now in the research phase" are things a buyer writes.
   /\byou\s+are\s+now\s+(?:dan\b|jailbroken\b|unrestricted\b|(?:a|an|the)\s+(?:\w+\s+)?(?:ai|assistant|model|bot|chatbot|llm)\b)/i,
-  /(?:reveal|print|show|repeat|output|dump)\s+(?:your|the\s+system)\s+(?:prompt|instructions)\b/i,
+  // …unless what follows names a machine. "Print the system instructions for the
+  // fire alarm panel" is due diligence on equipment being sold.
+  /(?:reveal|print|show|repeat|output|dump)\s+(?:your|the\s+system)\s+(?:prompt|instructions)\b(?!\s+(?:for|on|of|in)\s+(?:the\s+|a\s+|an\s+)?(?:\w+\s+){0,2}(?:terminal|panel|machine|unit|register|device|equipment|kiosk|printer|alarm|lock|dispenser|reader|controller))/i,
   // Framings that make "jailbreak"/"do anything now" an instruction rather than an
   // escape-room theme or a sentence about a seller who will not act today.
-  /\bjailbreak\b\s*(?::|mode\b)|\b(?:enable|activate|enter|in)\s+jailbreak\b|\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i,
+  // `in` and `enter` are gone: "specialises in jailbreak and heist themes" and
+  // "guests enter jailbreak rooms" are an escape room, a plausible acquisition
+  // target here. Both attack forms survive — "enter jailbreak MODE" is caught by
+  // the first alternative, which is the framing that actually matters, and
+  // enable/activate have no innocent reading next to this word.
+  /\bjailbreak\b\s*(?::|mode\b)|\b(?:enable|activate)\s+jailbreak\b|\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i,
   // "act as" is too generic — "the new owner can act as manager and do anything now
   // that hiring is frozen" is a sentence about a staffing agency.
   /\bdan\s+mode\b|\b(?:you\s+(?:are|can|will)|from\s+now\s+on)\b[^.!?]{0,30}\bdo\s+anything\s+now\b/i,
