@@ -26,7 +26,7 @@ vi.mock('@agent-researcher/core', async (importOriginal) => ({
   sendAppEmail: notify,
 }));
 
-import { createJob, getApp, createApp, markCompleted } from '@agent-researcher/core';
+import { createJob, getApp, createApp, getJob, markCompleted, markHeld } from '@agent-researcher/core';
 import { app } from '../src/index.js';
 
 const JOB = 'job-1';
@@ -85,13 +85,30 @@ describe('what the worker tells the queue', () => {
     expect((await run()).statusCode).toBe(200);
   });
 
-  it('acks when the engine throws, because runJob already recorded the outcome', async () => {
+  it('acks a throw only once the job has actually been parked', async () => {
+    // The engine's guard parks the job before rethrowing, so this is the ordinary
+    // shape: an outcome exists, and retrying would only burn tokens.
     await seedJob();
+    await markHeld(JOB, { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
     runJob.mockRejectedValue(new Error('vertex exploded'));
 
     const res = await run();
     expect(res.statusCode).toBe(200);
-    expect(res.json().status).toBe('failed');
+    expect(res.json().status).toBe('held');
+  });
+
+  it('asks for a retry when the throw recorded no outcome at all', async () => {
+    // This test used to assert the opposite, and its name carried the reason:
+    // "runJob already recorded the outcome". Its own call order did not guarantee
+    // that — a throw in the prologue (a retired template, a blip on markRunning)
+    // happened before the guard — so acking retired the task while the document
+    // still read `queued` and the buyer's only slot stayed held forever.
+    await seedJob();
+    runJob.mockRejectedValue(new Error('firestore unavailable'));
+
+    const res = await run();
+    expect(res.statusCode).toBe(503);
+    expect((await getJob(JOB))!.status).toBe('queued');
   });
 });
 

@@ -89,9 +89,23 @@ app.post('/run', async (req, reply) => {
     // only when an admin approves it, which enqueues a fresh task.
     return reply.code(200).send({ status: result.status, sourcesFound: result.sourcesFound });
   } catch (err) {
-    // Unexpected engine error — runJob marked the job failed. Ack to avoid re-runs.
     app.log.error({ err, jobId }, 'worker: job errored');
-    return reply.code(200).send({ status: 'failed', error: (err as Error).message });
+    // Do not ack an outcome nobody recorded. This assumed "runJob marked the job
+    // failed", which its own call order did not guarantee: a throw in the prologue
+    // — a retired template, a transient Firestore error on markRunning — happened
+    // before the guard that parks the job, so a 200 here retired the task while the
+    // document still read `queued` and the buyer's only slot stayed held forever.
+    //
+    // Re-read instead: ack only what is genuinely finished, and let the queue retry
+    // anything else. A permanently broken job now exhausts its retries and is
+    // rescued with `POST /admin/jobs/:id/park`, which is what that endpoint is for.
+    const after = await getJob(jobId).catch(() => undefined);
+    const terminal = after && ['completed', 'failed', 'held'].includes(after.status);
+    if (!terminal) {
+      app.log.warn({ jobId, status: after?.status }, 'worker: no outcome recorded — asking for a retry');
+      return reply.code(503).send({ status: after?.status ?? 'unknown', error: (err as Error).message });
+    }
+    return reply.code(200).send({ status: after.status, error: (err as Error).message });
   }
 });
 

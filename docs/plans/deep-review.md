@@ -77,20 +77,20 @@ bugs.
   `completed` job with `slotHeld: true` and `inFlight: 1` forever. With the cap at
   1 that is a permanent, product-wide lockout, and no admin endpoint touches the
   slots collection.
-- **H3 — The worker acks jobs `runJob` never recorded an outcome for.**
+- ~~**H3 — The worker acks jobs `runJob` never recorded an outcome for.**~~ **Closed `PENDING`.**
   `run-job.ts:51-63` + `worker/src/index.ts:92-95`. **Reproduced.** `getTemplate`,
   `getJob`, `markRunning` and `setJobAttempts` run *before* the try whose catch
   parks the job. A throw there returns 200, the queue never returns, and the job is
   stranded with its slot held.
-- **H4 — Unguarded Firestore writes inside engine callbacks.** `run-job.ts:143`
+- ~~**H4 — Unguarded Firestore writes inside engine callbacks.**~~ **Closed `PENDING`.** `run-job.ts:143`
   (`setJobCost` in `onTrace`), `:136-139` (`setProgress` in `onProgress`). **Traced.**
   One failed write parks a healthy job as `held`, or fails the attempt with
   `stalled` — which by the reuse rule forces the retry to re-buy the whole research
   loop.
-- **H5 — Stats booked and checkpoint deleted before `markCompleted` can refuse.**
+- ~~**H5 — Stats booked and checkpoint deleted before `markCompleted` can refuse.**~~ **Closed `PENDING`.**
   `run-job.ts:298-322`. **Traced.** A refused delivery still books a completed
   report, and the checkpoint is gone so the work cannot be resurrected.
-- **H6 — No cross-process lease on a dispatch.** `run-job.ts:61`. **Traced.**
+- ~~**H6 — No cross-process lease on a dispatch.**~~ **Closed `PENDING`.** `run-job.ts:61`. **Traced.**
   Duplicate delivery while a dispatch runs passes the status check (`running` is not
   skipped, by design for resume) and two engines resume from one checkpoint.
 

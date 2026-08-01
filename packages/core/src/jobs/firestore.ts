@@ -123,8 +123,32 @@ async function patch(jobId: string, data: Partial<ResearchJob>): Promise<void> {
   await collection().doc(jobId).set({ ...data, updatedAt: nowIso() }, { merge: true });
 }
 
-export async function markRunning(jobId: string): Promise<void> {
-  await patch(jobId, { status: 'running', startedAt: nowIso() });
+/**
+ * Claim the job for THIS dispatch, and say which one.
+ *
+ * Cloud Tasks is at-least-once, and `running` is deliberately not in the worker's
+ * skip list — resume depends on that. So a duplicate delivery arriving while a
+ * dispatch is still in flight starts a second engine on the same checkpoint, and
+ * the two overwrite each other's saves last-writer-wins: the agents one of them
+ * finished are simply lost, and re-run on the next dispatch.
+ *
+ * The token does not stop the second engine from running — bounding that needs a
+ * heartbeat, and a lease without one strands a job whose worker died, which is the
+ * failure this file has just spent a round removing. It stops the two from
+ * corrupting each other's work, which is the half that costs the buyer.
+ */
+export async function markRunning(jobId: string, dispatchId?: string): Promise<void> {
+  await patch(jobId, { status: 'running', startedAt: nowIso(), ...(dispatchId ? { dispatchId } : {}) });
+}
+
+/** Whether this dispatch is still the one the job belongs to. */
+export async function isCurrentDispatch(jobId: string, dispatchId: string): Promise<boolean> {
+  const snap = await collection().doc(jobId).get();
+  if (!snap.exists) return false;
+  const current = (snap.data() as ResearchJob & { dispatchId?: string }).dispatchId;
+  // No token at all means nothing else has claimed it — an older job document, or a
+  // path that predates this. Refusing there would break resume for no gain.
+  return !current || current === dispatchId;
 }
 
 /** Record the dispatch/attempt count on the job (resumable retries). */

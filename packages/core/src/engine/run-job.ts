@@ -10,10 +10,11 @@
  * `config.workflow.maxJobAttempts` dispatches it finalizes, degrading whatever
  * still failed (logged + flagged as a WARNING on the job) and delivering the rest.
  */
+import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import { getTemplate } from '../templates/registry.js';
 import {
-  getJob, markCompleted, markFailed, markHeld, markRunning, setJobAttempts, setJobCost, setJobHeadline, setJobSummary, setProgress,
+  getJob, isCurrentDispatch, markCompleted, markFailed, markHeld, markRunning, setJobAttempts, setJobCost, setJobHeadline, setJobSummary, setProgress,
 } from '../jobs/firestore.js';
 import { retryAsync } from '../util/retry.js';
 import { releaseJobSlot } from '../jobs/slots.js';
@@ -47,19 +48,46 @@ export interface RunJobResult {
 
 export async function runJob(input: RunJobInput): Promise<RunJobResult> {
   const log = jobLogger({ jobId: input.jobId, appId: input.appId, userId: input.userId, template: input.template });
+  // Identifies THIS dispatch, so a duplicate delivery cannot overwrite our
+  // checkpoint with its own older view of the run. See `markRunning`.
+  const dispatchId = randomUUID();
 
-  const template = getTemplate(input.template);
-  if (!template) {
-    log.error('job.error', { message: `Unknown template: ${input.template}` });
-    throw new Error(`Unknown template: ${input.template}`);
-  }
+  /**
+   * The only outcome an unexpected throw may have: the job is parked for a person,
+   * the slot goes back, and the error propagates.
+   */
+  const parkAndRethrow = async (error: unknown): Promise<never> => {
+    log.error('job.error', { message: (error as Error).stack ?? (error as Error).message ?? String(error) });
+    await markHeld(input.jobId, {
+      reason: 'run_failed',
+      heldAt: new Date().toISOString(),
+      spentUsd: 0,
+      detail: ((error as Error).message ?? String(error)).slice(0, 500),
+    }).catch(() => {});
+    await releaseJobSlot(input.jobId).catch(() => {});
+    throw error;
+  };
 
   // Dispatch/attempt bookkeeping + resume state.
-  const existing = await getJob(input.jobId);
-  const attempts = (existing?.attempts ?? 0) + 1;
+  //
+  // Inside the guard, not before it. `getTemplate` throws on a template retired by
+  // a deploy while jobs were queued, and the three Firestore calls throw on any
+  // transient blip — all of them ran BEFORE the try whose catch parks the job, so
+  // the worker's catch acked a 200 believing an outcome had been recorded while the
+  // document still read `queued` with the buyer's only slot held. Nothing then
+  // touched it again.
+  const prologue = await (async () => {
+    const template = getTemplate(input.template);
+    if (!template) throw new Error(`Unknown template: ${input.template}`);
+    const existing = await getJob(input.jobId);
+    const attempts = (existing?.attempts ?? 0) + 1;
+    await markRunning(input.jobId, dispatchId);
+    await setJobAttempts(input.jobId, attempts);
+    return { template, existing, attempts };
+  })().catch(parkAndRethrow);
+
+  const { template, existing, attempts } = prologue;
   const finalize = attempts >= config.workflow.maxJobAttempts;
-  await markRunning(input.jobId);
-  await setJobAttempts(input.jobId, attempts);
   log.info('job.start', { params: input.params, attempts, finalize });
 
   // Headline once (first dispatch only).
@@ -126,6 +154,12 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       ...(existing?.budgetOverride ? { costCeilingUsd: null } : {}),
       onCheckpoint: async (cp) => {
         try {
+          // If another dispatch has claimed the job, ours is the stale one: saving
+          // would throw away whatever it has finished since.
+          if (!(await isCurrentDispatch(input.jobId, dispatchId))) {
+            log.warn('checkpoint.skipped', { reason: 'another dispatch owns this job' });
+            return;
+          }
           await uploadJson(CHECKPOINT, cp);
         } catch (err) {
           log.warn('checkpoint.save_failed', { message: (err as Error).message });
@@ -133,14 +167,23 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       },
       onProgress: async (p) => {
         log.info('step', { phase: p.phase, message: p.message, turnsUsed: p.turnsUsed, sourcesFound: p.sourcesFound });
+        // Best-effort. A rejection here propagates through `emit` into the middle of
+        // the research loop, failing the attempt as `stalled` — which by the reuse
+        // rule makes the retry re-buy the whole loop. A dashboard line the buyer
+        // may never look at must not cost a second round of searches.
         await setProgress(input.jobId, {
           phase: p.phase, message: p.message, turnsUsed: p.turnsUsed, sourcesFound: p.sourcesFound,
           updatedAt: new Date().toISOString(),
-        });
+        }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       },
       onTrace: async (trace) => {
         await uploadTrace(trace);
-        await setJobCost(input.jobId, trace.cost);
+        // Same reason, one wave further out: this is awaited at every wave boundary,
+        // so one failed write threw out of the engine and parked a HEALTHY job as
+        // `run_failed` — an admin incident where a queue retry would have done.
+        await setJobCost(input.jobId, trace.cost).catch((err) =>
+          log.warn('cost.save_failed', { message: (err as Error).message }),
+        );
         for (const a of trace.agents) {
           if (a.status === 'running' || a.status === 'pending' || seenAgents.has(a.id)) continue;
           seenAgents.add(a.id);
@@ -156,8 +199,13 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       },
     });
 
-    // headlineCost is folded into the trace via `baseCost`, so meta.cost already includes it.
-    await setJobCost(input.jobId, output.meta.cost);
+    // headlineCost is folded into the trace via `baseCost`, so meta.cost already
+    // includes it. Best-effort, like every other bookkeeping write here: the figure
+    // is also in the trace and the checkpoint, and losing it must not park a job
+    // whose research finished.
+    await setJobCost(input.jobId, output.meta.cost).catch((err) =>
+      log.warn('cost.save_failed', { message: (err as Error).message }),
+    );
 
     // --- Incomplete: some steps still pending → resume on the next dispatch. ---
     if (output.trace.status === 'incomplete') {
@@ -169,7 +217,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       await setProgress(input.jobId, {
         phase: 'incomplete', message: `Partial (attempt ${attempts}); retrying pending steps.`,
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
-      });
+      }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'incomplete' };
     }
 
@@ -194,7 +242,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       await setProgress(input.jobId, {
         phase: 'held', message: heldNotice(output.language),
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
-      });
+      }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       log.error('job.held', {
         reason: hold.reason, costUsd: output.meta.cost.usd, limitUsd: config.workflow.maxJobCostUsd, attempts,
       });
@@ -292,21 +340,6 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'held' };
     }
 
-    // Stats are booked when a job FINISHES. A held job has not: booking it now and
-    // again when it resolves would count one report twice. The resolution path
-    // books the ones that end badly (see `/admin/jobs/:id/resolve`).
-    try {
-      await recordReportStats({
-        appId: input.appId, userId: input.userId, template: input.template,
-        status: 'completed',
-        costUsd: output.meta.cost.usd, durationMs, degraded: !!output.meta.degradedSections,
-      });
-    } catch (err) {
-      log.warn('stats.report_failed', { message: (err as Error).message });
-    }
-
-    await deleteObject(input.jobId, CHECKPOINT).catch(() => {}); // clean up
-
     log.info('job.completed', {
       sourcesFound: output.sources.length, turnsUsed: output.turnsUsed, durationMs, attempts,
       costUsd: output.meta.cost.usd, tokensIn: output.meta.cost.inputTokens, tokensOut: output.meta.cost.outputTokens,
@@ -321,19 +354,33 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       await releaseJobSlot(input.jobId).catch(() => {});
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'failed' };
     }
+
+    // Only now, and in this order. Booking the stats and deleting the checkpoint
+    // BEFORE the delivery check meant a refused delivery still counted a completed
+    // report — which the resolution path then counted again as a failure, one job
+    // in two rows — and threw away the only copy of work an admin could have
+    // resurrected.
+    //
+    // Stats are booked when a job FINISHES. A held job has not: booking it now and
+    // again when it resolves would count one report twice. The resolution path
+    // books the ones that end badly (see `/admin/jobs/:id/resolve`).
+    try {
+      await recordReportStats({
+        appId: input.appId, userId: input.userId, template: input.template,
+        status: 'completed',
+        costUsd: output.meta.cost.usd, durationMs, degraded: !!output.meta.degradedSections,
+      });
+    } catch (err) {
+      log.warn('stats.report_failed', { message: (err as Error).message });
+    }
+    await deleteObject(input.jobId, CHECKPOINT).catch(() => {}); // the work is delivered
+
     await releaseJobSlot(input.jobId).catch(() => {});
     return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'completed' };
   } catch (error) {
-    // Same rule as above: an unexpected throw parks the job for a person. Nothing
-    // here refunds, and the checkpoint is left alone so an approval can resume.
-    log.error('job.error', { message: (error as Error).stack ?? (error as Error).message ?? String(error) });
-    await markHeld(input.jobId, {
-      reason: 'run_failed',
-      heldAt: new Date().toISOString(),
-      spentUsd: 0,
-      detail: ((error as Error).message ?? String(error)).slice(0, 500),
-    }).catch(() => {});
-    await releaseJobSlot(input.jobId).catch(() => {});
-    throw error;
+    // Same rule as the prologue: an unexpected throw parks the job for a person.
+    // Nothing here refunds, and the checkpoint is left alone so an approval can
+    // resume from it.
+    return parkAndRethrow(error);
   }
 }
