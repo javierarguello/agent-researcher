@@ -88,7 +88,7 @@ together, and `store.ts` is the only writer. What is left is who is trusted.
 
 ## J · Tenancy and exposure
 
-- **J1 — Any buyer can download our internals.** `index.ts:1333-1338`, `:1441`.
+- ~~**J1 — Any buyer can download our internals.**~~ **Closed `PENDING`.** `index.ts:1333-1338`, `:1441`.
   **Reproduced.** `/research/:jobId` carefully redacts `cost`, `hold` and warnings
   for non-admins, then hands the same caller the `files[]` list. `trace.json` holds
   per-agent USD, resolved model aliases, the internal search/retry log, **stack

@@ -724,6 +724,35 @@ app.get(
  * Max reports a user may have in flight (queued/running) at once. 1 for everyone
  * for now; will become a per-plan entitlement (higher tiers → more concurrency).
  */
+/**
+ * Artifacts that exist for US, not for the buyer.
+ *
+ * `/research/:jobId` redacts cost, hold and warnings for a non-admin — and then
+ * handed the same caller a `files[]` list pointing at the raw objects, which the
+ * proxy served after an ownership check only. `trace.json` carries per-agent USD,
+ * the resolved model aliases, the internal search/retry log, error stacks and the
+ * prompt brief; `metadata.json` carries the cost block and the English diagnostic
+ * warnings. Redacting one surface and publishing the other is not redaction.
+ *
+ * Both are still there for admins, unchanged, which is where they are read.
+ */
+const ADMIN_ONLY_FILES = new Set(['trace.json', 'metadata.json']);
+
+/**
+ * The buyer's own report, minus what is ours: `meta.cost` is our unit economics,
+ * and it rides inside the delivered artifact. The stored object stays whole — the
+ * policy belongs at the boundary, where the rest of this file's redaction lives.
+ */
+function redactReportForBuyer(raw: string): string {
+  try {
+    const doc = JSON.parse(raw) as { meta?: Record<string, unknown> };
+    if (doc.meta && 'cost' in doc.meta) delete doc.meta.cost;
+    return JSON.stringify(doc);
+  } catch {
+    return raw; // not JSON we recognise — serve it untouched rather than guess
+  }
+}
+
 const MAX_CONCURRENT_JOBS_PER_USER = 1;
 
 /**
@@ -1330,7 +1359,7 @@ app.get(
       ...base,
       finishedAt: job.finishedAt ?? null,
       bucketPath: job.bucketPath,
-      files: (job.files ?? []).map((f) => ({
+      files: (job.files ?? []).filter((f) => isAdmin || !ADMIN_ONLY_FILES.has(f.name)).map((f) => ({
         name: f.name,
         contentType: f.contentType,
         size: f.size ?? null,
@@ -1368,7 +1397,8 @@ app.get(
     if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
     const raw = await downloadObject(jobId, 'report.json');
     if (!raw) return reply.code(404).send({ error: 'Report file not found.' });
-    return reply.type('application/json').header('Cache-Control', 'no-store').send(raw);
+    const body = req.auth!.role === 'admin' ? raw : redactReportForBuyer(raw);
+    return reply.type('application/json').header('Cache-Control', 'no-store').send(body);
   },
 );
 
@@ -1439,6 +1469,11 @@ app.get(
     if (job.status !== 'completed') return reply.code(409).send({ error: `Report not ready (status: ${job.status}).` });
     // Only files the job actually produced — no arbitrary reads / path traversal.
     if (!(job.files ?? []).some((f) => f.name === name)) return reply.code(404).send({ error: 'File not found.' });
+    // …and only the ones that are the buyer's. 404, not 403: as far as this caller
+    // is concerned the file is not part of their report.
+    if (req.auth!.role !== 'admin' && ADMIN_ONLY_FILES.has(name)) {
+      return reply.code(404).send({ error: 'File not found.' });
+    }
     // Binary files (PDF) must be streamed as bytes, not decoded as UTF-8 text.
     if (name.endsWith('.pdf')) {
       const bytes = await downloadObjectBytes(jobId, name);
@@ -1447,8 +1482,9 @@ app.get(
     }
     const raw = await downloadObject(jobId, name);
     if (!raw) return reply.code(404).send({ error: 'File not found.' });
+    const body = name === 'report.json' && req.auth!.role !== 'admin' ? redactReportForBuyer(raw) : raw;
     const ct = name.endsWith('.json') ? 'application/json' : name.endsWith('.md') ? 'text/markdown; charset=utf-8' : 'application/octet-stream';
-    return reply.type(ct).header('Content-Disposition', `attachment; filename="${name}"`).header('Cache-Control', 'no-store').send(raw);
+    return reply.type(ct).header('Content-Disposition', `attachment; filename="${name}"`).header('Cache-Control', 'no-store').send(body);
   },
 );
 

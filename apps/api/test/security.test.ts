@@ -11,6 +11,7 @@ vi.mock('../src/stripe.js', () => ({
 import { app } from '../src/index.js';
 import { grantCredits, getBalance, listJobs, updateApp, signReadToken, markCompleted } from '@agent-researcher/core';
 import { seedApp, seedAdmin, token, auth } from './helpers.js';
+import { OBJECTS } from '../../../packages/core/test/mocks/storage.js';
 import { fakeLlm } from './setup.js';
 import { describeMock } from './llm-mode.js';
 
@@ -485,5 +486,94 @@ describeMock('API security — model-call accounting', () => {
     });
     expect(injected.statusCode).toBe(422);
     expect(fakeLlm.calls).toBe(spentSoFar);
+  });
+});
+
+describe('a report is the buyer\u2019s; the diagnostics are ours', () => {
+  const FILES = [
+    { name: 'report.json', contentType: 'application/json', size: 1 },
+    { name: 'sources.json', contentType: 'application/json', size: 1 },
+    { name: 'metadata.json', contentType: 'application/json', size: 1 },
+    { name: 'trace.json', contentType: 'application/json', size: 1 },
+  ];
+  // What the artifacts actually hold — the reason none of this may be served.
+  const REPORT = { meta: { mode: 'essential', cost: { usd: 3.41, inputTokens: 900_000 } }, report: { market: 'x' } };
+  const TRACE = {
+    cost: { usd: 3.41 },
+    brief: 'You are researching laundromats in Miami-Dade County…',
+    agents: [{ id: 'market-analyst', model: 'gemini-2.5-pro', cost: { usd: 0.82 }, error: 'TypeError at prompt.ts:118' }],
+  };
+
+  beforeEach(async () => {
+    await seedApp('fbizlab');
+  });
+
+  async function completedJob(): Promise<{ jobId: string; owner: string; admin: string }> {
+    await seedAdmin(['boss@x.com']);
+    const owner = await token('fbizlab', 'owner@x.com');
+    const admin = await token('admin', 'boss@x.com', 'admin');
+    await grantCredits({ appId: 'fbizlab', userId: 'owner@x.com', credits: 50 });
+
+    const created = await app.inject({ method: 'POST', url: '/research', headers: auth(owner), payload: research });
+    const { jobId } = created.json() as { jobId: string };
+    await markCompleted(jobId, FILES);
+    OBJECTS.set(`researchs/${jobId}/report.json`, Buffer.from(JSON.stringify(REPORT)));
+    OBJECTS.set(`researchs/${jobId}/trace.json`, Buffer.from(JSON.stringify(TRACE)));
+    OBJECTS.set(`researchs/${jobId}/metadata.json`, Buffer.from(JSON.stringify({ cost: REPORT.meta.cost })));
+    return { jobId, owner, admin };
+  }
+
+  it('does not even list the diagnostics to the person who bought the report', async () => {
+    const { jobId, owner, admin } = await completedJob();
+
+    const mine = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(owner) });
+    const names = (mine.json() as { files: Array<{ name: string }> }).files.map((f) => f.name);
+    expect(names).toEqual(['report.json', 'sources.json']);
+
+    // Unchanged for us: this is where the trace is read.
+    const theirs = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(admin) });
+    expect((theirs.json() as { files: Array<{ name: string }> }).files.map((f) => f.name)).toContain('trace.json');
+  });
+
+  it('refuses to serve the trace, even to the job\u2019s owner', async () => {
+    const { jobId, owner, admin } = await completedJob();
+
+    // Per-agent USD, the model roster, an error stack and the prompt brief.
+    for (const name of ['trace.json', 'metadata.json']) {
+      const res = await app.inject({ method: 'GET', url: `/research/${jobId}/files/${name}`, headers: auth(owner) });
+      expect(res.statusCode).toBe(404);
+    }
+    const ok = await app.inject({ method: 'GET', url: `/research/${jobId}/files/trace.json`, headers: auth(admin) });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.body).toContain('gemini-2.5-pro');
+  });
+
+  it('refuses it to a read-only report token too', async () => {
+    const { jobId } = await completedJob();
+    // The token the docs describe as unable to read anything else — it reached the
+    // trace, because `/files/…` is inside its own job.
+    const rt = auth(await signReadToken({ email: 'owner@x.com', appId: 'fbizlab', jobId }));
+
+    expect((await app.inject({ method: 'GET', url: `/research/${jobId}/files/trace.json`, headers: rt })).statusCode).toBe(404);
+    const report = await app.inject({ method: 'GET', url: `/research/${jobId}/report`, headers: rt });
+    expect(report.statusCode).toBe(200);
+    expect(report.body).not.toContain('3.41');
+  });
+
+  it('strips our cost out of the report itself, on both routes that serve it', async () => {
+    const { jobId, owner, admin } = await completedJob();
+
+    for (const url of [`/research/${jobId}/report`, `/research/${jobId}/files/report.json`]) {
+      const res = await app.inject({ method: 'GET', url, headers: auth(owner) });
+      expect(res.statusCode).toBe(200);
+      const doc = JSON.parse(res.body) as { meta: Record<string, unknown>; report: unknown };
+      // The report is intact; only what it cost us is gone.
+      expect(doc.meta.cost).toBeUndefined();
+      expect(doc.meta.mode).toBe('essential');
+      expect(doc.report).toEqual({ market: 'x' });
+    }
+
+    const forUs = await app.inject({ method: 'GET', url: `/research/${jobId}/report`, headers: auth(admin) });
+    expect((JSON.parse(forUs.body) as { meta: { cost?: unknown } }).meta.cost).toBeTruthy();
   });
 });
