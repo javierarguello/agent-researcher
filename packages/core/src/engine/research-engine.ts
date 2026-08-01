@@ -532,15 +532,35 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   // Finalizing with unfinished steps → degrade them (WARNING) and deliver the rest.
+  //
+  // A key is only degraded when NOTHING succeeded on it. `ownedKeys` is
+  // produces + enriches, and those overlap between agents: a producer writes a
+  // section and a refiner improves it, so an unfinished refiner used to replace a
+  // section its producer had already written and the buyer had already paid for —
+  // and, the other way round, a still-pending producer overwrote the real content a
+  // refiner had just delivered. Either way the job completed green with a
+  // placeholder where the work had been.
+  const delivered = new Set<string>();
+  for (const agent of effTemplate.agents) {
+    if (done.has(agent.id)) for (const key of ownedKeys(agent)) delivered.add(key);
+  }
+
   for (const agent of pending) {
     const reason = agentReason(trace, agent.id);
     // The placeholder the BUYER reads is ours and localized; the internal reason
     // goes to `warnings` (admin-side) on the next line, never into the report.
-    for (const key of ownedKeys(agent)) {
+    const lost = ownedKeys(agent).filter((key) => !delivered.has(key));
+    for (const key of lost) {
       report[key] = degradedValue(effTemplate, key, degradedSectionNote(language));
       if (!degraded.includes(key)) degraded.push(key);
     }
-    warnings.push(`Degraded [${ownedKeys(agent).join(', ')}] from agent "${agent.id}" after exhausting retries/re-dispatches: ${reason}`);
+    // Still worth a warning even when nothing was lost: a step that never finished
+    // is a step the admin should see, and "kept" says the section survived it.
+    const kept = ownedKeys(agent).filter((key) => delivered.has(key));
+    warnings.push(
+      `Degraded [${lost.join(', ') || 'none'}] from agent "${agent.id}" after exhausting retries/re-dispatches: ${reason}` +
+        (kept.length ? ` (kept, already written: ${kept.join(', ')})` : ''),
+    );
   }
 
   // Derived sections (e.g. sources) — deterministic, filled last.
@@ -857,11 +877,19 @@ function emptyFromJsonSchema(node: Record<string, unknown>, note: string, usedNo
       return defs[name] ?? n;
     }
     const union = (n.anyOf ?? n.oneOf) as Array<Record<string, unknown>> | undefined;
-    if (Array.isArray(union)) return union.find((s) => s.type !== 'null') ?? n;
+    // Prefer the NULL branch when the schema offers one. The opposite choice is
+    // what manufactures data: picking the non-null branch turns "we have no
+    // figure" into a concrete 0, and "we reached no verdict" into the first enum
+    // value — which for a buy/hold/avoid field reads as a recommendation.
+    if (Array.isArray(union)) return union.find((b) => b.type === 'null') ?? union.find((b) => b.type !== 'null') ?? n;
     return n;
   };
   const build = (n0: Record<string, unknown>): unknown => {
     const n = resolve(n0);
+    if (n.type === 'null') return null;
+    // Same reason as the union above: a nullable field says nothing rather than
+    // asserting the first thing its type allows.
+    if (Array.isArray(n.type) && (n.type as string[]).includes('null')) return null;
     const type = Array.isArray(n.type) ? (n.type as string[]).find((t) => t !== 'null') : n.type;
     if (Array.isArray(n.enum)) return (n.enum as unknown[])[0];
     switch (type) {
@@ -885,11 +913,11 @@ function emptyFromJsonSchema(node: Record<string, unknown>, note: string, usedNo
         return false;
       case 'string':
       default:
-        if (!usedNote.done) {
-          usedNote.done = true;
-          return note;
-        }
-        return '';
+        // The note goes in EVERY string, not just the first. One apology plus a
+        // dozen empty strings reads as a section that was written and came back
+        // blank; the same sentence in each field reads as what it is.
+        usedNote.done = true;
+        return note;
     }
   };
   return build(root);
