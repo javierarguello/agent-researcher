@@ -46,7 +46,10 @@ export interface CaptchaResult {
  */
 export async function verifyCaptcha(token: string | undefined, remoteIp?: string): Promise<CaptchaResult> {
   if (!captchaEnabled()) return { ok: true };
-  if (!token || typeof token !== 'string') return { ok: false, reason: 'missing_token' };
+  // Trimmed: a whitespace-only token is not a token. Untrimmed it is truthy, so it
+  // reached Cloudflare — an outbound request, and a 5s timeout held open, for a
+  // string that could never verify.
+  if (!token || typeof token !== 'string' || !token.trim()) return { ok: false, reason: 'missing_token' };
 
   const body = new URLSearchParams({
     secret: config.captcha.secret,

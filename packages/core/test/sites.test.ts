@@ -38,7 +38,7 @@ describe('workflow sites — additive suggested sources', () => {
       brief: 'brief',
       sections: [],
       maxTurns: 5,
-      context: {},
+      handoffs: {},
       sites: ['bizbuysell.com', 'loopnet.com'],
     });
     expect(kickoff).toContain('SUGGESTED SOURCES');
@@ -51,7 +51,7 @@ describe('workflow sites — additive suggested sources', () => {
   });
 
   it('omits the suggested-sources block when no sites are configured', () => {
-    const kickoff = buildAgentKickoff({ agent, brief: 'brief', sections: [], maxTurns: 5, context: {} });
+    const kickoff = buildAgentKickoff({ agent, brief: 'brief', sections: [], maxTurns: 5, handoffs: {} });
     expect(kickoff).not.toContain('SUGGESTED SOURCES');
   });
 

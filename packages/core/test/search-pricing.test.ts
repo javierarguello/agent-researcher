@@ -7,6 +7,7 @@
  * body, return 0, and the whole suite stays green. That is how the bug it now
  * guards against shipped in the first place.
  */
+import { writableConfig } from './writable-config.js';
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { config } from '../src/config.js';
 import { canExtractPages, searchCostPerCall } from '../src/tools/web-search.js';
@@ -22,39 +23,39 @@ describe('search pricing follows the call, not the module', () => {
   // default to 0 — and an assertion that every branch returns 0 passes no matter
   // which branch ran.
   beforeEach(() => {
-    config.search.braveCostPerCallUsd = 0.003;
-    config.search.costPerCallUsd = 0.016;
+    writableConfig.search.braveCostPerCallUsd = 0.003;
+    writableConfig.search.costPerCallUsd = 0.016;
   });
   afterEach(() => {
-    config.search.braveApiKey = saved.brave;
-    config.search.tavilyApiKey = saved.tavily;
-    config.search.braveCostPerCallUsd = saved.braveRate;
-    config.search.costPerCallUsd = saved.tavilyRate;
+    writableConfig.search.braveApiKey = saved.brave;
+    writableConfig.search.tavilyApiKey = saved.tavily;
+    writableConfig.search.braveCostPerCallUsd = saved.braveRate;
+    writableConfig.search.costPerCallUsd = saved.tavilyRate;
   });
 
   it('prices a search by whichever backend searchWeb would pick', () => {
-    config.search.braveApiKey = 'k';
-    config.search.tavilyApiKey = 'k';
+    writableConfig.search.braveApiKey = 'k';
+    writableConfig.search.tavilyApiKey = 'k';
     expect(searchCostPerCall('search')).toBe(0.003); // Brave wins the priority order
 
-    config.search.braveApiKey = '';
+    writableConfig.search.braveApiKey = '';
     expect(searchCostPerCall('search')).toBe(0.016); // …then Tavily
 
-    config.search.tavilyApiKey = '';
+    writableConfig.search.tavilyApiKey = '';
     expect(searchCostPerCall('search')).toBe(0); // keyless DuckDuckGo
   });
 
   it('prices an extraction as Tavily even when Brave serves the searches', () => {
     // The regression this catches: extraction is Tavily-only, so pricing it from
     // the search provider booked the genuinely-billed call at Brave's rate.
-    config.search.braveApiKey = 'k';
-    config.search.tavilyApiKey = 'k';
+    writableConfig.search.braveApiKey = 'k';
+    writableConfig.search.tavilyApiKey = 'k';
     expect(searchCostPerCall('extract')).toBe(0.016); // Tavily's rate, not Brave's
     expect(searchCostPerCall('extract')).not.toBe(searchCostPerCall('search'));
   });
 
   it('charges nothing for an extraction that cannot happen', () => {
-    config.search.tavilyApiKey = ''; // extractPages refuses outright without it
+    writableConfig.search.tavilyApiKey = ''; // extractPages refuses outright without it
     expect(searchCostPerCall('extract')).toBe(0);
     expect(canExtractPages()).toBe(false); // …and says so, so the caller can skip it
   });

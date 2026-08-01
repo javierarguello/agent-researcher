@@ -20,6 +20,11 @@ export const LLM_MODE = (process.env.TEST_LLM ?? 'mock') as 'mock' | 'ollama';
 export const isLive = LLM_MODE === 'ollama';
 
 /** Tests that drive the model's answer — only meaningful against the stub. */
-export const describeMock = describe.skipIf(isLive);
+// `describe.skipIf` returns vitest's chainable variant, whose type names internals
+// TypeScript cannot re-export from here. Naming the shape we actually use keeps the
+// suites typechecked without dragging vitest's private types across the boundary.
+type ConditionalDescribe = (name: string, fn: () => void) => void;
+
+export const describeMock: ConditionalDescribe = describe.skipIf(isLive);
 /** Tests that check invariants against a real local model. */
-export const describeLive = describe.skipIf(!isLive);
+export const describeLive: ConditionalDescribe = describe.skipIf(!isLive);

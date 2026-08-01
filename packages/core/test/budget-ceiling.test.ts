@@ -12,6 +12,7 @@
  *   - stop the job rather than let it re-dispatch into the same wall seven more times;
  *   - never hide spend that already happened.
  */
+import { writableConfig } from './writable-config.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
@@ -92,11 +93,11 @@ describe('the engine stops a job at its ceiling', () => {
     mock = installMockProvider();
   });
   afterEach(() => {
-    config.workflow.maxJobCostUsd = original;
+    writableConfig.workflow.maxJobCostUsd = original;
   });
 
   it('spends nothing when earlier dispatches already used the ceiling up', async () => {
-    config.workflow.maxJobCostUsd = 1;
+    writableConfig.workflow.maxJobCostUsd = 1;
     const resume: Checkpoint = {
       report: {}, sources: [], doneAgentIds: [], degraded: [],
       cost: usd(5), // what the previous dispatches burned, carried in the checkpoint
@@ -123,7 +124,7 @@ describe('the engine stops a job at its ceiling', () => {
   });
 
   it('holds the job instead of failing it or asking to be re-dispatched', async () => {
-    config.workflow.maxJobCostUsd = 1;
+    writableConfig.workflow.maxJobCostUsd = 1;
     const resume: Checkpoint = { report: {}, sources: [], doneAgentIds: [], degraded: [], cost: usd(5) };
 
     const out = await runResearch({
@@ -148,7 +149,7 @@ describe('the engine stops a job at its ceiling', () => {
     installMockProvider();
     // Resume with every step already done and the spend already past the ceiling:
     // there is nothing left to hold BACK from, only a finished report to hand over.
-    config.workflow.maxJobCostUsd = full.trace.cost.usd / 2;
+    writableConfig.workflow.maxJobCostUsd = full.trace.cost.usd / 2;
 
     const out = await runResearch({
       template, params: params(), jobId: 'b2c', generatedAt: 't', resume: full.checkpoint,
@@ -159,7 +160,7 @@ describe('the engine stops a job at its ceiling', () => {
   });
 
   it('never prints what we spent into the buyer’s report', async () => {
-    config.workflow.maxJobCostUsd = 1;
+    writableConfig.workflow.maxJobCostUsd = 1;
     const resume: Checkpoint = { report: {}, sources: [], doneAgentIds: [], degraded: [], cost: usd(5) };
     const out = await runResearch({
       template, params: params(), jobId: 'b5', generatedAt: 't', resume, finalize: false,
@@ -185,7 +186,7 @@ describe('the engine stops a job at its ceiling', () => {
     expect(full.trace.budgetExceeded).toBeUndefined(); // the default ceiling is nowhere near
 
     const capped = installMockProvider();
-    config.workflow.maxJobCostUsd = full.trace.cost.usd / 4;
+    writableConfig.workflow.maxJobCostUsd = full.trace.cost.usd / 4;
 
     const out = await runResearch({ template, params: params(), jobId: 'b4', generatedAt: 't' });
 
@@ -200,7 +201,7 @@ describe('the engine stops a job at its ceiling', () => {
   it('takes the ceiling from the MODEL\u2019s mode before the deployment default', async () => {
     // This is a catalog: a cheap scan and a deep multi-agent report cannot share one
     // number. A model that states its own cost profile must win over the global.
-    config.workflow.maxJobCostUsd = 1000; // deployment says "plenty"
+    writableConfig.workflow.maxJobCostUsd = 1000; // deployment says "plenty"
     const stingy = {
       ...template,
       modes: { ...template.modes, essential: { ...template.modes!.essential!, maxCostUsd: 0.002 } },
@@ -215,7 +216,7 @@ describe('the engine stops a job at its ceiling', () => {
   it('runs uncapped when the job was approved to continue', async () => {
     // What an admin approval passes down. Without it the resumed job would wake up
     // already over the ceiling and hold again, forever.
-    config.workflow.maxJobCostUsd = 0.001;
+    writableConfig.workflow.maxJobCostUsd = 0.001;
     const out = await runResearch({
       template, params: params(), jobId: 'b7', generatedAt: 't', costCeilingUsd: null,
     });

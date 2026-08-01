@@ -3,6 +3,7 @@
  * they are the ones that cost money: each register / reset / contact call sends
  * an email on our Postmark account, and each login runs a password hash.
  */
+import type { InjectOptions, LightMyRequestResponse } from 'fastify';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
@@ -34,7 +35,7 @@ const seed = () => createApp({ appId: 'fbizlab', name: 'F', role: 'app', emailFr
 // The shape this deployment actually receives: Cloud Run appends the peer, so the
 // last entry is the real client. (A load balancer would add one more; see the
 // `client IP resolution` cases below.)
-const post = (url: string, payload: unknown, ip = '203.0.113.9') =>
+const post = (url: string, payload: InjectOptions['payload'], ip = '203.0.113.9'): Promise<LightMyRequestResponse> =>
   app.inject({ method: 'POST', url, payload, headers: { 'x-forwarded-for': ip } });
 
 describe('public endpoints — rate limits', () => {

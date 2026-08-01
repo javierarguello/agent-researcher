@@ -1,0 +1,15 @@
+{
+  // Typechecking for the tests, which the build config deliberately excludes.
+  //
+  // Without this the suites are never typechecked, and a signature change leaves
+  // call sites that no longer compile while every test still passes: a stale
+  // `buildAgentKickoff({ context: {} })` survived the C4 handoff work, silently
+  // passing a parameter that no longer exists and omitting a required one. Worse,
+  // the reverse — a source edit that undoes a fix — also went unnoticed.
+  //
+  // `rootDir` is widened because the build config anchors it at `src` for output.
+  "extends": "./tsconfig.json",
+  // Widened to the repo root: these suites import fixtures from `packages/core/test`.
+  "compilerOptions": { "noEmit": true, "rootDir": "../.." },
+  "include": ["src/**/*", "test/**/*"]
+}

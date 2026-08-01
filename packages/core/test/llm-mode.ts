@@ -9,10 +9,15 @@ import { describe } from 'vitest';
 
 export const isLive = (process.env.TEST_LLM ?? 'mock') === 'ollama';
 
+// `describe.skipIf` returns vitest's chainable variant, whose type names internals
+// TypeScript cannot re-export from here. Naming the shape we actually use keeps the
+// suites typechecked without dragging vitest's private types across the boundary.
+type ConditionalDescribe = (name: string, fn: () => void) => void;
+
 /** Tests that script the model's answers — only meaningful against the mock. */
-export const describeMock = describe.skipIf(isLive);
+export const describeMock: ConditionalDescribe = describe.skipIf(isLive);
 /** Tests that need a real model behind the aliases. */
-export const describeLive = describe.skipIf(!isLive);
+export const describeLive: ConditionalDescribe = describe.skipIf(!isLive);
 
 /**
  * Fail loudly when live mode is asked for but no model server is up.
@@ -27,7 +32,7 @@ export async function requireLocalModel(): Promise<void> {
   const want = process.env.LLM_MODEL_FLASH ?? 'qwen2.5:3b';
   let tags: { models?: Array<{ name?: string }> };
   try {
-    tags = await (await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(5000) })).json();
+    tags = await (await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(5000) })).json() as { models?: Array<{ name?: string }> };
   } catch (err) {
     throw new Error(
       `TEST_LLM=ollama but no model server at ${host} (${(err as Error).message}). Start it with: npm run llm:up`,

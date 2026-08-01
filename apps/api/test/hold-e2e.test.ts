@@ -20,6 +20,7 @@
  * the live run is the one that proves a real model driving a real tool loop still
  * ends up held, approvable, and finishable.
  */
+import { writableConfig } from './writable-config.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
@@ -77,7 +78,7 @@ describe('a job held for budget, decided over the API', () => {
     // local model answers both.
     if (!isLive) {
       __setProviderForTests('gemini-vertex', new MockLlmProvider());
-      config.moderation.llm = false;
+      writableConfig.moderation.llm = false;
     }
     __registerTemplateForTests(compactModel);
     await seedApp(APP);
@@ -87,11 +88,11 @@ describe('a job held for budget, decided over the API', () => {
     await grantCredits({ appId: APP, userId: BUYER, credits: 20 });
     // Low enough that the very first agent takes the job past it, whichever model
     // is answering — the point here is the decision flow, not where it stops.
-    config.workflow.maxJobCostUsd = 0.000001;
+    writableConfig.workflow.maxJobCostUsd = 0.000001;
   });
   afterEach(() => {
-    config.workflow.maxJobCostUsd = ceiling;
-    config.moderation.llm = classifier;
+    writableConfig.workflow.maxJobCostUsd = ceiling;
+    writableConfig.moderation.llm = classifier;
     __clearTestTemplates();
   });
 

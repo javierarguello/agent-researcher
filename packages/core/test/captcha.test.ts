@@ -5,6 +5,7 @@
  * it is a network call we can't exercise for real in CI — so the request shape
  * and the pass/fail rule are pinned here against a stubbed fetch.
  */
+import { writableConfig } from './writable-config.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { config } from '../src/config.js';
 import { verifyCaptcha, captchaEnabled } from '../src/auth/captcha.js';
@@ -26,15 +27,15 @@ const params = () => Object.fromEntries((lastRequest.init.body as URLSearchParam
 
 describe('turnstile siteverify', () => {
   beforeEach(() => {
-    config.captcha.secret = 'test-secret';
+    writableConfig.captcha.secret = 'test-secret';
   });
   afterEach(() => {
-    config.captcha.secret = '';
+    writableConfig.captcha.secret = '';
     vi.unstubAllGlobals();
   });
 
   it('is off until a secret is configured — and then everything passes through', async () => {
-    config.captcha.secret = '';
+    writableConfig.captcha.secret = '';
     expect(captchaEnabled()).toBe(false);
     stubSiteverify({ success: false });
     expect(await verifyCaptcha(undefined)).toEqual({ ok: true });
@@ -74,7 +75,10 @@ describe('turnstile siteverify', () => {
   it('rejects a missing token without calling Cloudflare', async () => {
     stubSiteverify({ success: true });
     expect(await verifyCaptcha(undefined)).toEqual({ ok: false, reason: 'missing_token' });
-    expect(await verifyCaptcha('   ' && '')).toEqual({ ok: false, reason: 'missing_token' });
+    // Both cases, separately: `'   ' && ''` is just `''` — the whitespace-only
+    // token it claimed to cover was never actually passed in.
+    expect(await verifyCaptcha('')).toEqual({ ok: false, reason: 'missing_token' });
+    expect(await verifyCaptcha('   ')).toEqual({ ok: false, reason: 'missing_token' });
     expect(fetch).not.toHaveBeenCalled();
   });
 

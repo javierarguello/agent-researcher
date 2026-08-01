@@ -30,7 +30,7 @@ describe('assisted-review allowance', () => {
     // The point of the distinction: editing a request is normal, so there is no
     // penalty and no wait — the caller just proceeds deterministic-only.
     expect(done.retryAfterSeconds).toBe(0);
-    expect((await record()).assistCooldownUntil).toBeUndefined();
+    expect((await record())!.assistCooldownUntil).toBeUndefined();
     expect((await getUserFlags(A, U)).blocked).toBe(false);
   });
 
@@ -41,12 +41,12 @@ describe('assisted-review allowance', () => {
 
   it('retrying an exhausted draft stays refused and costs nothing', async () => {
     for (let i = 0; i <= ASSIST_FREE_ATTEMPTS; i++) await reserveAssistedReview(A, U, 'draft-1');
-    const before = (await record()).preflightCount;
+    const before = (await record())!.preflightCount;
     for (let i = 0; i < 5; i++) {
       expect((await reserveAssistedReview(A, U, 'draft-1')).reason).toBe('attempts');
     }
     // A refused attempt must not consume the per-user backstop either.
-    expect((await record()).preflightCount).toBe(before);
+    expect((await record())!.preflightCount).toBe(before);
   });
 
   it('cycling draft ids trips the per-user backstop, and only that starts a cooldown', async () => {
@@ -57,7 +57,7 @@ describe('assisted-review allowance', () => {
     expect(denied?.allowed).toBe(false);
     expect(denied?.reason).toBe('cooldown');
     expect(denied?.retryAfterSeconds).toBeGreaterThan(0);
-    expect((await record()).assistCooldownUntil).toBeTruthy();
+    expect((await record())!.assistCooldownUntil).toBeTruthy();
   });
 
   it('a cooldown refuses even a brand-new draft', async () => {
@@ -70,19 +70,19 @@ describe('assisted-review allowance', () => {
     const first = await reserveAssistedReview(A, U, 'x');
     const second = await reserveAssistedReview(A, U, 'y');
     expect(second.retryAfterSeconds).toBeLessThanOrEqual(first.retryAfterSeconds);
-    expect((await record()).assistCooldowns).toBe(1); // one cooldown earned, not three
+    expect((await record())!.assistCooldowns).toBe(1); // one cooldown earned, not three
   });
 
   it('escalates the pause the second time around', async () => {
     for (let i = 0; i < ASSIST_USER_ATTEMPTS + 1; i++) await reserveAssistedReview(A, U, `a-${i}`);
-    const firstPause = (await record()).assistCooldownUntil!;
+    const firstPause = (await record())!.assistCooldownUntil!;
 
     vi.setSystemTime(new Date(Date.parse(firstPause) + 60_000));
     for (let i = 0; i < ASSIST_USER_ATTEMPTS + 1; i++) await reserveAssistedReview(A, U, `b-${i}`);
-    const secondPause = (await record()).assistCooldownUntil!;
+    const secondPause = (await record())!.assistCooldownUntil!;
 
     expect(Date.parse(secondPause) - Date.now()).toBeGreaterThan(60 * 60 * 1000);
-    expect((await record()).assistCooldowns).toBe(2);
+    expect((await record())!.assistCooldowns).toBe(2);
   });
 
   it('generating ends the draft: the next report gets its attempts back', async () => {
@@ -91,9 +91,9 @@ describe('assisted-review allowance', () => {
 
     await resetAssistAllowance(A, U);
     const after = await record();
-    expect(after.assistCooldownUntil).toBeUndefined();
-    expect(after.preflightCount).toBe(0);
-    expect(after.assistCooldowns).toBe(0);
+    expect(after!.assistCooldownUntil).toBeUndefined();
+    expect(after!.preflightCount).toBe(0);
+    expect(after!.assistCooldowns).toBe(0);
     // Even the same id is fresh — the draft it referred to has been generated.
     expect((await reserveAssistedReview(A, U, 'draft-1')).allowed).toBe(true);
   });

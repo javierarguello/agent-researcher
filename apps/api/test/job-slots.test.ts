@@ -11,6 +11,7 @@
  * bug E2 fixed. So every path that can end without a running job has its own test
  * here, and so does every exemption.
  */
+import type { InjectOptions, LightMyRequestResponse } from 'fastify';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
@@ -39,7 +40,7 @@ const research = { template: 'florida-business-for-sale', params: { industry: 'l
 let userToken = '';
 let adminToken = '';
 
-const post = (t: string, payload: unknown = research) =>
+const post = (t: string, payload: InjectOptions['payload'] = research): Promise<LightMyRequestResponse> =>
   app.inject({ method: 'POST', url: '/research', headers: auth(t), payload });
 
 beforeEach(async () => {

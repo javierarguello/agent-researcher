@@ -5,6 +5,7 @@
  *    param into something the user didn't ask for;
  *  - the preview a user sees is a pure function of their params.
  */
+import { writableConfig } from './writable-config.js';
 import { describe, it, expect, afterEach } from 'vitest';
 import { preScreen, collectFreeText, moderateResearchParams } from '../src/moderation/moderate.js';
 import { screeningForms, similarity, sanitizeProposal } from '../src/util/text.js';
@@ -153,11 +154,11 @@ describe('a billed call is booked even when its answer is unusable', () => {
   // LLM moderation for every file that runs after this one.
   const wasEnabled = config.moderation.llm;
   afterEach(() => {
-    config.moderation.llm = wasEnabled;
+    writableConfig.moderation.llm = wasEnabled;
   });
 
   it('moderation reports usage when the verdict does not parse', async () => {
-    config.moderation.llm = true;
+    writableConfig.moderation.llm = true;
     __setProviderForTests('gemini-vertex', stub('{"allowed": tru') as never);
     const verdict = await moderateResearchParams({ industry: 'laundromats' });
 

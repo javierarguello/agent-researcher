@@ -51,7 +51,7 @@ describeLive('pre-flight against a local model — invariants', () => {
     const want = process.env.LLM_MODEL_FLASH ?? 'qwen2.5:3b';
     let tags: { models?: Array<{ name?: string }> };
     try {
-      tags = await (await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(5000) })).json();
+      tags = await (await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(5000) })).json() as { models?: Array<{ name?: string }> };
     } catch (err) {
       throw new Error(
         `TEST_LLM=ollama but no model server at ${host} (${(err as Error).message}). ` +

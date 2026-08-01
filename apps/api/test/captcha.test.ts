@@ -7,6 +7,7 @@
  * authenticated report endpoints, and does everything behave exactly as before
  * when Turnstile isn't configured.
  */
+import { writableConfig } from './writable-config.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
@@ -41,10 +42,10 @@ function stubSiteverify(success: boolean) {
 describe('turnstile — route enforcement', () => {
   beforeEach(async () => {
     await seedApp('fbizlab');
-    config.captcha.secret = 'test-secret'; // configured → the guard is live
+    writableConfig.captcha.secret = 'test-secret'; // configured → the guard is live
   });
   afterEach(() => {
-    config.captcha.secret = '';
+    writableConfig.captcha.secret = '';
     vi.unstubAllGlobals();
   });
 
@@ -175,7 +176,7 @@ describe('turnstile — route enforcement', () => {
   });
 
   it('is a complete no-op when no secret is configured', async () => {
-    config.captcha.secret = '';
+    writableConfig.captcha.secret = '';
     await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 12 });
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('siteverify must not be called'); }));
     const t = await token('fbizlab', 'u@x.com');

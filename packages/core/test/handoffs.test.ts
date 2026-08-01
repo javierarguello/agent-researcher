@@ -121,6 +121,55 @@ describe('the research loop is told what is covered, not the text of it', () => 
     expect(kickoff).toContain('2.8x SDE');
   });
 
+  it('carries no dependency\u2019s CONTENT, however it is routed', async () => {
+    // Asserting on the block marker was not enough: routing the sections through
+    // the `current` block instead smuggles them back in under a different heading
+    // and the marker check stays green. This asserts on the text itself, so any
+    // path that puts a dependency's prose in the kickoff fails.
+    const SECRET = 'ZZTOPSECRETUPSTREAMPROSE';
+    const twoSection: ResearchTemplate<Record<string, unknown>> = {
+      id: 'e2e-upstream', name: 'Upstream', description: 'x', version: 1,
+      basePrompt: 'Be useful.',
+      paramsSchema: z.object({}),
+      sections: [
+        { key: 'items', title: 'Items', guidance: 'List.', schema: z.array(z.object({ name: z.string() })) },
+        { key: 'summary', title: 'Summary', guidance: 'Sum.', schema: z.object({ text: z.string() }) },
+        { key: 'notes', title: 'Notes', guidance: 'Note.', schema: z.object({ text: z.string() }) },
+      ],
+      agents: [
+        { id: 'lister', role: 'producer', objective: 'List.', produces: ['items', 'summary'], researchBudget: 1 },
+        // Depends on `lister` but owns only `items` — so `summary` is a pure
+        // upstream dependency, exactly the thing the loop must not be handed.
+        { id: 'reviser', role: 'producer', objective: 'Revise.', produces: ['notes'], enriches: ['items'], dependsOn: ['lister'], researchBudget: 1 },
+      ],
+      buildBrief: () => 'Find things.',
+    };
+
+    const seen: GenerateOptions[] = [];
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    mock.generate = async (opts) => {
+      seen.push(opts);
+      if (opts.responseSchema && JSON.stringify(opts.responseSchema).includes('summary')) {
+        const value = JSON.parse((await base(opts)).text) as Record<string, unknown>;
+        value.summary = { text: SECRET };
+        return { text: JSON.stringify(value), toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+      return base(opts);
+    };
+
+    await runResearch({ template: twoSection, params: {}, jobId: 'upstream1', generatedAt: 't' });
+
+    const loopCalls = seen.filter((o) => o.tools?.length);
+    expect(loopCalls.length).toBeGreaterThan(1); // the reviser's loop really ran
+    for (const call of loopCalls) {
+      expect(JSON.stringify(call.messages)).not.toContain(SECRET);
+    }
+    // …and the write DOES get it, so this is about the loop, not about hiding it.
+    const revise = seen.filter((o) => o.responseSchema).at(-1)!;
+    expect(JSON.stringify(revise.messages)).toContain(SECRET);
+  });
+
   it('carries no raw sections at all', () => {
     // This prompt is re-sent on EVERY turn of the loop, and the loop decides what
     // to search for — it needs to know what is already covered, not read it. That

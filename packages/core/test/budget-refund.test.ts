@@ -14,6 +14,7 @@
  * End-to-end through `runJob`, because none of the refund/mark/stats machinery
  * lives inside the engine.
  */
+import { writableConfig } from './writable-config.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
@@ -51,7 +52,7 @@ const params = () => template.paramsSchema.parse({ mode: 'essential', industry: 
 
 /** Run a job with a ceiling low enough to trip a few calls in, so there is real spend. */
 async function runCapped(jobId: string, maxUsd = 0.01) {
-  config.workflow.maxJobCostUsd = maxUsd;
+  writableConfig.workflow.maxJobCostUsd = maxUsd;
   // The API creates the job document before dispatching; the counters and the
   // expiry sweep both query by appId/userId, so a test that skipped this would be
   // exercising a job that no query can find.
@@ -63,7 +64,7 @@ describe('a job stopped by the cost ceiling', () => {
   const original = config.workflow.maxJobCostUsd;
   beforeEach(() => installMockProvider());
   afterEach(() => {
-    config.workflow.maxJobCostUsd = original;
+    writableConfig.workflow.maxJobCostUsd = original;
   });
 
   it('is held for a decision — not failed, not refunded, and still shows what it cost us', async () => {
@@ -120,7 +121,7 @@ describe('a report that ran but could not be stored', () => {
   const original = config.workflow.maxJobCostUsd;
   beforeEach(() => installMockProvider());
   afterEach(() => {
-    config.workflow.maxJobCostUsd = original;
+    writableConfig.workflow.maxJobCostUsd = original;
     GCS.failOn = '';
     GCS.failTimes = Infinity;
   });
@@ -179,7 +180,7 @@ describe('resolving a hold', () => {
   const original = config.workflow.maxJobCostUsd;
   beforeEach(() => installMockProvider());
   afterEach(() => {
-    config.workflow.maxJobCostUsd = original;
+    writableConfig.workflow.maxJobCostUsd = original;
   });
 
   it('approve: resumes from the checkpoint with no ceiling, and charges nothing more', async () => {
