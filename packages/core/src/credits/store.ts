@@ -153,25 +153,44 @@ export async function wasJobRefunded(jobId: string): Promise<boolean> {
 export async function refundForJob(appId: string, userId: string, jobId: string, note?: string): Promise<boolean> {
   const consumeRef = ledger().doc(`consume_${jobId}`);
   const refundRef = ledger().doc(`refund_${jobId}`);
-  const balRef = balances().doc(balKey(appId, userId));
+  const jobRef = firestore().collection(config.jobs.collection).doc(jobId);
   return firestore().runTransaction(async (tx) => {
     const consumeSnap = await tx.get(consumeRef);
     const refundSnap = await tx.get(refundRef);
-    const balSnap = await tx.get(balRef);
+    const jobSnap = await tx.get(jobRef);
     if (!consumeSnap.exists || refundSnap.exists) return false; // nothing consumed, or already refunded
-    const credits = (consumeSnap.data() as CreditLedgerEntry).credits;
+
+    // A job that is going to RUN is not refundable. `resolve` flips the job to
+    // failed and then refunds; an admin retry landing between those two awaits
+    // re-queues it, and this write would then leave a job that is both queued and
+    // refunded — the free report the refund guard exists to prevent, arrived at
+    // from the other direction.
+    const status = jobSnap.exists ? (jobSnap.data() as { status?: string }).status : undefined;
+    if (status === 'queued' || status === 'running') return false;
+
+    // The owner comes from the CONSUME ENTRY, never from the caller. The amount
+    // already did; taking the identity from anywhere else means a mismatched pair
+    // credits one account for another's debit and burns the payer's only refund.
+    const entry = consumeSnap.data() as CreditLedgerEntry;
+    const credits = entry.credits;
+    const balRef = balances().doc(balKey(entry.appId, entry.userId));
+    const balSnap = await tx.get(balRef);
     const current = balSnap.exists ? (balSnap.data() as CreditBalance).balance : 0;
     tx.set(refundRef, {
       id: `refund_${jobId}`,
-      appId,
-      userId,
+      appId: entry.appId,
+      userId: entry.userId,
       type: 'refund',
       credits,
       jobId,
       ...(note ? { note } : {}),
       createdAt: nowIso(),
     } as CreditLedgerEntry);
-    tx.set(balRef, { appId, userId, balance: current + credits, updatedAt: nowIso() }, { merge: true });
+    tx.set(
+      balRef,
+      { appId: entry.appId, userId: entry.userId, balance: current + credits, updatedAt: nowIso() },
+      { merge: true },
+    );
     return true;
   });
 }

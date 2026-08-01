@@ -112,6 +112,19 @@ export async function inFlightSlots(appId: string, userId: string): Promise<numb
  * the queue after being parked: the claim happened outside `createJob`, and the
  * flag is what makes the eventual release exactly-once.
  */
-export async function setJobSlotHeld(jobId: string, held: boolean): Promise<void> {
-  await jobs().doc(jobId).set({ slotHeld: held }, { merge: true });
+export async function setJobSlotHeld(jobId: string, held: boolean): Promise<boolean> {
+  const ref = jobs().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    const status = (snap.data() as { status?: string }).status;
+    // Never flag a slot on a job that has already ended. Blind, a straggler
+    // finishing between the claim and this write left a `completed` job holding
+    // `slotHeld: true` and the counter at 1 — forever, because release goes
+    // through the job and the job is done. With the cap at one report, that is a
+    // permanent lockout, and no admin endpoint reaches the slots collection.
+    if (held && (status === 'completed' || status === 'failed')) return false;
+    tx.set(ref, { slotHeld: held }, { merge: true });
+    return true;
+  });
 }

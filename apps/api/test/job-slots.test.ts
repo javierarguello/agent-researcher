@@ -357,6 +357,37 @@ describe('a job the queue gave up on can be rescued', () => {
   });
 });
 
+describe('a straggler cannot undo an admin\u2019s decision', () => {
+  it('a refunded job stays refunded, and stays closed', async () => {
+    // The whole sequence, as it actually happens: a job is parked while still
+    // running, an admin refunds and closes it, and only then does the run nobody
+    // stopped reach one of its own hold paths.
+    const before = await getBalance(APP, USER);
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markRunning(job!.jobId);
+    await app.inject({ method: 'POST', url: `/admin/jobs/${job!.jobId}/park`, headers: auth(adminToken) });
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${job!.jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    expect(await getBalance(APP, USER)).toBe(before);
+
+    // The straggler parks itself again. Blind, this flipped the job back to `held`
+    // and overwrote the hold that recorded the refund.
+    await markHeld(job!.jobId, { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 2 });
+    expect((await getJob(job!.jobId))!.status).toBe('failed');
+
+    // …so approve cannot re-run it, and the buyer does not end up with both the
+    // credits back and the report those credits paid for.
+    const approve = await app.inject({
+      method: 'POST', url: `/admin/jobs/${job!.jobId}/approve`, headers: auth(adminToken),
+    });
+    expect(approve.statusCode).toBe(409);
+    expect(await getBalance(APP, USER)).toBe(before);
+  });
+});
+
 describe('approving a hold only lifts the ceiling when the hold was about money', () => {
   async function heldFor(reason: 'budget_exceeded' | 'run_failed'): Promise<string> {
     expect((await post(userToken)).statusCode).toBe(202);

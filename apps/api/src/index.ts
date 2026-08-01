@@ -2130,7 +2130,9 @@ app.post(
     // A failed job gave its slot back. Running again means holding one again —
     // forced, like an approval, because an admin has decided this job runs.
     await claimJobSlot(job.appId, job.userId, MAX_CONCURRENT_JOBS_PER_USER, { force: true });
-    await setJobSlotHeld(jobId, true);
+    // If the job ended between the claim and the flag, give the slot straight back
+    // — otherwise the counter is stuck at one with no job left to release it.
+    if (!(await setJobSlotHeld(jobId, true))) await releaseUnclaimedSlot(job.appId, job.userId).catch(() => {});
 
     const { enqueueJob } = await import('./enqueue.js');
     await enqueueJob(jobId, { unique: true });
@@ -2173,7 +2175,9 @@ app.post(
     // exactly when the buyer got tired of waiting and started another (Javier,
     // 2026-07-31). The job carries the claim, so the release path is the usual one.
     await claimJobSlot(job.appId, job.userId, MAX_CONCURRENT_JOBS_PER_USER, { force: true });
-    await setJobSlotHeld(jobId, true);
+    // If the job ended between the claim and the flag, give the slot straight back
+    // — otherwise the counter is stuck at one with no job left to release it.
+    if (!(await setJobSlotHeld(jobId, true))) await releaseUnclaimedSlot(job.appId, job.userId).catch(() => {});
 
     const { enqueueJob } = await import('./enqueue.js');
     await enqueueJob(jobId, { unique: true });

@@ -194,8 +194,20 @@ export async function markFailed(
  * the checkpoint is deliberately left in storage — an approval resumes the work
  * rather than restarting it.
  */
-export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[]): Promise<void> {
-  await patch(jobId, { status: 'held', hold, updatedAt: nowIso(), ...(files ? { files } : {}) });
+export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[]): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    // A job somebody already RESOLVED stays resolved. Blind, this write let a
+    // straggler run flip `failed` back to `held` — overwriting the `hold` that
+    // recorded the resolution, so `approve` (which assumes held implies never
+    // refunded) re-dispatched it and the report was delivered with the refund kept.
+    const status = (snap.data() as ResearchJob).status;
+    if (status === 'completed' || status === 'failed') return false;
+    tx.set(ref, { status: 'held', hold, updatedAt: nowIso(), ...(files ? { files } : {}) }, { merge: true });
+    return true;
+  });
 }
 
 /**
