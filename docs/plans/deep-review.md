@@ -17,14 +17,14 @@ bugs.
 
 ## G · Report integrity
 
-- ~~**G1 — The degrade loop overwrites sections that were successfully written.**~~ **Closed `PENDING`.**
+- ~~**G1 — The degrade loop overwrites sections that were successfully written.**~~ **Closed `7b7532e`.**
   `research-engine.ts:535-544`. **Reproduced, both directions.** The loop degrades
   `produces` *and* `enriches` for every agent not in `done`, with no check that the
   section already holds real content. If a refiner fails, the producer's delivered
   section is replaced by a placeholder; if a producer fails, the refiner's real
   output is overwritten. Florida has four enrich edges. The existing degrade test
   runs in `essential`, which excludes every refiner — which is why it never saw it.
-- ~~**G2 — Degraded placeholders fabricate readable data.**~~ **Closed `PENDING`.** `research-engine.ts:851-896`
+- ~~**G2 — Degraded placeholders fabricate readable data.**~~ **Closed `7b7532e`.** `research-engine.ts:851-896`
   (`emptyFromJsonSchema`). **Reproduced.** The buyer-facing note lands only in the
   first string field; enums get `enum[0]`, numbers `0`, `.min(N)` arrays get N rows
   of zeros. A degraded verdict section rendered literally
