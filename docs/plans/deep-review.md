@@ -35,12 +35,12 @@ bugs.
 
 ## H · The job state machine
 
-- ~~**H1 — `markHeld` is a blind write.**~~ **Closed `PENDING`.** `jobs/firestore.ts:197`. **Reproduced.**
+- ~~**H1 — `markHeld` is a blind write.**~~ **Closed `63c1626`.** `jobs/firestore.ts:197`. **Reproduced.**
   Park a live job → resolve with refund → a straggler run hits a hold path →
   `markHeld` flips `failed` back to `held`, overwriting the `hold` that recorded the
   resolution. `approve` then accepts it (it assumes held ⇒ never refunded),
   re-dispatches, and the report is delivered with the refund kept.
-- ~~**H2 — `setJobSlotHeld` is a blind write.**~~ **Closed `PENDING`.** `slots.ts:115-117`. **Reproduced.** A
+- ~~**H2 — `setJobSlotHeld` is a blind write.**~~ **Closed `63c1626`.** `slots.ts:115-117`. **Reproduced.** A
   straggler completing between `claimJobSlot(force)` and the flag leaves a
   `completed` job with `slotHeld: true` and `inFlight: 1` forever. With the cap at
   1 that is a permanent, product-wide lockout, and no admin endpoint touches the
@@ -67,11 +67,11 @@ bugs.
 The subsystem is sound — every mutation is a transaction writing ledger and balance
 together, and `store.ts` is the only writer. What is left is who is trusted.
 
-- ~~**I1 — `refundForJob` does not read the job's status.**~~ **Closed `PENDING`.** `credits/store.ts:157-176`.
+- ~~**I1 — `refundForJob` does not read the job's status.**~~ **Closed `63c1626`.** `credits/store.ts:157-176`.
   **Reproduced at store level.** `resolve` flips to `failed`; an admin `retry` lands
   in the window between the two awaits and re-queues it; `resolve`'s refund then
   commits anyway. End state: `queued` **and** refunded — a free report.
-- ~~**I2 — `refundForJob` credits the caller's `(appId, userId)`,**~~ **Closed `PENDING`.** while the amount
+- ~~**I2 — `refundForJob` credits the caller's `(appId, userId)`,**~~ **Closed `63c1626`.** while the amount
   comes from the consume entry. `store.ts:153-176`. **Reproduced.** Unreachable via
   the API today; the transaction already reads the entry that holds the right pair.
 - **I3 — Partial failure between `consumeCredits` and `createJob`.**
