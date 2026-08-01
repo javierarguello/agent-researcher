@@ -414,15 +414,24 @@ app.post(
   '/auth/verify-email',
   {
     schema: {
-      summary: 'Verify an email address from the emailed link, then log in',
-      description: 'Consumes the `verify-email` token from the link, marks the address verified, and returns a login session.',
+      summary: 'Verify an email address from the emailed link',
+      description:
+        'Consumes the `verify-email` token from the link and marks the address verified. The password chosen at ' +
+        'registration must be supplied with it: anyone can register an address they do not own, so clicking the ' +
+        'link proves only that you read the mail. Requiring the password proves you are also the person who ' +
+        'signed up. No session is returned — sign in afterwards.',
       tags: ['auth'],
-      body: { type: 'object', required: ['token'], additionalProperties: false, properties: { token: { type: 'string', maxLength: 4096 } } },
+      body: {
+        type: 'object',
+        required: ['token', 'password'],
+        additionalProperties: false,
+        properties: { token: { type: 'string', maxLength: 4096 }, password: { type: 'string', maxLength: 200 } },
+      },
     },
   },
   async (req, reply) => {
     if (await publicLimit(req, reply, { route: 'token', perIp: config.publicLimits.tokenPerHourPerIp })) return reply;
-    const { token } = req.body as { token: string };
+    const { token, password } = req.body as { token: string; password: string };
     let claims;
     try {
       claims = await verifySession(token);
@@ -434,15 +443,27 @@ app.post(
     if (!appRec || !appRec.active) return reply.code(404).send({ error: 'Unknown or inactive app.' });
     const cred = await getCredential(claims.appId, claims.email);
     if (!cred) return reply.code(400).send({ error: 'Account not found.' });
+
+    // The other half of the pre-hijack, and the half that survived not issuing a
+    // session here. An attacker registers an address they do not own with a
+    // password of their choosing; the victim receives a genuine, correctly signed
+    // "verify your email" and clicks it; the attacker then signs in. The earlier
+    // reasoning — "if they don't hold the password, forgot-password locks the
+    // stranger out" — assumes the victim goes on to TRY to sign in. Someone who
+    // only clicked verify never does, and leaves an address stamped verified on a
+    // password a stranger chose.
+    //
+    // So verification proves two things now: you read the mail, and you are the
+    // person who signed up. A victim cannot supply a password they never chose,
+    // and the account stays unverified and unusable.
+    if (cred.passwordHash && !(await verifyPassword(password, cred.passwordHash))) {
+      logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'WARNING', 'auth.verify_wrong_password', {});
+      return reply.code(401).send({ error: 'That password does not match the one chosen when this account was created.' });
+    }
     await setEmailVerified(claims.appId, claims.email);
     logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'INFO', 'auth.email_verified', {});
-    // Verified, but NOT logged in — deliberately, and this is the other half of the
-    // pre-hijack. Anyone can register an address they don't own, so the password on
-    // this record was not necessarily chosen by the person reading the mail. Handing
-    // that person a session is what made the attack pay: they would go on to use and
-    // pay for an account whose password a stranger already knows. Signing in proves
-    // they hold it; if they don't, "forgot password" replaces it and locks the
-    // stranger out. The cost is one extra step for a legitimate user.
+    // Still no session, for the same reason it was removed: verification is about
+    // the address, and signing in is where a session comes from.
     return reply.code(200).send({ status: 'verified', email: claims.email });
   },
 );

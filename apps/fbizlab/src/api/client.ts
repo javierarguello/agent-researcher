@@ -135,8 +135,8 @@ export function register(email: string, password: string, name?: string, captcha
 
 /** Verify an email from the emailed link. Does NOT sign you in: the password on
  *  that account was not necessarily chosen by whoever opened the mail. */
-export function verifyEmail(token: string): Promise<{ status: string; email: string }> {
-  return api('/auth/verify-email', { method: 'POST', anonymous: true, body: { token } });
+export function verifyEmail(token: string, password: string): Promise<{ status: string; email: string }> {
+  return api('/auth/verify-email', { method: 'POST', anonymous: true, body: { token, password } });
 }
 
 /** Always resolves 202 (never reveals whether the email exists). */

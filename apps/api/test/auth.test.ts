@@ -69,12 +69,12 @@ describe('auth — single-purpose tokens and unverified identities', () => {
     expect(post.statusCode).toBe(401);
 
     // …but it still does the one job it was minted for.
-    expect((await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link, password: reg.password } })).statusCode).toBe(200);
   });
 
   it('a password-reset link is not a session either', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify'), password: reg.password } });
     await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: reg.email } });
     const link = tokenFromLast('reset');
     expect(link).toBeTruthy();
@@ -83,7 +83,7 @@ describe('auth — single-purpose tokens and unverified identities', () => {
 
   it('the session a real login returns still works everywhere', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify'), password: reg.password } });
     // The session has to come from a LOGIN — verifying an address no longer hands
     // one out, because clicking a link does not prove you chose the password.
     const session = (await login(reg.email, reg.password)).json().token;
@@ -114,7 +114,7 @@ describe('auth — password register / verify / login / reset', () => {
     // opened the mail — and handing that person a session is what made the attack
     // pay off: they would use and pay for an account a stranger can log into.
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    const v = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    const v = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify'), password: reg.password } });
     expect(v.statusCode).toBe(200);
     expect(v.json().status).toBe('verified');
     expect(v.json().token).toBeUndefined();
@@ -164,7 +164,7 @@ describe('auth — password register / verify / login / reset', () => {
 
   it('a verified email cannot be re-registered (409 email_taken)', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify'), password: reg.password } });
     const again = await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
     expect(again.statusCode).toBe(409);
     expect(again.json().code).toBe('email_taken');
@@ -210,7 +210,7 @@ describe('auth — password register / verify / login / reset', () => {
 
   it('+subaddressing cannot spawn a duplicate account (normalized identity)', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify'), password: reg.password } });
     // new+promo@x.com normalizes to new@x.com → treated as the existing account.
     const dup = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'new+promo@x.com' } });
     expect(dup.statusCode).toBe(409);
@@ -219,14 +219,14 @@ describe('auth — password register / verify / login / reset', () => {
 
   it('wrong password and unknown email both return 401 (no enumeration)', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify'), password: reg.password } });
     expect((await login(reg.email, 'wrongwrong')).statusCode).toBe(401);
     expect((await login('nobody@x.com', 'whatever12')).statusCode).toBe(401);
   });
 
   it('password reset sets a new password and logs in; old password stops working', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: reg });
-    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify') } });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: tokenFromLast('verify'), password: reg.password } });
     const rr = await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: reg.email } });
     expect(rr.statusCode).toBe(202);
     const reset = await app.inject({ method: 'POST', url: '/auth/reset-password', payload: { token: tokenFromLast('reset'), password: 'newpassword9' } });
@@ -262,5 +262,72 @@ describe('auth — password register / verify / login / reset', () => {
     await createPasswordUser({ appId: 'fbizlab', email: 'same@x.com', passwordHash: await hashPassword('pw12345678') });
     expect(await getCredential('fbizlab', 'same@x.com')).toBeTruthy();
     expect(await getCredential('otherapp', 'same@x.com')).toBeUndefined();
+  });
+});
+
+describe('a stranger cannot pre-register someone else\u2019s address', () => {
+  beforeEach(async () => {
+    sent.length = 0;
+    await seedEmailApp();
+  });
+
+  it('the victim clicking "verify" does not activate the attacker\u2019s password', async () => {
+    // Anyone can register an address they do not own. The mail the victim receives
+    // is genuine and correctly signed — it is our mail, for a registration they
+    // never made. What must not happen is that clicking it hands the account to
+    // whoever chose the password.
+    const attackerPw = 'Attacker-Pw-1!';
+    const victim = 'victim@x.com';
+    expect((await app.inject({
+      method: 'POST', url: '/auth/register',
+      payload: { appId: 'fbizlab', email: victim, password: attackerPw, name: 'V' },
+    })).statusCode).toBe(202);
+
+    // The victim reads the mail and clicks. They cannot supply a password they
+    // never chose, so verification refuses and the address stays unverified.
+    const link = tokenFromLast('verify');
+    const clicked = await app.inject({
+      method: 'POST', url: '/auth/verify-email', payload: { token: link, password: 'whatever-the-victim-types' },
+    });
+    expect(clicked.statusCode).toBe(401);
+
+    // …and the attacker still cannot sign in, which is the whole point.
+    const signIn = await app.inject({
+      method: 'POST', url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'password', email: victim, password: attackerPw },
+    });
+    expect(signIn.statusCode).not.toBe(200);
+  });
+
+  it('lets the person who actually signed up through', async () => {
+    // The cost to a legitimate user is confirming the password they just chose.
+    expect((await app.inject({
+      method: 'POST', url: '/auth/register',
+      payload: { appId: 'fbizlab', email: 'real@x.com', password: 'sup3rsecret', name: 'R' },
+    })).statusCode).toBe(202);
+
+    const ok = await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: tokenFromLast('verify'), password: 'sup3rsecret' },
+    });
+    expect(ok.statusCode).toBe(200);
+
+    const signIn = await app.inject({
+      method: 'POST', url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'password', email: 'real@x.com', password: 'sup3rsecret' },
+    });
+    expect(signIn.statusCode).toBe(200);
+  });
+
+  it('a wrong password does not consume the link', async () => {
+    // Otherwise one mistyped attempt costs a legitimate user their registration.
+    expect((await app.inject({
+      method: 'POST', url: '/auth/register',
+      payload: { appId: 'fbizlab', email: 'typo@x.com', password: 'sup3rsecret', name: 'T' },
+    })).statusCode).toBe(202);
+    const link = tokenFromLast('verify');
+
+    expect((await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link, password: 'wrong' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link, password: 'sup3rsecret' } })).statusCode).toBe(200);
   });
 });
