@@ -88,9 +88,16 @@ describe('what the worker tells the queue', () => {
   it('acks a throw only once the job has actually been parked', async () => {
     // The engine's guard parks the job before rethrowing, so this is the ordinary
     // shape: an outcome exists, and retrying would only burn tokens.
+    //
+    // The park has to happen INSIDE the mock. Marking the job held first made the
+    // worker's own idempotency skip answer before `runJob` was ever called, so this
+    // test never reached the branch it is named for — hard-coding that branch's
+    // status, or making it 503 a parked job forever, both left it green.
     await seedJob();
-    await markHeld(JOB, { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
-    runJob.mockRejectedValue(new Error('vertex exploded'));
+    runJob.mockImplementation(async () => {
+      await markHeld(JOB, { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
+      throw new Error('vertex exploded');
+    });
 
     const res = await run();
     expect(res.statusCode).toBe(200);

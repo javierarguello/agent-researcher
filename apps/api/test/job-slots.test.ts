@@ -463,4 +463,50 @@ describe('charged but no job is not a state we leave anyone in', () => {
     expect(await inFlightSlots(APP, USER)).toBe(0);
     spy.mockRestore();
   });
+
+  it('never claims a refund that did not happen', async () => {
+    // The likely cause of a `createJob` throw is Firestore being unavailable —
+    // which is exactly when the refund fails too. And if the write LANDED and only
+    // the call threw, the job reads `queued` and the refund correctly refuses.
+    // Telling the buyer "nothing was charged" in either case is a lie support
+    // cannot unpick, so the response says what actually happened.
+    const before = await getBalance(APP, USER);
+    const core = await import('@agent-researcher/core');
+    const create = vi.spyOn(core, 'createJob').mockRejectedValueOnce(new Error('firestore unavailable'));
+    const refund = vi.spyOn(core, 'refundForJob').mockRejectedValueOnce(new Error('firestore unavailable'));
+
+    const res = await post(userToken);
+    expect(res.statusCode).toBe(503);
+    expect(res.json().creditsRefunded).toBe(false);
+    expect(res.json().error).toMatch(/contact support/i);
+    // The credits really are gone — which is why the message must not say otherwise.
+    expect(await getBalance(APP, USER)).toBeLessThan(before);
+
+    create.mockRestore();
+    refund.mockRestore();
+  });
+});
+
+describe('an approval that lands on a finished job gives the slot back', () => {
+  it('does not leave the counter stuck after approving a job that just ended', async () => {
+    // The transactional half of this (the flag refusing) was tested; the API half —
+    // handing the slot back when the flag is refused — shipped with no assertion,
+    // and deleting both calls left the whole API suite green.
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markRunning(job!.jobId);
+    await markHeld(job!.jobId, { reason: 'budget_exceeded', heldAt: new Date().toISOString(), spentUsd: 1 });
+    await releaseJobSlot(job!.jobId);
+
+    // The straggler completes between the admin's click and the flag write.
+    const jobs = await import('@agent-researcher/core');
+    const spy = vi.spyOn(jobs, 'setJobSlotHeld').mockResolvedValueOnce(false);
+    await app.inject({ method: 'POST', url: `/admin/jobs/${job!.jobId}/approve`, headers: auth(adminToken) });
+    spy.mockRestore();
+
+    // Without the compensation the counter sits at 1 with no job left to release
+    // it — and with the cap at one report that is the buyer locked out for good.
+    expect(await inFlightSlots(APP, USER)).toBe(0);
+    expect((await post(userToken)).statusCode).toBe(202);
+  });
 });

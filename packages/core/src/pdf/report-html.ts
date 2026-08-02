@@ -82,10 +82,10 @@ function mdToHtml(md: string): string {
 // ── localized field labels (report content is already in its language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
 const RL: Record<Lang, Record<string, string>> = {
-  en: { contents: 'Contents', aiDisclaimer: 'AI-generated research — it can make mistakes. Always verify results against the original listings before acting.', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.' },
-  es: { contents: 'Contenido', aiDisclaimer: 'Investigación generada por IA — puede cometer errores. Verifica siempre los resultados con los avisos originales antes de actuar.', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.' },
-  fr: { contents: 'Sommaire', aiDisclaimer: 'Recherche générée par IA — elle peut se tromper. Vérifiez toujours les résultats auprès des annonces d’origine avant d’agir.', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', yes: 'Oui', no: 'Non', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.' },
-  pt: { contents: 'Conteúdo', aiDisclaimer: 'Pesquisa gerada por IA — pode cometer erros. Verifique sempre os resultados nos anúncios originais antes de agir.', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', yes: 'Sim', no: 'Não', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.' },
+  en: { degradedSection: 'We could not complete this section for this report. Everything else was researched and written as usual.', contents: 'Contents', aiDisclaimer: 'AI-generated research — it can make mistakes. Always verify results against the original listings before acting.', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.' },
+  es: { degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', contents: 'Contenido', aiDisclaimer: 'Investigación generada por IA — puede cometer errores. Verifica siempre los resultados con los avisos originales antes de actuar.', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.' },
+  fr: { degradedSection: 'Nous n’avons pas pu terminer cette section pour ce rapport. Tout le reste a été recherché et rédigé normalement.', contents: 'Sommaire', aiDisclaimer: 'Recherche générée par IA — elle peut se tromper. Vérifiez toujours les résultats auprès des annonces d’origine avant d’agir.', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', yes: 'Oui', no: 'Non', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.' },
+  pt: { degradedSection: 'Não conseguimos concluir esta seção deste relatório. Todo o restante foi pesquisado e redigido normalmente.', contents: 'Conteúdo', aiDisclaimer: 'Pesquisa gerada por IA — pode cometer erros. Verifique sempre os resultados nos anúncios originais antes de agir.', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', yes: 'Sim', no: 'Não', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.' },
 };
 
 // ── structured-block detectors (mirror the on-screen viewer) ──
@@ -296,6 +296,18 @@ function collectDeals(report: Obj): Obj[] {
 /** Build the full print HTML document for a report. */
 export function buildReportHtml(input: BuildReportHtmlInput): string {
   const { report, theme: t } = input;
+  // Sections the engine could not complete. Their bodies still SATISFY the report
+  // schema — that is what makes the report deliverable — so a required enum holds
+  // its first value and a required number holds 0. Rendering one prints a
+  // recommendation the engine never made, at a price of zero, into the artifact
+  // the buyer keeps and forwards.
+  //
+  // `meta.degradedSections` is the contract. The web viewer honoured it and this
+  // renderer did not, so the same report apologised on screen and fabricated in the
+  // PDF — the version that looks most authoritative.
+  const degraded = new Set<string>(
+    Array.isArray(input.meta?.degradedSections) ? (input.meta.degradedSections as string[]) : [],
+  );
   const lang = (['en', 'es', 'fr', 'pt'].includes(input.lang ?? '') ? input.lang : 'en') as Lang;
   const l = RL[lang];
   const pad = (i: number) => String(i + 1).padStart(2, '0');
@@ -303,8 +315,10 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   const ordered = (input.sections?.length ? input.sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))
     .filter((s) => report[s.key] != null && !HIDE.has(s.key));
 
-  // Cover snapshot from deals.
-  const deals = collectDeals(report);
+  // Cover snapshot from deals — never from a degraded section, or the headline
+  // price range is computed from placeholder zeros and shows $0 as the cheapest
+  // target found.
+  const deals = collectDeals(Object.fromEntries(Object.entries(report).filter(([k]) => !degraded.has(k))));
   const prices = deals.map((d) => d.askingPrice).filter(isNum);
   const revenue = deals.map((d) => d.revenue).filter(isNum).reduce((a, b) => a + b, 0);
   const sde = deals.map((d) => d.cashFlowSde).filter(isNum).reduce((a, b) => a + b, 0);
@@ -362,7 +376,11 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
     <div class="body">
       <div class="mono eyebrow accent">${pad(i)} · ${esc(s.title.toUpperCase())}</div>
       <h2 class="pagetitle">${esc(s.title)}</h2>
-      <div class="seccontent">${sectionBodyHtml(report[s.key], l, t)}</div>
+      <div class="seccontent">${
+        degraded.has(s.key)
+          ? `<p class="soft">${esc(l.degradedSection ?? '')}</p>`
+          : sectionBodyHtml(report[s.key], l, t)
+      }</div>
     </div>
   </section>`)
     .join('');

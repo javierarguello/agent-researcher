@@ -157,3 +157,30 @@ describe('a degraded section does not invent findings', () => {
     expect(out.meta.degradedSections).toEqual(['verdict']);
   });
 });
+
+describe('the PDF honours the same contract as the screen', () => {
+  it('never renders a degraded section body, and never counts it in the snapshot', async () => {
+    // The buyer's flagship download. The web viewer apologised and the PDF — the
+    // artifact they keep and forward, and the one that looks most authoritative —
+    // printed the placeholder as findings: a recommendation the engine never made,
+    // at a price of zero.
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+
+    const html = buildReportHtml({
+      report: {
+        shortlist: [{ business: 'Sunshine Coin Laundry', askingPrice: 410_000 }],
+        deep_dives: [{ business: 'ZZPLACEHOLDER', askingPrice: 0, recommendation: 'buy' }],
+      },
+      sections: [{ key: 'shortlist', title: 'Shortlist' }, { key: 'deep_dives', title: 'Deep dives' }],
+      meta: { degradedSections: ['deep_dives'] },
+      lang: 'en',
+      theme: getPdfTheme('fbizlab'),
+    } as never);
+
+    expect(html).not.toContain('ZZPLACEHOLDER');
+    expect(html).toMatch(/could not complete this section/i);
+    // …and the cover snapshot is not computed from placeholder zeros.
+    expect(html).toContain('Sunshine Coin Laundry');
+  });
+});

@@ -228,7 +228,17 @@ export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[]):
     // recorded the resolution, so `approve` (which assumes held implies never
     // refunded) re-dispatched it and the report was delivered with the refund kept.
     const status = (snap.data() as ResearchJob).status;
-    if (status === 'completed' || status === 'failed') return false;
+    // `held` too. Protecting only `completed`/`failed` left the admin's own record
+    // rewritable: park a running job with a note and a real `spentUsd`, and the run
+    // nobody stopped reaches one of its own hold paths and replaces the whole `hold`
+    // — with `spentUsd: 0` from `parkAndRethrow`, so the job reads as having cost
+    // nothing. Worse, `approveHold` grants `budgetOverride` only for
+    // `budget_exceeded`, so a straggler flipping the reason to that turns an
+    // ordinary approval into an uncapped run.
+    //
+    // `markCompleted` already said it, in this file: a parked job is resolved by a
+    // person, never by a straggler run.
+    if (status === 'completed' || status === 'failed' || status === 'held') return false;
     tx.set(ref, { status: 'held', hold, updatedAt: nowIso(), ...(files ? { files } : {}) }, { merge: true });
     return true;
   });

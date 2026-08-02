@@ -1084,13 +1084,23 @@ app.post(
       try {
         await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent, slotHeld });
       } catch (err) {
-        if (config.server.appEnv !== 'local') {
-          const refunded = await refundForJob(appId, userId, jobId, 'Job could not be created').catch(() => false);
-          logEvent(logCtx, 'ERROR', 'job.create_failed', { message: (err as Error).message, refunded });
-        }
+        const refunded =
+          config.server.appEnv === 'local'
+            ? true
+            : await refundForJob(appId, userId, jobId, 'Job could not be created').catch(() => false);
+        logEvent(logCtx, 'ERROR', 'job.create_failed', { message: (err as Error).message, refunded });
+        // Never claim a refund that did not happen — the same rule the enqueue
+        // branch below states, and this branch was written without it. The likely
+        // cause of a `createJob` throw is Firestore being unavailable, which is
+        // exactly when the refund fails too; and if the write LANDED and only the
+        // call threw, the job reads `queued` and `refundForJob` correctly refuses.
+        // Telling the buyer "nothing was charged" in either case is a lie support
+        // cannot unpick.
         return reply.code(503).send({
-          error: 'Could not start the report. Nothing was charged — please try again.',
-          creditsRefunded: config.server.appEnv !== 'local',
+          error: refunded
+            ? 'Could not start the report. Your credits were returned — please try again.'
+            : 'Could not start the report. If credits were taken, contact support and we will return them.',
+          creditsRefunded: refunded,
         });
       }
       jobCreated = true;

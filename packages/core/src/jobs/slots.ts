@@ -124,6 +124,14 @@ export async function setJobSlotHeld(jobId: string, held: boolean): Promise<bool
     // through the job and the job is done. With the cap at one report, that is a
     // permanent lockout, and no admin endpoint reaches the slots collection.
     if (held && (status === 'completed' || status === 'failed')) return false;
+    // …and never flag a slot the job ALREADY holds. The status check alone missed
+    // the common case: a job that reached `held` while its release failed (every
+    // one of those is `.catch(() => {})`) still carries the flag, so an approval's
+    // forced claim takes the counter to 2, this returns true, the compensating
+    // release never fires, and the job's single release leaves it stuck at 1 —
+    // a permanent lockout, with no admin endpoint that reaches the slots.
+    const already = (snap.data() as { slotHeld?: boolean }).slotHeld === true;
+    if (held && already) return false;
     tx.set(ref, { slotHeld: held }, { merge: true });
     return true;
   });

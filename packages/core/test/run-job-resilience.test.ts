@@ -113,6 +113,24 @@ describe('nothing is booked until the delivery is accepted', () => {
     spy.mockRestore();
     booked.mockRestore();
   });
+
+  it('keeps the checkpoint when the delivery is refused', async () => {
+    // The other half of the same reorder, and the half nobody asserted: moving the
+    // delete back above the check survived the whole core suite. The checkpoint is
+    // the only copy of work an admin could resurrect, and a refused delivery is
+    // exactly when they would want to.
+    await seed('h5b');
+    const jobs = await import('../src/jobs/firestore.js');
+    const original = jobs.markCompleted;
+    const spy = vi.spyOn(jobs, 'markCompleted').mockImplementation(async (id, files) => {
+      await markFailed(id, 'resolved by an admin while it ran');
+      return original(id, files);
+    });
+
+    await runJob(input('h5b'));
+    expect([...OBJECTS.keys()].some((k) => k.includes('h5b') && k.includes('checkpoint'))).toBe(true);
+    spy.mockRestore();
+  });
 });
 
 describe('a duplicate dispatch cannot overwrite the run that owns the job', () => {

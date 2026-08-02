@@ -80,6 +80,25 @@ describe('a resolved job refuses every terminal-state write', () => {
     expect((await getJob('t2'))!.status).toBe('completed');
   });
 
+  it('markHeld cannot rewrite the hold an admin is deciding on', async () => {
+    await seedJob('t7');
+    await markRunning('t7');
+    // The admin parks it with their own note and the real figure.
+    await markHeld('t7', { reason: 'run_failed', heldAt: 'T1', spentUsd: 12.5, detail: 'admin note' });
+
+    // The run nobody stopped reaches one of its own hold paths. Protecting only
+    // completed/failed let it replace the whole record — with spentUsd 0, so the
+    // job read as having cost nothing.
+    expect(await markHeld('t7', { reason: 'budget_exceeded', heldAt: 'T2', spentUsd: 0, detail: 'ceiling' })).toBe(false);
+
+    const job = (await getJob('t7'))!;
+    expect(job.hold?.detail).toBe('admin note');
+    expect(job.hold?.spentUsd).toBe(12.5);
+    // And the reason is what an approval reads to decide whether to lift the cost
+    // ceiling, so a straggler flipping it to `budget_exceeded` bought an uncapped run.
+    expect(job.hold?.reason).toBe('run_failed');
+  });
+
   it('markHeld still parks a job that is actually running', async () => {
     await seedJob('t3');
     await markRunning('t3');
@@ -98,6 +117,19 @@ describe('a resolved job refuses every terminal-state write', () => {
     // forever: release goes through the job, and the job is done.
     expect(await setJobSlotHeld('t4', true)).toBe(false);
     expect((await getJob('t4'))!.slotHeld).toBeFalsy();
+  });
+
+  it('refuses to flag a slot the job already holds', async () => {
+    // The common case the status check missed: a job reaches `held` while its
+    // release fails (all of them are best-effort), so the flag is still set. An
+    // approval's forced claim takes the counter to 2, and if this returns true the
+    // compensating release never fires — the job's own release leaves it at 1.
+    await seedJob('t8');
+    await markRunning('t8');
+    await setJobSlotHeld('t8', true);
+    await claimJobSlot(APP, USER, 1, { force: true });
+
+    expect(await setJobSlotHeld('t8', true)).toBe(false);
   });
 
   it('the slot flag still works on a live job', async () => {
