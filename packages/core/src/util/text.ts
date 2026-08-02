@@ -108,13 +108,15 @@ export function unpad(text: string): string {
 /**
  * A gap between two words of a pattern — any run of separators, or none.
  *
- * Sentence terminators are EXCLUDED. Without that, a gap spans the end of one
- * sentence and the start of the next, so "the attraction locks guests in.
- * Jailbreak themes are popular" matched a pattern written for "in jailbreak", and
- * two innocent array elements matched across the `, ` that joins them. A pattern
- * describes a phrase; a phrase does not cross a full stop.
+ * Punctuation is INCLUDED, deliberately: defeating `i.g.n.o.r.e a.l.l` and
+ * `ignore***all***previous` is the entire reason this rewrite exists. Excluding
+ * sentence terminators to stop one over-broad pattern from crossing a full stop
+ * reopened that class wholesale — `ignore.all.previous.instructions` and
+ * `Ignore all previous;instructions` both walked straight through, and `unpad`
+ * does not rescue them because a run of multi-character tokens is not a padding
+ * run. The pattern that was crossing sentences was the thing to fix, and was.
  */
-const GAP = '[^\\p{L}\\p{N}.!?;\\n]*';
+const GAP = '[^\\p{L}\\p{N}]*';
 export function tolerantPattern(re: RegExp): RegExp {
   const source = re.source.replace(/\\s\+/g, GAP).replace(/\\s\*/g, GAP).replace(/ /g, GAP);
   return new RegExp(source, re.flags.includes('u') ? re.flags.replace('g', '') : `${re.flags.replace('g', '')}u`);
