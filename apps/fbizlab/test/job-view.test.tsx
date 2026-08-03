@@ -17,7 +17,10 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 const { job } = vi.hoisted(() => ({ job: { current: {} as Record<string, unknown> } }));
 
-vi.mock('../src/api/hooks', () => ({
+vi.mock('../src/api/hooks', async (orig) => ({
+  // The real module for anything the mock does not name — otherwise the polling
+  // predicate below is unreachable and a test can claim it without touching it.
+  ...(await orig<typeof import('../src/api/hooks')>()),
   useJob: () => ({ data: job.current }),
   useJobReport: () => ({ data: undefined }),
   useTemplate: () => ({ data: { steps: [], modes: [], sections: [] } }),
@@ -57,11 +60,20 @@ describe('a job parked for a decision', () => {
     expect(screen.getByText(/en revisión/i)).toBeTruthy();
   });
 
-  it('still looks live, so the page keeps itself up to date', () => {
-    // An approval puts the job back in the queue with no action from the buyer, so
-    // the view has to be one that refreshes rather than one that has settled.
+  it('shows the paused message the engine wrote', () => {
     show({ status: 'held', progress: { phase: 'held', message: 'Paused for review.' }, summary: null });
     expect(screen.getByText(/paused for review/i)).toBeTruthy();
+  });
+
+  it('counts a held job as live, so the page keeps polling', async () => {
+    // Asserted where the predicate actually lives. This page mocks `useJob`
+    // wholesale, so a test rendered through it can say "still looks live" and mean
+    // nothing — dropping `held` from LIVE left it green. An approval puts the job
+    // back in the queue with no action from the buyer; a page that stopped polling
+    // would sit on "Under review" forever.
+    const { LIVE } = await import('../src/api/hooks');
+    expect(LIVE.has('held')).toBe(true);
+    expect(LIVE.has('completed')).toBe(false);
   });
 });
 

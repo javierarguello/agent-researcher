@@ -35,7 +35,13 @@ const run = (jobId: string = JOB) => app.inject({ method: 'POST', url: '/run', p
 const runWithNoJobId = () => app.inject({ method: 'POST', url: '/run', payload: {} });
 
 async function seedJob(jobId = JOB) {
-  await createApp({ appId: 'fbizlab', name: 'fbizlab', role: 'app' });
+  // `emailFrom` and `webUrl` are what make the report-ready mail possible at all —
+  // `notifyReportReady` returns early without them. The fixture omitted both, so
+  // the notify assertions below could never have failed.
+  await createApp({
+    appId: 'fbizlab', name: 'fbizlab', role: 'app',
+    emailFrom: 'reports@fbizlab.test', webUrl: 'https://fbizlab.test',
+  } as never);
   await createJob({
     jobId, appId: 'fbizlab', userId: 'u@x.com', template: 'florida-business-for-sale', params: {},
   });
@@ -83,6 +89,23 @@ describe('what the worker tells the queue', () => {
     await seedJob();
     runJob.mockResolvedValue({ files: [], reportBytes: 0, sourcesFound: 0, status: 'failed' });
     expect((await run()).statusCode).toBe(200);
+  });
+
+  it('emails the buyer when the report is ready — and only then', async () => {
+    // `notify` was mocked and never asserted, which is why the fixture could omit
+    // the two fields that make sending possible at all and nobody noticed. This is
+    // the buyer's only signal that a job they paid for has finished.
+    await seedJob();
+    runJob.mockResolvedValue({ files: [], reportBytes: 0, sourcesFound: 3, status: 'completed' });
+    expect((await run()).statusCode).toBe(200);
+    expect(notify).toHaveBeenCalled();
+  });
+
+  it('does not email on a job that did not finish', async () => {
+    await seedJob();
+    runJob.mockResolvedValue({ files: [], reportBytes: 0, sourcesFound: 0, status: 'incomplete' });
+    await run();
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it('acks a throw only once the job has actually been parked', async () => {

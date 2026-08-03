@@ -111,11 +111,29 @@ function renderForm() {
  * Walk the real submit flow — fill the one required field, open the confirm
  * dialog, ask for the preview — and read the params the component actually sent.
  */
-async function submittedParams(): Promise<Record<string, unknown>> {
+/**
+ * The params as sent to PREFLIGHT — the validation step, not the order.
+ *
+ * Named for what it is: it stops one step short of `createJob`, so a test using it
+ * cannot say anything about what was submitted. `orderedParams` below goes the rest
+ * of the way.
+ */
+async function previewedParams(): Promise<Record<string, unknown>> {
   await userEvent.type(screen.getByPlaceholderText('e.g. Laundromats'), 'Laundromats');
   await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
   await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
   const call = hooks.preflight.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> };
+  return call.params;
+}
+
+/** The params the job is actually CREATED with — past the confirm step. */
+async function orderedParams(): Promise<Record<string, unknown>> {
+  await previewedParams();
+  // The confirm modal reuses the same CTA label as the page, so take the last one —
+  // the modal renders after the form.
+  const ctas = await screen.findAllByRole('button', { name: /generate dossier/i });
+  await userEvent.click(ctas.at(-1)!);
+  const call = hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> };
   return call.params;
 }
 
@@ -150,12 +168,24 @@ describe('the directive block comes entirely from the manifest', () => {
     expect(screen.getByRole('button', { name: 'Red' }).hasAttribute('disabled')).toBe(false);
   });
 
-  it('submits the picks under the key the manifest named', async () => {
+  it('previews the picks under the key the manifest named', async () => {
     renderForm();
     await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
     await userEvent.click(screen.getByRole('button', { name: 'Red' }));
 
-    expect(await submittedParams()).toMatchObject({ directives: { weather: 'sun', colours: ['red'] } });
+    expect(await previewedParams()).toMatchObject({ directives: { weather: 'sun', colours: ['red'] } });
+  });
+
+  it('ORDERS them under that key too, which is the step that spends credits', async () => {
+    // The previous version of this asserted on the preflight payload and was named
+    // for the submit — `createJob` was mocked and never looked at, so the params
+    // could have been dropped between validating and ordering and nothing would
+    // have said so.
+    renderForm();
+    await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Red' }));
+
+    expect(await orderedParams()).toMatchObject({ directives: { weather: 'sun', colours: ['red'] } });
   });
 
   it('clears a single-choice field when its option is clicked again', async () => {
@@ -164,13 +194,13 @@ describe('the directive block comes entirely from the manifest', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
 
     // Every directive is optional, so "un-choosing" has to be reachable.
-    const params = await submittedParams();
+    const params = await previewedParams();
     expect(params.directives).toBeUndefined();
   });
 
   it('sends no directives key at all when the buyer touched nothing', async () => {
     renderForm();
-    const params = await submittedParams();
+    const params = await previewedParams();
 
     // An untouched set is ABSENT, not `{}`: it keeps the request identical to never
     // having opened the section, which is what the preflight cache is keyed on.
