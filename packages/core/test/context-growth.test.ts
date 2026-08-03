@@ -136,11 +136,24 @@ describe('an agent’s context does not carry the whole report', () => {
     // The per-section cap was the wrong shape: measured on a comprehensive report
     // almost no single section exceeded it, so the exec-summary writer still got
     // 109k across a dozen dependencies that were each individually fine.
-    const many = Object.fromEntries(
-      Array.from({ length: 12 }, (_, i) => [`section_${i}`, { overview: 'z'.repeat(20_000) }]),
-    );
-    const prompt = promptWith(many);
-    expect(prompt.length).toBeLessThan(70_000);
+    // Asserted as the PROPERTY, not as a number. A fixed ceiling with twelve
+    // dependencies passed the formula this test exists to reject: `max(2_000,
+    // total/keys)` and a running budget agree until the per-key share falls below
+    // the floor, around twenty-one keys. Past that the floor overrides the very
+    // total it was meant to enforce and the block grows as `2_000 × keys` — which a
+    // single `toBeLessThan` only catches if someone guessed the right number.
+    //
+    // So: the same oversized sections, twelve of them and forty, and the block must
+    // not grow with the count.
+    const build = (n: number) =>
+      promptWith(Object.fromEntries(Array.from({ length: n }, (_, i) => [`section_${i}`, { overview: 'z'.repeat(20_000) }])));
+
+    const twelve = build(12).length;
+    const forty = build(40).length;
+    expect(twelve).toBeLessThan(70_000);
+    // Some growth is fine — one more key is one more JSON key and one more trim
+    // notice — but it must be the per-key overhead, not per-key CONTENT.
+    expect(forty - twelve, 'the budget scales with the number of dependencies').toBeLessThan(10_000);
   });
 
   it('gives every dependency a share, so none of them vanishes', () => {

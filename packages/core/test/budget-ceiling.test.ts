@@ -308,6 +308,12 @@ describe('gather bounds what a research turn may emit, and stops at the ceiling'
       // and on Gemini 2.5 thinking tokens are billed as output.
       expect(opts.maxOutputTokens).toBe(config.llm.gatherMaxOutputTokens);
       expect(opts.thinkingBudget).toBe(config.llm.gatherThinkingBudget);
+      // …and the cap is actually a CAP. Reading the same constant the source reads
+      // detects its deletion and nothing else: raising it a thousandfold — which is
+      // the change that would cost money — passed. A gather turn is a search-loop
+      // turn; it does not write the report, so anything near a synthesis-sized
+      // budget is a bug whatever the constant says.
+      expect(opts.maxOutputTokens, 'a research turn does not need a synthesis budget').toBeLessThanOrEqual(8_192);
     }
   });
 
