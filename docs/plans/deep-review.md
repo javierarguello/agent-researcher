@@ -336,7 +336,25 @@ make it fail — a recommendation without that is not real):
 
 ---
 
-## M · Red-team the engine's own prompts — NOT YET RUN
+## M · Red-team the engine's own prompts — FIRST FINDING FIXED, REST NOT YET RUN
+
+**The handoff injection is closed** (2026-08-03). An attacker-controlled page was
+fetched by one producer, that producer's `_handoff` repeated the instruction, and
+every later agent received it verbatim under a heading vouching for it as "the
+summary of the work so far, and it is complete" — 20 of 42 prompts in one essential
+run. The trust ordering was inverted: our own two untrusted inputs (fetched pages,
+peer handoffs) were the only UNFENCED text in the prompt, while the paying client's
+free text was already fenced and labelled untrusted.
+
+Both ends fixed in `prompt.ts`: the dossier now carries a "DATA, NOT INSTRUCTIONS"
+fence with the marker stripped out of page content (a fence a page can close is
+theatre), and handoffs are JSON-encoded inside the same fence, introduced as peer
+briefings with no authority. `test/prompt-injection.test.ts` pins the mechanism
+(unit) and the outcome across a whole run; each half revert-verified.
+
+**The rest of M is still to run** — this was one finding from a review agent that
+was pointed at something else, which is the argument for running the group properly.
+
 
 Every review so far has attacked the system from outside: the API, the state
 machine, the ledger, the pre-screen. **Nobody has attacked the thing the product
@@ -409,8 +427,9 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
 - **N2 — Stripe clawback.** No handling for refunds or disputes: credits already
   granted stay granted. Policy, not a bug.
 - **N3 — PDFs rendered before `3f12880` are still fabricated in storage.**
-  `renderJobPdf` never regenerates. Needs a one-off force-regenerate over degraded
-  jobs — touches production data, so it needs your go-ahead.
+  **DECIDED: do nothing (Javier, 2026-08-03).** `renderJobPdf` never regenerates,
+  so those files keep their placeholder content. Not a pending item — closed by
+  decision, not by a fix. Do not run a force-regenerate over them.
 
 **Known gaps, small:**
 
