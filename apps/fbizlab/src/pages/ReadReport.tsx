@@ -33,11 +33,16 @@ export function ReadReport() {
     retry: false,
     queryFn: () => api<JobDetail>(`/research/${encodeURIComponent(jobId)}`, { token }),
   });
+  // The report's language, not the reader's — and here it matters more than on
+  // JobView: this is the shared link, opened by someone who did not commission the
+  // report and whose UI language has nothing to do with it. See JobView for the
+  // full reasoning.
+  const reportLang = (job.data?.params?.language as string | undefined) ?? lang;
   const template = useQuery({
-    queryKey: ['read-template', job.data?.template, lang, token],
+    queryKey: ['read-template', job.data?.template, reportLang, token],
     enabled: !!token && !!job.data?.template,
     retry: false,
-    queryFn: () => api<TemplateManifest>(`/templates/${encodeURIComponent(job.data!.template)}?lang=${lang}`, { token }),
+    queryFn: () => api<TemplateManifest>(`/templates/${encodeURIComponent(job.data!.template)}?lang=${reportLang}`, { token }),
   });
   const report = useQuery({
     queryKey: ['read-report', jobId, token],
@@ -66,7 +71,7 @@ export function ReadReport() {
             report={report.data.report}
             sections={template.data?.sections}
             title={job.data?.title ?? undefined}
-            lang={lang}
+            lang={reportLang}
             meta={report.data.meta}
             request={{
               modeLabel: template.data?.modes?.find((m) => m.key === (job.data?.params?.mode))?.label

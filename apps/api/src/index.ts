@@ -367,6 +367,12 @@ app.post(
           email: { type: 'string', minLength: 3, maxLength: 320 },
           password: { type: 'string', maxLength: 200 },
           name: { type: 'string', maxLength: 200 },
+          // The account emails are the only place we know a person's language
+          // before they have an account to store it on. `Accept-Language` is what
+          // the BROWSER is configured for, which for a Spanish speaker on a US
+          // laptop is `en` — so the client sends what the person actually chose,
+          // and the header is only the fallback.
+          lang: { type: 'string', enum: SUPPORTED_LANGS, description: 'Language for the verification email.' },
           ...captchaBodyProperties,
         },
       },
@@ -374,7 +380,7 @@ app.post(
     preHandler: requireCaptcha('register'),
   },
   async (req, reply) => {
-    const b = req.body as { appId: string; email: string; password: string; name?: string };
+    const b = req.body as { appId: string; email: string; password: string; name?: string; lang?: string };
     const email = normalizeEmail(b.email);
     // Exactly ONE address. `To:` takes a comma-separated list, so without this the
     // caller picks who we mail — and the per-target cap keys on the whole string,
@@ -428,7 +434,7 @@ app.post(
 
     const token = await signActionToken({ email, appId: appRec.appId, scope: 'verify-email' }, config.auth.verifyTtlSeconds);
     const link = `${appRec.webUrl}/verify?token=${encodeURIComponent(token)}`;
-    const tpl = verifyEmailTemplate(appRec.name, link);
+    const tpl = verifyEmailTemplate(appRec.name, link, b.lang ?? headerLang(req));
     try {
       await sendAppEmail({ app: appRec, to: email, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text });
     } catch (err) {
@@ -516,13 +522,18 @@ app.post(
         type: 'object',
         required: ['appId', 'email'],
         additionalProperties: false,
-        properties: { appId: { type: 'string', maxLength: 128 }, email: { type: 'string', maxLength: 320 }, ...captchaBodyProperties },
+        properties: {
+          appId: { type: 'string', maxLength: 128 },
+          email: { type: 'string', maxLength: 320 },
+          lang: { type: 'string', enum: SUPPORTED_LANGS, description: 'Language for the reset email.' },
+          ...captchaBodyProperties,
+        },
       },
     },
     preHandler: requireCaptcha('password-reset'),
   },
   async (req, reply) => {
-    const b = req.body as { appId: string; email: string };
+    const b = req.body as { appId: string; email: string; lang?: string };
     const email = normalizeEmail(b.email);
     // One recipient, never a list (see /auth/register). Answered like every other
     // rejection on this route — 202, revealing nothing about who exists.
@@ -549,7 +560,7 @@ app.post(
       if (cred) {
         const token = await signActionToken({ email, appId: appRec.appId, scope: 'reset-password' }, config.auth.resetTtlSeconds);
         const link = `${appRec.webUrl}/reset?token=${encodeURIComponent(token)}`;
-        const tpl = resetPasswordTemplate(appRec.name, link);
+        const tpl = resetPasswordTemplate(appRec.name, link, b.lang ?? headerLang(req));
         await sendAppEmail({ app: appRec, to: email, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text }).catch((err) =>
           logEvent({ jobId: '-', appId: appRec.appId, userId: email }, 'ERROR', 'auth.reset_email_failed', { error: (err as Error).message }),
         );

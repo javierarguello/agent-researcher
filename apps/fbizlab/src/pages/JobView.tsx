@@ -26,7 +26,18 @@ export function JobView() {
   const t = pick(T, lang);
   const sl = STATUS_LABEL[lang] ?? STATUS_LABEL.en!;
   const { data: job } = useJob(jobId);
-  const template = useTemplate(job?.template ?? null, lang);
+  /**
+   * The report's language, not the reader's current toggle.
+   *
+   * The body was written once, at generation, in the language the buyer asked for.
+   * The section titles come from the manifest and were being fetched in the UI
+   * language — so switching the switcher put English headings over Spanish prose,
+   * while the PDF of that same job (which reads `job.params.language`) kept Spanish
+   * ones. A delivered document has to agree with itself; the chrome around it —
+   * buttons, badges, status — still follows the UI.
+   */
+  const reportLang = (job?.params?.language as string | undefined) ?? lang;
+  const template = useTemplate(job?.template ?? null, reportLang);
   const report = useJobReport(jobId, job?.status === 'completed');
 
   if (!job) return <div className="mono muted">…</div>;
@@ -90,9 +101,9 @@ export function JobView() {
         <>
           <div className="between" style={{ alignItems: 'center' }}>
             <span className="badge completed">{sl.completed}</span>
-            <DownloadPdf jobId={jobId} filename={`${(job.title ?? 'report').replace(/[^\w\- ]+/g, '').trim() || 'report'}.pdf`} />
+            <DownloadPdf jobId={jobId} filename={`${(job.title ?? 'report').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim() || 'report'}.pdf`} />
           </div>
-          <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={lang} meta={report.data.meta} request={requestCtx} />
+          <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={reportLang} meta={report.data.meta} request={requestCtx} />
         </>
       )}
 

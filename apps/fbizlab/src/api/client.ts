@@ -126,11 +126,22 @@ export async function ensureReportPdf(
 export const captchaBody = (token?: string): Record<string, string> =>
   token ? { 'cf-turnstile-response': token } : {};
 
+/**
+ * The language the person actually chose, for the two emails that go out before
+ * they have an account to store a preference on.
+ *
+ * Read from the same key `i18n.tsx` writes, so it follows the switcher and the URL
+ * language. The server falls back to `Accept-Language`, which is the BROWSER's
+ * setting — `en` for a Spanish speaker on a US-configured laptop, i.e. exactly the
+ * person this is for.
+ */
+const chosenLang = (): string | undefined => localStorage.getItem('fbizlab_lang') ?? undefined;
+
 // --- Password auth (register / verify email / reset) -----------------------
 /** Register a password account. 202 = verification email sent. Throws ApiError
  *  (409 email_taken) if the email already belongs to a verified account. */
 export function register(email: string, password: string, name?: string, captcha?: string): Promise<{ status: string; email: string }> {
-  return api('/auth/register', { method: 'POST', anonymous: true, body: { appId: config.appId, email, password, name, ...captchaBody(captcha) } });
+  return api('/auth/register', { method: 'POST', anonymous: true, body: { appId: config.appId, email, password, name, lang: chosenLang(), ...captchaBody(captcha) } });
 }
 
 /** Verify an email from the emailed link. Does NOT sign you in: the password on
@@ -141,7 +152,7 @@ export function verifyEmail(token: string, password: string): Promise<{ status: 
 
 /** Always resolves 202 (never reveals whether the email exists). */
 export function requestPasswordReset(email: string, captcha?: string): Promise<{ status: string }> {
-  return api('/auth/request-password-reset', { method: 'POST', anonymous: true, body: { appId: config.appId, email, ...captchaBody(captcha) } });
+  return api('/auth/request-password-reset', { method: 'POST', anonymous: true, body: { appId: config.appId, email, lang: chosenLang(), ...captchaBody(captcha) } });
 }
 
 /** Set a new password from the emailed reset link → returns a login session. */

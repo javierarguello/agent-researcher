@@ -21,7 +21,10 @@ async function notifyReportReady(jobId: string): Promise<void> {
   const app = await getApp(job.appId);
   if (!app?.emailFrom || !app.webUrl) return; // email not configured for this app
   const link = `${app.webUrl}/app/jobs/${jobId}`;
-  const tpl = reportReadyTemplate(app.name, job.title ?? '', link);
+  // The title is generated in the REPORT's language (`headline`), so the shell
+  // around it has to match — an English frame around a French title was the most
+  // visible half-translation we shipped, and the language was right here all along.
+  const tpl = reportReadyTemplate(app.name, job.title ?? '', link, job.params?.language);
   await sendAppEmail({ app, to: job.userId, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text });
 }
 

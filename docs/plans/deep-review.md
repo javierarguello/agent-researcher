@@ -89,12 +89,34 @@ in the sections below. Closed since, in severity order:
    its own mode ceiling. Buyer-facing closing copy moved into `report-copy.ts` in
    all four languages; it had been English-only.
 
-**Still open from the round**, highest first: fr/pt are advertised and not
-delivered (the flagship `i18n` block has only `es`), every email is English-only
-including the verification gate, `JobView` reads the manifest in the UI language
-while the PDF uses the report's, the ceiling figure reported to the admin is the
-deployment default rather than the model's, and the 23 vacuous tests the sweep
-proved.
+4. **fr/pt were advertised and not delivered.** The flagship `i18n` block had only
+   `es`, so a French buyer got prose the engine wrote in French under English
+   section titles — on screen, in the table of contents and in the PDF bookmarks —
+   for two of the four languages we sell in. Written, both blocks in full, and
+   `validateTemplate` now REFUSES a template that speaks some of our languages and
+   not others, or a language block missing a section title. That check fires at
+   module load: dropping the `fr` block stops the template from loading at all.
+   Also closed with it: all three account emails take a language (they were
+   English-only literals with no parameter — including the verification mail, the
+   mandatory step of every non-English signup), the report-ready mail reads
+   `job.params.language` so an English frame no longer wraps a French title, and
+   `JobView`/`ReadReport` fetch the manifest in the REPORT's language instead of
+   the reader's current toggle, which had the same job disagreeing with its own
+   PDF. The PDF download filename no longer strips every accent out of a title.
+
+**Still open on localization** (from the buyer-lens report, not fixed here): the
+PDF cover kicker, its four statistic labels, its `en-US` date and the per-page
+footer are hardcoded English even in the fully-translated Spanish case;
+`phases.ts` `PHASE_LABELS` has only `en`/`es`, so fr/pt buyers watch English
+progress steps; `NewReport`/`JobView` hardcode field LABELS per Florida field key
+(a second catalog model draws its form with raw JSON keys), and `suggestions` are
+rendered but never localized; `NewReport` sets `d.language = lang` without
+consulting the template's own language enum. Seven independent language lists
+still exist — the API↔SPA pair is pinned, the other five are not.
+
+**Also still open**, highest first: the ceiling figure reported to the admin is the
+deployment default rather than the model's, `reqLang`'s fallback branch is dead
+code stating a second contract, and the 23 vacuous tests the sweep proved.
 
 ---
 

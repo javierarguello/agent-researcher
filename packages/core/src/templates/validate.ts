@@ -7,7 +7,12 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { modelAliases } from '../llm/models.js';
 import { validateDirectives } from './directives.js';
+// The leaf module, not the registry: the registry imports THIS file.
+import { LANGUAGE_LABELS } from '../languages.js';
 import type { AgentSpec, ResearchTemplate } from './types.js';
+
+const SUPPORTED_LANGS = Object.keys(LANGUAGE_LABELS);
+const DEFAULT_LANG = 'en';
 
 export function validateTemplate(t: ResearchTemplate<any>): string[] {
   const errors: string[] = [];
@@ -80,6 +85,33 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
     const props = (z.toJSONSchema(t.paramsSchema) as { properties?: Record<string, unknown> }).properties ?? {};
     if (!(t.directives.key in props)) {
       err(`declares directives under "${t.directives.key}" but paramsSchema has no such property`);
+    }
+  }
+
+  // Localization coverage: a template that speaks a second language must speak
+  // them ALL, and cover every section in each.
+  //
+  // This is the check that was missing. `SUPPORTED_LANGS` is global and the API
+  // publishes it, so a buyer picks French, the engine is told to write French
+  // prose — and the manifest hands back English section titles, mode labels and
+  // field help, because `i18n` only ever had `es`. The body is in their language
+  // under headings that are not, on screen and in the PDF, for two of the four
+  // languages we sell in. Nothing failed; it just shipped.
+  //
+  // Only enforced for a template that declares `i18n` at all. One with none is
+  // consistently English — a fixture, or a model that has not been localized yet —
+  // and that is a different (visible) decision from a half-translated one.
+  if (t.i18n) {
+    for (const lang of SUPPORTED_LANGS) {
+      if (lang === DEFAULT_LANG) continue;
+      if (!t.i18n[lang]) err(`is localized but has no "${lang}" block, and the API publishes "${lang}"`);
+    }
+    for (const [lang, block] of Object.entries(t.i18n)) {
+      const missing = t.sections.filter((s) => !block.sectionTitles?.[s.key]).map((s) => s.key);
+      // Section titles specifically: they are the headings on the artifact the
+      // buyer keeps and forwards, so a silent per-string fallback is at its most
+      // visible here.
+      if (missing.length) err(`"${lang}" is missing section titles: ${missing.join(', ')}`);
     }
   }
 
