@@ -187,8 +187,19 @@ describe('auth — password register / verify / login / reset', () => {
     const reg2 = await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: list } });
     expect(reg2.statusCode).toBe(400);
 
+    // The reset leg needs an account that WOULD be mailed, or the guard is not what
+    // stops it — nothing was going to be sent either way, and deleting the check
+    // left this green.
+    await createPasswordUser({
+      appId: 'fbizlab', email: list, name: 'L', passwordHash: await hashPassword('sup3rsecret'),
+    });
     const reset = await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: list } });
     expect(reset.statusCode).toBe(202); // this route never reveals anything…
+    // …so the status cannot say whether the guard fired. The BODY can: the refusal
+    // answers `{ok:true}` and the path that would have mailed answers
+    // `{status:'reset_sent'}`. Without this the assertion was only that an
+    // unseeded address sends no mail, which was true either way.
+    expect(reset.json()).toEqual({ ok: true });
 
     const contact = await app.inject({
       method: 'POST', url: '/contact',

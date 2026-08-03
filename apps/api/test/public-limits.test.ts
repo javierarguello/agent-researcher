@@ -158,7 +158,11 @@ describe('burst isolation', () => {
     // address to us — so /plans gets its own window.
     __resetBurst();
     const ip = '198.51.100.42';
-    for (let i = 0; i < 40; i++) {
+    // Enough to exhaust the window, whatever the environment sets it to. The old
+    // count was 40 against a test limit of 500, so the flood never happened and the
+    // isolation it claimed to prove was never exercised.
+    const flood = config.publicLimits.burstPerMinute + 5;
+    for (let i = 0; i < flood; i++) {
       await app.inject({ method: 'GET', url: '/plans?appId=fbizlab', headers: { 'x-forwarded-for': ip } });
     }
     // Same IP, an auth route: must still be served.
