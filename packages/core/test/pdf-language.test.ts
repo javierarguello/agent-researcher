@@ -140,3 +140,37 @@ describe('the mandate table belongs to the model, not to Florida', () => {
     expect(mandate()).not.toContain('[object Object]');
   });
 });
+
+describe('numbers and money belong to the reader and the model', () => {
+  const withDeal = (lang: string, currency?: string) =>
+    buildReportHtml({
+      report: { shortlist: [{ business: 'X', askingPrice: 1_234_567, revenue: 987_654 }] },
+      sections: [{ key: 'shortlist', title: 'Shortlist' }],
+      meta: {}, lang, currency, theme: getPdfTheme('fbizlab'),
+    } as never);
+
+  it('groups digits the way the reader writes them', () => {
+    // `toLocaleString('en-US')` and a hand-rolled abbreviator printed `1.23M` and
+    // `1,234,567.5` to every buyer, including the ones who write `1.234.567,5`.
+    // 1_234_567 → "1.23M" in English, "1,23M" in the languages that use a comma.
+    expect(withDeal('en')).toMatch(/1\.23M/);
+    for (const lang of ['es', 'fr', 'pt']) {
+      expect(withDeal(lang), lang).toMatch(/1,23\s?M/);
+      expect(withDeal(lang), lang).not.toMatch(/1\.23M/);
+    }
+  });
+
+  it('bills in the currency the MODEL declares', () => {
+    // Every catalog model billed in dollars whatever it researched, because the
+    // symbol was a literal `$` in both renderers.
+    expect(withDeal('en', 'USD')).toContain('$');
+    const eur = withDeal('fr', 'EUR');
+    expect(eur).toContain('€');
+    expect(eur).not.toContain('$');
+  });
+
+  it('defaults to USD when a model says nothing', () => {
+    // The control: a template with no `currency` must not render an empty symbol.
+    expect(withDeal('en')).toContain('$');
+  });
+});

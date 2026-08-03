@@ -268,6 +268,14 @@ export interface ResearchTemplate<TParams = unknown> {
    * string missing a translation falls back to English. See `toManifest(t, lang)`.
    */
   i18n?: Record<string, TemplateI18n>;
+  /**
+   * ISO 4217 code the figures in this model's reports are in. Default `USD`.
+   *
+   * The renderers hardcoded a `$`, so every model in the catalog billed in dollars
+   * whatever it was researching — and the number FORMAT was `en-US` too, printing
+   * `1,234,567.5` to a buyer who reads `1.234.567,5`.
+   */
+  currency?: string;
 }
 
 /**
@@ -401,6 +409,8 @@ export interface TemplateManifest {
   directivesKey?: string;
   /** Which param carries the buyer's free-text instructions, if any. */
   instructionsField?: string;
+  /** ISO 4217 the figures in this model's reports are in. */
+  currency?: string;
   /** Report tiers the client picks from, with their credit cost. */
   modes: Array<{ key: ReportMode; label: string; credits: number }>;
   /** Paid add-on deliverables this model offers, with their credit cost. */

@@ -113,7 +113,7 @@ export function JobView() {
             <span className="badge completed">{sl.completed}</span>
             <DownloadPdf jobId={jobId} filename={`${(job.title ?? 'report').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim() || 'report'}.pdf`} />
           </div>
-          <ReportViewer report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={reportLang} meta={report.data.meta} request={requestCtx} />
+          <ReportViewer currency={template.data?.currency} report={report.data.report} sections={template.data?.sections} title={job.title ?? undefined} lang={reportLang} meta={report.data.meta} request={requestCtx} />
         </>
       )}
 

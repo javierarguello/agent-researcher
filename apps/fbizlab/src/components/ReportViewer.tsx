@@ -10,13 +10,40 @@ function humanizeKey(k: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 const CURRENCY_RE = /price|revenue|cash.?flow|sde|sale|amount|cost|ebitda|valuation|salary|rent|income/i;
-const abbr = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : Math.abs(n) >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
-const money = (n: number) => `$${abbr(n)}`;
-function fmtNumber(key: string | undefined, n: number): string {
-  const k = (key ?? '').toLowerCase();
-  if (/year|count|targetcount|\bid\b/.test(k)) return String(n);
-  return CURRENCY_RE.test(k) ? money(n) : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+/**
+ * Numbers in the reader's language, money in the model's currency.
+ *
+ * Both were hardcoded here exactly as they were in the PDF renderer — `en-US`
+ * grouping and a bare `$` — so a Portuguese buyer read `1,234,567.5`, and every
+ * catalog model billed in dollars whatever it researched. Held in a context
+ * because the sub-renderers are components; the PDF threads the same shape as an
+ * argument.
+ */
+interface NumFmt { abbr: (n: number) => string; money: (n: number) => string; plain: (n: number) => string; keyed: (k: string | undefined, n: number) => string }
+
+function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
+  const group = (n: number, max = 2) => new Intl.NumberFormat(lang, { maximumFractionDigits: max }).format(n);
+  const sym = new Intl.NumberFormat(lang, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 })
+    .formatToParts(0).find((x) => x.type === 'currency')?.value ?? '$';
+  const abbr = (n: number) =>
+    Math.abs(n) >= 1e6 ? `${group(n / 1e6, 2)}M` : Math.abs(n) >= 1e3 ? `${group(Math.round(n / 1e3), 0)}k` : group(Math.round(n), 0);
+  const money = (n: number) => `${sym}${abbr(n)}`;
+  return {
+    abbr,
+    money,
+    plain: (n) => group(n),
+    keyed: (k, n) => {
+      const key = (k ?? '').toLowerCase();
+      if (/year|count|targetcount|\bid\b/.test(key)) return String(n);
+      return CURRENCY_RE.test(key) ? money(n) : group(n);
+    },
+  };
 }
+
+// Threaded as an argument, not held in module state: a mutable module-level
+// "current formatter" is one concurrent render away from formatting one report
+// with another's currency.
 
 // ── Localised UI labels (report content itself is already in the report language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
@@ -35,33 +62,33 @@ function isChartSpec(v: unknown): v is ChartSpec {
   const o = v as ChartSpec | null;
   return !!o && typeof o === 'object' && !Array.isArray(o) && CHART_TYPES.has((o as ChartSpec).type) && Array.isArray(o.labels) && Array.isArray(o.series);
 }
-function fmtUnit(unit: string | undefined, v: number | null): string {
+function fmtUnit(unit: string | undefined, v: number | null, f: NumFmt): string {
   if (v == null) return '';
-  const s = Math.abs(v) >= 1000 ? abbr(v) : v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const s = Math.abs(v) >= 1000 ? f.abbr(v) : f.plain(v);
   if (unit === '$') return `$${s}`;
   if (unit === '%') return `${v}%`;
   return unit ? `${s}${unit}` : s;
 }
-function ChartSpecRender({ spec }: { spec: ChartSpec }) {
+function ChartSpecRender({ spec, f }: { spec: ChartSpec; f: NumFmt }) {
   const rows = spec.labels.map((label, i) => {
     const r: Record<string, unknown> = { label };
     spec.series.forEach((s) => { r[s.name] = s.data[i] ?? null; });
     return r;
   });
-  const tick = (v: number) => fmtUnit(spec.unit, v);
+  const tick = (v: number) => fmtUnit(spec.unit, v, f);
   const legend = spec.series.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} /> : null;
   let chart: React.ReactNode;
   if (spec.type === 'pie') {
     const s0 = spec.series[0];
     const data = spec.labels.map((label, i) => ({ name: label, value: s0?.data[i] ?? 0 }));
-    chart = (<PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius="80%" label={(e: { name: string }) => e.name}>{data.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}</Pie><Tooltip formatter={(v: number) => fmtUnit(spec.unit, v)} /></PieChart>);
+    chart = (<PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius="80%" label={(e: { name: string }) => e.name}>{data.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}</Pie><Tooltip formatter={(v: number) => fmtUnit(spec.unit, v, f)} /></PieChart>);
   } else if (spec.type === 'line' || spec.type === 'area') {
     const C = spec.type === 'line' ? LineChart : AreaChart;
-    chart = (<C data={rows} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5dfd4" /><XAxis dataKey="label" fontSize={11} stroke="#6b6860" /><YAxis tickFormatter={tick} fontSize={11} width={54} stroke="#6b6860" /><Tooltip formatter={(v: number) => fmtUnit(spec.unit, v)} />{legend}{spec.series.map((s, i) => spec.type === 'line'
+    chart = (<C data={rows} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5dfd4" /><XAxis dataKey="label" fontSize={11} stroke="#6b6860" /><YAxis tickFormatter={tick} fontSize={11} width={54} stroke="#6b6860" /><Tooltip formatter={(v: number) => fmtUnit(spec.unit, v, f)} />{legend}{spec.series.map((s, i) => spec.type === 'line'
       ? <Line key={s.name} type="monotone" dataKey={s.name} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={false} />
       : <Area key={s.name} type="monotone" dataKey={s.name} stackId={spec.stacked ? '1' : undefined} stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]} fillOpacity={0.22} />)}</C>);
   } else {
-    chart = (<BarChart data={rows} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5dfd4" /><XAxis dataKey="label" fontSize={11} stroke="#6b6860" interval={0} angle={rows.length > 6 ? -20 : 0} textAnchor={rows.length > 6 ? 'end' : 'middle'} height={rows.length > 6 ? 56 : 30} /><YAxis tickFormatter={tick} fontSize={11} width={54} stroke="#6b6860" /><Tooltip formatter={(v: number) => fmtUnit(spec.unit, v)} />{legend}{spec.series.map((s, i) => <Bar key={s.name} dataKey={s.name} stackId={spec.stacked ? '1' : undefined} fill={PALETTE[i % PALETTE.length]} radius={[3, 3, 0, 0]} />)}</BarChart>);
+    chart = (<BarChart data={rows} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5dfd4" /><XAxis dataKey="label" fontSize={11} stroke="#6b6860" interval={0} angle={rows.length > 6 ? -20 : 0} textAnchor={rows.length > 6 ? 'end' : 'middle'} height={rows.length > 6 ? 56 : 30} /><YAxis tickFormatter={tick} fontSize={11} width={54} stroke="#6b6860" /><Tooltip formatter={(v: number) => fmtUnit(spec.unit, v, f)} />{legend}{spec.series.map((s, i) => <Bar key={s.name} dataKey={s.name} stackId={spec.stacked ? '1' : undefined} fill={PALETTE[i % PALETTE.length]} radius={[3, 3, 0, 0]} />)}</BarChart>);
   }
   return (
     <div className="card" style={{ padding: 16, marginTop: 14 }}>
@@ -92,7 +119,7 @@ const isMetric = (x: unknown): x is Metric => !!x && typeof x === 'object' && ty
 const isRisk = (x: unknown): x is Risk => !!x && typeof x === 'object' && typeof (x as Risk).severity === 'string' && typeof (x as Risk).title === 'string';
 const isProjection = (v: unknown): v is Projection => !!v && typeof v === 'object' && Array.isArray((v as Projection).periods) && Array.isArray((v as Projection).rows) && !!(v as Projection).rows[0] && Array.isArray((v as Projection).rows[0]!.values);
 const RISK_COLOR: Record<string, string> = { high: 'var(--risk)', medium: '#a06a00', low: 'var(--muted)' };
-const rowVal = (unit: string | undefined, v: number) => (unit === '%' ? `${v}%` : unit === 'x' ? `${v}x` : unit === '#' ? String(v) : money(v));
+const rowVal = (unit: string | undefined, v: number, f: NumFmt) => (unit === '%' ? `${v}%` : unit === 'x' ? `${v}x` : unit === '#' ? String(v) : f.money(v));
 
 function MetricTiles({ items }: { items: Metric[] }) {
   return <div className="rv-tiles">{items.map((m, i) => (
@@ -114,7 +141,7 @@ function RiskList({ items }: { items: Risk[] }) {
     </div>
   ))}</div>;
 }
-function ProjectionView({ t }: { t: Projection }) {
+function ProjectionView({ t, f }: { t: Projection; f: NumFmt }) {
   const dollarRows = t.rows.filter((r) => (r.unit ?? '$') === '$');
   const spec: ChartSpec = { type: 'bar', title: '', labels: t.periods, series: (dollarRows.length ? dollarRows : t.rows).map((r) => ({ name: r.metric, data: r.values })), unit: (dollarRows.length ? '$' : t.rows[0]?.unit) };
   return (
@@ -122,21 +149,21 @@ function ProjectionView({ t }: { t: Projection }) {
       <div className="rv-table-wrap"><table className="rv-table">
         <thead><tr><th /><>{t.periods.map((p, i) => <th key={i}>{p}</th>)}</></tr></thead>
         <tbody>{t.rows.map((r, i) => (
-          <tr key={i}><td className="rv-table__m">{r.metric}</td><>{r.values.map((v, j) => <td key={j}>{v == null ? '—' : rowVal(r.unit, v)}</td>)}</></tr>
+          <tr key={i}><td className="rv-table__m">{r.metric}</td><>{r.values.map((v, j) => <td key={j}>{v == null ? '—' : rowVal(r.unit, v, f)}</td>)}</></tr>
         ))}</tbody>
       </table></div>
       {t.note && <div className="mono muted" style={{ fontSize: 11, marginTop: 6 }}>{t.note}</div>}
-      {spec.series.length > 0 && <ChartSpecRender spec={spec} />}
+      {spec.series.length > 0 && <ChartSpecRender spec={spec} f={f} />}
     </div>
   );
 }
 
 /** A shortlisted / deep-dived business, rendered as a card with money tiles. */
-function DealCard({ d, l }: { d: Obj; l: Record<string, string> }) {
+function DealCard({ d, l, f }: { d: Obj; l: Record<string, string>; f: NumFmt }) {
   const tiles: Array<{ value: string; label: string }> = [];
-  if (isNum(d.revenue)) tiles.push({ value: money(d.revenue), label: l.revenue! });
-  if (isNum(d.cashFlowSde)) tiles.push({ value: money(d.cashFlowSde), label: l.sde! });
-  if (isNum(d.askingPrice)) tiles.push({ value: money(d.askingPrice), label: l.asking! });
+  if (isNum(d.revenue)) tiles.push({ value: f.money(d.revenue), label: l.revenue! });
+  if (isNum(d.cashFlowSde)) tiles.push({ value: f.money(d.cashFlowSde), label: l.sde! });
+  if (isNum(d.askingPrice)) tiles.push({ value: f.money(d.askingPrice), label: l.asking! });
   const prose = ['overview', 'financials', 'impliedMultiple', 'includedAssets', 'leaseTerms', 'reasonForSale', 'growthOpportunities'] as const;
   const url = typeof d.sourceUrl === 'string' ? d.sourceUrl : undefined;
   return (
@@ -194,7 +221,7 @@ function Checklist({ categories }: { categories: Array<{ category: string; items
 const isTransactions = (v: unknown): v is Obj[] => Array.isArray(v) && v.length > 0 && typeof v[0] === 'object' && !!v[0] && 'description' in (v[0] as Obj) && ('multiple' in (v[0] as Obj) || 'salePrice' in (v[0] as Obj) || 'revenue' in (v[0] as Obj));
 const multipleNum = (m: unknown): string | null => { const x = String(m ?? '').match(/([\d.]+)\s*x/i); return x ? `${x[1]}x` : null; };
 const clip = (s: unknown, n = 64): string => { const t = String(s ?? '').replace(/[*_#]/g, ''); return t.length > n ? `${t.slice(0, n).trim()}…` : t; };
-function TransactionsTable({ rows, l }: { rows: Obj[]; l: Record<string, string> }) {
+function TransactionsTable({ rows, l, f }: { rows: Obj[]; l: Record<string, string>; f: NumFmt }) {
   return (
     <div className="rv-table-wrap"><table className="rv-table">
       <thead><tr><th>{l.business}</th><th>{l.location}</th><th>{l.salePrice}</th><th>{l.revenue}</th><th>{l.multiple}</th></tr></thead>
@@ -204,8 +231,8 @@ function TransactionsTable({ rows, l }: { rows: Obj[]; l: Record<string, string>
           <tr key={i}>
             <td className="rv-table__m rv-table__wrap">{clip(r.business ?? r.description)}</td>
             <td>{typeof r.location === 'string' ? r.location : '—'}</td>
-            <td>{isNum(r.salePrice) ? money(r.salePrice) : '—'}</td>
-            <td>{isNum(r.revenue) ? money(r.revenue) : '—'}</td>
+            <td>{isNum(r.salePrice) ? f.money(r.salePrice) : '—'}</td>
+            <td>{isNum(r.revenue) ? f.money(r.revenue) : '—'}</td>
             <td className="rv-mult">{mult ?? '—'}</td>
           </tr>
         );
@@ -273,39 +300,39 @@ function CommunitySentiment({ v, l }: { v: { overview?: string; mentions: Mentio
 }
 
 /** Generic value renderer for arbitrary nested report fields. */
-function Value({ v, k, l }: { v: unknown; k?: string; l: Record<string, string> }) {
+function Value({ v, k, l, f }: { v: unknown; k?: string; l: Record<string, string>; f: NumFmt }) {
   if (v == null || v === '') return null;
-  if (isChartSpec(v)) return <ChartSpecRender spec={v} />;
+  if (isChartSpec(v)) return <ChartSpecRender spec={v} f={f} />;
   if (typeof v === 'string') return <Prose md={v} />;
-  if (typeof v === 'number') return <span>{fmtNumber(k, v)}</span>;
+  if (typeof v === 'number') return <span>{f.keyed(k, v)}</span>;
   if (typeof v === 'boolean') return <span>{v ? 'Yes' : 'No'}</span>;
   if (Array.isArray(v)) {
     if (!v.length) return null;
     if (v.every(isRisk)) return <RiskList items={v as Risk[]} />;
     if (v.every(isMetric)) return <MetricTiles items={v as Metric[]} />;
-    if (isTransactions(v)) return <TransactionsTable rows={v} l={l} />;
+    if (isTransactions(v)) return <TransactionsTable rows={v} l={l} f={f} />;
     if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{x as string}</Markdown></li>)}</ul>;
-    return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="rv-card"><ObjectFields o={x as Obj} l={l} /></div>)}</div>;
+    return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="rv-card"><ObjectFields o={x as Obj} l={l} f={f} /></div>)}</div>;
   }
   if (typeof v === 'object') {
     if (isSourceList(v)) return <SourceList items={v.items} />;
     if (isChecklist(v)) return <Checklist categories={v.categories} />;
     if (hasMentions(v)) return <CommunitySentiment v={v} l={l} />;
-    if (isProjection(v)) return <ProjectionView t={v} />;
-    return <ObjectFields o={v as Obj} l={l} />;
+    if (isProjection(v)) return <ProjectionView t={v} f={f} />;
+    return <ObjectFields o={v as Obj} l={l} f={f} />;
   }
   return null;
 }
 
 /** Object → labelled field blocks. */
-function ObjectFields({ o, l }: { o: Obj; l: Record<string, string> }) {
+function ObjectFields({ o, l, f }: { o: Obj; l: Record<string, string>; f: NumFmt }) {
   const entries = Object.entries(o).filter(([, val]) => val != null && val !== '');
   return (
     <div className="stack" style={{ gap: 12 }}>
       {entries.map(([k, val]) => (
         <div key={k}>
           <div className="rv-flabel">{humanizeKey(k)}</div>
-          <Value v={val} k={k} l={l} />
+          <Value v={val} k={k} l={l} f={f} />
         </div>
       ))}
     </div>
@@ -313,15 +340,15 @@ function ObjectFields({ o, l }: { o: Obj; l: Record<string, string> }) {
 }
 
 /** Dispatch a whole section to the right presentation. */
-function SectionBody({ v, l }: { v: unknown; l: Record<string, string> }) {
+function SectionBody({ v, l, f }: { v: unknown; l: Record<string, string>; f: NumFmt }) {
   if (Array.isArray(v)) {
-    if (v.every(isChartSpec)) return <>{v.map((c, i) => <ChartSpecRender key={i} spec={c as ChartSpec} />)}</>;
+    if (v.every(isChartSpec)) return <>{v.map((c, i) => <ChartSpecRender key={i} spec={c as ChartSpec} f={f} />)}</>;
     if (v.length && typeof v[0] === 'object' && v[0] && 'business' in (v[0] as Obj)) {
-      return <div className="stack" style={{ gap: 14 }}>{(v as Obj[]).map((d, i) => <DealCard key={i} d={d} l={l} />)}</div>;
+      return <div className="stack" style={{ gap: 14 }}>{(v as Obj[]).map((d, i) => <DealCard key={i} d={d} l={l} f={f} />)}</div>;
     }
-    return <Value v={v} l={l} />;
+    return <Value v={v} l={l} f={f} />;
   }
-  return <Value v={v} l={l} />;
+  return <Value v={v} l={l} f={f} />;
 }
 
 // ── Snapshot (right rail) ──
@@ -345,12 +372,15 @@ function collectDeals(report: Obj): Obj[] {
  * ("<template>@<version>") is exposed (data-report-version) so components can
  * identify a report's version for analytics or explicit version branching later.
  */
-export function ReportViewer({ report, sections, title, lang = 'en', meta, request }: {
+export function ReportViewer({ report, sections, title, lang = 'en', meta, request, currency }: {
   report: Obj; sections?: Array<{ key: string; title: string }>; title?: string; lang?: string; meta?: Obj;
+  /** ISO 4217 the model's figures are in (from its manifest). Default USD. */
+  currency?: string;
   /** Request context appended to the right-rail Mandate card (mode, language, sources, credits). */
   request?: { modeLabel?: string | null; languageLabel?: string | null; sourcesFound?: number | null; creditsSpent?: number | null };
 }) {
   const l = RL[(lang as Lang)] ?? RL.en;
+  const f = makeNumFmt(lang, currency);
   const reportVersion = String(meta?.schemaVersion ?? '');
   const HIDE = new Set(['search_criteria']); // shown in the right rail instead
 
@@ -375,9 +405,9 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
   const sde = deals.map((d) => d.cashFlowSde).filter(isNum).reduce((a, b) => a + b, 0);
   const snap: Array<{ value: string; label: string }> = [];
   if (deals.length) snap.push({ value: String(deals.length), label: l.targets! });
-  if (prices.length) snap.push({ value: prices.length > 1 ? `${money(Math.min(...prices))}–${money(Math.max(...prices))}` : money(prices[0]!), label: l.priceRange! });
-  if (revenue > 0) snap.push({ value: money(revenue), label: l.combinedRevenue! });
-  if (sde > 0) snap.push({ value: money(sde), label: l.combinedSde! });
+  if (prices.length) snap.push({ value: prices.length > 1 ? `${f.money(Math.min(...prices))}–${f.money(Math.max(...prices))}` : f.money(prices[0]!), label: l.priceRange! });
+  if (revenue > 0) snap.push({ value: f.money(revenue), label: l.combinedRevenue! });
+  if (sde > 0) snap.push({ value: f.money(sde), label: l.combinedSde! });
 
   // …and not through the side door either. `search_criteria` is hidden from the
   // section flow and rendered in the right-hand rail instead, so the degraded
@@ -418,7 +448,7 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
             <h2 className="rv-sechead"><span className="rv-secnum">{pad(i)}</span>{s.title}</h2>
             {degraded.has(s.key)
               ? <p className="rv-degraded soft">{l.degradedSection}</p>
-              : <SectionBody v={report[s.key]} l={l} />}
+              : <SectionBody v={report[s.key]} l={l} f={f} />}
           </section>
         ))}
       </div>

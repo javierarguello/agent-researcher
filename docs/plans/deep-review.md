@@ -47,11 +47,13 @@ round.
   else, which is the argument for running the group properly. Planned with `fable`.
 - **K — the moderation pre-screen**, parked for your decision: refocus on evasion,
   or keep patching. The failure is structural, not a missing case.
-- **The catalog rule, second half.** Numbers and currency are `en-US` and `$`
-  everywhere (`report-html.ts`, `ReportViewer.tsx`, both `lib/format.ts`), and
-  `collectDeals` / the cover snapshot / the structured-block detectors key on
-  Florida's section and field names — so another model's PDF has no cover
-  statistics and its deal cards do not render.
+- **The catalog rule, what is LEFT of the second half.** Numbers and currency are
+  fixed: both renderers now take a `NumFmt` built from the reader's language and
+  the model's declared `currency` (new on the template, published in the manifest,
+  default USD). Still Florida-shaped: `collectDeals`, the cover snapshot and the
+  structured-block detectors key on `shortlist`/`deep_dives`/`business`/
+  `askingPrice`, so another model's PDF has no cover statistics and its deal cards
+  do not render. `apps/*/src/lib/format.ts` still hardcode `en-US`.
 - **The 23 vacuous tests** the completeness sweep proved, listed in its report.
   Three of them are guards with no test at all rather than weak ones.
 - **N1** — a half-improved section ships as whole with nothing in `meta`. Needs a

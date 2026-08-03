@@ -68,6 +68,7 @@ export function ReadReport() {
         {token && !expired && !report.data && <Notice text={t.loading} live />}
         {token && !expired && report.data && (
           <ReportViewer
+            currency={template.data?.currency}
             report={report.data.report}
             sections={template.data?.sections}
             title={job.data?.title ?? undefined}

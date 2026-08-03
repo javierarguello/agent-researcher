@@ -67,6 +67,7 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
   const html = buildReportHtml({
     report: parsed.report, meta: parsed.meta, sections, title: job.title ?? undefined,
     params: job.params, paramLabels, instructionsField: manifest?.instructionsField,
+    currency: manifest?.currency,
     lang, theme, generatedAt,
   });
 

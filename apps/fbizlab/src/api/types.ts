@@ -39,6 +39,8 @@ export interface TemplateManifest {
   directivesKey?: string;
   /** Which param carries the buyer's free-text instructions, if any. */
   instructionsField?: string;
+  /** ISO 4217 the figures in this model's reports are in. */
+  currency?: string;
   modes: ModeInfo[];
   addons: AddonInfo[];
   steps: StepInfo[];

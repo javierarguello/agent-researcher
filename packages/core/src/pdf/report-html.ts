@@ -29,6 +29,8 @@ export interface BuildReportHtmlInput {
    */
   paramLabels?: Record<string, string>;
   instructionsField?: string;
+  /** ISO 4217 the model's figures are in. Default USD. */
+  currency?: string;
   lang?: string;
   theme: PdfTheme;
   /** ISO date the report was generated (dossier stamp). Pass explicitly — the
@@ -50,18 +52,47 @@ function humanizeKey(k: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 const CURRENCY_RE = /price|revenue|cash.?flow|sde|sale|amount|cost|ebitda|valuation|salary|rent|income/i;
-const abbr = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : Math.abs(n) >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
-const money = (n: number) => `$${abbr(n)}`;
-function fmtNumber(key: string | undefined, n: number): string {
-  const k = (key ?? '').toLowerCase();
-  if (/year|count|targetcount|\bid\b/.test(k)) return String(n);
-  return CURRENCY_RE.test(k) ? money(n) : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+/**
+ * Numbers in the buyer's language and the model's currency.
+ *
+ * Both were hardcoded: `en-US` grouping printed `1,234,567.5` to a reader who
+ * writes `1.234.567,5`, and a bare `$` meant every model in the catalog billed in
+ * dollars whatever it researched. Built once per render and threaded like the
+ * theme already is, rather than read from module state.
+ */
+export interface NumFmt {
+  abbr: (n: number) => string;
+  money: (n: number) => string;
+  plain: (n: number) => string;
+  keyed: (key: string | undefined, n: number) => string;
+  row: (unit: string | undefined, v: number) => string;
 }
-function rowVal(unit: string | undefined, v: number): string {
-  if (unit === '%') return `${v}%`;
-  if (unit === 'x') return `${v}x`;
-  if (unit === '#') return v.toLocaleString('en-US');
-  return money(v);
+
+export function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
+  const group = (n: number, max = 2) => new Intl.NumberFormat(lang, { maximumFractionDigits: max }).format(n);
+  const cur = (n: number) => {
+    // `currencyDisplay: 'narrowSymbol'` keeps "$1.2M" rather than "US$1.2M" where
+    // the locale would disambiguate — the compact form is what the layout expects.
+    const sym = new Intl.NumberFormat(lang, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 })
+      .formatToParts(0)
+      .find((x) => x.type === 'currency')?.value ?? '$';
+    return sym;
+  };
+  const abbr = (n: number) =>
+    Math.abs(n) >= 1e6 ? `${group(n / 1e6, 2)}M` : Math.abs(n) >= 1e3 ? `${group(Math.round(n / 1e3), 0)}k` : group(Math.round(n), 0);
+  const money = (n: number) => `${cur(n)}${abbr(n)}`;
+  return {
+    abbr,
+    money,
+    plain: (n) => group(n),
+    keyed: (key, n) => {
+      const k = (key ?? '').toLowerCase();
+      if (/year|count|targetcount|\bid\b/.test(k)) return String(n);
+      return CURRENCY_RE.test(k) ? money(n) : group(n);
+    },
+    row: (unit, v) => (unit === '%' ? `${v}%` : unit === 'x' ? `${v}x` : unit === '#' ? group(v, 0) : money(v)),
+  };
 }
 
 /** Minimal, SAFE Markdown → HTML (escape first, then a few inline/block rules). */
@@ -144,7 +175,7 @@ function riskRows(items: Risk[], t: PdfTheme): string {
     })
     .join('')}</div>`;
 }
-function barsHtml(labels: string[], values: Array<number | null>, unit: string | undefined, t: PdfTheme): string {
+function barsHtml(labels: string[], values: Array<number | null>, unit: string | undefined, t: PdfTheme, f: NumFmt): string {
   const nums = values.filter((v): v is number => isNum(v));
   const max = nums.length ? Math.max(...nums) : 0;
   const bars = labels
@@ -153,39 +184,39 @@ function barsHtml(labels: string[], values: Array<number | null>, unit: string |
       const h = isNum(v) && max > 0 ? Math.max(4, Math.round((v / max) * 100)) : 0;
       const last = i === labels.length - 1;
       const barColor = last ? t.colors.accent : t.colors.borderStrong;
-      const txt = isNum(v) ? (unit ? rowVal(unit, v) : abbr(v)) : '—';
+      const txt = isNum(v) ? (unit ? f.row(unit, v) : f.abbr(v)) : '—';
       return `<div class="bar"><div class="barval">${esc(txt)}</div><div class="barfill" style="height:${h}%;background:${barColor}"></div><div class="barlab">${esc(lab)}</div></div>`;
     })
     .join('');
   return `<div class="chart">${bars}</div>`;
 }
-function projectionHtml(p: Projection, t: PdfTheme): string {
+function projectionHtml(p: Projection, t: PdfTheme, f: NumFmt): string {
   const dollarRows = p.rows.filter((r) => (r.unit ?? '$') === '$');
   const chartRow = (dollarRows[0] ?? p.rows[0])!;
-  const chart = barsHtml(p.periods, chartRow.values, chartRow.unit ?? '$', t);
+  const chart = barsHtml(p.periods, chartRow.values, chartRow.unit ?? '$', t, f);
   const head = `<tr><th></th>${p.periods.map((pd) => `<th>${esc(pd)}</th>`).join('')}</tr>`;
   const body = p.rows
-    .map((r) => `<tr><td class="tm">${esc(r.metric)}</td>${r.values.map((v) => `<td>${v == null ? '—' : esc(rowVal(r.unit, v))}</td>`).join('')}</tr>`)
+    .map((r) => `<tr><td class="tm">${esc(r.metric)}</td>${r.values.map((v) => `<td>${v == null ? '—' : esc(f.row(r.unit, v))}</td>`).join('')}</tr>`)
     .join('');
   const note = p.note ? `<div class="mono muted note">${esc(p.note)}</div>` : '';
   return `<div class="card">${chart}<table class="ptable"><thead>${head}</thead><tbody>${body}</tbody></table>${note}</div>`;
 }
-function chartVal(unit: string | undefined, v: number | null): string {
+function chartVal(unit: string | undefined, v: number | null, f: NumFmt): string {
   if (v == null) return '—';
-  return unit ? rowVal(unit, v) : abbr(v);
+  return unit ? f.row(unit, v) : f.abbr(v);
 }
-function chartSpecHtml(spec: ChartSpec, t: PdfTheme): string {
+function chartSpecHtml(spec: ChartSpec, t: PdfTheme, f: NumFmt): string {
   const series = spec.series ?? [];
   const s0 = series[0];
   const header = `${spec.title ? `<div class="chart-title">${esc(spec.title)}</div>` : ''}${spec.description ? `<div class="chart-desc">${esc(spec.description)}</div>` : ''}`;
   // Bar/line/area → CSS bars of the first series. Pie or multi-series → the table
   // below carries the rest (grouped bars in print add little over a clean table).
   const chart = (spec.type === 'bar' || spec.type === 'line' || spec.type === 'area') && s0 && s0.data?.some((v) => isNum(v))
-    ? barsHtml(spec.labels ?? [], s0.data ?? [], spec.unit, t)
+    ? barsHtml(spec.labels ?? [], s0.data ?? [], spec.unit, t, f)
     : '';
   const head = `<tr><th></th>${series.map((s) => `<th>${esc(s.name)}</th>`).join('')}</tr>`;
   const body = (spec.labels ?? [])
-    .map((lab, i) => `<tr><td class="tm">${esc(lab)}</td>${series.map((s) => `<td>${esc(chartVal(spec.unit, s.data?.[i] ?? null))}</td>`).join('')}</tr>`)
+    .map((lab, i) => `<tr><td class="tm">${esc(lab)}</td>${series.map((s) => `<td>${esc(chartVal(spec.unit, s.data?.[i] ?? null, f))}</td>`).join('')}</tr>`)
     .join('');
   const table = series.length ? `<table class="ptable"><thead>${head}</thead><tbody>${body}</tbody></table>` : '';
   return `<div class="card">${header}${chart}${table}</div>`;
@@ -198,12 +229,12 @@ function checklistHtml(categories: Array<{ category: string; items: string[] }>,
     .map((c) => `<div class="checkcat"><div class="flabel">${esc(c.category)}</div><ul class="check">${c.items.map((it) => `<li><span class="cbox" style="border-color:${t.colors.accent}"></span><span>${mdInline(it)}</span></li>`).join('')}</ul></div>`)
     .join('');
 }
-function transactionsHtml(rows: Obj[], l: Record<string, string>): string {
+function transactionsHtml(rows: Obj[], l: Record<string, string>, f: NumFmt): string {
   const head = `<tr><th>${esc(l.business)}</th><th>${esc(l.location)}</th><th>${esc(l.salePrice)}</th><th>${esc(l.revenue)}</th><th>${esc(l.multiple)}</th></tr>`;
   const body = rows
     .map((r) => {
       const mult = multipleNum(r.multiple);
-      return `<tr><td class="tm">${esc(clip(r.business ?? r.description))}</td><td>${typeof r.location === 'string' ? esc(r.location) : '—'}</td><td>${isNum(r.salePrice) ? esc(money(r.salePrice)) : '—'}</td><td>${isNum(r.revenue) ? esc(money(r.revenue)) : '—'}</td><td class="mult">${mult ?? '—'}</td></tr>`;
+      return `<tr><td class="tm">${esc(clip(r.business ?? r.description))}</td><td>${typeof r.location === 'string' ? esc(r.location) : '—'}</td><td>${isNum(r.salePrice) ? esc(f.money(r.salePrice)) : '—'}</td><td>${isNum(r.revenue) ? esc(f.money(r.revenue)) : '—'}</td><td class="mult">${mult ?? '—'}</td></tr>`;
     })
     .join('');
   return `<div class="card p0"><table class="ptable"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
@@ -234,11 +265,11 @@ function sentimentHtml(v: { overview?: string; mentions: Mention[] }, l: Record<
     .join('');
   return `${tiles}${dist}${overview}<div class="mentions">${cards}</div>`;
 }
-function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme): string {
+function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme, f: NumFmt): string {
   const tiles: Array<[string, string]> = [];
-  if (isNum(d.revenue)) tiles.push([money(d.revenue), l.revenue!]);
-  if (isNum(d.cashFlowSde)) tiles.push([money(d.cashFlowSde), l.sde!]);
-  if (isNum(d.askingPrice)) tiles.push([money(d.askingPrice), l.asking!]);
+  if (isNum(d.revenue)) tiles.push([f.money(d.revenue), l.revenue!]);
+  if (isNum(d.cashFlowSde)) tiles.push([f.money(d.cashFlowSde), l.sde!]);
+  if (isNum(d.askingPrice)) tiles.push([f.money(d.askingPrice), l.asking!]);
   const tileHtml = tiles.length ? `<div class="dtiles">${tiles.map(([v, lab]) => `<div class="dtile"><div class="mlabel">${esc(lab)}</div><div class="mval">${esc(v)}</div></div>`).join('')}</div>` : '';
   const prose = (['overview', 'financials', 'impliedMultiple', 'includedAssets', 'leaseTerms', 'reasonForSale', 'growthOpportunities'] as const)
     .map((k) => (typeof d[k] === 'string' && d[k] ? `<div class="field"><div class="flabel">${esc(humanizeKey(k))}</div>${mdToHtml(d[k] as string)}</div>` : ''))
@@ -252,43 +283,43 @@ function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme): string {
 }
 
 // ── generic recursive value rendering ──
-function valueHtml(v: unknown, k: string | undefined, l: Record<string, string>, t: PdfTheme): string {
+function valueHtml(v: unknown, k: string | undefined, l: Record<string, string>, t: PdfTheme, f: NumFmt): string {
   if (v == null || v === '') return '';
   if (typeof v === 'string') return mdToHtml(v);
-  if (typeof v === 'number') return `<span>${esc(fmtNumber(k, v))}</span>`;
+  if (typeof v === 'number') return `<span>${esc(f.keyed(k, v))}</span>`;
   if (typeof v === 'boolean') return `<span>${v ? l.yes : l.no}</span>`;
-  if (isChartSpec(v)) return chartSpecHtml(v, t);
+  if (isChartSpec(v)) return chartSpecHtml(v, t, f);
   if (Array.isArray(v)) {
     if (!v.length) return '';
-    if (v.every(isChartSpec)) return v.map((cspec) => chartSpecHtml(cspec as ChartSpec, t)).join('');
+    if (v.every(isChartSpec)) return v.map((cspec) => chartSpecHtml(cspec as ChartSpec, t, f)).join('');
     if (v.every(isRisk)) return riskRows(v as Risk[], t);
     if (v.every(isMetric)) return metricsGrid(v as Metric[], t);
-    if (isTransactions(v)) return transactionsHtml(v, l);
+    if (isTransactions(v)) return transactionsHtml(v, l, f);
     if (v.every((x) => typeof x === 'string')) return `<ul class="bullets">${v.map((x) => `<li>${mdInline(x as string)}</li>`).join('')}</ul>`;
-    return `<div class="stack">${v.map((x) => `<div class="card">${objectFieldsHtml(x as Obj, l, t)}</div>`).join('')}</div>`;
+    return `<div class="stack">${v.map((x) => `<div class="card">${objectFieldsHtml(x as Obj, l, t, f)}</div>`).join('')}</div>`;
   }
   if (typeof v === 'object') {
     if (isSourceList(v)) return sourceListHtml(v.items, t);
     if (isChecklist(v)) return checklistHtml(v.categories, t);
     if (hasMentions(v)) return sentimentHtml(v, l, t);
-    if (isProjection(v)) return projectionHtml(v, t);
-    return objectFieldsHtml(v as Obj, l, t);
+    if (isProjection(v)) return projectionHtml(v, t, f);
+    return objectFieldsHtml(v as Obj, l, t, f);
   }
   return '';
 }
-function objectFieldsHtml(o: Obj, l: Record<string, string>, t: PdfTheme): string {
+function objectFieldsHtml(o: Obj, l: Record<string, string>, t: PdfTheme, f: NumFmt): string {
   // Defensive: an array may hold nulls or primitives — render those directly.
-  if (!o || typeof o !== 'object') return valueHtml(o, undefined, l, t);
+  if (!o || typeof o !== 'object') return valueHtml(o, undefined, l, t, f);
   return `<div class="stack">${Object.entries(o)
     .filter(([, val]) => val != null && val !== '')
-    .map(([key, val]) => `<div class="field"><div class="flabel">${esc(humanizeKey(key))}</div>${valueHtml(val, key, l, t)}</div>`)
+    .map(([key, val]) => `<div class="field"><div class="flabel">${esc(humanizeKey(key))}</div>${valueHtml(val, key, l, t, f)}</div>`)
     .join('')}</div>`;
 }
-function sectionBodyHtml(v: unknown, l: Record<string, string>, t: PdfTheme): string {
+function sectionBodyHtml(v: unknown, l: Record<string, string>, t: PdfTheme, f: NumFmt): string {
   if (Array.isArray(v) && v.length && typeof v[0] === 'object' && v[0] && 'business' in (v[0] as Obj)) {
-    return `<div class="stack">${(v as Obj[]).map((d) => dealCardHtml(d, l, t)).join('')}</div>`;
+    return `<div class="stack">${(v as Obj[]).map((d) => dealCardHtml(d, l, t, f)).join('')}</div>`;
   }
-  return valueHtml(v, undefined, l, t);
+  return valueHtml(v, undefined, l, t, f);
 }
 
 // ── snapshot (cover) ──
@@ -333,6 +364,9 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   );
   const lang = (['en', 'es', 'fr', 'pt'].includes(input.lang ?? '') ? input.lang : 'en') as Lang;
   const l = RL[lang];
+  // Numbers in the reader's language, money in the model's currency. Built once
+  // and threaded like the theme; both used to be `en-US` and `$` everywhere.
+  const f = makeNumFmt(lang, input.currency);
   const pad = (i: number) => String(i + 1).padStart(2, '0');
   const HIDE = new Set(['search_criteria']);
   const ordered = (input.sections?.length ? input.sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))
@@ -353,9 +387,9 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   // buyer sees and it was English in all four languages — including the complete
   // Spanish case, where every other string on the page was translated.
   if (deals.length) snap.push([String(deals.length), l.targets!]);
-  if (prices.length) snap.push([prices.length > 1 ? `${money(Math.min(...prices))}–${money(Math.max(...prices))}` : money(prices[0]!), l.priceRange!]);
-  if (revenue > 0) snap.push([money(revenue), l.combinedRevenue!]);
-  if (sde > 0) snap.push([money(sde), l.combinedSde!]);
+  if (prices.length) snap.push([prices.length > 1 ? `${f.money(Math.min(...prices))}–${f.money(Math.max(...prices))}` : f.money(prices[0]!), l.priceRange!]);
+  if (revenue > 0) snap.push([f.money(revenue), l.combinedRevenue!]);
+  if (sde > 0) snap.push([f.money(sde), l.combinedSde!]);
 
   const date = input.generatedAt ? new Date(input.generatedAt) : undefined;
   // `en-US` printed "03 AUG 2026" on a Portuguese dossier. The locale follows the
@@ -375,7 +409,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
           return typeof v !== 'object' || Array.isArray(v);
         })
         .slice(0, 8)
-        .map(([k, v]) => `<div class="mrow"><span>${esc(input.paramLabels?.[k] ?? humanizeKey(k))}</span><b>${esc(typeof v === 'boolean' ? (v ? l.yes : l.no) : Array.isArray(v) ? v.join(', ') : isNum(v) ? fmtNumber(k, v) : v)}</b></div>`)
+        .map(([k, v]) => `<div class="mrow"><span>${esc(input.paramLabels?.[k] ?? humanizeKey(k))}</span><b>${esc(typeof v === 'boolean' ? (v ? l.yes : l.no) : Array.isArray(v) ? v.join(', ') : isNum(v) ? f.keyed(k, v) : v)}</b></div>`)
         .join('')
     : '';
 
@@ -416,7 +450,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
       <div class="seccontent">${
         degraded.has(s.key)
           ? `<p class="soft">${esc(l.degradedSection ?? '')}</p>`
-          : sectionBodyHtml(report[s.key], l, t)
+          : sectionBodyHtml(report[s.key], l, t, f)
       }</div>
     </div>
   </section>`)
