@@ -51,10 +51,21 @@ same class it was closing. Fixed in the follow-up commit:
   mechanism that does not exist (the saver never calls `runResearch`; measured at
   zero calls). Removed.
 
-**Method finding, applies to every future round:** a worktree has no `node_modules`,
-so `@agent-researcher/core` resolves to the MAIN checkout. Mutating `packages/core`
-and running `apps/*` tests from a worktree produces **false greens**. Two agents hit
-this independently. Fix the worktree setup before the next round.
+**Method finding — FIXED.** A worktree has no `node_modules` of its own, so a bare
+`@agent-researcher/core` walks up past it (the agent worktrees live under
+`.claude/worktrees/`, inside the repo) and resolves to the MAIN checkout. Mutating
+`packages/core` and running `apps/*` tests from a worktree produced **false greens**.
+Two agents hit this independently; a third's control mutation was silently invisible.
+
+Reproduced in a real worktree and fixed: `apps/api` and `apps/worker` now alias
+`@agent-researcher/core` relative to their own `vitest.config.ts`. Same worktree,
+same mutation: green before, red after. `test/resolution.test.ts` in both suites is
+the guard — it reads the loaded module's path off a stack (`import.meta.resolve` is
+undefined under vitest, and `require.resolve` reproduces the very walk being
+detected) and fails with the tree, the frame and the fix named. Removing the alias
+turns it red.
+
+Only `apps/api` and `apps/worker` import core; `fbizlab` and `admin` do not.
 
 Everything else the round found is product defects and new vacuous tests — recorded
 in the sections below, not fixed here.

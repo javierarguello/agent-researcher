@@ -72,6 +72,14 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Workspace packages resolved RELATIVE TO THIS FILE, not by walking up
+      // node_modules. A git worktree has no `node_modules` of its own, so the bare
+      // specifier escapes the worktree and resolves to the MAIN checkout — meaning a
+      // review agent could mutate `packages/core` in its worktree, watch every test
+      // stay green, and report the test as unable to fail. That happened, and it
+      // silently invalidated part of a review round. `test/resolution.test.ts` is
+      // the guard that this stays true.
+      '@agent-researcher/core': fileURLToPath(new URL('../../packages/core/src/index.ts', import.meta.url)),
       '@google-cloud/firestore': fileURLToPath(new URL('../../packages/core/test/mocks/firestore.ts', import.meta.url)),
       // Without this, a test that runs a job uploads report.json to the REAL dev
       // bucket with whatever credentials the developer has — or fails slowly on a
