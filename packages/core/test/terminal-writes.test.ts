@@ -287,3 +287,45 @@ describe('the resolution note obeys the same rule', () => {
     expect((await getJob('nr2'))!.error).toBe('credits returned');
   });
 });
+
+describe('the slot counter can never go negative, and never flags a parked job', () => {
+  const seed = (jobId: string, status = 'queued') =>
+    createJob({ jobId, appId: APP, userId: USER, template: 't', params: {}, status } as never);
+
+  it('floors the counter at zero when a release outnumbers the claims', async () => {
+    // The `slotHeld` flag stops a SECOND release through the same job, which is why
+    // the floors looked redundant and could both be deleted with 388 tests green.
+    // They are not the same guard: `releaseUnclaimedSlot` is a compensating release
+    // that goes straight to the counter with no job to consult, so a retry whose
+    // flag write failed decrements a counter nobody incremented — and a negative
+    // counter uncaps concurrent spend for that buyer.
+    const slots = await import('../src/jobs/slots.js');
+    await slots.releaseUnclaimedSlot(APP, USER);
+    await slots.releaseUnclaimedSlot(APP, USER);
+    expect(await slots.inFlightSlots(APP, USER)).toBe(0);
+
+    // …and the cap still bites afterwards, which is what a negative counter breaks.
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    expect(await slots.inFlightSlots(APP, USER)).toBe(1);
+  });
+
+  it('refuses to flag the slot of a parked job', async () => {
+    // A parked job is explicitly NOT in flight — it spends nothing and waits on us.
+    // Flagging its slot is how an approval's forced claim stuck at 1 when a
+    // straggler parked the job in between, and the disjunct that prevents it had no
+    // test: removing `|| status === 'held'` left the whole core suite green.
+    await seed('sl1');
+    await markHeld('sl1', { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
+    const slots = await import('../src/jobs/slots.js');
+
+    expect(await slots.setJobSlotHeld('sl1', true)).toBe(false);
+    expect((await getJob('sl1'))!.slotHeld).not.toBe(true);
+  });
+
+  it('still flags a live one', async () => {
+    // The control: "refuses everything" would pass the assertion above.
+    await seed('sl2');
+    const slots = await import('../src/jobs/slots.js');
+    expect(await slots.setJobSlotHeld('sl2', true)).toBe(true);
+  });
+});

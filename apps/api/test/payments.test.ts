@@ -1,16 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+/**
+ * A byte pattern that survives transport and does NOT survive `JSON.parse` +
+ * `JSON.stringify`: an escaped unicode sequence. Re-serializing turns `\u00e9`
+ * into the literal `é`, so its absence is proof the handler re-encoded the body.
+ */
+const RAW_MARKER = String.raw`\u00e9`;
+
 vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
 
-// Stripe mock: constructEvent trusts the signature header 'valid' and parses the
-// raw body; checkout returns a session; resolveStripePlan returns a fixed plan.
+/**
+ * Stripe mock. `constructEvent` accepts the header 'valid' — and, like the real
+ * one, it verifies over the RAW BYTES.
+ *
+ * The first version only string-compared the signature, so the raw-body plumbing —
+ * the only thing that makes verification work at all — was untested on an
+ * unauthenticated money route: passing `JSON.stringify(req.body)` instead of the
+ * raw buffer left every test green. Real Stripe would reject that, because a
+ * re-serialized body differs from the bytes that were signed (key order,
+ * whitespace, unicode escapes).
+ */
 vi.mock('../src/stripe.js', () => ({
   stripeConfigured: () => true,
   stripe: () => ({
     webhooks: {
       constructEvent: (raw: Buffer | string, sig: string) => {
         if (sig !== 'valid') throw new Error('signature verification failed');
-        return JSON.parse(raw.toString());
+        const text = raw.toString();
+        // Stands in for the HMAC: the bytes we were handed must be the bytes the
+        // caller sent, not a re-serialization of the parsed object.
+        if (!(raw instanceof Buffer)) throw new Error('signature verification failed: not the raw body');
+        if (!text.includes(RAW_MARKER)) throw new Error('signature verification failed: body was re-serialized');
+        return JSON.parse(text);
       },
     },
     checkout: { sessions: { create: async (args: Record<string, unknown>) => ({ id: 'cs_test_1', url: 'https://checkout/x', ...args }) } },
@@ -50,13 +71,27 @@ function purchaseEvent(
         amount_total: amount,
         currency: 'usd',
         payment_status: paymentStatus,
-        metadata: { appId: 'fbizlab', userId: 'u@x.com', planId: 'investor', credits: String(credits) },
+        // The accented character is deliberate: it is what makes a re-serialized
+        // body distinguishable from the raw one.
+        metadata: { appId: 'fbizlab', userId: 'u@x.com', planId: 'investor', credits: String(credits), note: 'café' },
       },
     },
   };
 }
+/**
+ * Sent as a STRING, not an object, so the bytes on the wire are ours.
+ *
+ * `payload: someObject` lets the injector serialize it, which is exactly the
+ * re-encoding this test needs to be able to detect — the escaped unicode below
+ * survives transport and does not survive a parse/stringify round trip.
+ */
 const webhook = (event: unknown, sig = 'valid') =>
-  app.inject({ method: 'POST', url: '/credits/webhook', headers: { 'stripe-signature': sig, 'content-type': 'application/json' }, payload: event as object });
+  app.inject({
+    method: 'POST',
+    url: '/credits/webhook',
+    headers: { 'stripe-signature': sig, 'content-type': 'application/json' },
+    payload: JSON.stringify(event).replace(/é/g, RAW_MARKER),
+  });
 
 const research = { template: 'florida-business-for-sale', params: { industry: 'x', mode: 'essential' } };
 

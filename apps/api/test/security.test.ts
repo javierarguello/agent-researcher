@@ -244,6 +244,12 @@ describe('API security — auth, credits gate, isolation', () => {
     const gen = await app.inject({ method: 'GET', url: `/research/${jobId}/pdf`, headers: auth(owner) });
     expect(gen.statusCode).toBe(202);
     expect(gen.json()).toMatchObject({ ready: false });
+    // …and something was ACTUALLY enqueued. `enqueuePdf` appeared in this suite
+    // only inside `vi.mock` factories and was never asserted, so deleting the call
+    // left the whole api and worker suites green while the buyer polled
+    // `{ready:false}` forever.
+    const { enqueuePdf } = await import('../src/enqueue.js');
+    expect(vi.mocked(enqueuePdf)).toHaveBeenCalledWith(jobId, expect.anything());
 
     // A read-only report token may reach the PDF endpoint (scope gate allows it).
     const rt = await signReadToken({ email: 'owner@x.com', appId: 'fbizlab', jobId });

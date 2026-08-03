@@ -19,7 +19,7 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { config, getBalance, grantCredits, listJobs } from '@agent-researcher/core';
+import { config, getBalance, grantCredits, listJobs, updateApp } from '@agent-researcher/core';
 import { seedApp, seedAdmin, token, auth } from './helpers.js';
 
 const research = { template: 'florida-business-for-sale', params: { industry: 'laundromats', mode: 'essential' } };
@@ -173,6 +173,27 @@ describe('turnstile — route enforcement', () => {
     const adminToken = await token('admin', 'boss@x.com', 'admin');
     const r = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(adminToken), payload: research });
     expect(r.statusCode).toBe(200);
+  });
+
+  it('exempts an admin SESSION even on an app that does require a widget', async () => {
+    // The role exemption, which the test above cannot see: every admin token in it
+    // is minted for appId `admin`, and the very next line exempts that app. So the
+    // role check could be deleted with the whole api suite green.
+    //
+    // Here the app IS in TURNSTILE_APPS and the caller sends no token, so the only
+    // thing that can let it through is being an admin.
+    stubSiteverify(false); // any solve attempt fails, to be sure none is made
+    await seedAdmin(['boss@x.com']);
+    // The role is decided PER APP: `jwtAuth` downgrades an `admin` claim to `user`
+    // unless that app lists the address. Without this the 403 below is the app's,
+    // not the captcha's, and the test proves nothing.
+    await updateApp('fbizlab', { adminEmails: ['boss@x.com'] });
+    await grantCredits({ appId: 'fbizlab', userId: 'boss@x.com', credits: 12 });
+    const adminOnBuyerApp = await token('fbizlab', 'boss@x.com', 'admin');
+
+    const r = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(adminOnBuyerApp), payload: research });
+    expect(r.statusCode).not.toBe(403);
+    expect(r.json().code).not.toBe('captcha_failed');
   });
 
   it('is a complete no-op when no secret is configured', async () => {

@@ -18,6 +18,10 @@ describe('templates', () => {
     const waves = planWaves(t);
     const flat = waves.flat();
     expect(new Set(flat).size).toBe(t.agents.length); // every agent scheduled once
+    // …and scheduled ONCE. `new Set(...).size` is guaranteed by `remaining.delete`
+    // whatever the layering does, so duplicating a wave — every agent dispatched
+    // twice, the model spend doubled per job — passed the assertion above.
+    expect(flat).toHaveLength(t.agents.length);
     expect(waves.length).toBeGreaterThan(1);
   });
 });

@@ -81,6 +81,28 @@ describe('the cap is claimed, not observed', () => {
     expect(stats.inProgress).toBe(1);
   });
 
+  it('reads the SLOT, not the job status', async () => {
+    // With one queued job the two numbers agree, so the first version could not say
+    // which it was reading: dropping the slot override left it green.
+    //
+    // They diverge on the case the fix was FOR — the one in the comment above, "no
+    // reports in progress" next to a 409. A job parked as `held` releases its slot
+    // best-effort; when that release fails the slot stays taken while the status
+    // counter (queued + running) sees nothing. The buyer is then locked out by a
+    // 409 while their dashboard says they have nothing running.
+    const jobId = (await post(userToken)).json().jobId as string;
+    const core = await import('@agent-researcher/core');
+    await core.markHeld(jobId, { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
+    // …and the release does NOT happen — the failure this number exists to expose.
+
+    const stats = (await app.inject({ method: 'GET', url: '/me/stats', headers: auth(userToken) })).json();
+    expect(stats.inProgress, 'the dashboard disagrees with the 409 the buyer just hit').toBe(1);
+    // The status counter really does see zero, which is what makes this a fork and
+    // not two ways of computing the same thing.
+    expect(stats.held).toBe(1);
+    expect((await post(userToken)).statusCode, 'the slot is genuinely still taken').toBe(409);
+  });
+
   it('counts per user, not globally', async () => {
     expect((await post(userToken)).statusCode).toBe(202);
 
