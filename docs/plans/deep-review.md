@@ -424,6 +424,45 @@ theatre), and handoffs are JSON-encoded inside the same fence, introduced as pee
 briefings with no authority. `test/prompt-injection.test.ts` pins the mechanism
 (unit) and the outcome across a whole run; each half revert-verified.
 
+**Round 2 (same day) closed the three paths the first fix walked past.** Eight
+review agents; the attacker and the completeness critic found the same holes
+independently:
+
+- **The brief** — `buildBrief` interpolates `location`, `industry`, `keywords`,
+  `preferredSources` raw: ~4.3kB of buyer text, newlines and all, first in EVERY
+  prompt. Measured at 6/6 prompts vs the handoff's 20/42, because the brief reaches
+  every agent by construction. A marker in it also lands BEFORE ours and inverts
+  the fence, putting our own schema rules and the language directive inside a
+  region labelled as carrying no authority. `moderation/moderate.ts` justifies its
+  precision-over-recall tuning on "the engine already fences client text as
+  low-authority" — this is what makes that true.
+- **The `gather` loop** — the actual front door. It reads the same pages as raw
+  tool results, turn after turn, BEFORE the dossier exists; it chooses the next
+  query and URL; and its model writes the handoff. Fencing downstream of the
+  compromise is not fencing. Its `evidence` store is shared by every agent and
+  `buildDossier` renders the FIRST 48/14, not the best, so steering one loop
+  crowds real evidence out of everyone's dossier.
+- **`currentBlock` and the sections block** — model output written after reading a
+  page, carrying the marker through untouched.
+- **The client's own triple-quote fence** — closable by typing three quotes. The
+  previous commit called this block "already right".
+- **Our own instructions were inside the fence**: the citation rule and "prefer the
+  full page over the snippet for figures" — which exists nowhere else in the code.
+
+Structural fix: ONE `untrusted()` helper that every path goes through, plus
+`stripFenceMarker` for structured tool payloads, and a loose marker pattern (case,
+U+2011, doubled angle quotes, interior spaces — the exact-bytes `split()` let every
+variant through). The test invariant is now that the marker count is **EVEN** and
+that nothing forged appears in the odd regions; the old `=== 2` only ever ran on
+the one prompt shape with no handoffs, which is why removing the handoff fence
+entirely stayed green.
+
+Measured cost: 1,673.6k chars/comprehensive run before any fencing → 1,699.4k after
+round 1 → **1,752.4k after round 2 (+4.7% total, ~$0.015/run)**. Most of round 2's
+delta is the loop label re-sent across 70 turns. Live Ollama A/B on round 1 found
+no over-refusal (6/6 kept a listing's legitimate imperatives) and no evidence
+displaced by the warning.
+
 **The rest of M is still to run** — this was one finding from a review agent that
 was pointed at something else, which is the argument for running the group properly.
 
