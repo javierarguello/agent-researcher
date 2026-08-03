@@ -25,7 +25,7 @@ vi.mock('../src/tools/web-search.js', () => ({
 }));
 
 import { createEvidence, gather } from '../src/engine/gather.js';
-import { buildProducerSynthPrompt } from '../src/engine/prompt.js';
+import { buildProducerSynthPrompt, SOURCE_FENCE } from '../src/engine/prompt.js';
 import type { ResolvedModel } from '../src/llm/index.js';
 import type { AgentSpec, ReportSection } from '../src/templates/types.js';
 import type { GenerateOptions, GenerateResult, LlmProvider } from '../src/llm/provider.js';
@@ -165,7 +165,10 @@ describe('an agent’s context does not carry the whole report', () => {
       Array.from({ length: 12 }, (_, i) => [`s${i}`, { overview: 'z'.repeat(20_000) }]),
     );
     const prompt = promptWith({ ...many, small: { note: 'x' } });
-    const block = prompt.split('"""')[1]!;
+    // The sections block is model output, so it now lives inside the untrusted
+    // fence rather than a `"""` pair — it is the last fenced region in this prompt.
+    const parts = prompt.split(SOURCE_FENCE);
+    const block = parts[parts.length - 2]!;
     const parsed = JSON.parse(block) as Record<string, unknown>;
 
     expect(Object.keys(parsed)).toHaveLength(13);

@@ -6,6 +6,7 @@
  * re-fetched) by another, and the final `sources` list is unified.
  */
 import { config } from '../config.js';
+import { stripFenceMarker } from './prompt.js';
 import { llmCost, searchCost, type Cost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage, ToolSchema } from '../llm/provider.js';
@@ -152,6 +153,22 @@ function trimOldPages(messages: LlmMessage[]): void {
 }
 
 /** Run one budgeted research loop, appending to the shared evidence. Spend goes to `input.spend`. */
+/**
+ * A search result as the research loop may see it.
+ *
+ * Title, URL and snippet are all written by whoever owns the page. The providers
+ * JSON-encode a tool result, which stops a forged header from beginning a line —
+ * an accident, not a guarantee, and it says nothing about the marker.
+ */
+function untrustedResult(r: SearchResult): SearchResult {
+  return {
+    ...r,
+    title: stripFenceMarker(r.title ?? ''),
+    url: stripFenceMarker(r.url ?? ''),
+    snippet: stripFenceMarker(r.snippet ?? ''),
+  };
+}
+
 export async function gather(input: GatherInput): Promise<GatherResult> {
   const { model, system, messages, maxTurns, evidence, onNote } = input;
   let plan: PlanStep[] = [];
@@ -244,7 +261,15 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           }
           messages.push({
             role: 'tool',
-            toolResult: { name: call.name, response: { query, results, turnsLeft: maxTurns - turnsUsed } },
+            toolResult: {
+              name: call.name,
+              // The FRONT DOOR. The dossier fence protects the synthesis prompt;
+              // this loop reads the same pages first, turn after turn, and it is
+              // the loop that chooses the next query and URL — and whose model
+              // writes the handoff every later agent reads. Fencing downstream of
+              // the compromise is not fencing.
+              response: { query, results: results.map(untrustedResult), turnsLeft: maxTurns - turnsUsed },
+            },
           });
           await note(`Searched: ${query}`);
         } catch (error) {
@@ -269,7 +294,10 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
             role: 'tool',
             toolResult: {
               name: call.name,
-              response: { pages: [{ url, ok: true, content: cached?.content ?? '', cached: true }], turnsLeft: maxTurns - turnsUsed },
+              response: {
+                pages: [{ url, ok: true, content: stripFenceMarker(cached?.content ?? ''), cached: true }],
+                turnsLeft: maxTurns - turnsUsed,
+              },
             },
           });
           await note(`Reused cached page.`);
@@ -294,7 +322,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           toolResult: {
             name: call.name,
             response: {
-              pages: pages.map((p) => ({ url: p.url, ok: p.ok, error: p.error, content: p.content })),
+              pages: pages.map((p) => ({ url: p.url, ok: p.ok, error: p.error, content: stripFenceMarker(p.content ?? '') })),
               turnsLeft: maxTurns - turnsUsed,
             },
           },
