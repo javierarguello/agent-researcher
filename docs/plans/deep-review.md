@@ -314,6 +314,18 @@ the reachable half — an ordinary agent failure — got its own test.
 Also closed here: **N16**, spy restoration moved to `afterEach` in
 `run-job-resilience.test.ts`, so one real failure no longer cascades into four.
 
+**Closed since** — the most expensive uncovered guard in the repo: **a re-dispatch
+must resume, not start over.** `run-job` loads the checkpoint in one line, and
+replacing its result with `undefined` left all 329 core tests green — every retry
+would re-buy the whole research, up to eight times, with a slow job as the only
+symptom. Nothing covered it because every existing resume test hands `resume`
+straight to `runResearch`, which exercises the engine's skip logic and says nothing
+about whether anyone reads the checkpoint back off storage.
+`test/resume-reuse.test.ts` pins three things: that run-job passes the checkpoint,
+that the second dispatch costs less than the first, and that the finished step's
+CONTENT survives rather than being regenerated. All three die to either mutation
+(never read it, or read it and don't pass it).
+
 **Highest-value missing tests** (each names the one-line source change that would
 make it fail — a recommendation without that is not real):
 
