@@ -167,13 +167,25 @@ export function useRetryJob() {
  *
  * Nothing here happens on its own: a held job waits until one of these is called.
  */
+/**
+ * Both admin decisions answer in the same shape, so the caller does not have to
+ * narrow a union to read the one field that says whether the money moved.
+ * `refundFailed` means the job is closed and the buyer has NOT been paid back.
+ */
+interface ResolveResult {
+  jobId: string;
+  status: string;
+  refunded?: boolean;
+  refundFailed?: boolean;
+}
+
 export function useResolveHold() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ jobId, action, reason }: { jobId: string; action: 'approve' | 'refund' | 'dismiss'; reason?: string }) =>
       action === 'approve'
-        ? api<{ jobId: string; status: string }>(`/admin/jobs/${encodeURIComponent(jobId)}/approve`, { method: 'POST' })
-        : api<{ jobId: string; status: string; refunded?: boolean }>(
+        ? api<ResolveResult>(`/admin/jobs/${encodeURIComponent(jobId)}/approve`, { method: 'POST' })
+        : api<ResolveResult>(
             `/admin/jobs/${encodeURIComponent(jobId)}/resolve`,
             { method: 'POST', body: { outcome: action, ...(reason ? { reason } : {}) } },
           ),

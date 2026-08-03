@@ -377,6 +377,28 @@ export async function rejectHold(jobId: string, error: string): Promise<boolean>
   });
 }
 
+/**
+ * Rewrite the buyer-facing note on a job that is already resolved.
+ *
+ * Used for one thing: saying that the credits came back, once they actually have.
+ * `rejectHold` writes the neutral note before the refund runs, because the flip is
+ * what stops two admins moving money at the same time — so the sentence that makes
+ * a promise can only be written afterwards, by whoever kept it.
+ *
+ * Status-checked like every other terminal write: a job that is not `failed` is
+ * not one this has anything to say about.
+ */
+export async function noteJobResolution(jobId: string, error: string): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const job = snap.exists ? (snap.data() as ResearchJob) : undefined;
+    if (!job || job.status !== 'failed') return false;
+    tx.set(ref, { error, updatedAt: nowIso() }, { merge: true });
+    return true;
+  });
+}
+
 export function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
   return patch(jobId, { status });
 }

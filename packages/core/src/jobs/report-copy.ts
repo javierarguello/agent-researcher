@@ -75,3 +75,30 @@ const HELD_NOTICE: Copy = {
 export function heldNotice(lang: unknown): string {
   return pick(HELD_NOTICE, asLang(lang));
 }
+
+const CLOSED_NOTICE: Copy = {
+  en: 'This report could not be completed.',
+  es: 'Este informe no pudo completarse.',
+  fr: 'Ce rapport n’a pas pu être terminé.',
+  pt: 'Este relatório não pôde ser concluído.',
+};
+
+const CLOSED_REFUNDED_NOTICE: Copy = {
+  en: 'This report could not be completed, and the credits were returned.',
+  es: 'Este informe no pudo completarse y los créditos fueron devueltos.',
+  fr: 'Ce rapport n’a pas pu être terminé, et les crédits ont été restitués.',
+  pt: 'Este relatório não pôde ser concluído e os créditos foram devolvidos.',
+};
+
+/**
+ * What a buyer reads on a job an admin closed.
+ *
+ * Two strings, and which one is written depends on what actually happened to the
+ * money — never on what the admin intended. The resolve route flips the job before
+ * it refunds (deliberately: the flip is what stops two admins both moving money),
+ * so writing the refund sentence up front promised something that had not happened
+ * yet and could still fail.
+ */
+export function closedNotice(lang: unknown, refunded: boolean): string {
+  return pick(refunded ? CLOSED_REFUNDED_NOTICE : CLOSED_NOTICE, asLang(lang));
+}

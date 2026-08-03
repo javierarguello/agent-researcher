@@ -251,16 +251,35 @@ export function JobDetail() {
               {((resolve.error ?? grant.error) as Error).message}
             </Text>
           )}
+          {/* A 200 is not the same as the money moving: the refund runs after the
+              job is closed, so it can fail on its own. Saying so is the difference
+              between an admin who retries and one who thinks they are done. */}
+          {resolve.data?.refundFailed && (
+            <Text size="sm" c="red" mt="sm">
+              The job is closed, but the refund did not go through. The buyer has not been paid back — press
+              “Refund &amp; close” again to finish it.
+            </Text>
+          )}
         </Card>
       )}
 
       {job.status === 'failed' && job.failureKind === 'budget_exceeded' && (
-        // The cost is the point of this alert: the job was refunded, so this figure
-        // is what the failure cost us with nothing to show for it.
+        // Says only what the job document actually knows.
+        //
+        // It used to assert "the user's credits were refunded" from `failureKind`
+        // alone — which is copied from the hold's reason whether the admin refunded,
+        // dismissed, or hit a refund that failed. It stated the opposite of what had
+        // happened on two of those three paths. The ledger is the only record, and
+        // the resolution note rendered just below now carries the outcome.
+        //
+        // It also named MAX_JOB_COST_USD as the limit that was hit. The ceiling the
+        // engine enforces is the MODEL's (`modes[key].maxCostUsd`), falling back to
+        // that default — so on a catalog model with its own ceiling the env var was
+        // simply the wrong number.
         <Alert color="orange" title="Stopped at the per-job cost ceiling">
           <Text size="sm">
-            This job passed <Mono size="sm">MAX_JOB_COST_USD</Mono> and was stopped. The user's credits were
-            refunded — the <Mono size="sm">{usd(job.cost?.usd)}</Mono> below was still spent.
+            This job passed its per-job cost ceiling and was stopped. The{' '}
+            <Mono size="sm">{usd(job.cost?.usd)}</Mono> below was spent either way.
           </Text>
         </Alert>
       )}

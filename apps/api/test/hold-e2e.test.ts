@@ -171,6 +171,66 @@ describe('a job held for budget, decided over the API', () => {
     expect(await getBalance(APP, BUYER)).toBe(before);
   });
 
+  it('never tells the buyer their credits came back before they have', { timeout: RUN_TIMEOUT }, async () => {
+    // `job.error` is the buyer's field, and the resolve route has to flip the job
+    // BEFORE it refunds — the flip is what stops two admins both moving money. So
+    // the note written at flip time cannot mention a refund that has not happened.
+    // It used to, unconditionally, from the admin's stated intent.
+    const jobId = await heldJob();
+    const store = await import('@agent-researcher/core');
+    const spy = vi.spyOn(store, 'refundForJob').mockRejectedValueOnce(new Error('firestore unavailable'));
+
+    const res = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    spy.mockRestore();
+
+    // The admin is told plainly, instead of a 200 that reads like success.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ refunded: false, refundFailed: true });
+    // And the buyer is not promised anything.
+    expect((await getJob(jobId))!.error ?? '').not.toMatch(/returned|devuelto/i);
+  });
+
+  it('finishes a refund a previous resolve could not', { timeout: RUN_TIMEOUT }, async () => {
+    // The stranding, and the whole reason the window matters. Before this the job
+    // was `failed` with the credits still consumed, `resolve` 409'd on anything not
+    // `held`, and `retry` refuses a refunded job — there was no route left that
+    // could pay the buyer back.
+    const before = await getBalance(APP, BUYER);
+    const jobId = await heldJob();
+
+    const store = await import('@agent-researcher/core');
+    const spy = vi.spyOn(store, 'refundForJob').mockRejectedValueOnce(new Error('firestore unavailable'));
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    spy.mockRestore();
+    // Non-vacuous by construction: the job really is closed and really is unpaid.
+    expect((await getJob(jobId))!.status).toBe('failed');
+    expect(await getBalance(APP, BUYER)).toBeLessThan(before);
+
+    const again = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().refunded).toBe(true);
+    expect(await getBalance(APP, BUYER)).toBe(before);
+    // …and now the buyer is told, in the language they bought in.
+    expect((await getJob(jobId))!.error ?? '').toMatch(/credits were returned/i);
+
+    // Still exactly once: a third call has nothing left to do.
+    const third = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    expect(third.statusCode).toBe(409);
+    expect(await getBalance(APP, BUYER)).toBe(before);
+  });
+
   it('resolve → dismiss: closes the job and keeps the credits', { timeout: RUN_TIMEOUT }, async () => {
     const jobId = await heldJob();
     const afterCharge = await getBalance(APP, BUYER);

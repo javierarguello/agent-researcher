@@ -68,7 +68,33 @@ turns it red.
 Only `apps/api` and `apps/worker` import core; `fbizlab` and `admin` do not.
 
 Everything else the round found is product defects and new vacuous tests — recorded
-in the sections below, not fixed here.
+in the sections below. Closed since, in severity order:
+
+1. **The handoff injection** (group M's first finding) — `d0380a8`.
+2. **A re-dispatch must resume, not re-buy the report** — `00fd10f`.
+3. **The resolve route could strand a refund.** `rejectHold` flips the job before
+   the money moves (deliberately — the flip is what stops two admins both
+   refunding), and the note it wrote promised "the credits were returned" from the
+   admin's INTENT. `job.error` is the buyer's field. If `refundForJob` then threw,
+   the job was `failed`, the credits consumed, and nothing could pay them back:
+   this handler 409'd on anything not `held` and `retry` refuses a refunded job.
+   Now: the flip writes the neutral note, the refund is `.catch`-ed, the note is
+   upgraded only once the money has actually moved, and a `failed` job that is
+   still owed its refund can be resolved again to finish it (the ledger key keeps
+   it exactly-once; a third call 409s). The response carries `refundFailed` so a
+   200 cannot be read as success, and the admin SPA stopped asserting "the user's
+   credits were refunded" from `failureKind` alone — which was the opposite of the
+   truth after a dismiss and after a failed refund. That alert also named
+   `MAX_JOB_COST_USD` as the limit hit, which is wrong for any catalog model with
+   its own mode ceiling. Buyer-facing closing copy moved into `report-copy.ts` in
+   all four languages; it had been English-only.
+
+**Still open from the round**, highest first: fr/pt are advertised and not
+delivered (the flagship `i18n` block has only `es`), every email is English-only
+including the verification gate, `JobView` reads the manifest in the UI language
+while the PDF uses the report's, the ceiling figure reported to the admin is the
+deployment default rather than the model's, and the 23 vacuous tests the sweep
+proved.
 
 ---
 

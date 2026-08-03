@@ -41,6 +41,8 @@ import {
   requeueJob,
   approveHold,
   rejectHold,
+  noteJobResolution,
+  closedNotice,
   parkJob,
   getAdminStats,
   queryUsers,
@@ -2429,30 +2431,58 @@ app.post(
     const { outcome, reason } = req.body as { outcome: 'refund' | 'dismiss'; reason?: string };
     const job = await getJob(jobId);
     if (!job) return reply.code(404).send({ error: `Unknown job: ${jobId}` });
-    if (job.status !== 'held') return reply.code(409).send({ error: `Job is ${job.status}, not held.` });
 
-    // Flip first, act only if this call is the one that flipped it — otherwise two
-    // admins resolving at once both move money.
-    const closed = outcome === 'refund'
-      ? 'This report could not be completed, and the credits were returned.'
-      : 'This report could not be completed.';
-    if (!(await rejectHold(jobId, closed))) {
-      return reply.code(409).send({ error: 'Job is no longer held.' });
+    const held = job.status === 'held';
+    // A job that is no longer held can still be OWED its refund.
+    //
+    // The flip has to come first — it is what stops two admins both moving money —
+    // so there is a window where the job reads `failed` and the credits have not
+    // moved. A Firestore blip in that window (and a refund is the call that most
+    // needs to survive one) used to be terminal: this handler 409'd on anything not
+    // `held`, `retry` refuses a refunded job, and nothing else refunds. The money
+    // was simply stuck. Finishing that refund is the one action still allowed here.
+    const owedRefund =
+      !held && job.status === 'failed' && outcome === 'refund' && !(await wasJobRefunded(jobId));
+    if (!held && !owedRefund) {
+      return reply.code(409).send({ error: `Job is ${job.status}, not held.` });
     }
 
+    const lang = job.params?.language;
+    if (held) {
+      // The NEUTRAL note, always. Writing "the credits were returned" here promised
+      // something that had not happened yet and could still fail — and `job.error`
+      // is the buyer's field, not an internal one.
+      if (!(await rejectHold(jobId, closedNotice(lang, false)))) {
+        return reply.code(409).send({ error: 'Job is no longer held.' });
+      }
+    }
+
+    // `.catch` for the same reason the enqueue-failure refund has one: the likely
+    // cause of a throw is Firestore being unavailable, and a 500 here would leave
+    // the admin with a job they can no longer act on. `false` sends them back
+    // around the `owedRefund` path above instead.
     const refunded = outcome === 'refund'
-      ? await refundForJob(job.appId, job.userId, jobId, reason ?? 'admin resolved a held job')
+      ? await refundForJob(job.appId, job.userId, jobId, reason ?? 'admin resolved a held job').catch(() => false)
       : false;
 
-    // Booked here, not in the worker: this is where the job actually finished.
-    try {
-      await recordReportStats({
-        appId: job.appId, userId: job.userId, template: job.template,
-        status: 'failed', costUsd: job.cost?.usd ?? 0, durationMs: 0, refunded,
-        ...(job.hold?.reason ? { failureKind: job.hold.reason } : {}),
-      });
-    } catch {
-      /* analytics are best-effort; the decision already happened */
+    // Now that the money has actually moved, the buyer can be told so. Best-effort:
+    // failing to upgrade the note leaves them under-promised, which is the safe
+    // direction, and the ledger is the record either way.
+    if (refunded) await noteJobResolution(jobId, closedNotice(lang, true)).catch(() => {});
+
+    // Booked here, not in the worker: this is where the job actually finished. Only
+    // on the real resolution — the recovery path is finishing that same decision,
+    // not making a second one, and would otherwise book the failure twice.
+    if (held) {
+      try {
+        await recordReportStats({
+          appId: job.appId, userId: job.userId, template: job.template,
+          status: 'failed', costUsd: job.cost?.usd ?? 0, durationMs: 0, refunded,
+          ...(job.hold?.reason ? { failureKind: job.hold.reason } : {}),
+        });
+      } catch {
+        /* analytics are best-effort; the decision already happened */
+      }
     }
 
     // A resolved job holds nothing. `park` releases and `approve` compensates; this —
@@ -2462,9 +2492,14 @@ app.post(
     // it because a refunded job is refused.
     await releaseJobSlot(jobId).catch(() => {});
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'WARNING', 'job.hold_resolved', {
-      by: req.auth!.email, outcome, refunded, reason: job.hold?.reason, spentUsd: job.hold?.spentUsd ?? 0,
+      by: req.auth!.email, outcome, refunded, recovered: owedRefund, reason: job.hold?.reason,
+      spentUsd: job.hold?.spentUsd ?? 0,
     });
-    return { jobId, status: 'failed', refunded };
+    // `refundFailed` is the case an admin has to see: the job is closed, the buyer
+    // has not been paid back, and calling this again with `outcome: 'refund'` is
+    // what finishes it. A caller reading only the 200 would otherwise assume the
+    // credits moved.
+    return { jobId, status: 'failed', refunded, ...(outcome === 'refund' && !refunded ? { refundFailed: true } : {}) };
   },
 );
 
