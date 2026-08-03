@@ -38,18 +38,39 @@ const MANIFEST = {
   version: 1,
   lang: 'en',
   sections: [],
+  // FIELD NAMES THIS CLIENT HAS NEVER SEEN. The fixture used to say `industry`,
+  // `location` and `instructions` — Florida's — while the file's own header
+  // claimed "if anything passes because the component knows the Florida model, the
+  // fixture would have to know it too". It did. The form hardcoded those fields as
+  // JSX, so this test could not see it.
   paramsSchema: {
     type: 'object',
     properties: {
-      industry: { type: 'string', maxLength: 120 },
-      location: { type: 'string', maxLength: 200, default: 'Somewhere' },
-      instructions: { type: 'string', maxLength: 2000 },
+      gridRegion: { type: 'string', maxLength: 120 },
+      parcelUse: { type: 'string', maxLength: 200, default: 'Somewhere' },
+      capacityMwMin: { type: 'number' },
+      interconnectQueueOnly: { type: 'boolean' },
+      soilNotes: { type: 'string', maxLength: 2000 },
       directives: { type: 'object' },
-      language: { type: 'string', enum: ['en', 'es'] },
+      // Deliberately NOT English: the UI runs in English in these tests, so this is
+      // what proves the form consults the model's own set instead of assuming the
+      // reader's language is on it.
+      language: { type: 'string', enum: ['es', 'pt'], default: 'es' },
       mode: { type: 'string', enum: ['essential', 'comprehensive'] },
     },
   },
-  paramsUi: { hidden: ['directives'], fields: { industry: { placeholder: 'e.g. Laundromats' } } },
+  instructionsField: 'soilNotes',
+  paramsUi: {
+    hidden: ['directives'],
+    rows: [['gridRegion', 'parcelUse'], ['capacityMwMin']],
+    fields: {
+      gridRegion: { label: 'Grid region', placeholder: 'e.g. ERCOT West', suggestions: ['ERCOT West', 'MISO South'] },
+      parcelUse: { label: 'Parcel use' },
+      capacityMwMin: { label: 'Capacity MW (min)' },
+      interconnectQueueOnly: { label: 'In the interconnect queue only' },
+      soilNotes: { label: 'Soil notes' },
+    },
+  },
   directives: [
     {
       key: 'weather',
@@ -119,7 +140,8 @@ function renderForm() {
  * of the way.
  */
 async function previewedParams(): Promise<Record<string, unknown>> {
-  await userEvent.type(screen.getByPlaceholderText('e.g. Laundromats'), 'Laundromats');
+  // The fictional model's own first field, by the label the MANIFEST gave it.
+  await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
   await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
   await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
   const call = hooks.preflight.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> };
@@ -205,5 +227,45 @@ describe('the directive block comes entirely from the manifest', () => {
     // An untouched set is ABSENT, not `{}`: it keeps the request identical to never
     // having opened the section, which is what the preflight cache is keyed on.
     expect(params).not.toHaveProperty('directives');
+  });
+});
+
+describe('the form is the model’s, not one model’s', () => {
+  it('renders the fields this manifest declares, by the labels it gave them', async () => {
+    // The form used to hardcode Florida's six fields as JSX and look their labels
+    // up in a four-language map keyed by Florida's names. A second catalog model
+    // therefore drew the WRONG form: `industry` and `location` inputs bound to
+    // params it does not have, and none of its own fields anywhere.
+    renderForm();
+    for (const label of ['Grid region', 'Parcel use', 'Capacity MW (min)', 'In the interconnect queue only']) {
+      // `findAllBy`: a boolean field appears twice on purpose — once as its input,
+      // once in the running summary — and both are now the manifest's label.
+      expect((await screen.findAllByText(label)).length, label).toBeGreaterThan(0);
+    }
+    // …and nothing from the model this client happens to ship with.
+    for (const florida of [/^Industry$/, /^Location$/, /^SBA-friendly$/, /^Include real estate$/]) {
+      expect(screen.queryByText(florida), String(florida)).toBeNull();
+    }
+  });
+
+  it('never submits a language the model cannot write in', async () => {
+    // The visitor's UI is English; this model writes only es/pt. `d.language = lang`
+    // was unconditional and sat several lines ABOVE where the accepted set is read,
+    // so the form submitted `en`, the API 400'd against `paramsSchema`, and the
+    // preflight catch treated that as advisory and submitted a second time.
+    //
+    // Live for the flagship too: dropping a language from its own enum failed zero
+    // tests before this.
+    renderForm();
+    const params = await previewedParams();
+    expect(['es', 'pt'], `submitted ${String(params.language)}`).toContain(params.language);
+  });
+
+  it('offers the suggestion chips the manifest supplied', async () => {
+    // Rendered but never localized: thirteen English chips under the first field
+    // of a Spanish form, and clicking one submitted the English string as the
+    // subject of the research.
+    renderForm();
+    expect(await screen.findByRole('button', { name: 'MISO South' })).toBeTruthy();
   });
 });

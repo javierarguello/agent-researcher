@@ -98,3 +98,45 @@ describe('the progress steps are in the buyer’s language', () => {
     }
   });
 });
+
+describe('the mandate table belongs to the model, not to Florida', () => {
+  const mandate = (over: Record<string, unknown> = {}) =>
+    buildReportHtml({
+      report: { shortlist: [{ business: 'X', askingPrice: 1 }] },
+      sections: [{ key: 'shortlist', title: 'Shortlist' }],
+      meta: {}, lang: 'pt', theme: getPdfTheme('fbizlab'),
+      params: {
+        gridRegion: 'ERCOT West',
+        interconnectQueueOnly: true,
+        soilNotes: 'Prefer caliche-free soils.',
+        directives: { reasonForSale: 'retiring' },
+        mode: 'essential', language: 'pt',
+      },
+      ...over,
+    } as never);
+
+  it('uses the manifest’s labels instead of guessing from the key', () => {
+    // `humanizeKey` produced "Grid region" and "Sba friendly" — English, in every
+    // language, directly over prose in the buyer's.
+    const html = mandate({ paramLabels: { gridRegion: 'Região da rede', interconnectQueueOnly: 'Somente na fila' } });
+    expect(html).toContain('Região da rede');
+    expect(html).not.toContain('Grid region');
+  });
+
+  it('never prints the buyer’s free text into the artifact they forward', () => {
+    // The exclusion was the literal name `instructions` — Florida's. A model whose
+    // free-text field is called anything else had the whole blob printed on the
+    // contents page.
+    const html = mandate({ instructionsField: 'soilNotes' });
+    expect(html).not.toContain('caliche-free');
+    // The control: without being told, it cannot know, and the leak is real.
+    expect(mandate()).toContain('caliche-free');
+  });
+
+  it('does not render an object as [object Object]', () => {
+    // `directives` has its own localized block in the manifest; rendered here it
+    // printed literally that, for any buyer who set a preference and left the
+    // numeric filters blank — the common case.
+    expect(mandate()).not.toContain('[object Object]');
+  });
+});

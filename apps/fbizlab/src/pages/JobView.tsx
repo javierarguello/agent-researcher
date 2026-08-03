@@ -145,25 +145,40 @@ function RequestParams({ params, manifest, lang, creditsSpent }: { params: Recor
   const money = (n: unknown) => (typeof n === 'number' ? `$${n.toLocaleString(lang)}` : null);
   const modeLabel = manifest?.modes?.find((m) => m.key === p.mode)?.label ?? (p.mode as string | undefined);
   const langLabel = (manifest?.paramsUi?.fields?.language?.optionLabels as Record<string, string> | undefined)?.[p.language as string] ?? (p.language as string | undefined);
-  const priceMin = money(p.askingPriceMin);
-  const priceMax = money(p.askingPriceMax);
-  const price = priceMin && priceMax ? `${priceMin} – ${priceMax}` : priceMin ? `≥ ${priceMin}` : priceMax ? `≤ ${priceMax}` : null;
 
   const rows: Array<[string, string]> = [];
   const push = (k: string, v: string | null | undefined) => { if (v) rows.push([l[k] ?? k, v]); };
-  push('industry', p.industry as string);
-  push('location', p.location as string);
+  /**
+   * The model's OWN params, by the labels its manifest gave them.
+   *
+   * This block used to name Florida's eleven fields one by one, against a second
+   * four-language map keyed by them — so a buyer of any other model saw a card
+   * with nothing in it but the mode and the credits.
+   */
+  const fields = manifest?.paramsUi?.fields ?? {};
+  const label = (k: string) => fields[k]?.label ?? l[k] ?? k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+  const instrKey = manifest?.instructionsField ?? 'instructions';
+  const ownRows = new Set(['mode', 'language', instrKey, manifest?.directivesKey ?? 'directives', ...(manifest?.paramsUi?.hidden ?? [])]);
+  // A declared range renders as ONE row, the way the form collects it.
+  const ranges = manifest?.paramsUi?.ranges ?? [];
+  const inRange = new Set(ranges.flatMap((r) => [r.minKey, r.maxKey]));
+
   push('mode', modeLabel);
   if (typeof creditsSpent === 'number') rows.push([l.creditsSpent!, `◆ ${creditsSpent}`]);
   push('language', langLabel);
-  push('askingPrice', price);
-  push('minRevenue', money(p.minRevenue));
-  push('minCashFlow', money(p.minCashFlow));
-  if (p.sbaFriendly) rows.push([l.sbaFriendly!, l.yes!]);
-  if (p.includeRealEstate) rows.push([l.includeRealEstate!, l.yes!]);
-  if (Array.isArray(p.keywords) && p.keywords.length) rows.push([l.keywords!, (p.keywords as string[]).join(', ')]);
-  if (Array.isArray(p.preferredSources) && p.preferredSources.length) rows.push([l.preferredSources!, (p.preferredSources as string[]).join(', ')]);
-  const instructions = typeof p.instructions === 'string' ? p.instructions : '';
+  for (const r of ranges) {
+    const lo = money(p[r.minKey]);
+    const hi = money(p[r.maxKey]);
+    const span = lo && hi ? `${lo} – ${hi}` : lo ? `≥ ${lo}` : hi ? `≤ ${hi}` : null;
+    if (span) rows.push([r.label, span]);
+  }
+  for (const [k, v] of Object.entries(p)) {
+    if (ownRows.has(k) || inRange.has(k) || v == null || v === '') continue;
+    if (typeof v === 'boolean') { if (v) rows.push([label(k), l.yes!]); continue; }
+    if (Array.isArray(v)) { if (v.length) rows.push([label(k), v.join(', ')]); continue; }
+    rows.push([label(k), typeof v === 'number' ? (money(v) ?? String(v)) : String(v)]);
+  }
+  const instructions = typeof p[manifest?.instructionsField ?? 'instructions'] === 'string' ? (p[manifest?.instructionsField ?? 'instructions'] as string) : '';
 
   if (!rows.length && !instructions) return null;
   return (

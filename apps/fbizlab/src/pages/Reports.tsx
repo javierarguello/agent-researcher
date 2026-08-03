@@ -90,8 +90,12 @@ export function Reports() {
   const templates = useTemplates(lang);
   const nav = useNavigate();
   // Map a live job's progress phase → its localized step label (from the manifest).
-  const stepMap: Record<string, string> = Object.fromEntries((templates.data?.templates?.[0]?.steps ?? []).map((s) => [s.id, s.label]));
-  const modes = templates.data?.templates?.[0]?.modes ?? [];
+  // Every model's steps and modes, not the first one's. This list shows jobs from
+  // ALL of them, so keying off `templates[0]` labelled a second model's running
+  // job with the wrong step names — or with the raw phase id.
+  const all = templates.data?.templates ?? [];
+  const stepMap: Record<string, string> = Object.fromEntries(all.flatMap((t) => (t.steps ?? []).map((s) => [s.id, s.label])));
+  const modes = all.flatMap((t) => t.modes ?? []);
   const modeLabels: Record<string, string> = Object.fromEntries(modes.map((m) => [m.key, m.label]));
   // Fallback for legacy jobs created before creditsSpent was stored: the mode's standard cost.
   const modeCredits: Record<string, number> = Object.fromEntries(modes.map((m) => [m.key, m.credits]));

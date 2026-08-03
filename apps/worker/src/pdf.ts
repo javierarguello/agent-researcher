@@ -54,10 +54,21 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
   const lang = (job.params?.language as string) || 'en';
   const manifest = template ? toManifest(template, lang) : undefined;
   const sections = manifest?.sections.map((s) => ({ key: s.key, title: s.title }));
+  // The manifest already carries localized labels and knows which param holds the
+  // buyer's free text. The renderer was guessing both.
+  const paramLabels = Object.fromEntries(
+    Object.entries(manifest?.paramsUi?.fields ?? {})
+      .map(([k, f]) => [k, (f as { label?: string }).label])
+      .filter(([, v]) => v),
+  ) as Record<string, string>;
 
   const theme = getPdfTheme(job.appId);
   const generatedAt = job.finishedAt ?? job.updatedAt;
-  const html = buildReportHtml({ report: parsed.report, meta: parsed.meta, sections, title: job.title ?? undefined, params: job.params, lang, theme, generatedAt });
+  const html = buildReportHtml({
+    report: parsed.report, meta: parsed.meta, sections, title: job.title ?? undefined,
+    params: job.params, paramLabels, instructionsField: manifest?.instructionsField,
+    lang, theme, generatedAt,
+  });
 
   // Running footer (brand · dossier · page N / M) — drawn by Chromium in each page's
   // bottom margin. @page:first { margin: 0 } keeps the cover full-bleed.

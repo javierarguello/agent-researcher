@@ -18,6 +18,17 @@ export interface BuildReportHtmlInput {
   title?: string;
   /** Request params (for the mandate/criteria block). */
   params?: Obj;
+  /**
+   * Localized param labels from the manifest, and which key holds the buyer's
+   * free text.
+   *
+   * Both were guessed before: labels came from `humanizeKey` (English, in every
+   * language, over prose in theirs — "Sba friendly"), and the exclusion was the
+   * literal name `instructions`. A model whose free-text field is called something
+   * else had that whole blob printed into the artifact the buyer forwards.
+   */
+  paramLabels?: Record<string, string>;
+  instructionsField?: string;
   lang?: string;
   theme: PdfTheme;
   /** ISO date the report was generated (dossier stamp). Pass explicitly — the
@@ -356,9 +367,15 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   const mandate = input.params ?? (report.search_criteria as Obj | undefined);
   const mandateRows = mandate
     ? Object.entries(mandate)
-        .filter(([k, v]) => v != null && v !== '' && !/^(mode|language|instructions)$/.test(k) && !(Array.isArray(v) && v.length === 0))
+        .filter(([k, v]) => {
+          if (v == null || v === '' || (Array.isArray(v) && v.length === 0)) return false;
+          if (k === 'mode' || k === 'language' || k === (input.instructionsField ?? 'instructions')) return false;
+          // `directives` is an object with its own localized block in the manifest;
+          // rendered here it printed literally "[object Object]".
+          return typeof v !== 'object' || Array.isArray(v);
+        })
         .slice(0, 8)
-        .map(([k, v]) => `<div class="mrow"><span>${esc(humanizeKey(k))}</span><b>${esc(typeof v === 'boolean' ? (v ? l.yes : l.no) : Array.isArray(v) ? v.join(', ') : isNum(v) ? fmtNumber(k, v) : v)}</b></div>`)
+        .map(([k, v]) => `<div class="mrow"><span>${esc(input.paramLabels?.[k] ?? humanizeKey(k))}</span><b>${esc(typeof v === 'boolean' ? (v ? l.yes : l.no) : Array.isArray(v) ? v.join(', ') : isNum(v) ? fmtNumber(k, v) : v)}</b></div>`)
         .join('')
     : '';
 

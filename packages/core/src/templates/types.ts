@@ -80,6 +80,16 @@ export interface AgentSpec {
  * the API still validates against `paramsSchema` regardless of these hints.
  */
 export interface ParamFieldUi {
+  /**
+   * What the field is called on the form.
+   *
+   * This did not exist, and its absence is the clearest violation of the catalog
+   * rule in the repo: with no label in the manifest, every client had to invent
+   * one — so `apps/fbizlab` carries a four-language map keyed by the FLORIDA
+   * model's field names, and a second model's form would draw `maxHeadcount` as
+   * its own label, identically in all four languages.
+   */
+  label?: string;
   /** One-line explanation shown under the field to help the user choose. */
   help?: string;
   /**
@@ -96,6 +106,7 @@ export interface ParamFieldUi {
 
 /** Two numeric params (a min + a max) rendered as one range slider. */
 export interface ParamRangeUi {
+  /** Localized through `TemplateI18n.ranges`, keyed by `minKey`. */
   label: string;
   minKey: string;
   maxKey: string;
@@ -324,7 +335,15 @@ export interface TemplateI18n {
   /** Report-tier label by mode key. */
   modeLabels?: Partial<Record<ReportMode, string>>;
   /** paramsUi field overrides by param key. */
-  fields?: Record<string, { help?: string; placeholder?: string }>;
+  /**
+   * Per-field overrides. `label` and `suggestions` are here because both are
+   * RENDERED to a buyer: the suggestion chips under the first field of a Spanish
+   * form were thirteen English words, and clicking one submitted the English
+   * string as the research subject.
+   */
+  fields?: Record<string, { label?: string; help?: string; placeholder?: string; suggestions?: string[]; optionLabels?: Record<string, string> }>;
+  /** Range-slider labels, keyed by the range's `minKey`. */
+  ranges?: Record<string, string>;
   /** Workflow step overrides by agent id (label + description). */
   agentLabels?: Record<string, { label?: string; description?: string }>;
   /** Add-on label/description overrides by add-on key. */
@@ -380,6 +399,8 @@ export interface TemplateManifest {
   directives?: DirectiveManifestField[];
   /** The param key directive values go under (present iff `directives` is). */
   directivesKey?: string;
+  /** Which param carries the buyer's free-text instructions, if any. */
+  instructionsField?: string;
   /** Report tiers the client picks from, with their credit cost. */
   modes: Array<{ key: ReportMode; label: string; credits: number }>;
   /** Paid add-on deliverables this model offers, with their credit cost. */

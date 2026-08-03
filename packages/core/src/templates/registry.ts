@@ -81,16 +81,24 @@ function buildSteps(t: ResearchTemplate<any>, tr: TemplateI18n | undefined, lang
 
 /** Apply per-language help/placeholder overrides to the paramsUi. */
 function localizeParamsUi(ui: ParamsUi | undefined, tr: TemplateI18n | undefined): ParamsUi | undefined {
-  if (!ui || !tr?.fields) return ui;
+  if (!ui || !(tr?.fields || tr?.ranges)) return ui;
   const fields = { ...(ui.fields ?? {}) };
-  for (const [key, ov] of Object.entries(tr.fields)) {
+  for (const [key, ov] of Object.entries(tr.fields ?? {})) {
     fields[key] = {
       ...fields[key],
+      // `label` and `suggestions` too: both are rendered to the buyer, and both
+      // were English in every language because only these two were copied.
+      ...(ov.label ? { label: ov.label } : {}),
       ...(ov.help ? { help: ov.help } : {}),
       ...(ov.placeholder ? { placeholder: ov.placeholder } : {}),
+      ...(ov.suggestions ? { suggestions: ov.suggestions } : {}),
+      ...(ov.optionLabels ? { optionLabels: { ...fields[key]?.optionLabels, ...ov.optionLabels } } : {}),
     };
   }
-  return { ...ui, fields };
+  const ranges = tr.ranges
+    ? (ui.ranges ?? []).map((r) => (tr.ranges![r.minKey] ? { ...r, label: tr.ranges![r.minKey]! } : r))
+    : ui.ranges;
+  return { ...ui, fields, ...(ranges ? { ranges } : {}) };
 }
 
 /**
@@ -126,6 +134,11 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     ...(t.directives
       ? { directives: manifestDirectives(t.directives, lang), directivesKey: t.directives.key }
       : {}),
+    // Which param carries the buyer's free text. A client needs it to render that
+    // one field differently (a textarea with a minimum, not a line input) and to
+    // keep it out of anything that prints the request back — the PDF's mandate
+    // table excluded the literal name `instructions`, which is Florida's.
+    ...(t.instructionsField ? { instructionsField: t.instructionsField } : {}),
     modes: REPORT_MODES.map((key) => {
       const cfg = t.modes?.[key] ?? DEFAULT_MODES[key];
       return { key, label: tr?.modeLabels?.[key] ?? cfg.label ?? key, credits: creditsForMode(cfg, key) };

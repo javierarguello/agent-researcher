@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { captchaConfigured } from '../auth/captcha';
@@ -11,6 +11,7 @@ type Props = Record<string, unknown>;
 
 const T = {
   en: {
+    sModel: 'Research model', sModelH: 'Which kind of report to produce.',
     dash: 'Dashboard', crumb: 'New dossier', title: 'New dossier.',
     s1: 'What & where', s1h: "Define what you're hunting for.",
     s2: 'Dossier mode', s2h: 'How deep you want it.',
@@ -35,6 +36,7 @@ const T = {
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
   es: {
+    sModel: 'Modelo de investigación', sModelH: 'Qué tipo de informe producir.',
     dash: 'Panel', crumb: 'Nuevo dossier', title: 'Nuevo dossier.',
     s1: 'Qué y dónde', s1h: 'Define qué estás buscando.',
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
@@ -59,6 +61,7 @@ const T = {
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   fr: {
+    sModel: 'Modèle de recherche', sModelH: 'Quel type de rapport produire.',
     dash: 'Tableau de bord', crumb: 'Nouveau dossier', title: 'Nouveau dossier.',
     s1: 'Quoi et où', s1h: 'Définissez ce que vous cherchez.',
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
@@ -83,6 +86,7 @@ const T = {
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   pt: {
+    sModel: 'Modelo de pesquisa', sModelH: 'Que tipo de relatório produzir.',
     dash: 'Painel', crumb: 'Novo dossiê', title: 'Novo dossiê.',
     s1: 'O quê e onde', s1h: 'Defina o que você procura.',
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
@@ -182,7 +186,18 @@ export function NewReport() {
   // 0=What&where, 1=Report mode, 2=Deal filters, 3=Instructions+Advanced.
   const stepOf = (g: number) => (!isMobile || g === step ? undefined : ({ display: 'none' } as const));
 
-  const model = templates.data?.templates?.[0];
+  /**
+   * Which model this form is for.
+   *
+   * `?model=` when given, otherwise the first the API offers. A picker is rendered
+   * only when there is more than one — with a single-model catalog it would be a
+   * control with nothing to choose. This used to be `templates[0]` with no way to
+   * reach anything else, so a second model was unreachable from the buyer app.
+   */
+  const [sp, setSp] = useSearchParams();
+  const wanted = sp.get('model');
+  const catalog = templates.data?.templates ?? [];
+  const model = catalog.find((m) => m.id === wanted) ?? catalog[0];
   const schema = model?.paramsSchema as Schema | undefined;
   const ui: ParamsUi | undefined = model?.paramsUi;
   const props = schema?.properties ?? {};
@@ -201,7 +216,13 @@ export function NewReport() {
     const d: Props = {};
     for (const [k, p] of Object.entries(schema.properties ?? {})) if (p.default !== undefined) d[k] = p.default;
     d.mode = d.mode ?? model?.modes?.[0]?.key ?? 'essential';
-    d.language = lang;
+    // The UI language only if the MODEL writes in it. `d.language = lang` was
+    // unconditional, several lines above where the accepted set is read — so a
+    // French visitor on a model whose enum is ['en','pt'] submitted `fr`, got a
+    // raw English Zod error on a French page, and the preflight catch treated the
+    // 400 as advisory and submitted again for a second one.
+    const accepted = (schema.properties?.language?.enum as string[] | undefined) ?? [];
+    d.language = accepted.length === 0 || accepted.includes(lang) ? lang : (schema.properties?.language?.default as string) ?? accepted[0] ?? 'en';
     setParams(d);
   }, [schema, model?.modes, lang]);
 
@@ -212,10 +233,52 @@ export function NewReport() {
   const langLabels = (ui?.fields?.language?.optionLabels ?? {}) as Record<string, string>;
   const help = (k: string) => ui?.fields?.[k]?.help;
   const ph = (k: string) => ui?.fields?.[k]?.placeholder;
-  const industry = (params.industry as string) ?? '';
+  /**
+   * What a field is CALLED, from the manifest.
+   *
+   * `t.f[k]` is a four-language map keyed by this model's field names, kept only
+   * as a fallback for a template that has not declared labels yet. It is why a
+   * second catalog model drew `maxHeadcount` as its own label in all four
+   * languages: nothing about a form should have to know which model it is.
+   */
+  const label = (k: string) => ui?.fields?.[k]?.label ?? t.f[k] ?? k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+
+  /**
+   * The fields this form lays out itself, in the manifest's order.
+   *
+   * `mode`, `language`, the directives blob and the instructions field each have
+   * their own section; `hidden` and `advanced` are the manifest's own instructions
+   * about where things go. Everything left is a plain input, and it used to be
+   * Florida's six, written out as JSX.
+   */
+  const ownKeys = new Set(
+    [
+      model?.directivesKey ?? 'directives',
+      'mode',
+      'language',
+      model?.instructionsField ?? 'instructions',
+      ...(ui?.hidden ?? []),
+      ...(ui?.advanced ?? []),
+    ].filter(Boolean),
+  );
+  const ordered = [...new Set([...(ui?.rows ?? []).flat(), ...Object.keys(props)])].filter((k) => props[k] && !ownKeys.has(k));
+  const isNumeric = (k: string) => props[k]?.type === 'number' || props[k]?.type === 'integer';
+  const isBoolean = (k: string) => props[k]?.type === 'boolean';
+  /** Text-ish first (what & where), then the filters. Same split Florida had. */
+  const primaryKeys = ordered.filter((k) => !isNumeric(k) && !isBoolean(k));
+  const filterKeys = ordered.filter((k) => isNumeric(k) || isBoolean(k));
+  const advancedKeys = (ui?.advanced ?? []).filter((k) => props[k] && k !== (model?.instructionsField ?? 'instructions'));
+  /**
+   * The field the "say more in the instructions" warning hangs off.
+   *
+   * It is the model's FIRST primary field — for this model, `industry` — rather
+   * than the literal name, which is what made the rule Florida-specific.
+   */
+  const subjectKey = primaryKeys[0];
+  const subject = String(params[primaryKeys[0] ?? ''] ?? '');
   const instrText = ((params.instructions as string) ?? '').trim();
   // Industry is optional; without it, instructions must carry enough context.
-  const needsInstr = !industry.trim();
+  const needsInstr = !subject.trim();
   const instrOk = !needsInstr || instrText.length >= MIN_INSTR;
   const bal = balance.data?.balance;
   // Only one report may be in flight per user (until it finishes or fails).
@@ -305,11 +368,56 @@ export function NewReport() {
   // Not enough credits → keep every input and send them to buy; they come back here.
   const goBuy = () => { saveDraft(); setConfirming(false); nav('/app/credits'); };
 
+  /**
+   * A plain text/tags input, inferred from the schema.
+   *
+   * Array → tag entry, string → a line input with the manifest's suggestion chips.
+   * The chips used to be rendered untranslated: thirteen English words under the
+   * first field of a Spanish form, and clicking one submitted the English string
+   * as the research subject.
+   */
+  const textField = (key: string) => {
+    const prop = props[key];
+    const val = params[key];
+    const sugg = ui?.fields?.[key]?.suggestions ?? [];
+    const isArray = prop?.type === 'array';
+    return (
+      <div className="field" key={key}>
+        <label>{label(key)}</label>
+        {isArray ? (
+          <Tags value={(val as string[]) ?? []} onChange={(v) => set(key, v)} suggestions={sugg} placeholder={t.add} />
+        ) : (
+          <>
+            <input
+              className="input"
+              maxLength={prop?.maxLength ?? 200}
+              placeholder={ph(key)}
+              value={(val as string) ?? ''}
+              onChange={(e) => set(key, e.target.value)}
+            />
+            {sugg.length > 0 && (
+              <div className="chips">
+                {sugg.map((sg) => (
+                  <button type="button" key={sg} className={`chip ${val === sg ? 'sel' : ''}`} onClick={() => set(key, sg)}>{sg}</button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {help(key) && <div className="desc">{help(key)}</div>}
+        {key === subjectKey && needsInstr && <div className="nr-warn">{t.industryWarn}</div>}
+      </div>
+    );
+  };
+
+  /** Advanced fields — same inference, no special cases. */
+  const advField = (key: string) => textField(key);
+
   const numField = (key: string) => {
     const v = params[key];
     return (
-      <div className="field">
-        <label>{t.f[key] ?? key}</label>
+      <div className="field" key={key}>
+        <label>{label(key)}</label>
         <div className="nr-money">
           <span>$</span>
           <input className="input" type="number" min={0} inputMode="numeric" placeholder="0"
@@ -320,11 +428,11 @@ export function NewReport() {
       </div>
     );
   };
-  const checkField = (key: string, label: string) => (
-    <label className="checkcard">
+  const checkField = (key: string) => (
+    <label className="checkcard" key={key}>
       <input type="checkbox" checked={!!params[key]} onChange={(e) => set(key, e.target.checked)} />
       <div>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>{label(key)}</div>
         {help(key) && <div className="desc" style={{ marginTop: 3 }}>{help(key)}</div>}
       </div>
     </label>
@@ -421,27 +529,29 @@ export function NewReport() {
               </div>
             )}
 
+            {/* 00 Which model — only when there is a choice to make. */}
+            {catalog.length > 1 && (
+              <section className="nr-sec" style={stepOf(0)}>
+                <SecHead n="00" title={t.sModel} hint={t.sModelH} />
+                <div className="chips">
+                  {catalog.map((m) => (
+                    <button
+                      type="button"
+                      key={m.id}
+                      className={`chip ${m.id === model?.id ? 'sel' : ''}`}
+                      onClick={() => { inited.current = false; setParams({}); setSp({ model: m.id }); }}
+                    >
+                      {m.name}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* 01 What & where */}
             <section className="nr-sec" style={stepOf(0)}>
               <SecHead n="01" title={t.s1} hint={t.s1h} />
-              <div className="nr-row">
-                <div className="field">
-                  <label>{t.f.industry}</label>
-                  <input className="input" maxLength={props.industry?.maxLength ?? 120} placeholder={ph('industry')} value={industry} onChange={(e) => set('industry', e.target.value)} />
-                  <div className="chips">
-                    {(ui?.fields?.industry?.suggestions ?? []).map((s) => (
-                      <button type="button" key={s} className={`chip ${industry === s ? 'sel' : ''}`} onClick={() => set('industry', s)}>{s}</button>
-                    ))}
-                  </div>
-                  {help('industry') && <div className="desc">{help('industry')}</div>}
-                  {needsInstr && <div className="nr-warn">{t.industryWarn}</div>}
-                </div>
-                <div className="field">
-                  <label>{t.f.location}</label>
-                  <input className="input" maxLength={props.location?.maxLength ?? 200} placeholder={ph('location')} value={(params.location as string) ?? ''} onChange={(e) => set('location', e.target.value)} />
-                  {help('location') && <div className="desc">{help('location')}</div>}
-                </div>
-              </div>
+              <div className="nr-row">{primaryKeys.map(textField)}</div>
             </section>
 
             {/* 02 Report mode */}
@@ -472,9 +582,8 @@ export function NewReport() {
             {/* 03 Deal filters */}
             <section className="nr-sec" style={stepOf(2)}>
               <SecHead n="03" title={t.s3} hint={t.s3h} />
-              <div className="nr-row">{numField('askingPriceMin')}{numField('askingPriceMax')}</div>
-              <div className="nr-row">{numField('minRevenue')}{numField('minCashFlow')}</div>
-              <div className="nr-row">{checkField('sbaFriendly', t.sba)}{checkField('includeRealEstate', t.realEstate)}</div>
+              <div className="nr-row">{filterKeys.filter(isNumeric).map((k) => numField(k))}</div>
+              <div className="nr-row">{filterKeys.filter(isBoolean).map((k) => checkField(k))}</div>
             </section>
 
             {/* 04 Your preferences (structured directives) */}
@@ -502,16 +611,7 @@ export function NewReport() {
               <SecHead n={directives.length ? '06' : '05'} title={t.s5} right={<button type="button" className="nr-hint" style={{ background: 'none', border: 0, cursor: 'pointer' }} onClick={() => setAdvOpen((o) => !o)}>{advOpen ? t.hide : t.show}</button>} />
               {advOpen && (
                 <div className="stack" style={{ gap: 16, paddingTop: 4 }}>
-                  <div className="field">
-                    <label>{t.f.keywords}</label>
-                    <Tags value={(params.keywords as string[]) ?? []} onChange={(v) => set('keywords', v)} suggestions={ui?.fields?.keywords?.suggestions} placeholder={t.add} />
-                    {help('keywords') && <div className="desc">{help('keywords')}</div>}
-                  </div>
-                  <div className="field">
-                    <label>{t.f.preferredSources}</label>
-                    <Tags value={(params.preferredSources as string[]) ?? []} onChange={(v) => set('preferredSources', v)} suggestions={ui?.fields?.preferredSources?.suggestions} placeholder={t.add} />
-                    {help('preferredSources') && <div className="desc">{help('preferredSources')}</div>}
-                  </div>
+                  {advancedKeys.map(advField)}
                 </div>
               )}
             </section>
@@ -538,14 +638,16 @@ export function NewReport() {
           <aside className="nr-summary">
             <div className="nr-sumcard">
               <div className="eyebrow" style={{ color: 'var(--accent)' }}>{t.summary}</div>
-              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.02em', marginTop: 10 }}>{industry.trim() || t.pickIndustry}</div>
-              <div className="mono muted" style={{ fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', marginTop: 4 }}>{(params.location as string) || '—'}</div>
+              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.02em', marginTop: 10 }}>{subject.trim() || t.pickIndustry}</div>
+              <div className="mono muted" style={{ fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', marginTop: 4 }}>{String(params[primaryKeys[1] ?? ''] ?? '') || '—'}</div>
 
               <div className="nr-sumrows">
                 <div><span>{t.mode}</span><b>{modes.find((m) => m.key === mode)?.label ?? '—'}</b></div>
                 <div><span>{t.language}</span><b>{langLabels[params.language as string] ?? (params.language as string) ?? '—'}</b></div>
-                <div><span>{t.sba}</span><b>{params.sbaFriendly ? t.yes : '—'}</b></div>
-                <div><span>{t.realEstate}</span><b>{params.includeRealEstate ? t.yes : '—'}</b></div>
+                {/* The model's own switches, by its own labels. */}
+                {filterKeys.filter(isBoolean).map((k) => (
+                  <div key={k}><span>{label(k)}</span><b>{params[k] ? t.yes : '—'}</b></div>
+                ))}
               </div>
 
               <div className="nr-cost">
@@ -630,12 +732,17 @@ export function NewReport() {
                 </div>
               ) : (
                 <div className="rev">
-                  <div><div className="rev__k">{t.f.industry}</div><div className="rev__v">{industry.trim() || '—'}</div></div>
-                  <div><div className="rev__k">{t.f.location}</div><div className="rev__v">{(params.location as string) || '—'}</div></div>
+                  {/* The model's own primary fields, in its own order — this used to
+                      name Florida's two, so a second model's review step showed
+                      empty rows for fields it does not have. */}
+                  {primaryKeys.map((k) => (
+                    <div key={k}><div className="rev__k">{label(k)}</div><div className="rev__v">{String(params[k] ?? '') || '—'}</div></div>
+                  ))}
                   <div><div className="rev__k">{t.mode}</div><div className="rev__v">{modes.find((m) => m.key === mode)?.label ?? '—'}</div></div>
                   <div><div className="rev__k">{t.language}</div><div className="rev__v">{langLabels[params.language as string] ?? (params.language as string) ?? '—'}</div></div>
-                  <div><div className="rev__k">{t.sba}</div><div className="rev__v">{params.sbaFriendly ? t.yes : '—'}</div></div>
-                  <div><div className="rev__k">{t.realEstate}</div><div className="rev__v">{params.includeRealEstate ? t.yes : '—'}</div></div>
+                  {filterKeys.filter(isBoolean).map((k) => (
+                    <div key={k}><div className="rev__k">{label(k)}</div><div className="rev__v">{params[k] ? t.yes : '—'}</div></div>
+                  ))}
                 </div>
               )}
             </div>

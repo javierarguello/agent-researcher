@@ -183,7 +183,57 @@ unreachable — `createCostSink` reports `exceeded: false` when there is no maxi
 so an uncapped job can never take the budget-hold path that string is written for.
 It stays as a defensive guard (`.toFixed()` on `null` throws) and says so.
 
-**Still open on localization:** `NewReport`/`JobView` hardcode field LABELS per
+**The catalog violation is closed** (2026-08-03). A review agent registered a real
+second model (`solar-site-scout`) and walked it end to end. The backlog's own note
+was too generous: `NewReport` did not draw the form with raw JSON keys, it **never
+iterated the schema at all** — Florida's six fields were JSX, so that model's buyer
+saw `Secteur / Localisation / Prix Min / Prix Max / Compatible SBA`, none of its own
+fields, and submitted `industry`, a param it does not have.
+
+What changed:
+
+- `ParamFieldUi.label` now exists, and `TemplateI18n.fields` carries `label`,
+  `suggestions` and `optionLabels`, plus `ranges` for the slider labels. All four
+  languages filled in for the flagship. The suggestion chips were rendered and
+  never localized — thirteen English words under the first field of a Spanish form,
+  and clicking one submitted the English string as the research subject.
+- `NewReport` derives its sections from the manifest: `rows`/`hidden`/`advanced`
+  decide placement, the JSON-Schema type decides the widget. The two four-language
+  label maps keyed by Florida's field names survive only as a fallback for a
+  template that has not declared labels yet.
+- The report language is checked against the MODEL's enum. `d.language = lang` was
+  unconditional, several lines above where the accepted set is read, so a visitor
+  whose language the model does not write in got a raw English Zod 400 on a
+  translated page — and the preflight catch treated it as advisory and submitted
+  again for a second one. Live for the flagship too: dropping a language from its
+  own enum failed zero tests.
+- `manifest.instructionsField` is published. The PDF's mandate table excluded the
+  literal name `instructions`, so a model whose free-text field is called anything
+  else had the buyer's whole instruction blob printed into the artifact they
+  forward; it also rendered `directives` as `[object Object]`, for any buyer who set
+  a preference and left the numeric filters blank. Labels there come from the
+  manifest now instead of `humanizeKey`.
+- `JobView`'s request card iterates the params it was given; it used to name
+  Florida's eleven, so another model's buyer saw a card with only the mode and the
+  credits in it.
+- `Reports` builds its step and mode maps from EVERY model, not `templates[0]`.
+- `NewReport` takes `?model=` and shows a picker when the catalog holds more than
+  one. A second model was previously unreachable from the buyer app.
+- `apps/fbizlab/src/components/JsonSchemaForm.tsx` deleted — the generic renderer
+  that would have prevented all of this, written and never imported.
+
+The test that claimed to guard this opened with "if anything here passes because
+the component happens to know the Florida model, the fixture would have to know it
+too — and it does not." Its fixture used `industry`, `location`, `instructions` and
+`e.g. Laundromats`. It does now not: the fictional model is a solar-siting one, and
+the assertions are that its labels appear and Florida's do not.
+
+Still open: number and currency formatting are `en-US` and `$` everywhere
+(`report-html.ts`, `ReportViewer.tsx`, both `lib/format.ts`), and `collectDeals` /
+the cover snapshot / the structured-block detectors still key on Florida's section
+and field names, so another model's PDF has no cover statistics.
+
+**Superseded — was still open on localization:** `NewReport`/`JobView` hardcode field LABELS per
 Florida field key, so a second catalog model draws its form with raw JSON keys —
 `ParamFieldUi` has no `label` at all, which is the standing catalog rule in its
 clearest violation. `suggestions` are rendered and never localized (thirteen
