@@ -9,15 +9,60 @@ Closed items keep their commit hash so they are not re-reported.
 
 ---
 
-## Status — 2026-08-03
+## Status — 2026-08-03 (end of day)
 
-Groups G, H, I and J are **closed and then verified**: ten agents (two per group,
-opposed lenses, each in its own worktree) re-attacked the fixes and mutation-tested
-their tests. What they found is in `af7f9f0`; the guards that held are listed in
-their reports.
+**608 tests green** (377 core / 181 api / 18 worker / 32 fbizlab), typecheck clean.
+Everything below `1c0dd5f` is also gated in CI — see "the deploy ran no tests".
 
-**Group K is REOPENED and parked — see below. It is the only group whose fix did
-not survive review, and the reason is structural rather than a missing case.**
+Closed and verified: **G, H, I, J, L**, the whole of **round 4** and **round 5**,
+and the first finding of **M**. Parked for a decision: **K**. Decided as won't-fix:
+**N3**.
+
+### Read this before adding anything
+
+Five review rounds have now produced the same two lessons, and they are worth more
+than any individual finding:
+
+1. **A guard that never reaches production is not a guard.** The PDF degradation
+   fix was dead because its only caller was untested. `closedNotice` was written in
+   four languages and displayed to nobody. The template-localization check ran at
+   module load, in a deploy that ran no tests. The `refundFailed` warning rendered
+   inside a card that had already unmounted. Every one of these had a passing test.
+2. **Assert the content, not the shape.** `TODO-fr-1…5` passed a "four distinct
+   labels" check. `toContain('0.00')` matched the `$20.00` it was meant to rule
+   out. `toMatch(/lang/i)` matched the word inside `querystring/lang`. A comment
+   claiming more than the assertion below it has been the single most common defect
+   in this repo, and several were written by the commits that were fixing the
+   previous batch.
+
+Corollary for review agents: **measure in the main checkout or verify
+`test/resolution.test.ts` first**. A worktree used to resolve
+`@agent-researcher/core` to the main checkout and silently invalidated part of a
+round.
+
+### Still open, highest first
+
+- **M — the red team against the engine's own prompts.** Its first finding (the
+  handoff/dossier/brief injection chain) came from an agent pointed at something
+  else, which is the argument for running the group properly. Planned with `fable`.
+- **K — the moderation pre-screen**, parked for your decision: refocus on evasion,
+  or keep patching. The failure is structural, not a missing case.
+- **The catalog rule, second half.** Numbers and currency are `en-US` and `$`
+  everywhere (`report-html.ts`, `ReportViewer.tsx`, both `lib/format.ts`), and
+  `collectDeals` / the cover snapshot / the structured-block detectors key on
+  Florida's section and field names — so another model's PDF has no cover
+  statistics and its deal cards do not render.
+- **`reqLang`'s fallback branch is dead code** stating a second, contradictory
+  contract (the enum rejects first). Delete it or drop the enum; having both is the
+  defect this backlog keeps naming.
+- **The 23 vacuous tests** the completeness sweep proved, listed in its report.
+  Three of them are guards with no test at all rather than weak ones.
+- **Seven independent language lists.** Only the API↔SPA pair is pinned. Adding a
+  language fails loudly at boot; REMOVING one fails nothing and silently
+  reintroduces English headings over translated prose.
+- **N1** — a half-improved section ships as whole with nothing in `meta`. Needs a
+  price decision from you.
+- Smaller, in `N`: C5, K6–K8, N4–N11.
 
 ## Review round 4 — eight agents against `54cd7c0` (2026-08-03)
 
@@ -117,6 +162,19 @@ in the sections below. Closed since, in severity order:
    cent — on the line an admin reads to decide. The effective ceiling is now
    carried on the trace (`costCeilingUsd`, `null` when an approval uncapped it,
    which is a real state and not a missing value).
+
+---
+
+## Review round 5 — eight agents against the round-4 fixes (2026-08-03)
+
+Same shape: four groups, two opposed lenses each, every claim carrying a mutation.
+The gate this time was `test/resolution.test.ts` — all eight confirmed the worktree
+resolved `core` to itself before measuring anything.
+
+What it found, and what it says about the previous round: **the round-4 commits got
+the code right and the people wrong.** Three of the four severe findings were fixes
+that never reached a screen. It also found 13 tests those commits shipped green,
+and three paths the prompt fence had walked past. Each block below is one fix.
 
 **Round 2 of the refund work** (2026-08-03), from the operator and skeptic lenses.
 The previous commit fixed the ordering and left the halves that face people:
@@ -233,17 +291,9 @@ Still open: number and currency formatting are `en-US` and `$` everywhere
 the cover snapshot / the structured-block detectors still key on Florida's section
 and field names, so another model's PDF has no cover statistics.
 
-**Superseded — was still open on localization:** `NewReport`/`JobView` hardcode field LABELS per
-Florida field key, so a second catalog model draws its form with raw JSON keys —
-`ParamFieldUi` has no `label` at all, which is the standing catalog rule in its
-clearest violation. `suggestions` are rendered and never localized (thirteen
-English chips under the first field of a Spanish form, and clicking one submits
-the English string as the research subject). `NewReport` sets `d.language = lang`
-without consulting the template's own language enum. Seven independent language
-lists still exist — the API↔SPA pair is pinned, the other five are not.
-
-**Also still open**: `reqLang`'s fallback branch is dead code stating a second
-contract, and the 23 vacuous tests the sweep proved.
+*(The paragraph that stood here — hardcoded field labels, unlocalized suggestions,
+the unchecked language enum — is closed by `a1f8138`, above. Seven independent
+language lists still exist; only the API↔SPA pair is pinned.)*
 
 ---
 
