@@ -161,6 +161,28 @@ shipping. `verify.yml` is now a `workflow_call` gate every deploy `needs:`;
 verified by deleting the `fr` block and watching `templates:check` exit 1 with
 the model and the missing piece named.
 
+**The 13 tests this round's own commits shipped green** (2026-08-03, closed). The
+pattern behind almost all of them: they asserted the SHAPE — a set of distinct
+strings, a substring, "differs from English" — where the property is about
+CONTENT. `TODO-fr-1…5` as phase labels, the English button inside the French
+verification mail, and `localizeParamsUi`/`buildSteps`/`addonLabels` returned as
+`undefined` all passed. Each now has a content anchor: a handful of words a
+speaker of that language would notice missing, on the surface a buyer reads first.
+
+Two more were comment-vs-assertion: `closedNotice` forced to always answer `.en`
+left core AND api green under a comment claiming "in the language they bought in",
+and the admin-exemption comment claimed both call sites while only `/research` was
+covered — deleting it from `/research/preflight` alone stayed green.
+
+Three guards had no test at all: `noteJobResolution`'s status check, the search
+RESULT strip (only page `content` was covered), and `ReadReport`'s report-language
+fetch — which has its own copy of the query, so the `JobView` test could not see it.
+
+One finding was resolved by NOT writing a test: `ceilingText`'s `null` branch is
+unreachable — `createCostSink` reports `exceeded: false` when there is no maximum,
+so an uncapped job can never take the budget-hold path that string is written for.
+It stays as a defensive guard (`.toFixed()` on `null` throws) and says so.
+
 **Still open on localization:** `NewReport`/`JobView` hardcode field LABELS per
 Florida field key, so a second catalog model draws its form with raw JSON keys —
 `ParamFieldUi` has no `label` at all, which is the standing catalog rule in its

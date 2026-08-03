@@ -18,7 +18,9 @@ const LANGS = ['en', 'es', 'fr', 'pt'] as const;
 const html = (lang: string) =>
   buildReportHtml({
     report: {
-      shortlist: [{ business: 'Sunshine Coin Laundry', askingPrice: 410_000, revenue: 300_000 }],
+      // `cashFlowSde` too: without it the fourth snapshot label never renders, so
+      // "the four statistic labels" was asserting three.
+      shortlist: [{ business: 'Sunshine Coin Laundry', askingPrice: 410_000, revenue: 300_000, cashFlowSde: 90_000 }],
     },
     sections: [{ key: 'shortlist', title: 'Shortlist' }],
     meta: {},
@@ -37,7 +39,7 @@ describe('the PDF cover is in the buyer’s language', () => {
       expect(out, lang).toContain('410'); // the snapshot really rendered
       if (lang === 'en') continue;
       expect(out, lang).not.toContain('AI ANALYSIS REPORT');
-      expect(out, lang).not.toMatch(/PRICE RANGE|COMBINED REVENUE|\bTARGETS\b/);
+      expect(out, lang).not.toMatch(/PRICE RANGE|COMBINED REVENUE|COMBINED SDE|\bTARGETS\b/);
     }
   });
 
@@ -66,6 +68,20 @@ describe('the progress steps are in the buyer’s language', () => {
     for (const phase of ['planning', 'assembling', 'done', 'incomplete', 'failed']) {
       const labels = LANGS.map((l) => phaseLabel(phase, l).label);
       expect(new Set(labels).size, `${phase}: ${labels.join(' | ')}`).toBe(4);
+    }
+  });
+
+  it('is really translated, not merely distinct', () => {
+    // `new Set(labels).size === 4` passes for `TODO-fr-1…5`. Anchored on the word
+    // a speaker would notice missing, for the two phases a buyer actually watches.
+    const anchors: Record<string, [RegExp, RegExp]> = {
+      es: [/Planificando/, /Completado/],
+      fr: [/Planification/, /Terminé/],
+      pt: [/Planejando/, /Concluído/],
+    };
+    for (const [lang, [planning, done]] of Object.entries(anchors)) {
+      expect(phaseLabel('planning', lang).label, lang).toMatch(planning);
+      expect(phaseLabel('done', lang).label, lang).toMatch(done);
     }
   });
 

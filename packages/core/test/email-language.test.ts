@@ -49,6 +49,25 @@ describe('account emails speak the buyer’s language', () => {
     expect(fr.html).toMatch(/Votre rapport est prêt/);
   });
 
+  it('is really translated in each language, not merely different', () => {
+    // The distinctness check above passes for four DIFFERENT wrong strings —
+    // `TODO-fr-1`, or the English button left in the French mail. Anchored on words
+    // a speaker of each language would notice missing, on the surfaces a buyer
+    // reads first: the subject, the button, and the expiry line.
+    const anchors: Record<string, RegExp[]> = {
+      es: [/Verifica tu correo/, /Verificar correo/, /caduca en 24 horas/],
+      fr: [/Vérifiez votre adresse/, /Vérifier l’adresse/, /expire dans 24 heures/],
+      pt: [/Verifique seu e-mail/, /Verificar e-mail/, /expira em 24 horas/],
+    };
+    for (const [lang, res] of Object.entries(anchors)) {
+      const m = verifyEmailTemplate('Florida Biz Labs', 'https://x/y', lang);
+      const all = `${m.subject}\n${m.html}\n${m.text}`;
+      for (const re of res) expect(all, `${lang} is missing ${re}`).toMatch(re);
+      // …and no English left behind on the button or the expiry.
+      expect(all, lang).not.toMatch(/Verify email|expires in 24 hours/);
+    }
+  });
+
   it('falls back to English for a language we do not have', () => {
     // The control, and the safe direction: an unknown code must not produce an
     // empty subject or `undefined` in the body.

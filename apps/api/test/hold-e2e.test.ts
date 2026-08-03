@@ -97,12 +97,15 @@ describe('a job held for budget, decided over the API', () => {
   });
 
   /** Buyer creates a job over the API; the worker runs it into a hold. */
-  async function heldJob(): Promise<string> {
+  async function heldJob(extra: Record<string, unknown> = {}): Promise<string> {
     const res = await app.inject({
       method: 'POST',
       url: '/research',
       headers: auth(buyerToken),
-      payload: { template: compactModel.id, params: { subject: 'laundromats for sale', location: 'Miami-Dade County, FL' } },
+      payload: {
+        template: compactModel.id,
+        params: { subject: 'laundromats for sale', location: 'Miami-Dade County, FL', ...extra },
+      },
     });
     expect(res.statusCode).toBe(202);
     const { jobId } = res.json() as { jobId: string };
@@ -260,6 +263,19 @@ describe('a job held for budget, decided over the API', () => {
     // to survive redaction to be worth writing.
     const seen = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
     expect(seen.json().error ?? '').toMatch(/credits were returned/i);
+  });
+
+  it('says it in the language the buyer bought in', { timeout: RUN_TIMEOUT }, async () => {
+    // The sentence above is English because the fixture's job is. Forcing
+    // `closedNotice` to always answer `.en` left core AND api green, so the
+    // comment claiming "in the language they bought in" was unbacked.
+    const jobId = await heldJob({ language: 'es' });
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    const seen = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
+    expect(seen.json().error ?? '').toMatch(/créditos fueron devueltos/i);
   });
 
   it('a job closed WITHOUT a refund cannot be refunded by pressing again', { timeout: RUN_TIMEOUT }, async () => {

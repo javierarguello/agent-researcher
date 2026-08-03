@@ -184,6 +184,20 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(ra.statusCode).not.toBe(403); // passes the model check (then 402 for no credits)
   });
 
+  it('the admin exemption holds on the preview route too', async () => {
+    // Two call sites, one comment claiming both were covered. Deleting the
+    // exemption from the PREVIEW site alone left all 32 tests green — so an admin
+    // previewing a model outside an app's allowedTemplates got a 403 and nothing
+    // noticed.
+    await updateApp('fbizlab', { allowedTemplates: ['some-other-model'] });
+    await seedAdmin(['boss@x.com']);
+    await updateApp('admin', { allowedTemplates: ['some-other-model'] });
+    const admin = await token('admin', 'boss@x.com', 'admin');
+
+    const r = await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(admin), payload: research });
+    expect(r.statusCode).not.toBe(403);
+  });
+
   it('the same model restriction applies to the preview route', async () => {
     // /research/preflight omitted this check, so a preview returned a disallowed
     // model's plan, its issue vocabulary, and an assisted pass against it — on the

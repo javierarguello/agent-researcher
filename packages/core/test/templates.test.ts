@@ -38,11 +38,47 @@ describe('a localized template is localized in every language we publish', () =>
       // English": `sources` is spelled the same in English and French, so a
       // difference test calls a correct translation a fallback. This checks the
       // thing that actually matters — that `toManifest` uses what the block says.
-      const declared = t().i18n![lang]!.sectionTitles!;
-      for (const s of m.sections) expect(s.title, `${lang}/${s.key}`).toBe(declared[s.key]);
-      // …and that the block is a real translation rather than a copy of English.
-      expect(m.name, lang).not.toBe(en.name);
-      expect(m.modes.map((x) => x.label), lang).not.toEqual(en.modes.map((x) => x.label));
+      const block = t().i18n![lang]!;
+      for (const s of m.sections) expect(s.title, `${lang}/${s.key}`).toBe(block.sectionTitles![s.key]);
+
+      // Every OTHER localizable surface, because the first version checked section
+      // titles only — and `localizeParamsUi`, `buildSteps` and the add-on labels
+      // could each be returned as `undefined` with the whole core suite green.
+      expect(m.modes.map((x) => x.label), lang).toEqual(
+        m.modes.map((x) => block.modeLabels![x.key as 'essential' | 'comprehensive']),
+      );
+      expect(m.name, lang).toBe(block.name);
+      // Field help — the line under every input on the buyer's form.
+      for (const [key, f] of Object.entries(block.fields ?? {})) {
+        if (f.help) expect((m.paramsUi?.fields?.[key] as { help?: string } | undefined)?.help, `${lang}/${key}`).toBe(f.help);
+      }
+      // Workflow steps — what the buyer watches for the whole wait.
+      for (const [id, a] of Object.entries(block.agentLabels ?? {})) {
+        if (a.label) expect(m.steps.find((x) => x.id === id)?.label, `${lang}/${id}`).toBe(a.label);
+      }
+      for (const [key, a] of Object.entries(block.addonLabels ?? {})) {
+        if (a.label) expect(m.addons.find((x) => x.key === key)?.label, `${lang}/${key}`).toBe(a.label);
+      }
+    }
+  });
+
+  it('does not ship English in a block that claims to be a translation', () => {
+    // The assertions above read the value from the same block they check, which is
+    // honest about wiring and blind about content: filling `fr` with `TODO-fr-1`,
+    // or with the English strings, satisfies every one of them. This is the content
+    // anchor — a handful of words that must be there in each language, chosen
+    // because they are the ones a buyer reads first.
+    const anchors: Record<string, RegExp[]> = {
+      es: [/Negocios en Venta/, /Resumen Ejecutivo/, /Esencial/],
+      fr: [/Entreprises à Vendre/, /Synthèse/, /Essentiel/],
+      pt: [/Negócios à Venda/, /Resumo Executivo/, /Essencial/],
+    };
+    for (const [lang, res] of Object.entries(anchors)) {
+      const m = toManifest(t(), lang);
+      const flat = JSON.stringify(m);
+      for (const re of res) expect(flat, `${lang} is missing ${re}`).toMatch(re);
+      // …and the English headline must NOT survive into a translated manifest.
+      expect(m.name, lang).not.toMatch(/Florida Businesses for Sale/);
     }
   });
 

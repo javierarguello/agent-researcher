@@ -28,6 +28,7 @@ import {
   markFailed,
   markHeld,
   markRunning,
+  noteJobResolution,
 } from '../src/jobs/firestore.js';
 import { claimJobSlot, inFlightSlots, setJobSlotHeld } from '../src/jobs/slots.js';
 
@@ -258,5 +259,31 @@ describe('the ledger refuses what a count cannot be', () => {
     await grantCredits({ appId: APP, userId: 'c@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
     await grantCredits({ appId: APP, userId: 'c@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
     expect(await getBalance(APP, 'c@x.com')).toBe(7);
+  });
+});
+
+describe('the resolution note obeys the same rule', () => {
+  // `noteJobResolution` upgrades the buyer's closing sentence to "…and the credits
+  // were returned", after the refund lands. It is a terminal write like the rest,
+  // and its status check had no test: removing it left both suites green.
+  const seed = (jobId: string) =>
+    createJob({ jobId, appId: APP, userId: USER, template: 't', params: {}, status: 'queued' } as never);
+
+  it('refuses a job that is no longer failed', async () => {
+    // The reachable case: `retry` requeues the job between the refund and this
+    // write, and the note would then tell a buyer whose report is about to run
+    // that it could not be completed and their credits came back.
+    await seed('nr1');
+    await markRunning('nr1');
+    expect(await noteJobResolution('nr1', 'credits returned')).toBe(false);
+    expect((await getJob('nr1'))!.error).toBeUndefined();
+  });
+
+  it('still writes it on the job it was meant for', async () => {
+    // The control, so "refuses everything" cannot pass.
+    await seed('nr2');
+    await markFailed('nr2', 'closed');
+    expect(await noteJobResolution('nr2', 'credits returned')).toBe(true);
+    expect((await getJob('nr2'))!.error).toBe('credits returned');
   });
 });

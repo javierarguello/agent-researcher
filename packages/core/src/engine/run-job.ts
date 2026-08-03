@@ -33,9 +33,12 @@ const CHECKPOINT = 'checkpoint.json';
 /**
  * The ceiling as an admin should read it.
  *
- * `null` is a real state, not a missing value: an approved job runs uncapped, and
- * printing "$0.00" — or falling back to the deployment default — would misdescribe
- * exactly the case an admin created on purpose.
+ * The `null` branch is DEFENSIVE, not a scenario. `null` means an approved,
+ * uncapped job — and `createCostSink` reports `exceeded: false` when there is no
+ * maximum, so an uncapped job can never take the budget-hold path this string is
+ * written for. It stays because `.toFixed()` on `null` is a TypeError, and because
+ * a future caller could reach here with one; it has no test on purpose, since a
+ * test would have to invent a state the engine cannot produce.
  */
 function ceilingText(ceilingUsd: number | null | undefined): string {
   if (ceilingUsd == null) return 'Passed the per-job cost ceiling.';
