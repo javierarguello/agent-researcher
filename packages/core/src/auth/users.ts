@@ -119,8 +119,13 @@ export async function createPasswordUser(input: { appId: string; email: string; 
 
 export async function setEmailVerified(appId: string, email: string): Promise<void> {
   const now = nowIso();
-  // Stamping here is what makes the verification link one-time: the token that
-  // opened this door was issued before this moment, so it cannot open it again.
+  // NOT what makes the link one-time — `consumeActionToken` is, and this comment
+  // used to claim otherwise. It is a fossil of a first design that did not work:
+  // the comparison has to be inclusive for sessions, which is exactly what lets a
+  // same-second replay through, and `/auth/verify-email` never consults it anyway.
+  //
+  // The stamp still earns its place: verifying is a credentials change, and a
+  // session minted before an account was verified should not outlive it.
   await credentials()
     .doc(docId(appId, email))
     .set({ emailVerified: true, credentialsChangedAt: now, updatedAt: now }, { merge: true });

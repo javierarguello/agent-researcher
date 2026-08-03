@@ -306,12 +306,21 @@ describe('an unexpected failure says nothing about our infrastructure', () => {
     spy.mockRestore();
   });
 
-  it('still returns the message we wrote for a 4xx', async () => {
-    // Validation and our own refusals are ours to say out loud; only the
-    // unanticipated is generic.
-    const res = await app.inject({ method: 'GET', url: '/admin/apps' });
-    expect(res.statusCode).toBe(401);
-    expect(res.json().error).toMatch(/unauthorized/i);
+  it('still returns the message we wrote for a schema rejection', async () => {
+    // Through the HANDLER, not past it. The previous version of this test asserted
+    // on a 401 from `jwtAuth`, which is a plain `reply.send` and never reaches
+    // `setErrorHandler` at all — so gutting the whole 4xx branch left it green.
+    //
+    // A schema violation is what actually throws: Fastify raises it with a
+    // `statusCode`, a `FST_ERR_VALIDATION` code and a message written in the
+    // schema, and clients read all three.
+    const res = await app.inject({
+      method: 'POST', url: '/admin/apps', headers: auth(await adminToken()),
+      payload: { appId: 'ok-app' }, // `name` is required
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/name/i);
+    expect(res.json().code).toMatch(/^FST_ERR_VALIDATION/);
   });
 });
 

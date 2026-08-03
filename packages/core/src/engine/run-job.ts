@@ -234,7 +234,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // an approval spends, and the checkpoint is what it resumes from. Nor any
       // report stats — this job has not finished, and booking it now would count it
       // twice when it does.
-      await markHeld(input.jobId, hold, traceFile ? [traceFile] : undefined);
+      await markHeld(input.jobId, hold, traceFile ? [traceFile] : undefined, dispatchId);
       // A parked job is not in flight — it is waiting on us, and holding the
       // buyer's only slot while it waits would lock them out of the product for as
       // long as nobody looks. Idempotent, so a re-dispatch cannot double-release.
@@ -277,7 +277,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         spentUsd: output.meta.cost.usd,
         detail: `Could not store the report: ${(err as Error).message}`.slice(0, 500),
       };
-      await markHeld(input.jobId, hold);
+      await markHeld(input.jobId, hold, undefined, dispatchId);
       await releaseJobSlot(input.jobId).catch(() => {});
       log.error('job.held', {
         reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: (err as Error).message,
@@ -307,7 +307,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // What the buyer is shown instead of the warnings above.
       ...(notice ? { notice } : {}),
     };
-    await setJobSummary(input.jobId, summary);
+    await setJobSummary(input.jobId, summary).catch((err) => log.warn('summary.save_failed', { message: (err as Error).message }));
 
     // WARNING for degraded sections, so it's easy to find later.
     if (output.trace.warnings?.length) {
@@ -334,7 +334,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         spentUsd: output.meta.cost.usd,
         detail: (output.trace.error ?? 'The report could not be assembled.').slice(0, 500),
       };
-      await markHeld(input.jobId, hold, files);
+      await markHeld(input.jobId, hold, files, dispatchId);
       await releaseJobSlot(input.jobId).catch(() => {});
       log.error('job.held', { reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: output.trace.error });
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'held' };
@@ -349,7 +349,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     // cleanup is the one that does — the delivery is refused and the work is lost.
     // Losing work we already paid for is the correct outcome next to handing out a
     // report whose credits were refunded.
-    if (!(await markCompleted(input.jobId, files))) {
+    if (!(await markCompleted(input.jobId, files, dispatchId))) {
       log.warn('job.completion_refused', { reason: 'the job was already resolved while it was running', attempts });
       await releaseJobSlot(input.jobId).catch(() => {});
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'failed' };

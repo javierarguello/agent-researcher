@@ -313,7 +313,10 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   const pad = (i: number) => String(i + 1).padStart(2, '0');
   const HIDE = new Set(['search_criteria']);
   const ordered = (input.sections?.length ? input.sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))
-    .filter((s) => report[s.key] != null && !HIDE.has(s.key));
+    // A degraded section survives even when its placeholder is `null` — a schema
+    // nullable at the root degrades to exactly that, and dropping it means the PDF
+    // never mentions a section the buyer paid for.
+    .filter((s) => (report[s.key] != null || degraded.has(s.key)) && !HIDE.has(s.key));
 
   // Cover snapshot from deals — never from a degraded section, or the headline
   // price range is computed from placeholder zeros and shows $0 as the cheapest

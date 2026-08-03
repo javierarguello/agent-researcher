@@ -137,8 +137,22 @@ async function patch(jobId: string, data: Partial<ResearchJob>): Promise<void> {
  * failure this file has just spent a round removing. It stops the two from
  * corrupting each other's work, which is the half that costs the buyer.
  */
-export async function markRunning(jobId: string, dispatchId?: string): Promise<void> {
-  await patch(jobId, { status: 'running', startedAt: nowIso(), ...(dispatchId ? { dispatchId } : {}) });
+export async function markRunning(jobId: string, dispatchId?: string): Promise<boolean> {
+  const ref = collection().doc(jobId);
+  return firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    // Never resurrect a job that ended. The worker reads the status before calling
+    // in, but that read is two round-trips before this write — a duplicate delivery
+    // slipping through that window turned `completed` back into `running`, re-ran
+    // the whole research from zero after the checkpoint was deleted, booked a second
+    // completed report, sent the ready email twice, and made the delivered report
+    // undownloadable while it did.
+    const status = (snap.data() as ResearchJob).status;
+    if (status === 'completed' || status === 'failed' || status === 'held') return false;
+    tx.set(ref, { status: 'running', startedAt: nowIso(), ...(dispatchId ? { dispatchId } : {}), updatedAt: nowIso() }, { merge: true });
+    return true;
+  });
 }
 
 /** Whether this dispatch is still the one the job belongs to. */
@@ -186,11 +200,29 @@ export async function setJobHeadline(jobId: string, headline: { title: string; s
  *
  * Returns false when the job was already resolved, so the caller can say so.
  */
-export async function markCompleted(jobId: string, files: JobFile[]): Promise<boolean> {
+/**
+ * Whether a write from `dispatchId` still speaks for this job.
+ *
+ * The status checks alone are not enough, because every admin decision to RUN a
+ * job produces `queued` — which is not terminal. A run that was parked and then
+ * approved is still executing; when it reaches one of its own hold paths it flipped
+ * the freshly-approved job back to `held` and the admin's decision evaporated
+ * silently. The token is the only thing that distinguishes "the run that owns this
+ * job" from "a run nobody stopped".
+ *
+ * Permissive when either side has no token: an older job document, an admin action,
+ * or any path that predates this.
+ */
+function ownedByDispatch(job: { dispatchId?: string }, dispatchId: string | undefined): boolean {
+  return !job.dispatchId || !dispatchId || job.dispatchId === dispatchId;
+}
+
+export async function markCompleted(jobId: string, files: JobFile[], dispatchId?: string): Promise<boolean> {
   const ref = collection().doc(jobId);
   return firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return false;
+    if (!ownedByDispatch(snap.data() as ResearchJob, dispatchId)) return false;
     const status = (snap.data() as ResearchJob).status;
     // `held` too: a parked job is resolved by a person, never by a straggler run.
     if (status === 'failed' || status === 'completed' || status === 'held') return false;
@@ -218,11 +250,15 @@ export async function markFailed(
  * the checkpoint is deliberately left in storage — an approval resumes the work
  * rather than restarting it.
  */
-export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[]): Promise<boolean> {
+export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[], dispatchId?: string): Promise<boolean> {
   const ref = collection().doc(jobId);
   return firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return false;
+    // A run that no longer owns this job does not get to park it. Without this, a
+    // straggler flipped an approved job (`queued`) straight back to `held` and the
+    // approval's own dispatch then acked-skipped it.
+    if (!ownedByDispatch(snap.data() as ResearchJob, dispatchId)) return false;
     // A job somebody already RESOLVED stays resolved. Blind, this write let a
     // straggler run flip `failed` back to `held` — overwriting the `hold` that
     // recorded the resolution, so `approve` (which assumes held implies never
@@ -239,7 +275,15 @@ export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[]):
     // `markCompleted` already said it, in this file: a parked job is resolved by a
     // person, never by a straggler run.
     if (status === 'completed' || status === 'failed' || status === 'held') return false;
-    tx.set(ref, { status: 'held', hold, updatedAt: nowIso(), ...(files ? { files } : {}) }, { merge: true });
+    // `merge` deep-merges nested maps, so a new hold inherited `approvedBy` and
+    // `approvedAt` from the one it replaced — a fresh hold that reads as already
+    // approved. Clear them explicitly unless this hold carries its own.
+    const replaced = {
+      ...hold,
+      ...(hold.approvedBy ? {} : { approvedBy: FieldValue.delete() }),
+      ...(hold.approvedAt ? {} : { approvedAt: FieldValue.delete() }),
+    };
+    tx.set(ref, { status: 'held', hold: replaced, updatedAt: nowIso(), ...(files ? { files } : {}) }, { merge: true });
     return true;
   });
 }
@@ -255,10 +299,17 @@ export async function markHeld(jobId: string, hold: JobHold, files?: JobFile[]):
  */
 export async function approveHold(jobId: string, by: string): Promise<boolean> {
   const ref = collection().doc(jobId);
+  const refundRef = firestore().collection(config.credits.ledgerCollection).doc(`refund_${jobId}`);
   return firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const job = snap.exists ? (snap.data() as ResearchJob) : undefined;
     if (!job || job.status !== 'held') return false;
+    // A refunded job is an UNPAID job, and approving it runs it. `requeueJob` has
+    // said this since the free-report fix; `approveHold` never asked, and
+    // `wasJobRefunded` was called from exactly one route in the codebase. Any
+    // refunded job that ends up back in `held` — and several paths put one there —
+    // was a free report one click away, with nothing on the admin list to show it.
+    if ((await tx.get(refundRef)).exists) return false;
     // Uncap ONLY a job that was parked for money. Approving is the admin answering
     // "is this worth finishing?" — for a transient failure or an upload that could
     // not complete, that is not also an answer to "may it spend without limit?",

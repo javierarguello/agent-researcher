@@ -83,6 +83,9 @@ function planFromProduct(product: Stripe.Product, price: Stripe.Price, lang: str
  * use is a stronger guarantee than trusting an escape routine to match Stripe's
  * grammar.
  */
+// Deliberately looser than the creation schema, which refuses `_`: apps created
+// before that rule must stay billable. New ones cannot be made with an underscore,
+// so this only ever matches what already exists.
 const APP_ID_RE = /^[a-z0-9][a-z0-9-_]{0,63}$/;
 
 export function isValidAppId(appId: string): boolean {

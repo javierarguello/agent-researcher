@@ -74,10 +74,19 @@ export async function releaseJobSlot(jobId: string): Promise<boolean> {
     if (!snap.exists) return false;
     const job = snap.data() as ResearchJob;
     if (!job.slotHeld) return false;
+    // Floored, like its unclaimed twin. `increment(-1)` is blind, and the flag on
+    // the job is not the only thing that decrements the counter: a request whose
+    // `createJob` write landed after the call threw releases through the `finally`
+    // while the job document still says `slotHeld: true`, so the admin's later park
+    // decrements a second time and the counter reaches −1 — lending that buyer one
+    // extra concurrent report, quietly and permanently.
+    const slotRef = slots().doc(slotKey(job.appId, job.userId));
+    const cur = (await tx.get(slotRef)).data()?.inFlight;
+    const inFlight = typeof cur === 'number' ? cur : 0;
     tx.set(jobRef, { slotHeld: false }, { merge: true });
     tx.set(
-      slots().doc(slotKey(job.appId, job.userId)),
-      { inFlight: FieldValue.increment(-1), updatedAt: new Date().toISOString() },
+      slotRef,
+      { appId: job.appId, userId: job.userId, inFlight: Math.max(0, inFlight - 1), updatedAt: new Date().toISOString() },
       { merge: true },
     );
     return true;
@@ -123,7 +132,12 @@ export async function setJobSlotHeld(jobId: string, held: boolean): Promise<bool
     // `slotHeld: true` and the counter at 1 — forever, because release goes
     // through the job and the job is done. With the cap at one report, that is a
     // permanent lockout, and no admin endpoint reaches the slots collection.
-    if (held && (status === 'completed' || status === 'failed')) return false;
+    // `held` too: a parked job is explicitly NOT in flight, so flagging its slot
+    // contradicts the rule the counter is built on — and it is the step that let an
+    // approval's forced claim stick at 1 when a straggler parked the job between the
+    // claim and this write. No legitimate caller flags a held job: approve and retry
+    // both flip to `queued` first.
+    if (held && (status === 'completed' || status === 'failed' || status === 'held')) return false;
     // …and never flag a slot the job ALREADY holds. The status check alone missed
     // the common case: a job that reached `held` while its release failed (every
     // one of those is `.catch(() => {})`) still carries the flag, so an approval's

@@ -159,6 +159,29 @@ describe('a degraded section does not invent findings', () => {
 });
 
 describe('the PDF honours the same contract as the screen', () => {
+  it('apologises in the buyer\u2019s language, not only in English', async () => {
+    // The commit said "in all four languages" and the suite could only see one.
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    const expected: Record<string, RegExp> = {
+      es: /no pudimos completar esta secci/i,
+      fr: /nous n\u2019avons pas pu terminer/i,
+      pt: /n\u00e3o conseguimos concluir/i,
+    };
+    for (const [lang, re] of Object.entries(expected)) {
+      const html = buildReportHtml({
+        report: { verdict: { text: 'ZZPLACEHOLDER' } },
+        sections: [{ key: 'verdict', title: 'Verdict' }],
+        meta: { degradedSections: ['verdict'] },
+        lang,
+        theme: getPdfTheme('fbizlab'),
+      } as never);
+      // A missing string would render a heading over an empty paragraph — a section
+      // that is silently blank, which is worse than the fabrication it replaced.
+      expect(html, lang).toMatch(re);
+    }
+  });
+
   it('never renders a degraded section body, and never counts it in the snapshot', async () => {
     // The buyer's flagship download. The web viewer apologised and the PDF — the
     // artifact they keep and forward, and the one that looks most authoritative —
@@ -180,7 +203,10 @@ describe('the PDF honours the same contract as the screen', () => {
 
     expect(html).not.toContain('ZZPLACEHOLDER');
     expect(html).toMatch(/could not complete this section/i);
-    // …and the cover snapshot is not computed from placeholder zeros.
-    expect(html).toContain('Sunshine Coin Laundry');
+    // The cover snapshot, asserted on the NUMBER and not on a name: the deal name
+    // appears in the shortlist body either way, so checking for it proved nothing —
+    // exactly the defect the viewer's twin of this test was fixed for, shipped
+    // again here. With the exclusion gone the cover reads "$0–$410k".
+    expect(html).not.toMatch(/\$0\b/);
   });
 });

@@ -138,6 +138,15 @@ export interface ResearchJob {
    * that makes releasing exactly-once — see `jobs/slots.ts`. Cleared on every
    * terminal path: completed, held, failed, or an enqueue that never happened.
    */
+  /**
+   * The dispatch that currently owns this job.
+   *
+   * Cloud Tasks is at-least-once and `running` is deliberately not in the worker's
+   * skip list, so two engines can be alive on one job. This is what tells a write
+   * from the run that owns the job apart from a write from one nobody stopped.
+   */
+  dispatchId?: string;
+
   slotHeld?: boolean;
   createdAt: string;
   updatedAt: string;

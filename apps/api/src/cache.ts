@@ -1,5 +1,11 @@
 /**
- * Tiny in-memory TTL cache for public (unauthenticated) responses.
+ * Tiny in-memory TTL cache, originally for public (unauthenticated) responses.
+ *
+ * It is keyed only by the string you pass, so a key must name every identity the
+ * value depends on. The revocation check in `auth.ts` stores per-user credentials
+ * here under `cred:<appId>:<email>` — safe precisely because the key names the
+ * user, and worth stating because this file used to say per-user data never
+ * belonged here at all.
  *
  * Public endpoints — pricing/plans and other client-facing catalog data that
  * carries no per-user information — are served to anyone and hit slow upstreams

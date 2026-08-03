@@ -360,7 +360,11 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
   // The engine names them; the reader must never see the filler.
   const degraded = new Set<string>(Array.isArray(meta?.degradedSections) ? (meta.degradedSections as string[]) : []);
   const ordered = (sections?.length ? sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))
-    .filter((s) => report[s.key] != null && !HIDE.has(s.key));
+    // A degraded section survives this filter even when its placeholder is `null`.
+    // A schema that is nullable at the root degrades to exactly that, and dropping
+    // it here means the buyer is never told a section they paid for is missing —
+    // the report simply does not mention it.
+    .filter((s) => (report[s.key] != null || degraded.has(s.key)) && !HIDE.has(s.key));
   const pad = (i: number) => String(i + 1).padStart(2, '0');
 
   // Snapshot metrics from the deals — never from a degraded section, or the
@@ -375,7 +379,12 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
   if (revenue > 0) snap.push({ value: money(revenue), label: l.combinedRevenue! });
   if (sde > 0) snap.push({ value: money(sde), label: l.combinedSde! });
 
-  const crit = report.search_criteria as Obj | undefined;
+  // …and not through the side door either. `search_criteria` is hidden from the
+  // section flow and rendered in the right-hand rail instead, so the degraded
+  // branch below never fires for it — the placeholder came out as the buyer's
+  // Location, and as the meta line under the title, with no apology anywhere.
+  // Anything that reads a section outside `ordered` has to consult `degraded` too.
+  const crit = degraded.has('search_criteria') ? undefined : (report.search_criteria as Obj | undefined);
   const CRIT_KEYS = ['location', 'industry', 'priceBand', 'revenueFloor', 'cashFlowFloor', 'financingPreference', 'realEstatePreference'];
   const critRows = crit ? CRIT_KEYS.filter((k) => crit[k] != null && crit[k] !== '') : [];
   const metaLine = [crit?.location, crit?.industry].filter(Boolean).join(' · ');

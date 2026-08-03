@@ -196,9 +196,17 @@ await app.register(cors, {
  * as they are; anything else is logged in full and answered with one sentence.
  */
 app.setErrorHandler((err: FastifyError, req, reply) => {
+  // Only OUR 4xx text goes back. Fastify's validation errors carry `.validation`
+  // and a message we wrote in the schema; a third-party SDK error carries a
+  // `statusCode` too, and trusting that echoed a Stripe key or an upstream account
+  // detail verbatim. Everything else keeps its status and loses its words.
   const status = err.statusCode ?? 500;
-  if (status < 500) {
+  if (status < 500 && err.validation) {
     return reply.code(status).send({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+  }
+  if (status < 500) {
+    req.log.warn({ err, url: req.url }, 'upstream 4xx');
+    return reply.code(status).send({ error: 'That request could not be completed.' });
   }
   req.log.error({ err, url: req.url }, 'unhandled error');
   return reply.code(500).send({ error: 'Something went wrong on our side. Please try again.' });
@@ -1793,7 +1801,11 @@ app.post(
     // Catalog is entirely in Stripe: resolve by Price metadata appId + planId.
     const plan = await resolveStripePlan(appId, b.planId);
     if (!plan) return reply.code(404).send({ error: `Unknown plan "${b.planId}" for app "${appId}".` });
-    if (!plan.credits || plan.credits <= 0) {
+    // Integer, because the ledger refuses anything else — and it refuses it inside
+    // the WEBHOOK, where a throw is a 500 that Stripe retries for days and can
+    // disable the endpoint, stopping every other customer's credits from landing.
+    // Catch a bad plan here, where it only affects the person who chose it.
+    if (!plan.credits || plan.credits <= 0 || !Number.isInteger(plan.credits)) {
       return reply.code(400).send({ error: `Plan "${b.planId}" has no credits in its Stripe metadata.` });
     }
 
@@ -2279,7 +2291,9 @@ app.post(
     await claimJobSlot(job.appId, job.userId, MAX_CONCURRENT_JOBS_PER_USER, { force: true });
     // If the job ended between the claim and the flag, give the slot straight back
     // — otherwise the counter is stuck at one with no job left to release it.
-    if (!(await setJobSlotHeld(jobId, true))) await releaseUnclaimedSlot(job.appId, job.userId).catch(() => {});
+    if (!(await setJobSlotHeld(jobId, true))) await releaseUnclaimedSlot(job.appId, job.userId).catch((err) =>
+        logEvent({ jobId, appId: job.appId, userId: job.userId }, 'ERROR', 'slot.release_failed', { message: (err as Error).message }),
+      );
 
     const { enqueueJob } = await import('./enqueue.js');
     await enqueueJob(jobId, { unique: true });
@@ -2324,7 +2338,9 @@ app.post(
     await claimJobSlot(job.appId, job.userId, MAX_CONCURRENT_JOBS_PER_USER, { force: true });
     // If the job ended between the claim and the flag, give the slot straight back
     // — otherwise the counter is stuck at one with no job left to release it.
-    if (!(await setJobSlotHeld(jobId, true))) await releaseUnclaimedSlot(job.appId, job.userId).catch(() => {});
+    if (!(await setJobSlotHeld(jobId, true))) await releaseUnclaimedSlot(job.appId, job.userId).catch((err) =>
+        logEvent({ jobId, appId: job.appId, userId: job.userId }, 'ERROR', 'slot.release_failed', { message: (err as Error).message }),
+      );
 
     const { enqueueJob } = await import('./enqueue.js');
     await enqueueJob(jobId, { unique: true });
@@ -2439,6 +2455,12 @@ app.post(
       /* analytics are best-effort; the decision already happened */
     }
 
+    // A resolved job holds nothing. `park` releases and `approve` compensates; this —
+    // the path that ends a job for good — released nothing, so a held job whose own
+    // best-effort release had failed stayed flagged with the counter at 1. With the
+    // cap at one report the buyer could never start another, and `retry` cannot heal
+    // it because a refunded job is refused.
+    await releaseJobSlot(jobId).catch(() => {});
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'WARNING', 'job.hold_resolved', {
       by: req.auth!.email, outcome, refunded, reason: job.hold?.reason, spentUsd: job.hold?.spentUsd ?? 0,
     });

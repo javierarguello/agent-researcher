@@ -170,6 +170,19 @@ describe('a refund reads the job, and the ledger, not the caller', () => {
     expect(await getBalance(APP, USER)).toBe(before);
   });
 
+  it('refuses a job that is RUNNING, not only one that is queued', async () => {
+    // The half the coverage missed. A refund landing on a job that is actively
+    // running is the primary free-report race this guard exists for — the queued
+    // case is the tidier one.
+    await seedJob('r4');
+    await consumeCredits(APP, USER, 4, 'r4');
+    const before = await getBalance(APP, USER);
+    await markRunning('r4');
+
+    expect(await refundForJob(APP, USER, 'r4')).toBe(false);
+    expect(await getBalance(APP, USER)).toBe(before);
+  });
+
   it('still refunds a job that ended', async () => {
     await seedJob('r2');
     await consumeCredits(APP, USER, 4, 'r2');
@@ -210,6 +223,16 @@ describe('the ledger refuses what a count cannot be', () => {
     expect(await getBalance(APP, USER)).toBe(before);
   });
 
+  it('rejects a non-positive GRANT too, not only a consumption', async () => {
+    // The guard is wider than its coverage was: a grant's delta is `+credits`, so a
+    // negative one subtracts — and webhook metadata reaches `recordPurchase` by the
+    // same door.
+    await expect(grantCredits({ appId: APP, userId: USER, credits: -5, idempotencyKey: 'neg-grant' }))
+      .rejects.toThrow(/positive whole numbers/i);
+    await expect(grantCredits({ appId: APP, userId: USER, credits: 2.5, idempotencyKey: 'frac-grant' }))
+      .rejects.toThrow(/positive whole numbers/i);
+  });
+
   it('scopes a grant key to the person it grants to', async () => {
     // One global namespace meant the same key for two users silently no-opped the
     // second: `applied: false` if the admin looked, and nothing at all if not.
@@ -218,6 +241,17 @@ describe('the ledger refuses what a count cannot be', () => {
 
     expect(await getBalance(APP, 'a@x.com')).toBe(7);
     expect(await getBalance(APP, 'b@x.com')).toBe(7);
+  });
+
+  it('scopes the grant key by APP too, not just by user', async () => {
+    // The other axis, and the one a partial revert walked straight through: the
+    // same person in two apps with the same key had the second grant silently
+    // no-op — which is the bug the scoping fixed, one axis over.
+    await grantCredits({ appId: 'app-one', userId: 'same@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
+    await grantCredits({ appId: 'app-two', userId: 'same@x.com', credits: 7, idempotencyKey: 'welcome-2026' });
+
+    expect(await getBalance('app-one', 'same@x.com')).toBe(7);
+    expect(await getBalance('app-two', 'same@x.com')).toBe(7);
   });
 
   it('still refuses the same key twice for the SAME person', async () => {

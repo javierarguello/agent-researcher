@@ -868,7 +868,7 @@ function degradedValue(template: ResearchTemplate<any>, key: string, note: strin
 }
 
 /** Build a minimal schema-valid value; put the note into the first string field. */
-function emptyFromJsonSchema(node: Record<string, unknown>, note: string, usedNote = { done: false }): unknown {
+function emptyFromJsonSchema(node: Record<string, unknown>, note: string): unknown {
   const root = node;
   const resolve = (n: Record<string, unknown>): Record<string, unknown> => {
     if (typeof n.$ref === 'string') {
@@ -916,7 +916,6 @@ function emptyFromJsonSchema(node: Record<string, unknown>, note: string, usedNo
         // The note goes in EVERY string, not just the first. One apology plus a
         // dozen empty strings reads as a section that was written and came back
         // blank; the same sentence in each field reads as what it is.
-        usedNote.done = true;
         return note;
     }
   };

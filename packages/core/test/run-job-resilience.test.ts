@@ -160,6 +160,10 @@ describe('a duplicate dispatch cannot overwrite the run that owns the job', () =
     // true no matter what this guard did.
     const save = await saverFor('h6a');
     const jobs = await import('../src/jobs/firestore.js');
+    // Back to live first: `markRunning` refuses a finished job now, because a
+    // duplicate delivery slipping past the worker's status read used to resurrect
+    // `completed` into `running` and re-run the whole research from zero.
+    await seed('h6a');
     await jobs.markRunning('h6a', 'some-other-dispatch');
 
     await save(CP);

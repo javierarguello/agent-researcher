@@ -34,10 +34,14 @@ const REVOCATION_TTL_MS = 60_000;
 /**
  * Forget the cached credential for one account.
  *
- * The cache is what keeps the revocation check off the per-request path, and it is
- * also what would make a password reset take up to a minute to evict an intruder.
- * Our own flows know the moment they change something, so they say so and eviction
- * is immediate; the window only applies to a change made outside them.
+ * Best-effort, and PROCESS-LOCAL: the API runs several instances, so a reset served
+ * by one busts only that one's map. The others keep the stale credential until the
+ * TTL expires.
+ *
+ * So the guarantee is "within a minute", not "immediately" — an earlier version of
+ * this comment claimed the latter, which is the sort of thing an incident responder
+ * would act on. This still helps the instance that served the reset, and that is
+ * all it is for.
  */
 export function forgetCachedCredential(appId: string, email: string): void {
   bustPublicCache(`cred:${appId}:${email}`);
@@ -109,7 +113,10 @@ export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise
 
   // A session outlives the account it was minted for unless something checks.
   // `credentialsChangedAt` is the revocation point; anything issued at or before it
-  // is refused. Fails open for an account with no record or no stamp.
+  // is refused. Fails open for an account with no record or no stamp — which also
+  // means a Google-only account is effectively IRREVOCABLE this way, because
+  // `upsertGoogleUser` never writes the stamp. Nothing short of deactivating the
+  // app ends those sessions; worth knowing before relying on this in an incident.
   if (claims.scope !== 'report-read') {
     const cred = await cached(
       `cred:${claims.appId}:${claims.email}`,
@@ -122,7 +129,18 @@ export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise
     }
   }
 
-  req.auth = claims;
+  // Admin is decided HERE, once, from the app record — not carried in the claim.
+  //
+  // `requireAdmin` guards `/admin/*`, and that is where the check used to stop. But
+  // fifteen other decisions read `req.auth.role` directly: the ownership bypass on
+  // every report route, the unredacted `report.json`, the `trace.json` in `files[]`,
+  // cross-app inbox and balance listing, and the exemptions from moderation, rate
+  // limits and the concurrency slot. A removed admin kept every one of them for the
+  // rest of their session. Downgrading the role here fixes all of them at once,
+  // because from this line on the claim IS the answer.
+  const adminNow =
+    claims.role === 'admin' && (app.adminEmails ?? []).some((e) => e.toLowerCase() === claims.email.toLowerCase());
+  req.auth = { ...claims, role: adminNow ? 'admin' : 'user' };
   req.appRecord = app;
 
   // A restricted read-only report token (admin "view in app") may ONLY GET that one
@@ -149,20 +167,14 @@ export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise
 /**
  * Guards admin-only routes. Must run after jwtAuth.
  *
- * The whitelist is re-read on every request, never trusted from the token.
- * Removing someone from `adminEmails` is the only de-admin control this product
- * has, and on the claim alone it did nothing for the remaining life of their
- * session — up to seven days of granting credits and resolving jobs after being
- * removed. `jwtAuth` has already loaded the app record, so this costs nothing.
+ * The whitelist itself is checked in `jwtAuth`, which downgrades the role before
+ * any handler sees it — so this guard, and the fifteen other places that read
+ * `req.auth.role`, are all answering the same live question.
  */
 export async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (config.server.appEnv === 'local') return; // local dev — allow
   if (req.auth?.role !== 'admin') {
     await reply.code(403).send({ error: 'Forbidden: admin token required.' });
     return;
-  }
-  const whitelist = (req.appRecord?.adminEmails ?? []).map((e) => e.toLowerCase());
-  if (!whitelist.includes((req.auth.email ?? '').toLowerCase())) {
-    await reply.code(403).send({ error: 'Forbidden: admin token required.' });
   }
 }
