@@ -7,3 +7,6 @@ dist/
 logs/
 out/
 *.log
+
+# Agent worktrees — isolated copies of this repo, never part of it.
+.claude/worktrees/
