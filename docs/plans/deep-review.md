@@ -104,19 +104,31 @@ in the sections below. Closed since, in severity order:
    the reader's current toggle, which had the same job disagreeing with its own
    PDF. The PDF download filename no longer strips every accent out of a title.
 
-**Still open on localization** (from the buyer-lens report, not fixed here): the
-PDF cover kicker, its four statistic labels, its `en-US` date and the per-page
-footer are hardcoded English even in the fully-translated Spanish case;
-`phases.ts` `PHASE_LABELS` has only `en`/`es`, so fr/pt buyers watch English
-progress steps; `NewReport`/`JobView` hardcode field LABELS per Florida field key
-(a second catalog model draws its form with raw JSON keys), and `suggestions` are
-rendered but never localized; `NewReport` sets `d.language = lang` without
-consulting the template's own language enum. Seven independent language lists
-still exist — the API↔SPA pair is pinned, the other five are not.
+5. **The rest of the buyer-facing copy.** The PDF cover kicker, its four snapshot
+   statistic labels, its `en-US` date and the per-page footer were hardcoded
+   English even in the fully-translated Spanish case — the first page and every
+   page margin of the artifact a buyer forwards. `phases.ts` had only `en`/`es`,
+   so fr/pt buyers watched "Planning" and "Complete" for the whole wait; all four
+   now, and the copy stopped calling a report a "job" to the person who bought it.
+6. **The ceiling an admin is told about is the one that was enforced.** `run-job`
+   printed `config.workflow.maxJobCostUsd` at three sites regardless of what the
+   engine actually applied, so a catalog model declaring `maxCostUsd: 0.002`
+   produced "Passed the per-job ceiling of $20.00" on a job stopped at half a
+   cent — on the line an admin reads to decide. The effective ceiling is now
+   carried on the trace (`costCeilingUsd`, `null` when an approval uncapped it,
+   which is a real state and not a missing value).
 
-**Also still open**, highest first: the ceiling figure reported to the admin is the
-deployment default rather than the model's, `reqLang`'s fallback branch is dead
-code stating a second contract, and the 23 vacuous tests the sweep proved.
+**Still open on localization:** `NewReport`/`JobView` hardcode field LABELS per
+Florida field key, so a second catalog model draws its form with raw JSON keys —
+`ParamFieldUi` has no `label` at all, which is the standing catalog rule in its
+clearest violation. `suggestions` are rendered and never localized (thirteen
+English chips under the first field of a Spanish form, and clicking one submits
+the English string as the research subject). `NewReport` sets `d.language = lang`
+without consulting the template's own language enum. Seven independent language
+lists still exist — the API↔SPA pair is pinned, the other five are not.
+
+**Also still open**: `reqLang`'s fallback branch is dead code stating a second
+contract, and the 23 vacuous tests the sweep proved.
 
 ---
 

@@ -325,3 +325,37 @@ describe('gather bounds what a research turn may emit, and stops at the ceiling'
     expect(provider.seen.length).toBeLessThan(6);
   });
 });
+
+describe('the ceiling an admin is told about is the one that was enforced', () => {
+  it('reports the MODEL’s ceiling, not the deployment default', async () => {
+    // The Florida-era assumption leaking into a catalog product: `run-job` printed
+    // `config.workflow.maxJobCostUsd` whatever the engine actually enforced, so a
+    // model declaring `maxCostUsd: 0.002` produced "Passed the per-job ceiling of
+    // $20.00" on a job stopped at half a cent — and the admin decides on that line.
+    const { runJob } = await import('../src/engine/run-job.js');
+    const { createJob, getJob } = await import('../src/jobs/firestore.js');
+    const { __registerTemplateForTests, __clearTestTemplates } = await import('../src/templates/registry.js');
+    const { compactModel } = await import('./fixtures/compact-model.js');
+
+    __clearTestTemplates();
+    // A catalog model with its own, much smaller ceiling.
+    __registerTemplateForTests({
+      ...compactModel,
+      id: 'cheap-model',
+      // `essential` is what `resolveMode` picks when params name no mode.
+      modes: { essential: { maxCostUsd: 0.0000001 } },
+    } as never);
+    installMockProvider();
+    writableConfig.workflow.maxJobCostUsd = 20;
+
+    await createJob({ jobId: 'ceil1', appId: 'app1', userId: 'b@x.com', templateId: 'cheap-model', params: {}, status: 'queued' } as never);
+    await runJob({ jobId: 'ceil1', appId: 'app1', userId: 'b@x.com', template: 'cheap-model', params: {} });
+
+    const job = (await getJob('ceil1'))!;
+    // Non-vacuous by construction: the small ceiling really did stop this run.
+    expect(job.status).toBe('held');
+    expect(job.hold?.detail ?? '').toContain('0.00');
+    expect(job.hold?.detail ?? '', 'the deployment default leaked into the admin’s decision line').not.toContain('20.00');
+    __clearTestTemplates();
+  });
+});

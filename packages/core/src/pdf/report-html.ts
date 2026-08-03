@@ -82,10 +82,10 @@ function mdToHtml(md: string): string {
 // ── localized field labels (report content is already in its language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
 const RL: Record<Lang, Record<string, string>> = {
-  en: { degradedSection: 'We could not complete this section for this report. Everything else was researched and written as usual.', contents: 'Contents', aiDisclaimer: 'AI-generated research — it can make mistakes. Always verify results against the original listings before acting.', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.' },
-  es: { degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', contents: 'Contenido', aiDisclaimer: 'Investigación generada por IA — puede cometer errores. Verifica siempre los resultados con los avisos originales antes de actuar.', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.' },
-  fr: { degradedSection: 'Nous n’avons pas pu terminer cette section pour ce rapport. Tout le reste a été recherché et rédigé normalement.', contents: 'Sommaire', aiDisclaimer: 'Recherche générée par IA — elle peut se tromper. Vérifiez toujours les résultats auprès des annonces d’origine avant d’agir.', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', yes: 'Oui', no: 'Non', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.' },
-  pt: { degradedSection: 'Não conseguimos concluir esta seção deste relatório. Todo o restante foi pesquisado e redigido normalmente.', contents: 'Conteúdo', aiDisclaimer: 'Pesquisa gerada por IA — pode cometer erros. Verifique sempre os resultados nos anúncios originais antes de agir.', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', yes: 'Sim', no: 'Não', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.' },
+  en: { degradedSection: 'We could not complete this section for this report. Everything else was researched and written as usual.', contents: 'Contents', aiDisclaimer: 'AI-generated research — it can make mistakes. Always verify results against the original listings before acting.', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.', kicker: 'AI ANALYSIS REPORT', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', footerNote: 'AI-GENERATED — VERIFY RESULTS' },
+  es: { degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', contents: 'Contenido', aiDisclaimer: 'Investigación generada por IA — puede cometer errores. Verifica siempre los resultados con los avisos originales antes de actuar.', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.', kicker: 'INFORME DE ANÁLISIS CON IA', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', footerNote: 'GENERADO CON IA — VERIFICA LOS RESULTADOS' },
+  fr: { degradedSection: 'Nous n’avons pas pu terminer cette section pour ce rapport. Tout le reste a été recherché et rédigé normalement.', contents: 'Sommaire', aiDisclaimer: 'Recherche générée par IA — elle peut se tromper. Vérifiez toujours les résultats auprès des annonces d’origine avant d’agir.', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', yes: 'Oui', no: 'Non', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.', kicker: 'RAPPORT D’ANALYSE IA', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu cumulé', combinedSde: 'SDE cumulé', footerNote: 'GÉNÉRÉ PAR IA — VÉRIFIEZ LES RÉSULTATS' },
+  pt: { degradedSection: 'Não conseguimos concluir esta seção deste relatório. Todo o restante foi pesquisado e redigido normalmente.', contents: 'Conteúdo', aiDisclaimer: 'Pesquisa gerada por IA — pode cometer erros. Verifique sempre os resultados nos anúncios originais antes de agir.', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', yes: 'Sim', no: 'Não', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.', kicker: 'RELATÓRIO DE ANÁLISE COM IA', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', footerNote: 'GERADO POR IA — VERIFIQUE OS RESULTADOS' },
 };
 
 // ── structured-block detectors (mirror the on-screen viewer) ──
@@ -294,6 +294,18 @@ function collectDeals(report: Obj): Obj[] {
 }
 
 /** Build the full print HTML document for a report. */
+/**
+ * The line Chromium draws in every page's bottom margin.
+ *
+ * Lives here, next to the rest of the PDF's copy, because the worker builds the
+ * footer template outside the HTML and had it hardcoded in English — on every page
+ * of every dossier, including the fully-translated Spanish one.
+ */
+export function pdfFooterNote(lang: unknown): string {
+  const l = (['en', 'es', 'fr', 'pt'].includes(String(lang)) ? String(lang) : 'en') as Lang;
+  return RL[l].footerNote!;
+}
+
 export function buildReportHtml(input: BuildReportHtmlInput): string {
   const { report, theme: t } = input;
   // Sections the engine could not complete. Their bodies still SATISFY the report
@@ -326,13 +338,18 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   const revenue = deals.map((d) => d.revenue).filter(isNum).reduce((a, b) => a + b, 0);
   const sde = deals.map((d) => d.cashFlowSde).filter(isNum).reduce((a, b) => a + b, 0);
   const snap: Array<[string, string]> = [];
-  if (deals.length) snap.push([String(deals.length), 'Targets']);
-  if (prices.length) snap.push([prices.length > 1 ? `${money(Math.min(...prices))}–${money(Math.max(...prices))}` : money(prices[0]!), 'Price range']);
-  if (revenue > 0) snap.push([money(revenue), 'Combined revenue']);
-  if (sde > 0) snap.push([money(sde), 'Combined SDE']);
+  // Localized like everything else on this page. The cover is the first thing the
+  // buyer sees and it was English in all four languages — including the complete
+  // Spanish case, where every other string on the page was translated.
+  if (deals.length) snap.push([String(deals.length), l.targets!]);
+  if (prices.length) snap.push([prices.length > 1 ? `${money(Math.min(...prices))}–${money(Math.max(...prices))}` : money(prices[0]!), l.priceRange!]);
+  if (revenue > 0) snap.push([money(revenue), l.combinedRevenue!]);
+  if (sde > 0) snap.push([money(sde), l.combinedSde!]);
 
   const date = input.generatedAt ? new Date(input.generatedAt) : undefined;
-  const dateStr = date ? date.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase() : '';
+  // `en-US` printed "03 AUG 2026" on a Portuguese dossier. The locale follows the
+  // report like the rest of the page.
+  const dateStr = date ? date.toLocaleDateString(lang, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase() : '';
   const yearStr = date ? String(date.getFullYear()) : '';
   const dossierId = `${t.dossierPrefix}-${yearStr}`;
 
@@ -355,7 +372,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
       <div class="mono coverstamp">DOSSIER ${esc(dossierId)}${dateStr ? `<br>${esc(dateStr)}` : ''}</div>
     </div>
     <div class="cover-mid">
-      <div class="mono kicker">AI ANALYSIS REPORT</div>
+      <div class="mono kicker">${esc(l.kicker)}</div>
       <h1 class="covertitle">${esc(input.title ?? t.brand)}</h1>
       ${snap.length ? `<div class="coverstats">${snap.map(([v, lab]) => `<div><div class="mono covstatlab">${esc(lab.toUpperCase())}</div><div class="covstatval">${esc(v)}</div></div>`).join('')}</div>` : ''}
       <div class="coverdisc">${esc(l.aiDisclaimer)}</div>

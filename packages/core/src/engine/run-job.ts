@@ -30,6 +30,19 @@ import { runResearch, type Checkpoint, type JobTrace } from './research-engine.j
 
 const CHECKPOINT = 'checkpoint.json';
 
+/**
+ * The ceiling as an admin should read it.
+ *
+ * `null` is a real state, not a missing value: an approved job runs uncapped, and
+ * printing "$0.00" — or falling back to the deployment default — would misdescribe
+ * exactly the case an admin created on purpose.
+ */
+function ceilingText(ceilingUsd: number | null | undefined): string {
+  return ceilingUsd == null
+    ? 'Passed the per-job cost ceiling.'
+    : `Passed the per-job ceiling of $${ceilingUsd.toFixed(2)}.`;
+}
+
 export interface RunJobInput {
   jobId: string;
   appId: string;
@@ -228,7 +241,11 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         reason: 'budget_exceeded' as const,
         heldAt: new Date().toISOString(),
         spentUsd: output.meta.cost.usd,
-        detail: `Passed the per-job ceiling of $${config.workflow.maxJobCostUsd.toFixed(2)}.`,
+        // The ceiling THIS run enforced — the model's mode ceiling, or the
+        // deployment default only when the mode declares none. Reporting the
+        // default regardless told an admin "$20.00" about a catalog model stopped
+        // at half a cent.
+        detail: ceilingText(output.trace.costCeilingUsd),
       };
       // No refund and no checkpoint deletion, both on purpose: the credits are what
       // an approval spends, and the checkpoint is what it resumes from. Nor any
@@ -244,7 +261,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
       }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       log.error('job.held', {
-        reason: hold.reason, costUsd: output.meta.cost.usd, limitUsd: config.workflow.maxJobCostUsd, attempts,
+        reason: hold.reason, costUsd: output.meta.cost.usd, limitUsd: output.trace.costCeilingUsd, attempts,
       });
       return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'held' };
     }
@@ -318,7 +335,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     // "one agent couldn't finish" degradation.
     if (output.trace.budgetExceeded) {
       log.error('job.budget_exceeded', {
-        costUsd: output.meta.cost.usd, limitUsd: config.workflow.maxJobCostUsd,
+        costUsd: output.meta.cost.usd, limitUsd: output.trace.costCeilingUsd,
         degradedSections: output.meta.degradedSections, attempts,
       });
     }

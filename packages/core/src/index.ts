@@ -57,7 +57,7 @@ export { uploadObject, downloadObject, downloadObjectBytes, listJobFiles, signRe
 export type { SignedFile } from './storage/gcs.js';
 
 // PDF report generation (shared HTML/layout + per-app theme; rendered by the worker)
-export { buildReportHtml } from './pdf/report-html.js';
+export { pdfFooterNote, buildReportHtml } from './pdf/report-html.js';
 export type { BuildReportHtmlInput } from './pdf/report-html.js';
 export { getPdfTheme } from './pdf/theme.js';
 export type { PdfTheme } from './pdf/theme.js';

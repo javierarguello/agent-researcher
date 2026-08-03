@@ -127,8 +127,19 @@ export interface JobTrace {
   error?: string;
   /** Warnings worth reviewing later (e.g. sections degraded after exhausting retries). */
   warnings?: string[];
-  /** Set when the job hit its USD ceiling and stopped spending (see `config.workflow.maxJobCostUsd`). */
+  /** Set when the job hit its USD ceiling and stopped spending. */
   budgetExceeded?: boolean;
+  /**
+   * The ceiling this run actually enforced, in USD — `null` when uncapped (an
+   * approved job).
+   *
+   * Carried because the deployment default is NOT the number: the ceiling comes
+   * from the MODEL's mode (`maxCostForMode`), falling back to
+   * `config.workflow.maxJobCostUsd`. `run-job` reported the fallback to the admin
+   * regardless, so a catalog model declaring `maxCostUsd: 0.002` produced "passed
+   * the per-job ceiling of $20.00" on a job stopped at half a cent.
+   */
+  costCeilingUsd?: number | null;
   /** Total wall-clock time so far (ms). */
   durationMs?: number;
   startedAt: string;
@@ -299,6 +310,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     // summary, and job cost reflect the WHOLE run — not just this resumed dispatch.
     agents: [...(input.resume?.agentTraces ?? [])],
     cost: jobSpend.total(),
+    // Recorded even on a run that never approaches it: whoever reads this trace —
+    // an admin deciding on a hold — needs the number the engine actually enforced,
+    // not the one the deployment happens to default to.
+    costCeilingUsd: ceilingUsd,
     status: 'running',
     startedAt: new Date().toISOString(),
   };
