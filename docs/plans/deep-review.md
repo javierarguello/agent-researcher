@@ -365,13 +365,13 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
 
 **Untested guards the mutation pass named:**
 
-- **N12 — The retry path's slot compensation** (the approve twin is tested).
-- **N13 — `parkAndRethrow`'s slot release**, and the incomplete/held-path
+- ~~**N12 — The retry path's slot compensation**~~ **Closed `PENDING`.** (the approve twin is tested).
+- ~~**N13 — `parkAndRethrow`'s slot release**~~ **Closed `PENDING`.**, and the incomplete/held-path
   `setProgress` catches — the compact fixture never reaches those branches.
-- **N14 — The revocation check's fail-open on a Firestore error.** If someone
+- ~~**N14 — The revocation check's fail-open on a Firestore error.**~~ **Closed `PENDING`.** If someone
   tidies that `.catch` away, every authenticated request during an outage becomes a
   500 and no test notices.
-- **N15 — `report-read` tokens are exempt from revocation.** Probably intended
+- ~~**N15 — `report-read` tokens are exempt from revocation.**~~ **Closed `PENDING`.** Probably intended
   (admin-minted, 15-minute TTL); currently neither stated nor tested.
 
 **Test hygiene:**

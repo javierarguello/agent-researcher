@@ -62,6 +62,23 @@ describe('a job is never left without an outcome', () => {
   });
 });
 
+describe('a job that parks itself hands its slot back', () => {
+  it('releases the slot when the prologue throws', async () => {
+    // Untested until now, and it is what stops the buyer being stuck: `markHeld`
+    // succeeded, so the worker acks 200 and nothing ever retries — if the release
+    // did not happen here it never happens at all.
+    await seed('h7a');
+    const slots = await import('../src/jobs/slots.js');
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    await slots.setJobSlotHeld('h7a', true);
+
+    await expect(runJob(input('h7a', 'a-template-we-retired'))).rejects.toThrow();
+
+    expect((await getJob('h7a'))!.status).toBe('held');
+    expect(await slots.inFlightSlots(APP, USER)).toBe(0);
+  });
+});
+
 describe('a dashboard write does not decide the job', () => {
   it('finishes a healthy job when the cost write fails', async () => {
     // `onTrace` is awaited at every wave boundary, so one failed write threw out of

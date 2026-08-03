@@ -24,6 +24,7 @@ import {
   inFlightSlots,
   listJobs,
   markCompleted,
+  markFailed,
   markHeld,
   releaseJobSlot,
   updateApp,
@@ -488,6 +489,24 @@ describe('charged but no job is not a state we leave anyone in', () => {
 });
 
 describe('an approval that lands on a finished job gives the slot back', () => {
+  it('does not leave the counter stuck after RETRYING a job that just ended', async () => {
+    // The twin of the approve case, and the one that shipped without a test — the
+    // commit claimed both were covered. Deleting this compensation left the whole
+    // API suite green.
+    expect((await post(userToken)).statusCode).toBe(202);
+    const [job] = await listJobs(APP, USER);
+    await markRunning(job!.jobId);
+    await markFailed(job!.jobId, 'engine died');
+    await releaseJobSlot(job!.jobId);
+
+    const jobs = await import('@agent-researcher/core');
+    const spy = vi.spyOn(jobs, 'setJobSlotHeld').mockResolvedValueOnce(false);
+    await app.inject({ method: 'POST', url: `/admin/jobs/${job!.jobId}/retry`, headers: auth(adminToken) });
+    spy.mockRestore();
+
+    expect(await inFlightSlots(APP, USER)).toBe(0);
+  });
+
   it('does not leave the counter stuck after approving a job that just ended', async () => {
     // The transactional half of this (the flag refusing) was tested; the API half —
     // handing the slot back when the flag is refused — shipped with no assertion,

@@ -405,3 +405,58 @@ describe('a session lasts as long as the account says, not as long as the token'
     expect(replay.json().error).toMatch(/already been used/i);
   });
 });
+
+describe('the revocation check fails OPEN, deliberately', () => {
+  beforeEach(async () => {
+    sent.length = 0;
+    await seedEmailApp();
+  });
+
+  it('keeps serving when the credential read throws', async () => {
+    // The most dangerous line to tidy away. If this `.catch` goes, every
+    // authenticated request during a Firestore outage becomes a 500 — the API
+    // stops entirely rather than degrading — and nothing else in the suite notices.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'open@x.com' } });
+    await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: tokenFromLast('verify'), password: reg.password },
+    });
+    const login = await app.inject({
+      method: 'POST', url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'password', email: 'open@x.com', password: reg.password },
+    });
+    const t = (login.json() as { token: string }).token;
+
+    const core = await import('@agent-researcher/core');
+    const spy = vi.spyOn(core, 'getCredential').mockRejectedValue(new Error('firestore unavailable'));
+    // Cold cache, so the read is actually attempted.
+    const { clearPublicCache } = await import('../src/cache.js');
+    clearPublicCache();
+
+    const res = await app.inject({ method: 'GET', url: '/me/stats', headers: { authorization: `Bearer ${t}` } });
+    expect(res.statusCode).toBe(200);
+    spy.mockRestore();
+  });
+
+  it('exempts a report-read link, which outlives a password reset by design', async () => {
+    // An admin-minted 15-minute link to ONE report. Stating it because it is a
+    // contract nobody wrote down: a reset evicts SESSIONS, not this.
+    //
+    // The account has to be real and the stamp has to be newer than the token, or
+    // the check fails open for a different reason and the exemption is untested.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'reader@x.com' } });
+    await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: tokenFromLast('verify'), password: reg.password },
+    });
+    const { signReadToken, setPassword, hashPassword } = await import('@agent-researcher/core');
+    const rt = await signReadToken({ email: 'reader@x.com', appId: 'fbizlab', jobId: 'j-none' });
+
+    await new Promise((r) => setTimeout(r, 1_100));
+    await setPassword('fbizlab', 'reader@x.com', await hashPassword('Brand-New-9!'));
+
+    // 403 from its own scope check — not 401, which is what a revoked session gets.
+    const res = await app.inject({ method: 'GET', url: '/me/stats', headers: { authorization: `Bearer ${rt}` } });
+    expect(res.statusCode).toBe(403);
+  });
+});
