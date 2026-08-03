@@ -49,9 +49,9 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { getBalance, listTransactions, grantCredits, createApp } from '@agent-researcher/core';
+import { getBalance, listTransactions, grantCredits, createApp, updateApp } from '@agent-researcher/core';
 import { listStripePlans } from '../src/stripe.js';
-import { seedApp, token, auth } from './helpers.js';
+import { seedApp, token, auth, seedAdmin } from './helpers.js';
 
 function purchaseEvent(
   paymentId: string,
@@ -136,19 +136,34 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
   });
 
   it('CONCURRENT report requests never over-spend credits (no double-spend)', async () => {
-    // Essential costs 5 → exactly 3 of 6 concurrent requests are affordable with 15.
-    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 15 });
-    const t = await token('fbizlab', 'u@x.com');
+    // Driven as an ADMIN on purpose. The one-in-flight cap 409s five of six before
+    // the ledger is ever consulted, so `ok` was always 1 and `<= 3` was trivially
+    // true: raising the cap to six left this green, which means the credit gate —
+    // the thing the title is about — was never under concurrency at all.
+    //
+    // Admins are exempt from the SLOT, not from the price (a standing rule here),
+    // so this is the one caller for whom credits are the only bound.
+    await seedAdmin(['boss@x.com']);
+    await updateApp('fbizlab', { adminEmails: ['boss@x.com'] });
+    await grantCredits({ appId: 'fbizlab', userId: 'boss@x.com', credits: 15 });
+    const t = await token('fbizlab', 'boss@x.com', 'admin');
+
     const results = await Promise.all(
       Array.from({ length: 6 }, () => app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research })),
     );
-    // With the 1-in-flight-per-user concurrency limit + credit gate, the exact
-    // number that slip through is bounded; the INVARIANT is what matters — the
-    // ledger is charged exactly once per accepted job and never goes negative.
     const ok = results.filter((r) => r.statusCode === 202).length;
-    expect(ok).toBeGreaterThanOrEqual(1);
-    expect(ok).toBeLessThanOrEqual(3); // never more than credits (15/5) allow
-    expect(await getBalance('fbizlab', 'u@x.com')).toBe(15 - ok * 5); // spent exactly, no double-spend
+    // Essential costs 5, so 15 buys exactly three — and six requests raced for them.
+    //
+    // Measured: TWO independent gates hold this — the route's pre-check and the
+    // ledger transaction's own — so removing either alone leaves this green and
+    // removing both turns it red. Worth knowing before treating it as a regression
+    // guard for one of them. The ledger's is the one that would matter under real
+    // contention, which this suite cannot produce: the in-memory Firestore
+    // serializes transactions, so the race is not modelled here at all.
+    expect(ok, 'the slot cap is still doing the bounding, not the credit gate').toBe(3);
+    expect(results.filter((r) => r.statusCode === 402).length).toBe(3);
+    // The invariant: charged exactly once per accepted job, never negative.
+    expect(await getBalance('fbizlab', 'boss@x.com')).toBe(0);
   });
 
   it('allows only ONE report in flight per user (409 while one is queued/running)', async () => {

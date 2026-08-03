@@ -122,7 +122,11 @@ describe('a section from an agent that did not finish is never kept', () => {
       // half of itself. The schema gate is the only thing standing in its way.
       if (opts.responseSchema && JSON.stringify(opts.responseSchema).includes('findings')) {
         return {
-          text: JSON.stringify({ findings: { overview: 'Half a section.' } }),
+          // `_handoff` INCLUDED, and that is the point. Without it the write is
+          // rejected for the missing briefing, not for the half-made section — so
+          // making `listings` optional in the fixture left this green and the
+          // schema gate it names was never what did the work.
+          text: JSON.stringify({ findings: { overview: 'Half a section.' }, _handoff: 'Found some things.' }),
           toolCalls: [],
           usage: { inputTokens: 1, outputTokens: 1 },
         };

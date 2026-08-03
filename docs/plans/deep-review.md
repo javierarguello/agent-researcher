@@ -54,8 +54,20 @@ round.
   structured-block detectors key on `shortlist`/`deep_dives`/`business`/
   `askingPrice`, so another model's PDF has no cover statistics and its deal cards
   do not render. `apps/*/src/lib/format.ts` still hardcode `en-US`.
-- **The 23 vacuous tests** the completeness sweep proved, listed in its report.
-  Three of them are guards with no test at all rather than weak ones.
+- ~~**The 23 vacuous tests** the completeness sweep proved.~~ **Closed.** 17 were
+  real and are fixed; 4 were already covered (the sweep itself noted a sibling
+  catches them, and each was re-verified rather than taken on trust); 1 —
+  `moderation.test.ts`'s empty-field case — already stated in its own comment that
+  the guard is not isolable through the public function and asserts the behaviour
+  instead, which is the right handling; and 1 — `ceilingText`'s `null` branch — is
+  unreachable and now says so rather than getting a test that invents the state.
+
+  Two findings worth carrying from the batch: an assertion that reads the same
+  constant the source reads detects the field's DELETION and nothing else (the
+  gather token cap survived a thousandfold increase), and a bound chosen as a
+  number instead of a property passes for the wrong formula until the input grows
+  past where they diverge (the context budget agreed with the broken formula up to
+  twenty-one dependencies). Assert the property.
 - **N1** — a half-improved section ships as whole with nothing in `meta`. Needs a
   price decision from you.
 - Smaller, in `N`: C5, K6–K8, N4–N11.

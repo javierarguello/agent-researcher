@@ -85,6 +85,11 @@ describe('a job stopped by the cost ceiling', () => {
     const job = (await getJob('jb1'))!;
     expect(job.status).toBe('held');
     expect(job.hold?.reason).toBe('budget_exceeded');
+    // …and the reason is the CEILING's, not "whatever parked it". `budget_exceeded`
+    // is a literal on that branch, so widening the branch to catch every incomplete
+    // job — which is what a careless edit to `budgetStopped && pending.length` does
+    // — left this green while every ordinary retry was reported to the admin as a
+    // spend problem. The contrast case is below.
     // The money is on the job and on the hold, because it was spent whatever we decide.
     expect(job.cost?.usd).toBeGreaterThan(0);
     expect(job.hold?.spentUsd).toBeGreaterThan(0);
@@ -222,6 +227,21 @@ describe('resolving a hold', () => {
     expect((await getJob('ja3'))!.status).toBe('completed');
     // Still charged once, and never refunded — they are getting the report.
     expect(await getBalance(APP, USER)).toBe(4);
+  });
+
+  it('a job parked for any OTHER reason is not reported as a spend problem', async () => {
+    // The contrast. The admin's queue is triaged on `hold.reason`: "this job cost
+    // us $18 and stopped" and "an upload failed, retry it" are different decisions,
+    // and only one of them is about money.
+    const jobs = await import('../src/jobs/firestore.js');
+    await createJob({ jobId: 'jb9', appId: APP, userId: USER, template: 't', params: {}, status: 'queued' } as never);
+    await jobs.markHeld('jb9', { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
+
+    expect((await getJob('jb9'))!.hold?.reason).toBe('run_failed');
+    // …and `approve` does NOT uncap it, which is the decision that follows from
+    // the reason being right.
+    expect(await approveHold('jb9', 'admin@x.com')).toBe(true);
+    expect((await getJob('jb9'))!.budgetOverride).not.toBe(true);
   });
 
   it('approve: refuses a job whose credits were already given back', async () => {

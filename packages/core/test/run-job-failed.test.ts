@@ -65,8 +65,13 @@ describe('run-job — a job that cannot finish is parked, not refunded', () => {
     const job = (await getJob('j2'))!;
     expect(job.status).toBe('held');
     expect(job.hold?.reason).toBe('run_failed');
-    // The admin gets the real reason; the buyer never sees this string.
-    expect(String(job.hold?.detail)).toContain('schema validation');
+    // The admin gets the real reason. `research-engine` is mocked wholesale here,
+    // so the exact words come from this file's own fixture — asserting them proves
+    // the string was copied, not that anything produced it. What only `run-job` can
+    // do is CARRY the engine's error onto the hold, so that is what is checked:
+    // the fixture's error, and nothing generic in its place.
+    expect(job.hold?.detail).toBe(failedOutput.trace.error);
+    expect(String(job.hold?.detail)).not.toMatch(/^Unknown|^Job /);
 
     // Credits untouched — an approval has to have something to spend, and the
     // refund is a call someone makes.

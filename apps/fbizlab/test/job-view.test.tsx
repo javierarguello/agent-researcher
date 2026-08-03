@@ -102,7 +102,24 @@ describe('an incomplete report explains itself in the buyer’s words', () => {
   });
 
   it('says nothing at all about a report that came back whole', () => {
+    // `useJobReport` is mocked to `{ data: undefined }` for this file, so a
+    // COMPLETED job takes the "Loading dossier…" branch and the notice this test
+    // names is never rendered either way — `{job.summary?.notice && …}` could be
+    // widened to `{job.summary && …}` with the whole suite green.
+    //
+    // Asserted against its own opposite instead: with a notice present the card
+    // appears, without one it does not, and both run through the same branch.
     show({ status: 'completed', progress: null, summary: { durationMs: 1000 } });
+    // On the CARD's own heading, not on the notice text: widening the condition to
+    // `job.summary && …` renders an empty card, which a search for the notice's
+    // words cannot see.
+    expect(screen.queryByText('Notes')).toBeNull();
     expect(screen.queryByText(/section/i)).toBeNull();
+  });
+
+  it('shows the notice when there IS one, and only then', () => {
+    show({ status: 'completed', progress: null, summary: { durationMs: 1000, notice: 'One section could not be completed.' } });
+    expect(screen.getByText('Notes')).toBeTruthy();
+    expect(screen.getByText(/One section could not be completed/)).toBeTruthy();
   });
 });
