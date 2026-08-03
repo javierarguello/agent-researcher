@@ -9,7 +9,7 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { grantCredits, getBalance, listJobs, updateApp, signReadToken, markCompleted } from '@agent-researcher/core';
+import { grantCredits, getBalance, listJobs, updateApp, signReadToken, markCompleted, SUPPORTED_LANGS } from '@agent-researcher/core';
 import { seedApp, seedAdmin, token, auth } from './helpers.js';
 import { OBJECTS } from '../../../packages/core/test/mocks/storage.js';
 import { fakeLlm } from './setup.js';
@@ -130,9 +130,25 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(es.modes[0].label).toBe('Esencial');
     expect(es.steps.find((x: any) => x.id === 'deal-scout')?.label).toBe('Explorador de negocios');
     expect(es.steps.find((x: any) => x.id === 'planning')?.label).toBe('Planificando');
-    // Unknown lang falls back to en.
-    const xx = (await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale?lang=zz', headers: auth(t) }));
-    expect(xx.statusCode).toBe(400); // enum-validated query rejects an unsupported lang
+    // An unsupported lang is REJECTED, not quietly served in English. The comment
+    // here used to say the opposite of the assertion below it, which is worse than
+    // either being wrong on its own — a reader takes the sentence and a mutation
+    // takes the assertion. The 400 is the intended contract: `lang` is an enum in
+    // the published schema, and a client sending `de` has a bug we should name
+    // rather than paper over with English text it did not ask for.
+    const xx = await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale?lang=zz', headers: auth(t) });
+    expect(xx.statusCode).toBe(400);
+    // …and the error says what IS allowed, because the caller cannot see the enum.
+    expect(JSON.stringify(xx.json())).toMatch(/lang/i);
+  });
+
+  it('publishes exactly the languages the buyer app is built for', async () => {
+    // Nothing links these two lists, and they have to agree: `apps/fbizlab/src/i18n.tsx`
+    // hardcodes LANGS and clamps to it before calling, so a language added here and
+    // not there is simply unreachable — while one added THERE and not here makes
+    // every manifest request 400 for those buyers, since the query is enum-validated
+    // (above). Pinned literally so the next change to either has to come here first.
+    expect(SUPPORTED_LANGS).toEqual(['en', 'es', 'fr', 'pt']);
   });
 
   it("rejects a research model not in the app's allowedTemplates (403); admin is exempt", async () => {

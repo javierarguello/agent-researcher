@@ -8,7 +8,7 @@
  * delivery was accepted, so a refused delivery still counted a completed report and
  * deleted the only copy of the work.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 
@@ -36,6 +36,15 @@ beforeEach(() => {
   installMockProvider();
 });
 
+// Every case here spies on a module the OTHER cases depend on — `markCompleted`
+// resolving the job, `setJobCost` rejecting. Restoring at the end of the test body
+// means one real failure skips its own restore and cascades into four unrelated
+// red tests, which buries the regression that actually happened. Unwinding here
+// runs whether the assertions passed or threw.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('a job is never left without an outcome', () => {
   it('parks itself when the template it was queued for is gone', async () => {
     // A deploy retires a template while jobs are queued for it. This threw before
@@ -58,7 +67,6 @@ describe('a job is never left without an outcome', () => {
 
     await expect(runJob(input('h3b'))).rejects.toThrow(/firestore unavailable/i);
     expect((await getJob('h3b'))!.status).toBe('held');
-    spy.mockRestore();
   });
 });
 
@@ -90,7 +98,6 @@ describe('a dashboard write does not decide the job', () => {
     const res = await runJob(input('h4a'));
     expect(res.status).toBe('completed');
     expect((await getJob('h4a'))!.status).toBe('completed');
-    spy.mockRestore();
   });
 
   it('finishes a healthy job when the progress write fails', async () => {
@@ -102,7 +109,6 @@ describe('a dashboard write does not decide the job', () => {
 
     const res = await runJob(input('h4b'));
     expect(res.status).toBe('completed');
-    spy.mockRestore();
   });
 });
 
@@ -126,9 +132,6 @@ describe('nothing is booked until the delivery is accepted', () => {
     const res = await runJob(input('h5a'));
     expect(res.status).toBe('failed');
     expect(booked).not.toHaveBeenCalled();
-
-    spy.mockRestore();
-    booked.mockRestore();
   });
 
   it('keeps the checkpoint when the delivery is refused', async () => {
@@ -146,7 +149,6 @@ describe('nothing is booked until the delivery is accepted', () => {
 
     await runJob(input('h5b'));
     expect([...OBJECTS.keys()].some((k) => k.includes('h5b') && k.includes('checkpoint'))).toBe(true);
-    spy.mockRestore();
   });
 });
 
@@ -158,6 +160,9 @@ describe('a duplicate dispatch cannot overwrite the run that owns the job', () =
     const spy = vi.spyOn(engine, 'runResearch');
     await runJob(input(jobId));
     const onCheckpoint = spy.mock.calls[0]?.[0]?.onCheckpoint;
+    // Restored HERE and not in `afterEach` like the rest: the saver this returns is
+    // then driven against a live engine, so the spy has to be gone before the
+    // assertions start rather than after they finish.
     spy.mockRestore();
     expect(onCheckpoint).toBeTypeOf('function');
     return onCheckpoint!;

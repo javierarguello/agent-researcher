@@ -31,6 +31,33 @@ function run(mode: 'essential' | 'comprehensive') {
   return runResearch({ template, params, jobId: `job-${mode}`, generatedAt: '2026-07-10T00:00:00.000Z' });
 }
 
+/**
+ * Make every agent write one key no section declares.
+ *
+ * The point is what the buyer receives: an agent that returns a stray field —
+ * a hallucinated column, a leftover scratch key, a future schema it half
+ * remembers — must not have it show up in the report. Only the parse removes it,
+ * so this is the assertion that actually distinguishes "validated" from "passed
+ * through".
+ */
+function smuggleAnExtraKey(mock: MockLlmProvider): void {
+  const base = mock.generate.bind(mock);
+  mock.generate = async (opts) => {
+    const res = await base(opts);
+    if (!opts.responseSchema) return res;
+    const value = JSON.parse(res.text) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(value)) {
+      // Inside the section body, not beside it: an unknown key at the top level
+      // of an agent's write is a different rule (the subset schema) and would
+      // degrade the section instead of exercising the strip.
+      if (k !== '_handoff' && v && typeof v === 'object' && !Array.isArray(v)) {
+        (v as Record<string, unknown>).zzSmuggled = 'never asked for';
+      }
+    }
+    return { ...res, text: JSON.stringify(value) };
+  };
+}
+
 describe('engine — runResearch with mocked LLM + search', () => {
   let mock: MockLlmProvider;
   beforeEach(() => {
@@ -39,6 +66,7 @@ describe('engine — runResearch with mocked LLM + search', () => {
   });
 
   it('produces a schema-valid essential report (12 sections) with lorem-ipsum prose', async () => {
+    smuggleAnExtraKey(mock);
     const out = await run('essential');
     expect(out.trace.status).toBe('completed');
     expect(out.meta.mode).toBe('essential');
@@ -49,10 +77,22 @@ describe('engine — runResearch with mocked LLM + search', () => {
     expect(out.report).not.toHaveProperty('financial_analysis');
     expect(out.report).toHaveProperty('sources');
 
-    // The assembled report validates against the effective schema.
+    // The delivered report is the PARSED one, not what the agents returned.
+    //
+    // Re-parsing `out.report` proves nothing on its own: the engine already parsed
+    // it and returns `parsed.data`, so that assertion was true of its own input.
+    // What only validation can produce is the STRIPPING — the mock adds a key no
+    // section declares, and it must not survive into what the buyer receives.
+    //
+    // Measured: two parses hold this, the agent's write in `synthesizeStructured`
+    // and the whole-report parse at the end, and each strips on its own. Removing
+    // either alone leaves this green; removing both turns it red. So it pins the
+    // property, not either mechanism — worth knowing before trusting it as a
+    // regression guard for one of them.
     const exclude = new Set(template.modes!.essential!.exclude);
     const eff = { ...template, sections: template.sections.filter((s) => !exclude.has(s.key)) };
     expect(reportSchemaOf(eff).safeParse(out.report).success).toBe(true);
+    expect(JSON.stringify(out.report)).not.toContain('zzSmuggled');
 
     // Prose came from the mock (lorem ipsum), and cost was accounted.
     expect(String((out.report.market_overview as { overview?: string }).overview)).toMatch(/Lorem ipsum/);

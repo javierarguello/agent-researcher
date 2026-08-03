@@ -19,6 +19,12 @@ their reports.
 **Group K is REOPENED and parked — see below. It is the only group whose fix did
 not survive review, and the reason is structural rather than a missing case.**
 
+**Group L is closed** (2026-08-03): all 13 tests that could not fail, the one that
+encoded a bug as its contract, and N16. Two of the 13 turned out to be held by two
+independent guards each, so they cannot die to a single edit — that is now written
+into the tests themselves rather than left to be rediscovered. 540 tests green,
+typecheck clean.
+
 What the verification pass changed about how this backlog should be read: the most
 valuable findings were not new bugs but **guards that shipped without reaching
 production** and **tests that could not fail**. The PDF fix was dead in production
@@ -221,27 +227,39 @@ Closed in `d20c99b`: the suites were never typechecked; each package now has a
 claimed (`verifyCaptcha('   ' && '')`, which hid a real defect) and one of mine that
 could not catch its own revert.
 
-Still open — **13 tests proven unable to fail** (each verified by editing source and
-watching it stay green):
+**Closed** — all 13 tests proven unable to fail, plus the one that encoded a bug as
+its contract. Eight went in the earlier pass; the last five and the contract
+conflict closed here. Each fix was revert-verified: the source edit it should
+catch was applied, the test was watched turn red, and the source was restored.
 
-| test | why it cannot fail |
-|---|---|
-| `worker/test/run.test.ts:16-19,26` | `notify` is never asserted; the fixture omits `emailFrom` so it returns early |
-| `fbizlab/test/job-view.test.tsx:60` | `useJob` is mocked wholesale; the predicate it names is unreachable |
-| `fbizlab/test/new-report.test.tsx:153` | asserts the preflight payload; `createJob` is mocked and never asserted |
-| `moderation.test.ts:220`, `:216` | the length bound rejects first; the branch under test never runs |
-| `auth-tokens.test.ts:21` | the fixture's signature is literally `bad`, so it fails on shape, not key |
-| `public-limits.test.ts:153` | test env sets burst to 500; 41 requests never approach it |
-| `auth.test.ts:181` | no credential seeded, so nothing was going to be mailed |
-| `admin.test.ts:178` | Fastify's `removeAdditional` strips the field first |
-| `budget-ceiling.test.ts:173-178` | the setup returns via the held branch, so the subject strings are empty |
-| `budget-refund.test.ts:239` | out-of-band call; no production path pairs those two |
-| `assist-allowance.test.ts:94` | the setup never earns a cooldown, so clearing it is untested |
-| `engine.test.ts:55` | re-parses already-parsed data |
+| test | what it now pins | the edit it catches |
+|---|---|---|
+| `budget-ceiling.test.ts` | split in two: `BudgetExceededError.message` carries no figures while `.detail` does, and a degraded section carries our localized note rather than the agent's internal error | putting the figures back in `super(...)`; `degradedValue(..., reason)` |
+| `budget-refund.test.ts:239` | a **second** `refundForJob` returns false and the balance does not move — which is what "exactly once" in the title claimed all along | dropping `refundSnap.exists` from the guard |
+| `engine.test.ts:55` | the report the buyer receives has been STRIPPED: the mock writes a key no section declares and it must not survive | see below — two parses, needs both |
+| `security.test.ts:132` | the 400 is the contract and the stale comment is gone; plus a new test pinning `SUPPORTED_LANGS` against the set `apps/fbizlab/src/i18n.tsx` hardcodes | changing either language list without the other |
+| `admin.test.ts:178` | unchanged behaviour, honest comment — see below | — |
 
-**One test encodes a bug as the contract:** `security.test.ts:132` — the comment
-says unknown languages fall back to English, the assertion pins 400, and the
-manifest documents fallback. One of the two has to move.
+Two of them turned out to be held by **two independent guards each**, so no single
+source edit can turn them red. That is a property of the system, not a defect in
+the test, and both now say so in place rather than reading as regression guards
+they are not:
+
+- `admin.test.ts` — the grant body cannot spoof `grantedBy` because the schema
+  strips unknown properties AND the handler reads the token. Either alone suffices.
+- `engine.test.ts` — the smuggled key is stripped by the agent's write parse in
+  `synthesizeStructured` AND by the whole-report parse at the end. Removing both
+  together does turn it red, which is how the assertion was confirmed non-vacuous.
+
+The budget-ceiling case was the most instructive: the scenario it was written
+around **cannot happen**. A job stopped by the ceiling with steps still pending is
+HELD, never degraded — so the ceiling's message can never reach a buyer's report by
+that route. The guard was worth keeping (a figure-free `message` is still the right
+design), but it had to be asserted where it is decidable, on the error object, and
+the reachable half — an ordinary agent failure — got its own test.
+
+Also closed here: **N16**, spy restoration moved to `afterEach` in
+`run-job-resilience.test.ts`, so one real failure no longer cascades into four.
 
 **Highest-value missing tests** (each names the one-line source change that would
 make it fail — a recommendation without that is not real):
@@ -376,6 +394,7 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
 
 **Test hygiene:**
 
-- **N16 — `run-job-resilience.test.ts` restores its spies after its assertions,**
-  so one real failure cascades into four or five unrelated ones. Diagnosing a
-  regression there is noisier than it should be.
+- ~~**N16 — `run-job-resilience.test.ts` restores its spies after its assertions**~~
+  **Closed.** Moved to `afterEach`, which runs whether the assertions passed or
+  threw. One case keeps its inline restore on purpose: it drives the captured saver
+  against a live engine, so its spy has to be gone before the assertions start.

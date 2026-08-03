@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 
 import { config } from '../src/config.js';
-import { createCostSink, emptyCost, llmCost, type Cost } from '../src/cost.js';
+import { BudgetExceededError, createCostSink, emptyCost, llmCost, type Cost } from '../src/cost.js';
 import { createEvidence, gather } from '../src/engine/gather.js';
 import { runResearch, type Checkpoint } from '../src/engine/research-engine.js';
 import { getTemplate } from '../src/templates/registry.js';
@@ -159,24 +159,46 @@ describe('the engine stops a job at its ceiling', () => {
     expect(out.trace.warnings?.join(' ')).toMatch(/right at the per-job cost ceiling/i);
   });
 
-  it('never prints what we spent into the buyer’s report', async () => {
-    writableConfig.workflow.maxJobCostUsd = 1;
-    const resume: Checkpoint = { report: {}, sources: [], doneAgentIds: [], degraded: [], cost: usd(5) };
-    const out = await runResearch({
-      template, params: params(), jobId: 'b5', generatedAt: 't', resume, finalize: false,
-    });
-
-    // A failed agent's `error` becomes the reason text inside its degraded section,
-    // and that section is rendered to the customer. So the ceiling's own message
-    // must not carry figures: "spent $23.41 of the $20.00 allowed" is our
-    // infrastructure spend, printed in something the buyer paid for and reads.
+  it('keeps the figures out of the error a degraded section would carry', async () => {
+    // The rule this defends, from `cost.ts`: an agent's `error` becomes the reason
+    // recorded for its degraded section, so the ceiling's own message must not read
+    // "spent $23.41 of the $20.00 allowed" — that is our infrastructure spend, in
+    // something a customer paid for.
+    //
+    // Asserted on the error object rather than through a run, because a run cannot
+    // reach it: a job stopped by the ceiling with steps pending is HELD, never
+    // degraded (see the branch above). The separation of `message` from `detail` is
+    // the whole guarantee, and this is where it is decidable.
+    const err = new BudgetExceededError(23.41, 20);
     const money = /\$\s?\d/;
-    expect(JSON.stringify(out.report)).not.toMatch(money);
-    expect((out.trace.warnings ?? []).join(' ')).not.toMatch(money);
+    expect(err.message).not.toMatch(money);
+    // …while the figures stay where they are needed, for the trace and the logs.
+    expect(err.detail).toMatch(money);
+    expect(err.detail).toContain('23.41');
+  });
 
-    // …while the figures stay where they are needed: the trace and the job total.
-    expect(out.trace.agents.some((a) => a.notes.some((n) => money.test(n)))).toBe(true);
-    expect(out.trace.cost.usd).toBeGreaterThan(0);
+  it('never prints an internal error into the buyer’s report', async () => {
+    // The other half, and the reachable one: a step that fails for any ordinary
+    // reason IS degraded, and what the buyer reads must be our note rather than
+    // "Structured output failed schema validation: verdict.price: expected number".
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    mock.generate = async (opts) =>
+      opts.responseSchema
+        ? { text: 'not json at all', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } }
+        : base(opts);
+
+    writableConfig.workflow.maxJobCostUsd = 1000;
+    const out = await runResearch({ template, params: params(), jobId: 'b5', generatedAt: 't' });
+
+    // Non-vacuous by construction: every section really did degrade.
+    expect((out.meta.degradedSections ?? []).length).toBeGreaterThan(0);
+
+    const body = JSON.stringify(out.report);
+    expect(body).not.toMatch(/valid JSON|schema validation|Error:/i);
+    expect(body).toMatch(/could not complete/i);
+    // …and the admin still gets the real reason, in the trace.
+    expect((out.trace.warnings ?? []).join(' ')).toMatch(/valid JSON/i);
   });
 
   it('stops mid-run, having spent about the ceiling and not the whole job', async () => {

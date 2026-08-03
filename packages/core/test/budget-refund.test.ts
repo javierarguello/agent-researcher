@@ -236,7 +236,15 @@ describe('resolving a hold', () => {
     await runCapped('jr1');
 
     expect(await rejectHold('jr1', 'Not approved.')).toBe(true);
-    await refundForJob(APP, USER, 'jr1', 'hold rejected');
+    expect(await refundForJob(APP, USER, 'jr1', 'hold rejected')).toBe(true);
+    expect(await getBalance(APP, USER)).toBe(5);
+
+    // "Exactly once" is the title, and until now nothing here tested it: the refund
+    // ran once and the balance was checked once, which a double refund would also
+    // have satisfied at that point. Every refund is manual, so the realistic way to
+    // get two is two people resolving the same hold — and the idempotency key is
+    // what has to stop the second, not the resolver's own status gate.
+    expect(await refundForJob(APP, USER, 'jr1', 'hold rejected')).toBe(false);
     expect(await getBalance(APP, USER)).toBe(5);
 
     const job = (await getJob('jr1'))!;

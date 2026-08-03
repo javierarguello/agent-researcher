@@ -177,8 +177,12 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
   // --- Task 1: credit grant auditability -----------------------------------
   it('POST /admin/credits/grant records grantedBy (from token) + reason; body cannot spoof grantedBy', async () => {
     const admin = await adminToken();
-    // A body trying to spoof grantedBy is harmless — it's stripped
-    // (additionalProperties: false) and the attribution comes from the token.
+    // A body trying to spoof grantedBy is harmless, and TWO independent things make
+    // it so: the schema strips unknown properties, and the handler reads the token
+    // rather than the body. Either alone is sufficient, which is why no single
+    // source edit turns this test red — a mutation removing one is covered by the
+    // other. Recorded rather than dressed up: this asserts a real property, and it
+    // is not a regression guard for either mechanism on its own.
     const r = await app.inject({
       method: 'POST',
       url: '/admin/credits/grant',
