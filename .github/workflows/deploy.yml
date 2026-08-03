@@ -30,7 +30,13 @@ permissions:
   id-token: write # required for Workload Identity Federation
 
 jobs:
+  # Nothing deploys that has not passed the suite. Six workflows shipped straight
+  # from `setup-gcloud` to `deploy.sh`, so every guard in the repo was advisory.
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -151,6 +151,16 @@ the free-report guard in `approveHold` (a refunded job is an unpaid job; disabli
 it left all 371 core and 179 api tests green), the stats-booked-once guard, the
 ordinary refund's buyer note, and the progress clearing.
 
+**The deploy ran no tests at all** (2026-08-03, closed). Six workflows —
+`deploy`, `deploy-dev`, and the four SPA ones — went `checkout → auth →
+setup-gcloud → bash infra/deploy.sh`, with no `npm test`, no typecheck and no
+`templates:check` between them. `deploy-dev` fires on every push to `main`, so
+every commit in this backlog deployed unverified, and the load-time template
+validation added the same day could not stop a half-localized model from
+shipping. `verify.yml` is now a `workflow_call` gate every deploy `needs:`;
+verified by deleting the `fr` block and watching `templates:check` exit 1 with
+the model and the missing piece named.
+
 **Still open on localization:** `NewReport`/`JobView` hardcode field LABELS per
 Florida field key, so a second catalog model draws its form with raw JSON keys —
 `ParamFieldUi` has no `label` at all, which is the standing catalog rule in its

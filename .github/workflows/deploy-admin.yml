@@ -36,7 +36,13 @@ env:
   GCP_PROJECT_ID: sinuous-canto-497518-h7
 
 jobs:
+  # Nothing deploys that has not passed the suite. Six workflows shipped straight
+  # from `setup-gcloud` to `deploy.sh`, so every guard in the repo was advisory.
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   deploy-admin:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

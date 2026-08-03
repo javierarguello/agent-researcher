@@ -1,0 +1,44 @@
+# The gate every deploy goes through.
+#
+# There was none. Six deploy workflows, and not one of them ran a test, a
+# typecheck, or `templates:check` — `bash infra/deploy.sh` straight after
+# `setup-gcloud`. So the whole suite was advisory: it only ran where someone
+# happened to run it, and the load-time template validation that refuses a
+# half-localized model could not stop that model from shipping.
+#
+# Called by every deploy workflow as a `needs:` job. Nothing here talks to GCP or
+# needs a credential — the suites mock Firestore, Cloud Storage and every paid
+# model (`packages/core/test/mocks/no-paid-calls.ts` throws on a real paid call),
+# so this is safe to run on any branch and any fork.
+name: Verify
+
+on:
+  workflow_call:
+  # Also on its own, so a red main is visible without waiting for a deploy.
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Typecheck first: it is the fastest of the three and catches the class of
+      # error that makes the other two confusing to read.
+      - run: npm run typecheck
+
+      # Templates are validated at module load, so the suites already exercise
+      # this — run it explicitly anyway, because it is the check whose failure
+      # message names the model and the missing piece.
+      - run: npm run templates:check
+
+      - run: npm test
