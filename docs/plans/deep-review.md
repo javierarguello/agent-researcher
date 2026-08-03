@@ -19,6 +19,48 @@ their reports.
 **Group K is REOPENED and parked — see below. It is the only group whose fix did
 not survive review, and the reason is structural rather than a missing case.**
 
+## Review round 4 — eight agents against `54cd7c0` (2026-08-03)
+
+Four groups of fixes, two opposed lenses each, every claim required to carry a
+mutation behind it. **The commit's own defects came back first**, and they are the
+same class it was closing. Fixed in the follow-up commit:
+
+- `engine.test.ts` — the "two parses hold this" comment is true of an
+  agent-written section and **false of a derived one**. `derive` output is assigned
+  straight into the report and never sees the write parse, so the whole-report parse
+  is its only guard — and `sources`, one of the 12 sections that assertion runs over,
+  is derived. Added a derived-section case that goes red on a SINGLE edit.
+- `budget-ceiling.test.ts` — pinned the constructor and neither place the
+  `message`/`detail` split is consumed. Both `at.error = err.detail` and
+  `emit(agent.id, err.detail)` survived all 329 core tests. Now pinned through a run.
+- `cost.ts` + the engine's ceiling branch — **the rationale was factually wrong.**
+  An agent's `error` does NOT become a degraded section's reason (that is
+  `degradedSectionNote`; the reason goes to `warnings`, which is redacted). The real
+  customer-facing channel is `job.progress.message`, found independently by two
+  agents. Corrected in both places.
+- `security.test.ts` — `expect(...).toMatch(/lang/i)` under a comment claiming the
+  error names the allowed values. It does not; the matcher was hitting the word
+  inside `querystring/lang`. Replaced with the actual body. The `SUPPORTED_LANGS`
+  pin only read one side, and its title certified fr/pt support the product does not
+  have — retitled, and the SPA-side direction asserted where it would ship
+  (`apps/fbizlab/test/languages.test.tsx`).
+- `security.test.ts` again — the admin-exemption assertion was **vacuous and I
+  walked past it**: the admin app had no `allowedTemplates`, so the branch never ran
+  and deleting the exemption from both sites left 32 green.
+- `run-job-resilience.test.ts` — the one inline restore I kept was justified by a
+  mechanism that does not exist (the saver never calls `runResearch`; measured at
+  zero calls). Removed.
+
+**Method finding, applies to every future round:** a worktree has no `node_modules`,
+so `@agent-researcher/core` resolves to the MAIN checkout. Mutating `packages/core`
+and running `apps/*` tests from a worktree produces **false greens**. Two agents hit
+this independently. Fix the worktree setup before the next round.
+
+Everything else the round found is product defects and new vacuous tests — recorded
+in the sections below, not fixed here.
+
+---
+
 **Group L is closed** (2026-08-03): all 13 tests that could not fail, the one that
 encoded a bug as its contract, and N16. Two of the 13 turned out to be held by two
 independent guards each, so they cannot die to a single edit — that is now written

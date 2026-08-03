@@ -70,11 +70,21 @@ export class BudgetExceededError extends Error {
   /**
    * The same fact WITH the figures, for the trace and the logs.
    *
-   * Kept out of `message` on purpose. An agent's `error` becomes the reason a
-   * degraded section carries, and that section is rendered to the buyer — so a
-   * dollar amount in this message would print our infrastructure spend inside a
-   * customer's report. The numbers are on the instance, in `trace.cost`, and in
-   * the `job.budget_exceeded` log; none of those is customer-facing.
+   * Kept out of `message` on purpose — but not for the reason this comment used to
+   * give. It claimed an agent's `error` becomes the reason a degraded section
+   * carries; it does not. A degraded section is filled with `degradedSectionNote`,
+   * and the agent's reason goes only to `trace.warnings`, which is redacted for
+   * non-admins.
+   *
+   * The real reason is `job.progress.message`. The engine emits `message` into it
+   * (research-engine's ceiling branch), `run-job` writes it to the job document, and
+   * the API returns it verbatim to the buyer, who is shown it raw. That field is
+   * customer-facing, so a dollar amount in `message` prints our infrastructure spend
+   * to the person who bought the report. The numbers live here, in `trace.cost`, and
+   * in the `job.budget_exceeded` log; none of those is customer-facing.
+   *
+   * (Separately: the ceiling WORDING in that field is still ours and still English —
+   * tracked as a product defect, not fixed by this split.)
    */
   readonly detail: string;
   constructor(spentUsd: number, limitUsd: number) {

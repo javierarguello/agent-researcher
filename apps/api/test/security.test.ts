@@ -138,16 +138,29 @@ describe('API security — auth, credits gate, isolation', () => {
     // rather than paper over with English text it did not ask for.
     const xx = await app.inject({ method: 'GET', url: '/templates/florida-business-for-sale?lang=zz', headers: auth(t) });
     expect(xx.statusCode).toBe(400);
-    // …and the error says what IS allowed, because the caller cannot see the enum.
-    expect(JSON.stringify(xx.json())).toMatch(/lang/i);
+    // What the body actually is — pinned rather than described, because the first
+    // version of this line said "the error says what IS allowed" and it does not:
+    // `/lang/i` was matching the word inside `querystring/lang`, and would pass for
+    // any validation error on any field whose name starts with "lang". The caller
+    // can only discover the enum from /docs/json. If that is ever judged too thin,
+    // it is a source change (a schemaErrorFormatter that interpolates the values),
+    // and this assertion is what would have to change with it.
+    expect(xx.json()).toMatchObject({ code: 'FST_ERR_VALIDATION' });
+    expect(xx.json().error).toContain('querystring/lang');
   });
 
-  it('publishes exactly the languages the buyer app is built for', async () => {
-    // Nothing links these two lists, and they have to agree: `apps/fbizlab/src/i18n.tsx`
-    // hardcodes LANGS and clamps to it before calling, so a language added here and
-    // not there is simply unreachable — while one added THERE and not here makes
-    // every manifest request 400 for those buyers, since the query is enum-validated
-    // (above). Pinned literally so the next change to either has to come here first.
+  it('does not widen the published language enum without someone deciding to', async () => {
+    // Pinned literally so adding a language to `LANGUAGE_LABELS` is a deliberate
+    // act: the query is enum-validated (above), so this array IS the published
+    // contract, and `apps/fbizlab/scripts/fetch-plans.mjs` iterates its own copy at
+    // build time and fails the deploy on a mismatch.
+    //
+    // This is one direction only, and the title used to overstate it — "the
+    // languages the buyer app is built for" is a claim about the SPA that this
+    // assertion cannot see, and that the product does not currently satisfy anyway
+    // (the flagship template's `i18n` block has only `es`, so fr and pt buyers get
+    // English section titles over prose in their own language). The other direction
+    // is asserted where it would ship: `apps/fbizlab/test/languages.test.tsx`.
     expect(SUPPORTED_LANGS).toEqual(['en', 'es', 'fr', 'pt']);
   });
 
@@ -159,7 +172,13 @@ describe('API security — auth, credits gate, isolation', () => {
     expect(r.statusCode).toBe(403);
 
     // The admin app is exempt from the model restriction.
+    //
+    // The restriction has to be ON the admin app for the exemption to mean anything.
+    // Without this line the app has no `allowedTemplates` at all, the guard's
+    // `allowed?.length` is falsy, and the branch never runs — deleting the exemption
+    // from BOTH call sites left all 32 tests here green.
     await seedAdmin(['boss@x.com']);
+    await updateApp('admin', { allowedTemplates: ['some-other-model'] });
     const admin = await token('admin', 'boss@x.com', 'admin');
     const ra = await app.inject({ method: 'POST', url: '/research', headers: auth(admin), payload: research });
     expect(ra.statusCode).not.toBe(403); // passes the model check (then 402 for no credits)

@@ -410,8 +410,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         if (budget.exceeded) {
           const err = new BudgetExceededError(budget.spentUsd, budget.limitUsd ?? 0);
           at.status = 'failed';
-          // `message` here, `detail` in the note: the error travels to a degraded
-          // section the buyer reads, the note stays in the trace.
+          // `message` here, `detail` in the note. Not because of degraded sections —
+          // those carry our localized note, never this — but because `emit` below
+          // lands in `job.progress.message`, which the API hands to the buyer raw.
+          // The figures stay in the note, which is admin-side.
           at.error = err.message;
           at.notes.push(`${new Date().toISOString()} ${err.detail}`);
           trace.budgetExceeded = true;

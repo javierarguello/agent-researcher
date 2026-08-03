@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { z } from 'zod';
 
 // Mock the external web-search/extract tools (no network).
 vi.mock('../src/tools/web-search.js', () => ({
@@ -17,6 +18,7 @@ import { getTemplate } from '../src/templates/registry.js';
 import { reportSchemaOf } from '../src/templates/types.js';
 import { __setProviderForTests } from '../src/llm/models.js';
 import { MockLlmProvider } from './mocks/llm.js';
+import type { ResearchTemplate } from '../src/templates/types.js';
 
 const template = getTemplate('florida-business-for-sale')!;
 
@@ -84,11 +86,17 @@ describe('engine — runResearch with mocked LLM + search', () => {
     // What only validation can produce is the STRIPPING — the mock adds a key no
     // section declares, and it must not survive into what the buyer receives.
     //
-    // Measured: two parses hold this, the agent's write in `synthesizeStructured`
-    // and the whole-report parse at the end, and each strips on its own. Removing
-    // either alone leaves this green; removing both turns it red. So it pins the
-    // property, not either mechanism — worth knowing before trusting it as a
-    // regression guard for one of them.
+    // Measured: for a section an AGENT writes, two parses hold this — the write in
+    // `synthesizeStructured` and the whole-report parse at the end — and each strips
+    // on its own. Removing either alone leaves this green; removing both turns it
+    // red. So this assertion pins the property, not either mechanism.
+    //
+    // It does NOT cover a DERIVED section, which has only one guard. See the case
+    // below: `derive` output is assigned straight into the report and never sees the
+    // agent write parse, so the whole-report parse is the only thing between it and
+    // the buyer. `sources` — one of the 12 sections this very assertion runs over —
+    // is derived, which is what makes the distinction worth stating rather than
+    // leaving for the next reader to discover.
     const exclude = new Set(template.modes!.essential!.exclude);
     const eff = { ...template, sections: template.sections.filter((s) => !exclude.has(s.key)) };
     expect(reportSchemaOf(eff).safeParse(out.report).success).toBe(true);
@@ -121,5 +129,44 @@ describe('engine — runResearch with mocked LLM + search', () => {
     const out = await run('essential');
     expect(out.meta.degradedSections).toContain('market_overview');
     expect(out.trace.status).toBe('completed'); // other sections still complete
+  });
+});
+
+/**
+ * A derived section that returns a key its schema does not declare.
+ *
+ * `derive` runs after every agent and its result is assigned straight into the
+ * report — it never passes through `synthesizeStructured`, so the whole-report
+ * parse is the ONLY thing standing between it and the buyer. The flagship
+ * template's `sources` section is derived, which is why this is worth its own
+ * case rather than a note.
+ */
+const derivedTemplate: ResearchTemplate<Record<string, unknown>> = {
+  id: 'derived-strip', name: 'Derived', description: 'x', version: 1,
+  basePrompt: 'Be useful.',
+  paramsSchema: z.object({}),
+  sections: [
+    { key: 'body', title: 'Body', guidance: 'Write it.', schema: z.object({ text: z.string() }) },
+    {
+      key: 'tally', title: 'Tally', guidance: 'Counted, not written.',
+      derived: true,
+      schema: z.object({ count: z.number() }),
+      derive: ({ sources }) => ({ count: sources.length, zzDerived: 'never asked for' }),
+    },
+  ],
+  agents: [{ id: 'writer', role: 'producer', objective: 'Write.', produces: ['body'], researchBudget: 1 }],
+  buildBrief: () => 'Find things.',
+};
+
+describe('a derived section is validated too', () => {
+  it('strips a key the section never declared', async () => {
+    // One guard, not two: deleting the whole-report parse in `research-engine`
+    // turns this red on its own, where the agent-written case above stays green.
+    const out = await runResearch({ template: derivedTemplate, params: {}, jobId: 'der1', generatedAt: 't' });
+
+    expect(out.trace.status).toBe('completed');
+    // Non-vacuous by construction: the section really was derived and delivered.
+    expect(out.report.tally).toBeDefined();
+    expect(JSON.stringify(out.report.tally)).not.toContain('zzDerived');
   });
 });

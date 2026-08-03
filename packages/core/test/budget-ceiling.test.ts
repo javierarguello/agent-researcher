@@ -165,16 +165,41 @@ describe('the engine stops a job at its ceiling', () => {
     // "spent $23.41 of the $20.00 allowed" — that is our infrastructure spend, in
     // something a customer paid for.
     //
-    // Asserted on the error object rather than through a run, because a run cannot
-    // reach it: a job stopped by the ceiling with steps pending is HELD, never
-    // degraded (see the branch above). The separation of `message` from `detail` is
-    // the whole guarantee, and this is where it is decidable.
+    // The constructor is only half of it, and pinning only the constructor was the
+    // narrow version of this test: the line that CHOOSES `message` over `detail`
+    // could be swapped either way and nothing in 329 core tests noticed.
     const err = new BudgetExceededError(23.41, 20);
     const money = /\$\s?\d/;
     expect(err.message).not.toMatch(money);
     // …while the figures stay where they are needed, for the trace and the logs.
     expect(err.detail).toMatch(money);
     expect(err.detail).toContain('23.41');
+  });
+
+  it('keeps the figures out of everything the buyer is shown while it waits', async () => {
+    // `job.progress.message` is the customer-facing channel — `run-job` writes what
+    // the engine emits into the job document and the API returns it to the buyer
+    // raw. It is the reachable one, and the reason `message` and `detail` are split
+    // at all; the degraded-section story the old comment told was never true.
+    const progress: string[] = [];
+    writableConfig.workflow.maxJobCostUsd = 0.000001;
+    const out = await runResearch({
+      template, params: params(), jobId: 'b6', generatedAt: 't',
+      onProgress: (p) => { progress.push(p.message); },
+    });
+
+    // Non-vacuous by construction: the ceiling really did stop this run, and it
+    // really did say so on the buyer's channel.
+    expect(out.trace.budgetExceeded).toBe(true);
+    expect(progress.join(' ')).toMatch(/cost ceiling/i);
+
+    const money = /\$\s?\d/;
+    expect(progress.join(' '), 'progress is shown to the buyer').not.toMatch(money);
+    // The per-agent `error` travels with the trace and lands in the job summary.
+    const errors = out.trace.agents.map((a) => a.error ?? '').join(' ');
+    expect(errors, 'agent errors reach the job summary').not.toMatch(money);
+    // …and the figures ARE recorded, admin-side, or the split would just be deletion.
+    expect(out.trace.agents.some((a) => a.notes.some((n) => money.test(n)))).toBe(true);
   });
 
   it('never prints an internal error into the buyer’s report', async () => {

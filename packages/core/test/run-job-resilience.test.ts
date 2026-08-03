@@ -160,10 +160,11 @@ describe('a duplicate dispatch cannot overwrite the run that owns the job', () =
     const spy = vi.spyOn(engine, 'runResearch');
     await runJob(input(jobId));
     const onCheckpoint = spy.mock.calls[0]?.[0]?.onCheckpoint;
-    // Restored HERE and not in `afterEach` like the rest: the saver this returns is
-    // then driven against a live engine, so the spy has to be gone before the
-    // assertions start rather than after they finish.
-    spy.mockRestore();
+    // No inline restore. There was one, justified by "the saver is then driven
+    // against a live engine" — which is false: the saver is run-job's `onCheckpoint`
+    // closure and it calls `isCurrentDispatch` and `uploadJson`, never `runResearch`.
+    // Measured at zero calls, and removing the restore leaves the file green. The
+    // `afterEach` handles it like every other spy here.
     expect(onCheckpoint).toBeTypeOf('function');
     return onCheckpoint!;
   }
