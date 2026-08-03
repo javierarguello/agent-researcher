@@ -118,12 +118,20 @@ export function modeLabel(t: ResearchTemplate<any>, key: string, lang: string = 
  */
 export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG): TemplateManifest {
   const tr = lang !== DEFAULT_LANG ? t.i18n?.[lang] : undefined;
+  // What the texts below are ACTUALLY in.
+  //
+  // This used to echo the request unconditionally, so a model with no block for
+  // the asked-for language answered `lang: 'pt'` with English throughout — and a
+  // client had no way to detect it and fall back deliberately. The API's `?lang`
+  // enum stops that for the languages we publish; a model that ships English-only
+  // is the case it could not see.
+  const actualLang = lang === DEFAULT_LANG || tr ? lang : DEFAULT_LANG;
   return {
     id: t.id,
     name: tr?.name ?? t.name,
     description: tr?.description ?? t.description,
     version: t.version,
-    lang,
+    lang: actualLang,
     sections: t.sections.map((s) => ({ key: s.key, title: tr?.sectionTitles?.[s.key] ?? s.title })),
     paramsSchema: z.toJSONSchema(t.paramsSchema),
     ...(t.paramsUi ? { paramsUi: localizeParamsUi(t.paramsUi, tr) } : {}),

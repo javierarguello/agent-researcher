@@ -706,8 +706,12 @@ const langQuery = {
 
 /** The manifest language: the validated `lang` query, or the default. */
 function reqLang(req: { query?: unknown }): string {
-  const l = (req.query as { lang?: string } | undefined)?.lang;
-  return l && SUPPORTED_LANGS.includes(l) ? l : DEFAULT_LANG;
+  // No membership check. Every caller carries `langQuery`, whose `enum` makes ajv
+  // reject an unsupported value with a 400 before this runs — so the branch that
+  // used to be here could never be false, and it read as a SECOND, contradictory
+  // contract: a maintainer concluded unknown languages degrade gracefully and
+  // wrote the next client accordingly. One contract, stated in the schema.
+  return (req.query as { lang?: string } | undefined)?.lang ?? DEFAULT_LANG;
 }
 
 /** Overlay the Firestore per-model credit pricing onto a manifest's mode + add-on costs. */

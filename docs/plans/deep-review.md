@@ -52,14 +52,8 @@ round.
   `collectDeals` / the cover snapshot / the structured-block detectors key on
   Florida's section and field names — so another model's PDF has no cover
   statistics and its deal cards do not render.
-- **`reqLang`'s fallback branch is dead code** stating a second, contradictory
-  contract (the enum rejects first). Delete it or drop the enum; having both is the
-  defect this backlog keeps naming.
 - **The 23 vacuous tests** the completeness sweep proved, listed in its report.
   Three of them are guards with no test at all rather than weak ones.
-- **Seven independent language lists.** Only the API↔SPA pair is pinned. Adding a
-  language fails loudly at boot; REMOVING one fails nothing and silently
-  reintroduces English headings over translated prose.
 - **N1** — a half-improved section ships as whole with nothing in `meta`. Needs a
   price decision from you.
 - Smaller, in `N`: C5, K6–K8, N4–N11.
@@ -290,6 +284,16 @@ Still open: number and currency formatting are `en-US` and `$` everywhere
 (`report-html.ts`, `ReportViewer.tsx`, both `lib/format.ts`), and `collectDeals` /
 the cover snapshot / the structured-block detectors still key on Florida's section
 and field names, so another model's PDF has no cover statistics.
+
+**The language contract is now one contract** (closed): `reqLang`'s membership
+check is gone — every caller carries the `?lang` enum, so that branch could never
+be false and read as a second, contradictory promise. `toManifest` reports the
+language its texts are ACTUALLY in rather than echoing the request, which was how
+a model with no block for the asked-for language answered `lang: 'pt'` in English.
+And `test/language-lists.test.ts` pins all seven copies of the supported set
+together — removing a language used to fail nothing while the engine kept writing
+prose the manifest could not label; it now fails four ways, including the
+structural one.
 
 *(The paragraph that stood here — hardcoded field labels, unlocalized suggestions,
 the unchecked language enum — is closed by `a1f8138`, above. Seven independent
