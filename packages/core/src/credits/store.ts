@@ -160,6 +160,17 @@ export function consumeCredits(appId: string, userId: string, credits: number, j
  * is an unpaid job, and re-running it hands out a report nobody paid for. The
  * refund marker is the record, so this is a single read.
  */
+/**
+ * Did this job ever consume credits?
+ *
+ * Distinguishes "the refund failed" from "there was nothing to refund" —
+ * `refundForJob` returns `false` for both, so a caller reporting a failure on
+ * `false` tells the admin to retry forever on a buyer who was never charged.
+ */
+export async function wasJobConsumed(jobId: string): Promise<boolean> {
+  return (await ledger().doc(`consume_${jobId}`).get()).exists;
+}
+
 export async function wasJobRefunded(jobId: string): Promise<boolean> {
   return (await ledger().doc(`refund_${jobId}`).get()).exists;
 }

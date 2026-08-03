@@ -224,6 +224,29 @@ describe('resolving a hold', () => {
     expect(await getBalance(APP, USER)).toBe(4);
   });
 
+  it('approve: refuses a job whose credits were already given back', async () => {
+    // The free-report guard, and it had no test anywhere: disabling it left all 371
+    // core and 179 api tests green. A refunded job is an UNPAID job, and approving
+    // it runs it and delivers it. `requeueJob` has refused this since the
+    // free-report fix; `approveHold` is the other door into the same room, and
+    // several paths put a refunded job back into `held`.
+    await grantCredits({ appId: APP, userId: USER, credits: 5 });
+    await consumeCredits(APP, USER, 1, 'ja4');
+    await runCapped('ja4');
+    expect((await getJob('ja4'))!.status).toBe('held');
+
+    // The credits go back while the job is still parked — a support refund, or the
+    // resolve route's own window between the flip and the money. `refundForJob`
+    // permits it (a held job is neither queued nor running), so the only thing
+    // between this job and a free run is the guard inside `approveHold`.
+    expect(await refundForJob(APP, USER, 'ja4', 'support refund')).toBe(true);
+
+    expect(await approveHold('ja4', 'admin@x.com')).toBe(false);
+    expect((await getJob('ja4'))!.status).toBe('held');
+    // …and the buyer keeps the money.
+    expect(await getBalance(APP, USER)).toBe(5);
+  });
+
   it('approve: a second approval loses, so one hold cannot be dispatched twice', async () => {
     await runCapped('ja2');
     expect(await approveHold('ja2', 'first@x.com')).toBe(true);

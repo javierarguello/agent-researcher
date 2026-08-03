@@ -172,6 +172,47 @@ export function JobDetail() {
         </Card>
       )}
 
+      {/* Outside the `held` gate on purpose.
+          The refund runs AFTER the job is flipped to `failed`, so by the time it
+          can fail the decision card has already unmounted — taking the warning and
+          the button it tells you to press with it. The admin saw the job go quietly
+          to failed with the buyer unpaid, indistinguishable from success.
+          `resolvedOutcome === 'refund'` with nothing in the ledger is exactly the
+          stranded state, and it survives a page reload, which `resolve.data` does
+          not. */}
+      {job.status === 'failed' && job.hold?.resolvedOutcome === 'refund' && job.refunded === false && (
+        <Card padding="lg" withBorder style={{ borderColor: 'var(--mantine-color-red-6)' }}>
+          <Text fw={650} mb="xs">The refund did not go through</Text>
+          <Text size="sm" c="dimmed" mb="md">
+            This job is closed and the buyer has <b>not</b> been paid back. Pressing the button below
+            finishes the refund that was decided on {job.hold.resolvedAt ? relative(job.hold.resolvedAt) : 'earlier'}
+            {job.hold.resolvedBy ? ` by ${job.hold.resolvedBy}` : ''}. It is safe to press more than once.
+          </Text>
+          <Button
+            color="red"
+            loading={resolve.isPending && resolve.variables?.action === 'refund'}
+            onClick={() => resolve.mutate({ jobId, action: 'refund' })}
+          >
+            Finish the refund
+          </Button>
+        </Card>
+      )}
+
+      {/* What actually happened to the money, for a closed job. The page used to
+          assert "the user's credits were refunded" from `failureKind` alone, which
+          `rejectHold` copies from the hold whatever the admin chose — so it said the
+          opposite of the truth after a dismiss. This reads the ledger. */}
+      {job.status === 'failed' && job.hold?.resolvedOutcome && job.refunded !== undefined && (
+        <Text size="sm" c="dimmed">
+          {job.refunded
+            ? 'Closed — credits returned to the buyer.'
+            : job.hold.resolvedOutcome === 'dismiss'
+              ? 'Closed without a refund (deliberate).'
+              : 'Closed — refund still pending.'}
+          {job.hold.resolvedBy ? ` Decided by ${job.hold.resolvedBy}.` : ''}
+        </Text>
+      )}
+
       {job.status === 'held' && job.hold && (
         <Card padding="lg" withBorder style={{ borderColor: 'var(--mantine-color-orange-5)' }}>
           <Group justify="space-between" mb="xs">
@@ -256,8 +297,8 @@ export function JobDetail() {
               between an admin who retries and one who thinks they are done. */}
           {resolve.data?.refundFailed && (
             <Text size="sm" c="red" mt="sm">
-              The job is closed, but the refund did not go through. The buyer has not been paid back — press
-              “Refund &amp; close” again to finish it.
+              The job is closed, but the refund did not go through. The buyer has not been paid back — use
+              “Finish the refund” on this page.
             </Text>
           )}
         </Card>

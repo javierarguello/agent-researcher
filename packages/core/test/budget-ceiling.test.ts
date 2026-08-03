@@ -343,7 +343,7 @@ describe('the ceiling an admin is told about is the one that was enforced', () =
       ...compactModel,
       id: 'cheap-model',
       // `essential` is what `resolveMode` picks when params name no mode.
-      modes: { essential: { maxCostUsd: 0.0000001 } },
+      modes: { essential: { maxCostUsd: 0.0002 } },
     } as never);
     installMockProvider();
     writableConfig.workflow.maxJobCostUsd = 20;
@@ -354,7 +354,11 @@ describe('the ceiling an admin is told about is the one that was enforced', () =
     const job = (await getJob('ceil1'))!;
     // Non-vacuous by construction: the small ceiling really did stop this run.
     expect(job.status).toBe('held');
-    expect(job.hold?.detail ?? '').toContain('0.00');
+    // The model's own figure, printed so an admin can reconcile it against the
+    // spend beside it. `toContain('0.00')` was the first version and it could not
+    // fail: '0.00' is a substring of '20.00', so it matched the very default it was
+    // supposed to rule out.
+    expect(job.hold?.detail ?? '').toContain('0.0002');
     expect(job.hold?.detail ?? '', 'the deployment default leaked into the admin’s decision line').not.toContain('20.00');
     __clearTestTemplates();
   });

@@ -118,6 +118,39 @@ in the sections below. Closed since, in severity order:
    carried on the trace (`costCeilingUsd`, `null` when an approval uncapped it,
    which is a real state and not a missing value).
 
+**Round 2 of the refund work** (2026-08-03), from the operator and skeptic lenses.
+The previous commit fixed the ordering and left the halves that face people:
+
+- **`closedNotice` never reached the buyer.** `JobView` painted a static string for
+  any failed job, so the four-language sentence written only once the money moved
+  was displayed to nobody — refunded and dismissed read identically. The API sends
+  `job.error` for exactly this and no component read it.
+- **The recovery path had no UI.** The `refundFailed` warning and the button it
+  names both lived inside the card gated on `status === 'held'`, and the refund runs
+  AFTER the flip — so by the time the warning could appear the card had unmounted.
+  Now a standing card keyed on the persisted decision plus the ledger, which
+  survives a reload where `resolve.data` does not.
+- **A dismissed job was refunded by pressing again** (demonstrated). Intent is not
+  recoverable from state, so `hold.resolvedOutcome` is now written in the same
+  transaction that acts on it, and the recovery path requires it.
+- **A slot bypass this route introduced**: it released unconditionally, so a `retry`
+  landing in the window had its NEW slot released and the buyer ran with none
+  booked. Release only on the real resolution.
+- **`refundFailed` on any `false`** — which also means "nothing was ever consumed",
+  so the admin was told to retry forever on a buyer who was never charged.
+  `wasJobConsumed` separates them.
+- **`approveHold` clears `progress`**: an approved job told the buyer "Paused while
+  we review it. Nothing more is being spent" while it ran, under a live spinner.
+- **The ceiling printed `$0.00`** — a wrong number replaced by a meaningless one for
+  exactly the cheap catalog models the fix was for.
+- **`held` was missing from the admin job filter**, so the queue of decisions could
+  only be found by scrolling.
+
+Four guards that had no test at all now do, each confirmed by disabling it first:
+the free-report guard in `approveHold` (a refunded job is an unpaid job; disabling
+it left all 371 core and 179 api tests green), the stats-booked-once guard, the
+ordinary refund's buyer note, and the progress clearing.
+
 **Still open on localization:** `NewReport`/`JobView` hardcode field LABELS per
 Florida field key, so a second catalog model draws its form with raw JSON keys —
 `ParamFieldUi` has no `label` at all, which is the standing catalog rule in its

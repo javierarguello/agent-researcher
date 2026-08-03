@@ -77,9 +77,19 @@ export function JobView() {
         </div>
       )}
 
-      {job.status !== 'completed' && job.params && <RequestParams params={job.params} manifest={template.data} lang={lang} creditsSpent={job.creditsSpent ?? modeInfo?.credits ?? null} />}
+      {/* `reportLang`, not `lang`: this card's VALUES (mode label, report language)
+          come from the manifest, which is now fetched in the report's language,
+          while its labels came from the UI's. Switching the switcher mid-wait
+          rendered the two halves in different languages. */}
+      {job.status !== 'completed' && job.params && <RequestParams params={job.params} manifest={template.data} lang={reportLang} creditsSpent={job.creditsSpent ?? modeInfo?.credits ?? null} />}
 
-      {job.status === 'failed' && <div className="card" style={{ padding: 18, borderColor: '#e6c3bd' }}><span className="risk">{t.failed}</span></div>}
+      {/* `job.error`, not a static string. The API sends this field specifically
+          for the buyer, and it is where an admin's decision is explained — "and
+          the credits were returned", written only once the money actually moved,
+          in the buyer's language. Nothing rendered it, so a refunded buyer and a
+          dismissed one read the identical sentence and neither learned anything.
+          The static line stays as the fallback for a job that failed on its own. */}
+      {job.status === 'failed' && <div className="card" style={{ padding: 18, borderColor: '#e6c3bd' }}><span className="risk">{job.error ?? t.failed}</span></div>}
 
       {job.summary?.notice && (
         <div className="card" style={{ padding: 16, background: 'var(--accent-tint)', borderColor: '#efdcb8' }}>

@@ -324,6 +324,11 @@ export async function approveHold(jobId: string, by: string): Promise<boolean> {
         hold: { ...job.hold, approvedBy: by, approvedAt: nowIso() },
         error: FieldValue.delete(),
         finishedAt: FieldValue.delete(),
+        // …and the progress line, which said "Paused while we review it. Nothing
+        // more is being spent" — to a buyer watching an approved job run, for the
+        // whole queue wait, under a live spinner. `error` and `finishedAt` were
+        // cleared and this was not.
+        progress: FieldValue.delete(),
         updatedAt: nowIso(),
       },
       { merge: true },
@@ -362,7 +367,11 @@ export async function parkJob(jobId: string, hold: JobHold): Promise<boolean> {
  * Transactional for the same reason as `approveHold` — the caller refunds only
  * when this returns true, so a lost race cannot refund twice.
  */
-export async function rejectHold(jobId: string, error: string): Promise<boolean> {
+export async function rejectHold(
+  jobId: string,
+  error: string,
+  decision?: { outcome: 'refund' | 'dismiss'; by: string },
+): Promise<boolean> {
   const ref = collection().doc(jobId);
   return firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -370,7 +379,20 @@ export async function rejectHold(jobId: string, error: string): Promise<boolean>
     if (!job || job.status !== 'held') return false;
     tx.set(
       ref,
-      { status: 'failed', error, failureKind: job.hold?.reason, finishedAt: nowIso(), updatedAt: nowIso() },
+      {
+        status: 'failed',
+        error,
+        failureKind: job.hold?.reason,
+        // The DECISION, recorded in the same transaction that acts on it. Without
+        // it a dismissed job is indistinguishable from one whose refund failed —
+        // both are `failed` and unrefunded — and "finish the interrupted refund"
+        // silently becomes "overrule the admin who dismissed it".
+        ...(decision
+          ? { hold: { ...(job.hold ?? {}), resolvedOutcome: decision.outcome, resolvedBy: decision.by, resolvedAt: nowIso() } }
+          : {}),
+        finishedAt: nowIso(),
+        updatedAt: nowIso(),
+      },
       { merge: true },
     );
     return true;

@@ -11,7 +11,10 @@ import { useApps, useJobs, useRetryJob, useTemplates } from '../api/hooks';
 import { ApiError } from '../api/client';
 import { relative, usd } from '../lib/format';
 
-const STATUSES = ['queued', 'running', 'completed', 'failed', 'incomplete'];
+//  is the one that needs a person. The API has always supported the filter
+// and a test asserts it works "without opening every job" — the SPA just never
+// offered it, so the queue of decisions could only be found by scrolling.
+const STATUSES = ['queued', 'running', 'held', 'completed', 'failed', 'incomplete'];
 
 export function Jobs() {
   const navigate = useNavigate();

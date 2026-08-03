@@ -21,6 +21,10 @@ export interface JobHold {
   detail?: string;
   approvedBy?: string;
   approvedAt?: string;
+  /** What the admin decided when they closed it, and who. See the API's JobHold. */
+  resolvedOutcome?: 'refund' | 'dismiss';
+  resolvedBy?: string;
+  resolvedAt?: string;
 }
 
 export interface SessionUser {
@@ -173,6 +177,8 @@ export interface JobDetail {
   error: string | null;
   finishedAt?: string | null;
   files?: JobFileSigned[];
+  /** From the credits LEDGER, not the job document. Admin view only. */
+  refunded?: boolean;
 }
 
 export interface AppPublic {

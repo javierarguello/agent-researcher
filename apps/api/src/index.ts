@@ -80,6 +80,7 @@ import {
   consumeCredits,
   refundForJob,
   wasJobRefunded,
+  wasJobConsumed,
   recordReportStats,
   getBalance,
   listTransactions,
@@ -1449,7 +1450,18 @@ app.get(
       progress,
       // Both admin-only, and for the same reason: what a job cost us, and which of
       // our own limits stopped it, are operational facts. The buyer gets `error`.
-      ...(isAdmin ? { cost: job.cost ?? null, failureKind: job.failureKind ?? null, hold: job.hold ?? null } : {}),
+      // `refunded` reads the LEDGER, not the job. The admin page used to infer it
+      // from `failureKind`, which `rejectHold` copies from the hold whatever the
+      // decision was — so it claimed a refund after a dismiss and after a refund
+      // that failed. It is also what makes a stranded refund visible on reload.
+      ...(isAdmin
+        ? {
+            cost: job.cost ?? null,
+            failureKind: job.failureKind ?? null,
+            hold: job.hold ?? null,
+            refunded: await wasJobRefunded(job.jobId),
+          }
+        : {}),
       summary,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
@@ -2452,8 +2464,17 @@ app.post(
     // needs to survive one) used to be terminal: this handler 409'd on anything not
     // `held`, `retry` refuses a refunded job, and nothing else refunds. The money
     // was simply stuck. Finishing that refund is the one action still allowed here.
+    // …and ONLY a refund that was actually decided on. Intent is not recoverable
+    // from state: a dismissed job and one whose refund threw both read `failed` and
+    // unrefunded, so without the recorded decision this path quietly reversed a
+    // deliberate "close without refund" on a second click — and logged it as the
+    // completion of the first decision. Measured, before this line existed.
     const owedRefund =
-      !held && job.status === 'failed' && outcome === 'refund' && !(await wasJobRefunded(jobId));
+      !held &&
+      job.status === 'failed' &&
+      outcome === 'refund' &&
+      job.hold?.resolvedOutcome === 'refund' &&
+      !(await wasJobRefunded(jobId));
     if (!held && !owedRefund) {
       return reply.code(409).send({ error: `Job is ${job.status}, not held.` });
     }
@@ -2463,7 +2484,7 @@ app.post(
       // The NEUTRAL note, always. Writing "the credits were returned" here promised
       // something that had not happened yet and could still fail — and `job.error`
       // is the buyer's field, not an internal one.
-      if (!(await rejectHold(jobId, closedNotice(lang, false)))) {
+      if (!(await rejectHold(jobId, closedNotice(lang, false), { outcome, by: req.auth!.email }))) {
         return reply.code(409).send({ error: 'Job is no longer held.' });
       }
     }
@@ -2472,9 +2493,23 @@ app.post(
     // cause of a throw is Firestore being unavailable, and a 500 here would leave
     // the admin with a job they can no longer act on. `false` sends them back
     // around the `owedRefund` path above instead.
-    const refunded = outcome === 'refund'
-      ? await refundForJob(job.appId, job.userId, jobId, reason ?? 'admin resolved a held job').catch(() => false)
-      : false;
+    // The throw and the `false` mean different things and were being conflated.
+    // `false` with nothing in the ledger is "there is nothing to refund" — a job
+    // that never consumed credits — and reporting THAT as a failure told the admin
+    // to retry forever on a buyer who was never charged.
+    let refunded = false;
+    let refundThrew = false;
+    if (outcome === 'refund') {
+      try {
+        refunded = await refundForJob(job.appId, job.userId, jobId, reason ?? 'admin resolved a held job');
+      } catch {
+        // Same reason the enqueue-failure refund has a catch: the likely cause is
+        // Firestore being unavailable, and a 500 here leaves the admin with a job
+        // they can no longer act on.
+        refundThrew = true;
+      }
+    }
+    const refundFailed = refundThrew || (outcome === 'refund' && !refunded && (await wasJobConsumed(jobId)));
 
     // Now that the money has actually moved, the buyer can be told so. Best-effort:
     // failing to upgrade the note leaves them under-promised, which is the safe
@@ -2501,7 +2536,12 @@ app.post(
     // best-effort release had failed stayed flagged with the counter at 1. With the
     // cap at one report the buyer could never start another, and `retry` cannot heal
     // it because a refunded job is refused.
-    await releaseJobSlot(jobId).catch(() => {});
+    //
+    // Only on the real resolution. On the recovery path the slot was released the
+    // first time round, and a `retry` landing in the meantime has legitimately
+    // claimed a NEW one — releasing that gave the buyer a run with no slot booked,
+    // a one-time bypass of the one-at-a-time cap that this route introduced.
+    if (held) await releaseJobSlot(jobId).catch(() => {});
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'WARNING', 'job.hold_resolved', {
       by: req.auth!.email, outcome, refunded, recovered: owedRefund, reason: job.hold?.reason,
       spentUsd: job.hold?.spentUsd ?? 0,
@@ -2510,7 +2550,7 @@ app.post(
     // has not been paid back, and calling this again with `outcome: 'refund'` is
     // what finishes it. A caller reading only the 200 would otherwise assume the
     // credits moved.
-    return { jobId, status: 'failed', refunded, ...(outcome === 'refund' && !refunded ? { refundFailed: true } : {}) };
+    return { jobId, status: 'failed', refunded, ...(refundFailed ? { refundFailed: true } : {}) };
   },
 );
 

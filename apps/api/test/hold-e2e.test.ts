@@ -231,6 +231,110 @@ describe('a job held for budget, decided over the API', () => {
     expect(await getBalance(APP, BUYER)).toBe(before);
   });
 
+  it('stops telling the buyer it is paused once it is running again', { timeout: RUN_TIMEOUT }, async () => {
+    // `approveHold` cleared `error` and `finishedAt` and not `progress`, so an
+    // approved job ran with "Paused while we review it. Nothing more is being
+    // spent." under a live spinner — for the whole queue wait, on the buyer's page.
+    const jobId = await heldJob();
+    const paused = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
+    // Non-vacuous by construction: the held job really was showing that line.
+    expect(paused.json().progress?.message ?? '').toMatch(/pausa|paused/i);
+
+    await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) });
+
+    const running = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
+    expect(running.json().status).toBe('queued');
+    expect(running.json().progress?.message ?? '').not.toMatch(/pausa|paused/i);
+  });
+
+  it('tells the buyer their credits came back, in their language', { timeout: RUN_TIMEOUT }, async () => {
+    // The ORDINARY refund, which nothing pinned: the only assertion on this
+    // sentence lived in the recovery test, so the message the overwhelming
+    // majority of refunded buyers read was unguarded.
+    const jobId = await heldJob();
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    // Read through the BUYER's own endpoint, not the job document — the field has
+    // to survive redaction to be worth writing.
+    const seen = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
+    expect(seen.json().error ?? '').toMatch(/credits were returned/i);
+  });
+
+  it('a job closed WITHOUT a refund cannot be refunded by pressing again', { timeout: RUN_TIMEOUT }, async () => {
+    // The recovery path exists to finish an interrupted refund. Intent is not
+    // recoverable from state — a dismissed job and one whose refund threw both read
+    // `failed` and unrefunded — so before the decision was persisted, a second
+    // click reversed a deliberate "close without refund" and the audit log stamped
+    // it as the completion of the first decision.
+    const before = await getBalance(APP, BUYER);
+    const jobId = await heldJob();
+    const charged = await getBalance(APP, BUYER);
+    expect(charged).toBeLessThan(before);
+
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'dismiss', reason: 'abusive request — deliberately no refund' },
+    });
+
+    const again = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    expect(again.statusCode).toBe(409);
+    expect(await getBalance(APP, BUYER)).toBe(charged);
+  });
+
+  it('does not report a failure when there was nothing to refund', { timeout: RUN_TIMEOUT }, async () => {
+    // `refundForJob` returns false for "already refunded", "nothing consumed" and
+    // "the job may still run". Reporting all three as `refundFailed` told the admin
+    // to retry forever on a buyer who was never charged.
+    const jobId = await heldJob();
+    const store = await import('@agent-researcher/core');
+    // The job consumed credits; drop the consume entry to stand in for a job that
+    // never did (an admin-created run, or `APP_ENV=local`).
+    const spy = vi.spyOn(store, 'wasJobConsumed').mockResolvedValue(false);
+    const refundSpy = vi.spyOn(store, 'refundForJob').mockResolvedValue(false);
+
+    const res = await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    spy.mockRestore();
+    refundSpy.mockRestore();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().refunded).toBe(false);
+    expect(res.json().refundFailed, 'told the admin to retry a refund that was never owed').toBeUndefined();
+  });
+
+  it('books the failed report once, not twice', { timeout: RUN_TIMEOUT }, async () => {
+    // The recovery path finishes a decision; it does not make a new one. Booking
+    // stats there counts the same failure twice in the loss accounting, and the
+    // guard that prevents it was unpinned.
+    const stats = await import('@agent-researcher/core');
+    const booked = vi.spyOn(stats, 'recordReportStats');
+    const jobId = await heldJob();
+
+    const store = await import('@agent-researcher/core');
+    const failOnce = vi.spyOn(store, 'refundForJob').mockRejectedValueOnce(new Error('firestore unavailable'));
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    failOnce.mockRestore();
+    const afterFirst = booked.mock.calls.length;
+    expect(afterFirst, 'the real resolution never booked anything').toBeGreaterThan(0);
+
+    await app.inject({
+      method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken),
+      payload: { outcome: 'refund' },
+    });
+    expect(booked.mock.calls.length).toBe(afterFirst);
+    booked.mockRestore();
+  });
+
   it('resolve → dismiss: closes the job and keeps the credits', { timeout: RUN_TIMEOUT }, async () => {
     const jobId = await heldJob();
     const afterCharge = await getBalance(APP, BUYER);

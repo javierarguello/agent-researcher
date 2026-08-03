@@ -45,6 +45,18 @@ export interface JobHold {
   /** Audit: who let it continue, and when. Set on approval; the job goes back to `queued`. */
   approvedBy?: string;
   approvedAt?: string;
+  /**
+   * What the admin DECIDED when they closed it, and who.
+   *
+   * Persisted because intent is not recoverable from state. A dismissed job and a
+   * job whose refund blew up both read `failed` + unrefunded, so the recovery path
+   * — which exists to finish an interrupted refund — was reversing deliberate
+   * "close without refund" decisions on a second click, and stamping it in the
+   * audit log as the completion of the first one.
+   */
+  resolvedOutcome?: 'refund' | 'dismiss';
+  resolvedBy?: string;
+  resolvedAt?: string;
 }
 
 export interface JobFile {

@@ -38,9 +38,12 @@ const CHECKPOINT = 'checkpoint.json';
  * exactly the case an admin created on purpose.
  */
 function ceilingText(ceilingUsd: number | null | undefined): string {
-  return ceilingUsd == null
-    ? 'Passed the per-job cost ceiling.'
-    : `Passed the per-job ceiling of $${ceilingUsd.toFixed(2)}.`;
+  if (ceilingUsd == null) return 'Passed the per-job cost ceiling.';
+  // Two decimals replaced a WRONG number with a meaningless one: the catalog case
+  // this whole fix exists for is a mode declaring `maxCostUsd: 0.002`, which
+  // printed "$0.00" next to a spend figure the admin then could not reconcile.
+  const shown = ceilingUsd < 0.01 ? ceilingUsd.toPrecision(2) : ceilingUsd.toFixed(2);
+  return `Passed the per-job ceiling of $${shown}.`;
 }
 
 export interface RunJobInput {
