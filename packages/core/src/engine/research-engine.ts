@@ -69,7 +69,11 @@ export interface ReportMeta {
   contentFormat: 'markdown';
   /** Total cost of the report (LLM exact + search estimate). */
   cost: Cost;
-  /** Agent ids that failed and were filled with a degraded placeholder. */
+  /**
+   * SECTION KEYS that could not be completed and hold a placeholder — not agent
+   * ids, whatever this comment used to say. It is the contract both renderers key
+   * on to suppress a body, so the description is load-bearing.
+   */
   degradedSections?: string[];
 }
 

@@ -9,35 +9,71 @@ Closed items keep their commit hash so they are not re-reported.
 
 ---
 
-## Status — 2026-08-01
+## Status — 2026-08-03
 
-**13 closed, 16 open.** Everything reproduced by an agent has either been fixed or
-carries its `file:line` below.
+Groups G, H, I and J are **closed and then verified**: ten agents (two per group,
+opposed lenses, each in its own worktree) re-attacked the fixes and mutation-tested
+their tests. What they found is in `af7f9f0`; the guards that held are listed in
+their reports.
 
-| | closed |
-|---|---|
-| Report integrity | G1, G2 |
-| State machine | H1, H2 |
-| Money | I1, I2 |
-| Tenancy | J1, J2 |
-| Request guards | K1, K2, K3, K4, K5 |
-| Test suite | the suites were never typechecked (`d20c99b`) |
+**Group K is REOPENED and parked — see below. It is the only group whose fix did
+not survive review, and the reason is structural rather than a missing case.**
 
-**Open, in the order I would take them:**
+What the verification pass changed about how this backlog should be read: the most
+valuable findings were not new bugs but **guards that shipped without reaching
+production** and **tests that could not fail**. The PDF fix was dead in production
+because its only caller was untested; three assertions passed regardless of the
+code they named. Assume that class exists everywhere until a mutation says
+otherwise.
 
-1. **J3** — `requireAdmin` trusts the token's `role` claim, so removing someone from
-   `adminEmails` (the only de-admin control in the product) does nothing for up to
-   seven days, and a password reset does not evict an intruder. The plumbing to fix
-   it already exists: deactivating the *app* IS re-read per request.
-2. **H3** — a throw before `runJob`'s try block leaves the job stranded `running`
-   with the buyer's only slot held, and the worker acks it 200.
-3. **J4** — emailed verify/reset links are unlimited-use for their whole TTL.
-4. **K6, K7** — `/research/preflight` has no meter at all; the burst guard runs
-   after the outbound captcha verify.
-5. **I3–I6**, **H4–H6**, **J5, J6**, **K8**, **G3** — smaller, each self-contained.
-6. **The 13 tests proven unable to fail** (group L), each with the one-line source
-   change that would prove it.
-7. **M — the red-team pass that has not been run yet** (below).
+---
+
+## K · The pre-screen — REOPENED, parked for a decision (2026-08-03)
+
+Two independent reviewers, both running strings rather than reading regexes:
+**85 injection strings pass** the pre-screen, and **59 ordinary business phrasings
+are rejected** with a hard 422. Full lists are in their reports; the shape is what
+matters.
+
+**The cause is structural, not a missing case.** `ATTRIBUTED` is a negative
+lookahead on the token *following* the trigger, and it is being asked to tell
+"instructions provided **by the broker**" from "instructions provided **to you**".
+Those are the same word in the same position. Every one of the ~44 surviving
+whitelist tokens works as an attack continuation, and ~30 of them have no corpus
+coverage at all. Narrowing it produces false positives; widening it reopens the
+screen. `2c41984` and `a5f906d` are the two ends of that swing.
+
+The same tension appears in every rule that tries to read intent: the equipment
+exemption (an attacker writes "the terminal you are running on"), the price
+lookahead, the persona rule.
+
+**Where the pre-screen is genuinely irreplaceable is evasion** — invisible
+characters, homoglyphs, padding, leet — because that is where a classifier is
+weakest and a normalizer is strongest. It currently fails there too: `ig-nore`
+(a real hyphen), eleven invisible code points outside the class, six homoglyphs
+outside the table, and any digit substitution all walk through.
+
+**Two ways forward, and the choice is a product decision:**
+
+1. **Refocus.** The pre-screen owns normalization and evasion and stops trying to
+   out-regex a classifier on semantics. Fewer false positives by construction, and
+   the layer gets stronger at the thing only it can do. Costs recall whenever the
+   classifier is off, failing open, or skipped — which today includes
+   `/research/preflight` with assist off.
+2. **Keep patching.** One reviewer prototyped a better discriminator — a
+   rest-of-sentence check for `you|your|print|output|reveal|obey|instead|verbatim`
+   — and reports it passes all 120 tests, blocks all 19 corpus attacks, and
+   recovers both documented false positives. They also showed it is enumerable and
+   therefore borrowable, like every exemption before it.
+
+Until then, K1-K5 stay closed (they are real improvements over what preceded them)
+and this sits above them as the honest state of the layer.
+
+**The pre-screen also decides on one blob**, not per field: `collectFreeText` joins
+array elements with `", "` and the gap matches it, so two innocent keywords can
+still fuse into a 422. The test that claimed otherwise now says so.
+
+---
 
 **The pattern worth reading first:** three agents independently found the same
 shape — **blind writes living in a system whose safety comes from status-checked
@@ -283,3 +319,63 @@ interesting result is the third case — somewhere the architecture is assumed r
 than enforced. `_handoff` and fetched page bodies are where I would look first,
 because both are text a model wrote or a stranger published, travelling into another
 prompt with nothing in between.
+
+---
+
+## N · Left open by the verification pass (2026-08-03)
+
+Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
+
+**Product decisions, not defects:**
+
+- **N1 — A half-improved section ships as whole.** When a refiner fails but its
+  producer succeeded, the section is kept (right — real content beats a
+  placeholder) and delivered as complete. The only record is an admin warning, and
+  `meta.degradedSections` lists fully-lost keys only, so the buyer's notice never
+  fires and the price is unchanged. The flagship sells partly on its four enrich
+  passes. Expressing it needs a new meta field (`unenrichedSections` or similar)
+  and a decision about the price.
+- **N2 — Stripe clawback.** No handling for refunds or disputes: credits already
+  granted stay granted. Policy, not a bug.
+- **N3 — PDFs rendered before `3f12880` are still fabricated in storage.**
+  `renderJobPdf` never regenerates. Needs a one-off force-regenerate over degraded
+  jobs — touches production data, so it needs your go-ahead.
+
+**Known gaps, small:**
+
+- **N4 — A stale dispatch still overwrites `trace.json`, `cost` and `progress`,**
+  and can deliver its older report and delete the checkpoint before `markCompleted`
+  refuses it. The token guards the checkpoint and the terminal writes; the
+  intermediate artifacts are not token-scoped.
+- **N5 — `run-job` ignores `markHeld`'s return value** at three sites: a refused
+  park still reports `held` to the worker. Cosmetic today.
+- **N6 — Grant dedupe is broken across the `825d51d` deploy boundary** — one-time,
+  and only for scripted callers, since the admin SPA never sends a key.
+- **N7 — `refundForJob`'s `appId`/`userId` parameters are dead weight** now that
+  the owner comes from the ledger. The signature still invites a caller to believe
+  they choose the recipient.
+- **N8 — Old verify/reset links stay multi-use** until their TTL expires (24h/1h
+  after the `b338240` deploy), because they carry no `tokenId`.
+- **N9 — A stale SPA bundle turns a good verification link into "expired".**
+  Self-heals on reload; nothing tells the user that.
+- **N10 — `createApp` in core validates no appId at all** (the CLI path), so the
+  `_` rule is enforced at one of two creation surfaces.
+- **N11 — Zero-credit modes and paid sessions with no metadata** both fail
+  awkwardly (a 500 and a silent drop). Neither is reachable today.
+
+**Untested guards the mutation pass named:**
+
+- **N12 — The retry path's slot compensation** (the approve twin is tested).
+- **N13 — `parkAndRethrow`'s slot release**, and the incomplete/held-path
+  `setProgress` catches — the compact fixture never reaches those branches.
+- **N14 — The revocation check's fail-open on a Firestore error.** If someone
+  tidies that `.catch` away, every authenticated request during an outage becomes a
+  500 and no test notices.
+- **N15 — `report-read` tokens are exempt from revocation.** Probably intended
+  (admin-minted, 15-minute TTL); currently neither stated nor tested.
+
+**Test hygiene:**
+
+- **N16 — `run-job-resilience.test.ts` restores its spies after its assertions,**
+  so one real failure cascades into four or five unrelated ones. Diagnosing a
+  regression there is noisier than it should be.
