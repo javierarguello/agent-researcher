@@ -9,7 +9,8 @@
  * assisted reviews. Only this one starts a cooldown.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { reserveAssistedReview, resetAssistAllowance, ASSIST_FREE_ATTEMPTS, ASSIST_USER_ATTEMPTS, getUserFlags } from '../src/stats/store.js';
+import { reserveAssistedReview, resetAssistAllowance, ASSIST_FREE_ATTEMPTS,
+  ASSIST_USER_ATTEMPTS, getUserFlags } from '../src/stats/store.js';
 import { queryUsers } from '../src/stats/store.js';
 
 const A = 'fbizlab';
@@ -88,6 +89,12 @@ describe('assisted-review allowance', () => {
   it('generating ends the draft: the next report gets its attempts back', async () => {
     for (let i = 0; i <= ASSIST_FREE_ATTEMPTS; i++) await reserveAssistedReview(A, U, 'draft-1');
     expect((await reserveAssistedReview(A, U, 'draft-1')).reason).toBe('attempts');
+
+    // A cooldown has to be EARNED first, or "it is cleared" is true of a field that
+    // was never set — which is how deleting the clear left this green. Crossing the
+    // per-user attempt ceiling is what writes one.
+    for (let i = 0; i <= ASSIST_USER_ATTEMPTS; i++) await reserveAssistedReview(A, U, `draft-${i}`);
+    expect((await record())!.assistCooldownUntil).toBeTruthy();
 
     await resetAssistAllowance(A, U);
     const after = await record();

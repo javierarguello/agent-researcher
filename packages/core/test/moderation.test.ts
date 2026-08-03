@@ -6,6 +6,7 @@
  *  - the preview a user sees is a pure function of their params.
  */
 import { writableConfig } from './writable-config.js';
+import { z } from 'zod';
 import { describe, it, expect, afterEach } from 'vitest';
 import { preScreen, collectFreeText, moderateResearchParams } from '../src/moderation/moderate.js';
 import { tolerantPattern } from '../src/util/text.js';
@@ -335,12 +336,36 @@ describe('corrections — a proposal must be a correction, not a substitution', 
   });
 
   it('never invents a value for a field the user left empty', () => {
+    // Belt and braces: the similarity check already rejects this, so the explicit
+    // empty-field guard cannot be isolated through the public function. Asserted as
+    // BEHAVIOUR — the model must not fill a blank the user left — rather than
+    // pretending to pin the line.
     expect(acceptCorrections(tpl, params({ industry: '' }), [{ field: 'industry', value: 'Laundromats' }])).toEqual([]);
   });
 
-  it('rejects a proposal that would not validate against the schema', () => {
-    const tooLong = 'Miami-Dade County, FL'.padEnd(500, ' x');
-    expect(propose('location', tooLong)).toEqual([]);
+  it('rejects a value the length bound alone would let through', () => {
+    // The previous version used a 500-character value, which the per-field length
+    // bound rejects long before the schema is consulted — so deleting the schema
+    // check left it green.
+    //
+    // In the shipped template the schema can never be reached at all: each
+    // correctable field's `maxLength` equals its schema's own max, so a sanitized
+    // proposal always validates. The guard is there for a template whose whitelist
+    // is looser than its schema, and this is that template.
+    const loose: typeof tpl = {
+      ...tpl,
+      paramsSchema: z.object({ industry: z.string().max(12).optional(), location: z.string().optional() }) as never,
+      preflight: { ...tpl.preflight!, correctable: [{ field: 'industry', maxLength: 200 }] },
+    };
+    const p = { industry: 'laundromat', location: 'Miami' } as Record<string, unknown>;
+
+    // Passes sanitize, length and similarity; fails `max(12)`.
+    expect(acceptCorrections(loose, p, [{ field: 'industry', value: 'laundromats and dry cleaners' }])).toEqual([]);
+    // …and a correction that DOES validate still comes through, so the test is not
+    // just asserting that nothing is ever accepted.
+    expect(acceptCorrections(loose, p, [{ field: 'industry', value: 'laundromats' }])).toEqual([
+      { field: 'industry', from: 'laundromat', to: 'laundromats' },
+    ]);
   });
 
   it('rejects the original with a payload appended (the shape that passes similarity)', () => {
