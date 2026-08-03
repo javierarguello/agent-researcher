@@ -131,18 +131,18 @@ together, and `store.ts` is the only writer. What is left is who is trusted.
   victim's address with the attacker's password; the victim clicks a genuine
   "verify your email"; the attacker signs in. Reaches admin only if the admin app is
   given `emailFrom`/`webUrl`.
-- **J3 — No session revocation of any kind.** `auth.ts:103-108`. **Reproduced.**
+- ~~**J3 — No session revocation of any kind.**~~ **Closed `PENDING`.** `auth.ts:103-108`. **Reproduced.**
   `requireAdmin` trusts the token's `role` claim; removing someone from
   `adminEmails` — the only de-admin control — does nothing for up to 7 days. A
   password reset does not evict an intruder either. (Deactivating the *app* does
   work, so the per-request plumbing exists.)
-- **J4 — Emailed verify/reset links are unlimited-use for their whole TTL.**
+- ~~**J4 — Emailed verify/reset links are unlimited-use for their whole TTL.**~~ **Closed `PENDING`.**
   `index.ts:423-447`, `:517-539`. **Reproduced** — same reset token replayed returns
   a fresh 7-day session each time.
-- **J5 — `${appId}__${userId}` keys are ambiguous** and the appId pattern permits
+- ~~**J5 — `${appId}__${userId}` keys are ambiguous**~~ **Closed `PENDING`.** and the appId pattern permits
   `_`. `credits/store.ts:29`, `index.ts:1855`. **Reproduced.** One character in the
   pattern closes it.
-- **J6 — No `setErrorHandler`,** so Fastify's default returns `err.message` on a 500.
+- ~~**J6 — No `setErrorHandler`,**~~ **Closed `PENDING`.** so Fastify's default returns `err.message` on a 500.
 
 ## K · Request guards — both directions
 

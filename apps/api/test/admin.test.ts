@@ -264,3 +264,76 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
     }
   });
 });
+
+describe('admin rights are re-read, not carried in the token', () => {
+  it('de-admining takes effect on the next request, not in seven days', async () => {
+    const { updateApp } = await import('@agent-researcher/core');
+    const t = await adminToken();
+    expect((await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(t) })).statusCode).toBe(200);
+
+    // The only de-admin control the product has. On the token's claim alone it did
+    // nothing at all for the remaining life of the session — up to seven days of
+    // granting credits and resolving jobs after being removed.
+    await updateApp('admin', { adminEmails: [] });
+
+    expect((await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(t) })).statusCode).toBe(403);
+    // A second route, so this is about the gate and not about one handler. (Body
+    // validation runs before the preHandler, so a route with a payload would answer
+    // 400 first and prove nothing.)
+    expect((await app.inject({ method: 'GET', url: '/admin/stats', headers: auth(t) })).statusCode).toBe(403);
+  });
+
+  it('still lets a whitelisted admin through', async () => {
+    const t = await adminToken();
+    expect((await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(t) })).statusCode).toBe(200);
+  });
+});
+
+describe('an unexpected failure says nothing about our infrastructure', () => {
+  it('answers 500 with one sentence, not the error text', async () => {
+    // Fastify's default returns `err.message`, so an unhandled Firestore or GCS
+    // error handed its own text — collection names, document paths, project ids —
+    // to whoever made the request.
+    const core = await import('@agent-researcher/core');
+    const spy = vi.spyOn(core, 'listApps').mockRejectedValueOnce(
+      new Error('7 PERMISSION_DENIED: Missing or insufficient permissions on projects/sinuous-canto-497518-h7/databases/(default)'),
+    );
+
+    const res = await app.inject({ method: 'GET', url: '/admin/apps', headers: auth(await adminToken()) });
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toMatch(/PERMISSION_DENIED|projects\/|databases/);
+    expect(res.json().error).toMatch(/something went wrong/i);
+    spy.mockRestore();
+  });
+
+  it('still returns the message we wrote for a 4xx', async () => {
+    // Validation and our own refusals are ours to say out loud; only the
+    // unanticipated is generic.
+    const res = await app.inject({ method: 'GET', url: '/admin/apps' });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toMatch(/unauthorized/i);
+  });
+});
+
+describe('an app id cannot make two identities share one key', () => {
+  it('refuses an underscore', async () => {
+    // Balances, credentials and stats are keyed `<appId>__<userId>`, and an
+    // underscore is legal in an email local part — so `acme__eu` + `rich@x.com` and
+    // `acme` + `eu__rich@x.com` produce the same key: one password hash, one
+    // balance and one `emailVerified` flag serving two different people in two
+    // different apps.
+    const res = await app.inject({
+      method: 'POST', url: '/admin/apps', headers: auth(await adminToken()),
+      payload: { appId: 'acme__eu', name: 'Acme EU' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('still accepts a hyphen', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/admin/apps', headers: auth(await adminToken()),
+      payload: { appId: 'acme-eu', name: 'Acme EU' },
+    });
+    expect(res.statusCode).toBeLessThan(400);
+  });
+});

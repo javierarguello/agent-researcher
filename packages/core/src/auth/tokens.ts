@@ -8,6 +8,7 @@
  */
 import { OAuth2Client } from 'google-auth-library';
 import { SignJWT, jwtVerify } from 'jose';
+import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 
 export type SessionRole = 'user' | 'admin';
@@ -25,6 +26,16 @@ export interface SessionClaims {
   scope?: 'report-read' | 'verify-email' | 'reset-password';
   /** The one job a `report-read` token may access. */
   jobId?: string;
+  /** Unique id of a single-purpose email link, so redeeming it can be recorded. */
+  tokenId?: string;
+  /**
+   * When this token was issued (epoch seconds), read straight from the JWT.
+   *
+   * `signSession` sets it; nothing else should. It is what lets a stateless session
+   * be revoked — compared against the account's `credentialsChangedAt`, a token
+   * minted before a password reset is refused instead of living out its week.
+   */
+  issuedAt?: number;
 }
 
 const secret = () => {
@@ -40,6 +51,7 @@ export async function signSession(claims: SessionClaims, ttlSeconds = config.aut
     ...(claims.name ? { name: claims.name } : {}),
     ...(claims.scope ? { scope: claims.scope } : {}),
     ...(claims.jobId ? { jobId: claims.jobId } : {}),
+    ...(claims.tokenId ? { tokenId: claims.tokenId } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.email)
@@ -68,7 +80,14 @@ export async function signActionToken(
   input: { email: string; appId: string; scope: 'verify-email' | 'reset-password' },
   ttlSeconds: number,
 ): Promise<string> {
-  return signSession({ email: input.email, appId: input.appId, role: 'user', scope: input.scope }, ttlSeconds);
+  // Each link carries its own id, so redeeming it can be recorded and a replay
+  // refused. A timestamp cannot do this job: `iat` is in SECONDS, and the flows
+  // that legitimately mint a session in the same second as the change need an
+  // inclusive comparison — which is exactly what lets a replay through.
+  return signSession(
+    { email: input.email, appId: input.appId, role: 'user', scope: input.scope, tokenId: randomUUID() },
+    ttlSeconds,
+  );
 }
 
 /** Verify one of our session JWTs. Throws if invalid/expired. */
@@ -85,6 +104,8 @@ export async function verifySession(token: string): Promise<SessionClaims> {
         ? payload.scope
         : undefined,
     jobId: payload.jobId as string | undefined,
+    tokenId: payload.tokenId as string | undefined,
+    issuedAt: typeof payload.iat === 'number' ? payload.iat : undefined,
   };
 }
 

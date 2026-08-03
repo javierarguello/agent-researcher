@@ -25,6 +25,17 @@ export interface UserCredential {
   /** Present only for password users. */
   passwordHash?: string;
   emailVerified: boolean;
+  /**
+   * When this account's credentials last changed — a password set or reset, or the
+   * address being verified.
+   *
+   * It is what makes a stateless session revocable, and what makes an emailed link
+   * single-use. Sessions are JWTs with a seven-day life, so before this a password
+   * reset did not evict whoever had stolen the account, and a reset link stayed
+   * redeemable for its whole TTL however many times it had already been used.
+   * Anything issued at or before this moment is refused.
+   */
+  credentialsChangedAt?: string;
   /** Auth methods linked to this record. */
   providers: AuthProvider[];
   createdAt: string;
@@ -107,7 +118,55 @@ export async function createPasswordUser(input: { appId: string; email: string; 
 }
 
 export async function setEmailVerified(appId: string, email: string): Promise<void> {
-  await credentials().doc(docId(appId, email)).set({ emailVerified: true, updatedAt: nowIso() }, { merge: true });
+  const now = nowIso();
+  // Stamping here is what makes the verification link one-time: the token that
+  // opened this door was issued before this moment, so it cannot open it again.
+  await credentials()
+    .doc(docId(appId, email))
+    .set({ emailVerified: true, credentialsChangedAt: now, updatedAt: now }, { merge: true });
+}
+
+/**
+ * Redeem a single-purpose email link, once.
+ *
+ * Returns false if this exact link has already been used. Transactional, so two
+ * clicks racing each other cannot both win.
+ *
+ * A link that stays redeemable for its whole TTL is a repeatable account takeover:
+ * reset links reach inbox backups, forwarded threads, shared browsers and link
+ * scanners, and each redemption handed out a fresh seven-day session.
+ */
+export async function consumeActionToken(tokenId: string): Promise<boolean> {
+  const ref = firestore().collection(config.auth.usedTokensCollection).doc(tokenId);
+  return firestore().runTransaction(async (tx) => {
+    if ((await tx.get(ref)).exists) return false;
+    tx.set(ref, { usedAt: nowIso() });
+    return true;
+  });
+}
+
+/**
+ * Whether a token issued at `issuedAt` (epoch seconds) still belongs to a live set
+ * of credentials.
+ *
+ * Fails OPEN when there is no record or no stamp: an app-key caller and an account
+ * that has never changed anything have nothing to compare against, and refusing
+ * them would sign everyone out the moment this shipped.
+ */
+export function credentialsStillValid(
+  cred: Pick<UserCredential, 'credentialsChangedAt'> | undefined,
+  issuedAt: number | undefined,
+): boolean {
+  if (!cred?.credentialsChangedAt || !issuedAt) return true;
+  // Inclusive, because a JWT's `iat` is in SECONDS. Resetting a password issues a
+  // session in the same second, and so does verifying then signing straight in —
+  // with a strict comparison those are indistinguishable from a token minted
+  // before the change, and every legitimate flow that ends in a login breaks.
+  //
+  // What that costs: a stolen session minted inside the same second as the reset
+  // survives. The scenario this exists for — an intruder holding a session from
+  // before — is unaffected, because that token is seconds or days older.
+  return issuedAt >= Math.floor(new Date(cred.credentialsChangedAt).getTime() / 1000);
 }
 
 /**
@@ -136,7 +195,11 @@ export async function setPassword(
     const cur = (snap.exists ? snap.data() : {}) as Partial<UserCredential>;
     if (opts.onlyIfUnverified && cur.emailVerified === true) return false;
     const providers = Array.from(new Set([...(cur.providers ?? []), 'password'])) as AuthProvider[];
-    tx.set(ref, { passwordHash, providers, updatedAt: nowIso() }, { merge: true });
+    const now = nowIso();
+    // A new password ends every session that knew the old one. Recovering a
+    // compromised account has to actually evict the intruder, and it did not: the
+    // session they held stayed valid for the rest of its seven days.
+    tx.set(ref, { passwordHash, providers, credentialsChangedAt: now, updatedAt: now }, { merge: true });
     return true;
   });
 }

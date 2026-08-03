@@ -104,6 +104,8 @@ export const config = {
     jwtTtlSeconds: int('AUTH_JWT_TTL_SECONDS', 604800),
     /** Password-based user credentials (email verification, reset). */
     credentialsCollection: str('CREDENTIALS_COLLECTION', 'user-credentials'),
+    /** Redeemed email links, so a verify/reset link cannot be used twice. */
+    usedTokensCollection: str('USED_TOKENS_COLLECTION', 'used-action-tokens'),
     /** Email-verification link lifetime (default 24h). */
     verifyTtlSeconds: int('AUTH_VERIFY_TTL_SECONDS', 86400),
     /** Password-reset link lifetime (default 1h). */

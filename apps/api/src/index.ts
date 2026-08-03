@@ -11,6 +11,7 @@
  * tokens (whitelisted emails on the admin app) unlock /admin/*. Docs: /docs.
  */
 import { randomUUID } from 'node:crypto';
+import type { FastifyError } from 'fastify';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
@@ -23,6 +24,8 @@ import {
   checkRateLimits,
   peekRateLimits,
   createJob,
+  consumeActionToken,
+  credentialsStillValid,
   inFlightSlots,
   claimJobSlot,
   releaseJobSlot,
@@ -110,7 +113,7 @@ import {
   type JobStatus,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
-import { jwtAuth, requireAdmin } from './auth.js';
+import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan, isValidAppId } from './stripe.js';
 import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_EMPTY_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
 import { publicLimit, clientIp } from './public-limit.js';
@@ -183,6 +186,24 @@ await app.register(cors, {
 });
 
 // --- Auth (after swagger so /docs stays public) -----------------------------
+/**
+ * What a caller learns when something we did not anticipate goes wrong.
+ *
+ * Fastify's default returns `err.message` on a 500, so an unhandled Firestore or
+ * GCS error handed its own text — collection names, document paths, project
+ * identifiers — to whoever made the request. Validation errors (which Fastify
+ * raises with a `statusCode` and a message we wrote in the schema) still go back
+ * as they are; anything else is logged in full and answered with one sentence.
+ */
+app.setErrorHandler((err: FastifyError, req, reply) => {
+  const status = err.statusCode ?? 500;
+  if (status < 500) {
+    return reply.code(status).send({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+  }
+  req.log.error({ err, url: req.url }, 'unhandled error');
+  return reply.code(500).send({ error: 'Something went wrong on our side. Please try again.' });
+});
+
 app.addHook('onRequest', jwtAuth);
 
 const sec = [{ bearerAuth: [] }];
@@ -460,7 +481,14 @@ app.post(
       logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'WARNING', 'auth.verify_wrong_password', {});
       return reply.code(401).send({ error: 'That password does not match the one chosen when this account was created.' });
     }
+    // Redeemed only AFTER the password matched. Consuming it first would mean one
+    // typo costs a legitimate user their registration — and would hand an attacker
+    // a way to burn someone else's link by guessing wrong on purpose.
+    if (claims.tokenId && !(await consumeActionToken(claims.tokenId))) {
+      return reply.code(400).send({ error: 'This verification link has already been used.' });
+    }
     await setEmailVerified(claims.appId, claims.email);
+    forgetCachedCredential(claims.appId, claims.email);
     logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'INFO', 'auth.email_verified', {});
     // Still no session, for the same reason it was removed: verification is about
     // the address, and signing in is where a session comes from.
@@ -551,8 +579,18 @@ app.post(
     if (!appRec || !appRec.active) return reply.code(404).send({ error: 'Unknown or inactive app.' });
     const cred = await getCredential(claims.appId, claims.email);
     if (!cred) return reply.code(400).send({ error: 'Account not found.' });
+    // One use per link, and it matters more here: a reset link that reaches a link
+    // scanner, an inbox backup or a shared browser was a repeatable account
+    // takeover for its whole TTL, each redemption handing out a fresh seven-day
+    // session.
+    if (claims.tokenId && !(await consumeActionToken(claims.tokenId))) {
+      return reply.code(400).send({ error: 'This reset link has already been used.' });
+    }
     const passwordHash = await hashPassword(b.password);
     await setPassword(claims.appId, claims.email, passwordHash);
+    // Immediately, not within the cache window: evicting whoever held the old
+    // password is the entire point of resetting it.
+    forgetCachedCredential(claims.appId, claims.email);
     // Resetting via the emailed link proves ownership — verify the address too.
     if (!cred.emailVerified) await setEmailVerified(claims.appId, claims.email);
     logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'INFO', 'auth.password_reset', {});
@@ -1961,7 +1999,7 @@ app.post(
           // Must stay within what `isValidAppId` accepts (apps/api/src/stripe.ts):
           // an app id outside it is silently unbillable — no catalog, no checkout —
           // which is a miserable thing to debug months after the app was created.
-          appId: { type: 'string', maxLength: 64, pattern: '^[a-z0-9][a-z0-9-_]{0,63}$', description: 'Optional slug doc id (lowercase, digits, - and _); a UUID is generated if omitted.' },
+          appId: { type: 'string', maxLength: 64, pattern: '^[a-z0-9][a-z0-9-]{0,63}$', description: 'Optional slug doc id (lowercase, digits and -); a UUID is generated if omitted. Underscores are not allowed: balances, credentials and stats are keyed `<appId>__<userId>`, so an appId containing `_` makes two different identities share one key.' },
           rateLimitPerHour: { type: 'integer', minimum: 1, maximum: 1_000_000, description: 'Optional reports/hour cap.' },
           allowedTemplates: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 128 }, description: 'If set, the only models this app may run (admin apps are exempt).' },
           googleClientId: { type: 'string', maxLength: 256 },

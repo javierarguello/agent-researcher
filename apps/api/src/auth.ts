@@ -9,7 +9,39 @@
  * headers (x-app-id / x-user-id / x-role) so local testing needs no JWT.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { config, getApp, verifySession, type AppRecord, type SessionClaims } from '@agent-researcher/core';
+import {
+  config,
+  credentialsStillValid,
+  getApp,
+  getCredential,
+  verifySession,
+  type AppRecord,
+  type SessionClaims,
+} from '@agent-researcher/core';
+import { bustPublicCache, cached } from './cache.js';
+
+/**
+ * How stale a revocation check may be.
+ *
+ * The trade, stated: without a cache this is a Firestore read on every
+ * authenticated request; with one, a revoked session survives at most this long. A
+ * minute is the difference between seven days and before they finish reading the
+ * page, at roughly one read per user per minute. The two endpoints that must be
+ * exact — verify-email and reset-password — read the credential themselves.
+ */
+const REVOCATION_TTL_MS = 60_000;
+
+/**
+ * Forget the cached credential for one account.
+ *
+ * The cache is what keeps the revocation check off the per-request path, and it is
+ * also what would make a password reset take up to a minute to evict an intruder.
+ * Our own flows know the moment they change something, so they say so and eviction
+ * is immediate; the window only applies to a change made outside them.
+ */
+export function forgetCachedCredential(appId: string, email: string): void {
+  bustPublicCache(`cred:${appId}:${email}`);
+}
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -75,6 +107,21 @@ export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise
     return;
   }
 
+  // A session outlives the account it was minted for unless something checks.
+  // `credentialsChangedAt` is the revocation point; anything issued at or before it
+  // is refused. Fails open for an account with no record or no stamp.
+  if (claims.scope !== 'report-read') {
+    const cred = await cached(
+      `cred:${claims.appId}:${claims.email}`,
+      REVOCATION_TTL_MS,
+      () => getCredential(claims.appId, claims.email),
+    ).catch(() => undefined);
+    if (!credentialsStillValid(cred, claims.issuedAt)) {
+      await reply.code(401).send({ error: 'Unauthorized: this session ended when the account credentials changed.' });
+      return;
+    }
+  }
+
   req.auth = claims;
   req.appRecord = app;
 
@@ -99,10 +146,23 @@ export async function jwtAuth(req: FastifyRequest, reply: FastifyReply): Promise
   }
 }
 
-/** Guards admin-only routes. Must run after jwtAuth. */
+/**
+ * Guards admin-only routes. Must run after jwtAuth.
+ *
+ * The whitelist is re-read on every request, never trusted from the token.
+ * Removing someone from `adminEmails` is the only de-admin control this product
+ * has, and on the claim alone it did nothing for the remaining life of their
+ * session — up to seven days of granting credits and resolving jobs after being
+ * removed. `jwtAuth` has already loaded the app record, so this costs nothing.
+ */
 export async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (config.server.appEnv === 'local') return; // local dev — allow
   if (req.auth?.role !== 'admin') {
+    await reply.code(403).send({ error: 'Forbidden: admin token required.' });
+    return;
+  }
+  const whitelist = (req.appRecord?.adminEmails ?? []).map((e) => e.toLowerCase());
+  if (!whitelist.includes((req.auth.email ?? '').toLowerCase())) {
     await reply.code(403).send({ error: 'Forbidden: admin token required.' });
   }
 }

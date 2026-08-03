@@ -164,6 +164,8 @@ export type { SessionClaims, SessionRole, Identity, IdentityProvider } from './a
 // Auth (password credentials + email verification / reset)
 export { hashPassword, verifyPassword, passwordProblem, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN } from './auth/passwords.js';
 export {
+  consumeActionToken,
+  credentialsStillValid,
   getCredential,
   createPasswordUser,
   setEmailVerified,

@@ -331,3 +331,77 @@ describe('a stranger cannot pre-register someone else\u2019s address', () => {
     expect((await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link, password: 'sup3rsecret' } })).statusCode).toBe(200);
   });
 });
+
+describe('a session lasts as long as the account says, not as long as the token', () => {
+  beforeEach(async () => {
+    sent.length = 0;
+    await seedEmailApp();
+  });
+
+  /** Register, verify, sign in — the ordinary path — and hand back the session. */
+  async function liveSession(email = 'live@x.com'): Promise<string> {
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email } });
+    await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: tokenFromLast('verify'), password: reg.password },
+    });
+    const login = await app.inject({
+      method: 'POST', url: '/auth/session',
+      payload: { appId: 'fbizlab', provider: 'password', email, password: reg.password },
+    });
+    return (login.json() as { token: string }).token;
+  }
+
+  it('a password reset evicts the session someone else was holding', async () => {
+    // The point of resetting a password on a compromised account. Before this, the
+    // intruder simply kept using the session they already had, for the rest of its
+    // seven days.
+    const stolen = await liveSession();
+    expect((await app.inject({ method: 'GET', url: '/me/stats', headers: { authorization: `Bearer ${stolen}` } })).statusCode).toBe(200);
+
+    // A real second, because the session has to be OLDER than the reset — which in
+    // reality it always is, since an intruder holds it for minutes or days. A JWT's
+    // `iat` is in seconds and the rest of this test runs inside one. Fake timers
+    // deadlock the server's own async work, so this waits.
+    //
+    // That granularity is also why the comparison is inclusive: a session minted in
+    // the same second as the change cannot be told from one minted before it, and
+    // every legitimate flow that ends in a login lands exactly there.
+    await new Promise((r) => setTimeout(r, 1_100));
+
+    await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: 'live@x.com' } });
+    await app.inject({
+      method: 'POST', url: '/auth/reset-password',
+      payload: { token: tokenFromLast('reset'), password: 'Brand-New-9!' },
+    });
+
+    expect((await app.inject({ method: 'GET', url: '/me/stats', headers: { authorization: `Bearer ${stolen}` } })).statusCode).toBe(401);
+  });
+
+  it('an emailed reset link works exactly once', async () => {
+    // These arrive in URLs — inbox backups, forwarded threads, link scanners — and
+    // each redemption used to hand out a fresh seven-day session.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'once@x.com' } });
+    await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: tokenFromLast('verify'), password: reg.password },
+    });
+    await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: 'once@x.com' } });
+    const link = tokenFromLast('reset');
+
+    expect((await app.inject({ method: 'POST', url: '/auth/reset-password', payload: { token: link, password: 'First-One-9!' } })).statusCode).toBe(200);
+    const replay = await app.inject({ method: 'POST', url: '/auth/reset-password', payload: { token: link, password: 'Second-One-9!' } });
+    expect(replay.statusCode).toBe(400);
+    expect(replay.json().error).toMatch(/already been used/i);
+  });
+
+  it('an emailed verification link works exactly once', async () => {
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'twice@x.com' } });
+    const link = tokenFromLast('verify');
+
+    expect((await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link, password: reg.password } })).statusCode).toBe(200);
+    const replay = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: link, password: reg.password } });
+    expect(replay.statusCode).toBe(400);
+    expect(replay.json().error).toMatch(/already been used/i);
+  });
+});
