@@ -72,7 +72,7 @@ describe('engine — runResearch with mocked LLM + search', () => {
     const out = await run('essential');
     expect(out.trace.status).toBe('completed');
     expect(out.meta.mode).toBe('essential');
-    expect(out.meta.degradedSections).toBeUndefined();
+    expect(out.meta.sections).toBeUndefined();
 
     // Essential drops the heavy analytical sections.
     expect(Object.keys(out.report)).toHaveLength(12);
@@ -127,7 +127,7 @@ describe('engine — runResearch with mocked LLM + search', () => {
       return original(opts);
     };
     const out = await run('essential');
-    expect(out.meta.degradedSections).toContain('market_overview');
+    expect((out.meta.sections ?? []).map((x) => x.key)).toContain('market_overview');
     expect(out.trace.status).toBe('completed'); // other sections still complete
   });
 });

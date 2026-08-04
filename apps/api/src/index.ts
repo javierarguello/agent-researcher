@@ -1436,7 +1436,7 @@ app.get(
         ? s
         : // `warnings` is diagnostics: it names our agents and section keys, in
           // English, whatever language the buyer reads. They get `notice` instead.
-          { ...(s.notice ? { notice: s.notice } : {}), ...(s.degradedSections ? { degradedSections: s.degradedSections } : {}) }
+          { ...(s.notice ? { notice: s.notice } : {}), ...(s.sections ? { sections: s.sections } : {}) }
       : null;
     const base = {
       jobId: job.jobId,

@@ -36,7 +36,7 @@ export function expectUsableReport(
     expect(parsed.success, `section ${section.key}: ${JSON.stringify(parsed.error?.issues?.slice(0, 3))}`).toBe(true);
   }
 
-  const degraded = out.meta.degradedSections ?? [];
+  const degraded = (out.meta.sections ?? []).map((x) => x.key) ?? [];
   expect(degraded.length, `degraded: ${degraded.join(', ')}`).toBeLessThanOrEqual(opts.maxDegraded ?? 0);
 
   // The producer's tool loop ran, and its evidence reached the derived section.

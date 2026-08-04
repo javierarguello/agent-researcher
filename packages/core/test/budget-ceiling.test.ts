@@ -138,7 +138,7 @@ describe('the engine stops a job at its ceiling', () => {
     // degrading would write placeholders into the report, and those placeholders
     // would be what an approved job resumed from.
     expect(out.trace.status).toBe('held');
-    expect(out.meta.degradedSections).toBeUndefined();
+    expect(out.meta.sections ?? []).toEqual([]);
     expect(Object.keys(out.report)).toHaveLength(0);
   });
 
@@ -217,7 +217,7 @@ describe('the engine stops a job at its ceiling', () => {
     const out = await runResearch({ template, params: params(), jobId: 'b5', generatedAt: 't' });
 
     // Non-vacuous by construction: every section really did degrade.
-    expect((out.meta.degradedSections ?? []).length).toBeGreaterThan(0);
+    expect(((out.meta.sections ?? []).map((x) => x.key) ?? []).length).toBeGreaterThan(0);
 
     const body = JSON.stringify(out.report);
     expect(body).not.toMatch(/valid JSON|schema validation|Error:/i);

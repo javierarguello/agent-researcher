@@ -148,6 +148,7 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     // table excluded the literal name `instructions`, which is Florida's.
     ...(t.instructionsField ? { instructionsField: t.instructionsField } : {}),
     currency: t.currency ?? 'USD',
+    ...(t.cover ? { cover: t.cover } : {}),
     modes: REPORT_MODES.map((key) => {
       const cfg = t.modes?.[key] ?? DEFAULT_MODES[key];
       return { key, label: tr?.modeLabels?.[key] ?? cfg.label ?? key, credits: creditsForMode(cfg, key) };

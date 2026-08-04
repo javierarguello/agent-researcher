@@ -197,7 +197,7 @@ describe('a long handoff never costs an agent its sections', () => {
     const out = await runResearch({ template: compactModel, params: params(), jobId: 'ho5', generatedAt: 't' });
 
     expect(out.trace.status).toBe('completed');
-    expect(out.meta.degradedSections).toBeUndefined();
+    expect(out.meta.sections ?? []).toEqual([]);
     expect(out.trace.agents.every((a) => a.attempts === 1)).toBe(true);
     // Kept, but bounded — a briefing that ran long is still a useful briefing.
     expect(out.checkpoint.handoffs!.scout!.length).toBeLessThan(2_000);

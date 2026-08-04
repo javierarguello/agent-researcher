@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 
 import { runResearch } from '../src/engine/research-engine.js';
-import { degradedNotice, degradedSectionNote, heldNotice } from '../src/jobs/report-copy.js';
+import { sectionsNotice, degradedSectionNote, heldNotice } from '../src/jobs/report-copy.js';
 import { getTemplate } from '../src/templates/registry.js';
 import { installMockProvider } from './mocks/llm.js';
 import type { MockLlmProvider } from './mocks/llm.js';
@@ -35,10 +35,15 @@ function breakOneAgent(mock: MockLlmProvider): void {
   };
 }
 
+/** N sections lost, the shape `sectionsNotice` now takes. */
+const lost = (n: number) => Array.from({ length: n }, () => ({ status: 'lost' as const }));
+/** …and the other state, which gets its own sentence. */
+const shallow = (n: number) => Array.from({ length: n }, () => ({ status: 'unenriched' as const }));
+
 describe('the copy itself', () => {
   it('is written for every supported language, and says nothing internal', () => {
     for (const lang of ['en', 'es', 'fr', 'pt']) {
-      for (const text of [degradedSectionNote(lang), degradedNotice(lang, 1), degradedNotice(lang, 3)]) {
+      for (const text of [degradedSectionNote(lang), sectionsNotice(lang, lost(1)), sectionsNotice(lang, lost(3))]) {
         expect(text.length).toBeGreaterThan(20);
         // The whole point: no agent ids, no section keys, no "degraded".
         expect(text).not.toMatch(/degraded|agent|section key|schema|retries|_id|market-analyst/i);
@@ -47,9 +52,9 @@ describe('the copy itself', () => {
   });
 
   it('counts, so one missing section does not read as several', () => {
-    expect(degradedNotice('en', 1)).toMatch(/one section/i);
-    expect(degradedNotice('en', 3)).toMatch(/^3 sections/);
-    expect(degradedNotice('es', 2)).toMatch(/^2 secciones/);
+    expect(sectionsNotice('en', lost(1))).toMatch(/one section/i);
+    expect(sectionsNotice('en', lost(3))).toMatch(/^3 sections/);
+    expect(sectionsNotice('es', lost(2))).toMatch(/^2 secciones/);
   });
 
   it('tells a buyer their job is paused without naming our budget', () => {
@@ -66,7 +71,7 @@ describe('the copy itself', () => {
   });
 
   it('says nothing at all when nothing degraded', () => {
-    expect(degradedNotice('en', 0)).toBe('');
+    expect(sectionsNotice('en', lost(0))).toBe('');
   });
 
   it('falls back to English for a language we do not have', () => {
@@ -84,7 +89,7 @@ describe('a degraded report, as the buyer receives it', () => {
     breakOneAgent(mock);
     const out = await runResearch({ template, params: params('es'), jobId: 'd1', generatedAt: 't' });
 
-    expect(out.meta.degradedSections).toContain('market_overview');
+    expect((out.meta.sections ?? []).map((x) => x.key)).toContain('market_overview');
     const rendered = JSON.stringify(out.report.market_overview);
     expect(rendered).toContain('No pudimos completar esta sección');
     // The old placeholder leaked the agent's error into the document itself.

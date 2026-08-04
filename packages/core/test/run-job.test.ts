@@ -50,7 +50,7 @@ describe('run-job — a failing agent leaves a trace in Firestore + logs', () =>
     __setProviderForTests('gemini-vertex', mock);
   });
 
-  it('records degradedSections + agentErrors on the job doc and logs agent.failed', async () => {
+  it('records sections + agentErrors on the job doc and logs agent.failed', async () => {
     const params = template.paramsSchema.parse({ industry: 'laundromats', mode: 'essential' }) as Record<string, unknown>;
     // Seed on the final attempt (MAX_JOB_ATTEMPTS=2) so it finalizes/degrades this run.
     await createJob({ jobId: 'j1', appId: 'fbizlab', userId: 'u@x.com', template: template.id, params });
@@ -64,7 +64,7 @@ describe('run-job — a failing agent leaves a trace in Firestore + logs', () =>
 
     const job = (await getJob('j1'))!;
     expect(job.status).toBe('completed');
-    expect(job.summary?.degradedSections).toContain('market_overview');
+    expect(job.summary?.sections?.map((x: { key: string }) => x.key)).toContain('market_overview');
     expect((job.summary?.agentErrors ?? []).length).toBeGreaterThan(0);
 
     // The failure is in the logs, at ERROR severity, bound to the ids.

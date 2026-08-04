@@ -26,7 +26,7 @@ const sections = [
 describe('a degraded section is never rendered as findings', () => {
   it('shows our apology instead of the filler the schema required', () => {
     render(
-      <ReportViewer report={report} sections={sections} meta={{ degradedSections: ['verdict'] }} lang="en" />,
+      <ReportViewer report={report} sections={sections} meta={{ sections: [{ key: 'verdict', status: 'lost' }] }} lang="en" />,
     );
 
     // The word the placeholder was forced to pick must not reach the reader.
@@ -36,7 +36,7 @@ describe('a degraded section is never rendered as findings', () => {
 
   it('renders every other section exactly as before', () => {
     render(
-      <ReportViewer report={report} sections={sections} meta={{ degradedSections: ['verdict'] }} lang="en" />,
+      <ReportViewer report={report} sections={sections} meta={{ sections: [{ key: 'verdict', status: 'lost' }] }} lang="en" />,
     );
     // One missing section must not cost the buyer the rest of the report.
     expect(screen.getByText(/grew 12% year over year/i)).toBeTruthy();
@@ -44,7 +44,7 @@ describe('a degraded section is never rendered as findings', () => {
 
   it('speaks the buyer’s language', () => {
     render(
-      <ReportViewer report={report} sections={sections} meta={{ degradedSections: ['verdict'] }} lang="es" />,
+      <ReportViewer report={report} sections={sections} meta={{ sections: [{ key: 'verdict', status: 'lost' }] }} lang="es" />,
     );
     expect(screen.getByText(/no pudimos completar esta sección/i)).toBeTruthy();
   });
@@ -61,7 +61,7 @@ describe('a degraded section is never rendered as findings', () => {
           deep_dives: [{ business: '', askingPrice: 0 }, { business: '', askingPrice: 0 }],
         }}
         sections={[{ key: 'shortlist', title: 'Shortlist' }, { key: 'deep_dives', title: 'Deep dives' }]}
-        meta={{ degradedSections: ['deep_dives'] }}
+        meta={{ sections: [{ key: 'deep_dives', status: 'lost' }] }}
         lang="en"
       />,
     );

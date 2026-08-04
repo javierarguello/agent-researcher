@@ -26,6 +26,32 @@ describe('templates', () => {
   });
 });
 
+describe('a template that declares a cover declares a coherent one', () => {
+  it('names sections and fields the model actually has', () => {
+    // Dropping the flagship's `cover` block left every test green: the renderers
+    // simply produce no snapshot, which is the honest default for a model that
+    // declares none and a silent regression for one that meant to.
+    for (const t of listTemplates()) {
+      if (!t.cover) continue;
+      const keys = new Set(t.sections.map((x) => x.key));
+      for (const from of t.cover.from) {
+        expect(keys.has(from), `${t.id}: cover reads "${from}", which is not one of its sections`).toBe(true);
+      }
+      // Every figure that aggregates needs a field to aggregate.
+      for (const fig of t.cover.figures ?? []) {
+        if (fig.agg !== 'count') expect(fig.field, `${t.id}: ${fig.labelKey} has no field`).toBeTruthy();
+      }
+      expect(t.cover.nameKey.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('the flagship still declares one, and it reaches the manifest', () => {
+    const t = getTemplate('florida-business-for-sale')!;
+    expect(t.cover?.from, 'the cover the renderers key on').toContain('shortlist');
+    expect(toManifest(t, 'en').cover?.nameKey).toBe(t.cover!.nameKey);
+  });
+});
+
 describe('a localized template is localized in every language we publish', () => {
   const t = () => getTemplate('florida-business-for-sale')!;
 

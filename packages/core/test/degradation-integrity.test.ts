@@ -23,6 +23,10 @@ import { runResearch } from '../src/engine/research-engine.js';
 import { installMockProvider } from './mocks/llm.js';
 import type { ResearchTemplate } from '../src/templates/types.js';
 
+/** Section keys with a given status — the shape `meta.sections` now carries. */
+const withStatus = (out: { meta: { sections?: Array<{ key: string; status: string }> } }, status: string) =>
+  (out.meta.sections ?? []).filter((x) => x.status === status).map((x) => x.key);
+
 /** A producer and a refiner that improves the producer's section in place. */
 const enrichTemplate: ResearchTemplate<Record<string, unknown>> = {
   id: 'degrade-enrich', name: 'Enrich', description: 'x', version: 1,
@@ -73,8 +77,8 @@ describe('degradation never overwrites work that succeeded', () => {
     const out = await runResearch({ template: enrichTemplate, params: {}, jobId: 'g1a', generatedAt: 't' });
 
     expect(JSON.stringify(out.report.base)).toContain('REAL base');
-    expect(out.meta.degradedSections ?? []).not.toContain('base');
-    expect(out.meta.degradedSections ?? []).toContain('extra');
+    expect(withStatus(out, 'lost'), 'the producer\u2019s content was thrown away').not.toContain('base');
+    expect(withStatus(out, 'lost')).toContain('extra');
   });
 
   it('keeps the refiner’s section when the producer failed', async () => {
@@ -86,7 +90,7 @@ describe('degradation never overwrites work that succeeded', () => {
 
     const base = JSON.stringify(out.report.base);
     expect(base).toContain('REAL base');
-    expect(out.meta.degradedSections ?? []).not.toContain('base');
+    expect(withStatus(out, 'lost'), 'the producer\u2019s content was thrown away').not.toContain('base');
   });
 
   it('still degrades a section nothing wrote, and still warns either way', async () => {
@@ -131,7 +135,7 @@ describe('a degraded section does not invent findings', () => {
     const out = await runResearch({ template: verdictTemplate, params: {}, jobId: 'g2a', generatedAt: 't' });
 
     const v = out.report.verdict as Record<string, unknown>;
-    expect(out.meta.degradedSections).toContain('verdict');
+    expect(withStatus(out, 'lost')).toContain('verdict');
     // A zero price on a business listing is a finding, not an absence.
     expect(v.price).toBeNull();
     expect(v.confidence).toBeNull();
@@ -154,7 +158,7 @@ describe('a degraded section does not invent findings', () => {
     // A required non-nullable enum still has to hold SOMETHING for the report to
     // validate, so the schema cannot carry the whole guarantee — the consumer has
     // to be told which sections to suppress, and this is that contract.
-    expect(out.meta.degradedSections).toEqual(['verdict']);
+    expect(withStatus(out, 'lost')).toEqual(['verdict']);
   });
 });
 
@@ -172,7 +176,7 @@ describe('the PDF honours the same contract as the screen', () => {
       const html = buildReportHtml({
         report: { verdict: { text: 'ZZPLACEHOLDER' } },
         sections: [{ key: 'verdict', title: 'Verdict' }],
-        meta: { degradedSections: ['verdict'] },
+        meta: { sections: [{ key: 'verdict', status: 'lost' }] },
         lang,
         theme: getPdfTheme('fbizlab'),
       } as never);
@@ -196,7 +200,7 @@ describe('the PDF honours the same contract as the screen', () => {
         deep_dives: [{ business: 'ZZPLACEHOLDER', askingPrice: 0, recommendation: 'buy' }],
       },
       sections: [{ key: 'shortlist', title: 'Shortlist' }, { key: 'deep_dives', title: 'Deep dives' }],
-      meta: { degradedSections: ['deep_dives'] },
+      meta: { sections: [{ key: 'deep_dives', status: 'lost' }] },
       lang: 'en',
       theme: getPdfTheme('fbizlab'),
     } as never);

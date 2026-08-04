@@ -48,10 +48,10 @@ function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
 // ── Localised UI labels (report content itself is already in the report language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
 const RL: Record<Lang, Record<string, string>> = {
-  en: { aiDisclaimer: 'AI-generated — can make mistakes. Always verify results before acting.', degradedSection: 'We could not complete this section for this report. Everything else below was researched and written as usual.', sections: 'Sections', snapshot: 'Snapshot', aiReport: 'AI analysis dossier', dossier: 'Generated dossier', reqMode: 'Mode', reqLang: 'Dossier language', reqSources: 'Sources consulted', reqCredits: 'Credits spent', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', criteria: 'Mandate', revenue: 'Revenue', sde: 'SDE', asking: 'Asking', location: 'Location', industry: 'Industry', priceBand: 'Price band', revenueFloor: 'Min revenue', cashFlowFloor: 'Min cash flow', financingPreference: 'Financing', realEstatePreference: 'Real estate', business: 'Transaction', salePrice: 'Sale price', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative' },
-  es: { aiDisclaimer: 'Generado por IA — puede cometer errores. Verifica siempre los resultados antes de actuar.', degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', sections: 'Secciones', snapshot: 'Resumen', aiReport: 'Dossier de análisis IA', dossier: 'Dossier generado', reqMode: 'Modo', reqLang: 'Idioma del dossier', reqSources: 'Fuentes consultadas', reqCredits: 'Créditos gastados', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Ingresos', sde: 'SDE', asking: 'Precio', location: 'Ubicación', industry: 'Industria', priceBand: 'Rango de precio', revenueFloor: 'Ingreso mín', cashFlowFloor: 'Flujo mín', financingPreference: 'Financiamiento', realEstatePreference: 'Inmueble', business: 'Transacción', salePrice: 'Precio de venta', multiple: 'Múltiplo', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' },
-  fr: { aiDisclaimer: 'Généré par IA — peut faire des erreurs. Vérifiez toujours les résultats avant d’agir.', degradedSection: 'Nous n’avons pas pu terminer cette section pour ce rapport. Tout le reste a été recherché et rédigé normalement.', sections: 'Sections', snapshot: 'Aperçu', aiReport: 'Dossier d’analyse IA', dossier: 'Dossier généré', reqMode: 'Mode', reqLang: 'Langue du dossier', reqSources: 'Sources consultées', reqCredits: 'Crédits dépensés', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu combiné', combinedSde: 'SDE combiné', criteria: 'Mandat', revenue: 'Revenu', sde: 'SDE', asking: 'Prix', location: 'Localisation', industry: 'Secteur', priceBand: 'Fourchette de prix', revenueFloor: 'Revenu min', cashFlowFloor: 'Cash-flow min', financingPreference: 'Financement', realEstatePreference: 'Immobilier', business: 'Transaction', salePrice: 'Prix de vente', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif' },
-  pt: { aiDisclaimer: 'Gerado por IA — pode cometer erros. Verifique sempre os resultados antes de agir.', degradedSection: 'Não conseguimos concluir esta seção deste relatório. Todo o restante foi pesquisado e redigido normalmente.', sections: 'Seções', snapshot: 'Resumo', aiReport: 'Dossiê de análise IA', dossier: 'Dossiê gerado', reqMode: 'Modo', reqLang: 'Idioma do dossiê', reqSources: 'Fontes consultadas', reqCredits: 'Créditos gastos', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Receita', sde: 'SDE', asking: 'Preço', location: 'Localização', industry: 'Setor', priceBand: 'Faixa de preço', revenueFloor: 'Receita mín', cashFlowFloor: 'Fluxo mín', financingPreference: 'Financiamento', realEstatePreference: 'Imóvel', business: 'Transação', salePrice: 'Preço de venda', multiple: 'Múltiplo', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo' },
+  en: { aiDisclaimer: 'AI-generated — can make mistakes. Always verify results before acting.', unenrichedSection: 'This section was researched and written, but the pass that adds extra depth to it did not finish. Everything here is sourced as usual.', degradedSection: 'We could not complete this section for this report. Everything else below was researched and written as usual.', sections: 'Sections', snapshot: 'Snapshot', aiReport: 'AI analysis dossier', dossier: 'Generated dossier', reqMode: 'Mode', reqLang: 'Dossier language', reqSources: 'Sources consulted', reqCredits: 'Credits spent', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', criteria: 'Mandate', revenue: 'Revenue', sde: 'SDE', asking: 'Asking', location: 'Location', industry: 'Industry', priceBand: 'Price band', revenueFloor: 'Min revenue', cashFlowFloor: 'Min cash flow', financingPreference: 'Financing', realEstatePreference: 'Real estate', business: 'Transaction', salePrice: 'Sale price', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative' },
+  es: { aiDisclaimer: 'Generado por IA — puede cometer errores. Verifica siempre los resultados antes de actuar.', unenrichedSection: 'Esta sección se investigó y redactó, pero la pasada que le agrega profundidad no llegó a completarse. Todo lo que ves aquí está documentado como siempre.', degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', sections: 'Secciones', snapshot: 'Resumen', aiReport: 'Dossier de análisis IA', dossier: 'Dossier generado', reqMode: 'Modo', reqLang: 'Idioma del dossier', reqSources: 'Fuentes consultadas', reqCredits: 'Créditos gastados', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Ingresos', sde: 'SDE', asking: 'Precio', location: 'Ubicación', industry: 'Industria', priceBand: 'Rango de precio', revenueFloor: 'Ingreso mín', cashFlowFloor: 'Flujo mín', financingPreference: 'Financiamiento', realEstatePreference: 'Inmueble', business: 'Transacción', salePrice: 'Precio de venta', multiple: 'Múltiplo', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' },
+  fr: { aiDisclaimer: 'Généré par IA — peut faire des erreurs. Vérifiez toujours les résultats avant d’agir.', unenrichedSection: 'Cette section a été recherchée et rédigée, mais la passe qui lui ajoute de la profondeur n’a pas abouti. Tout ce qui figure ici est sourcé comme d’habitude.', degradedSection: 'Nous n’avons pas pu terminer cette section pour ce rapport. Tout le reste a été recherché et rédigé normalement.', sections: 'Sections', snapshot: 'Aperçu', aiReport: 'Dossier d’analyse IA', dossier: 'Dossier généré', reqMode: 'Mode', reqLang: 'Langue du dossier', reqSources: 'Sources consultées', reqCredits: 'Crédits dépensés', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu combiné', combinedSde: 'SDE combiné', criteria: 'Mandat', revenue: 'Revenu', sde: 'SDE', asking: 'Prix', location: 'Localisation', industry: 'Secteur', priceBand: 'Fourchette de prix', revenueFloor: 'Revenu min', cashFlowFloor: 'Cash-flow min', financingPreference: 'Financement', realEstatePreference: 'Immobilier', business: 'Transaction', salePrice: 'Prix de vente', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif' },
+  pt: { aiDisclaimer: 'Gerado por IA — pode cometer erros. Verifique sempre os resultados antes de agir.', unenrichedSection: 'Esta seção foi pesquisada e redigida, mas a passagem que lhe acrescenta profundidade não foi concluída. Tudo aqui está documentado como sempre.', degradedSection: 'Não conseguimos concluir esta seção deste relatório. Todo o restante foi pesquisado e redigido normalmente.', sections: 'Seções', snapshot: 'Resumo', aiReport: 'Dossiê de análise IA', dossier: 'Dossiê gerado', reqMode: 'Modo', reqLang: 'Idioma do dossiê', reqSources: 'Fontes consultadas', reqCredits: 'Créditos gastos', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Receita', sde: 'SDE', asking: 'Preço', location: 'Localização', industry: 'Setor', priceBand: 'Faixa de preço', revenueFloor: 'Receita mín', cashFlowFloor: 'Fluxo mín', financingPreference: 'Financiamento', realEstatePreference: 'Imóvel', business: 'Transação', salePrice: 'Preço de venda', multiple: 'Múltiplo', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo' },
 };
 
 // ── Charts ──
@@ -158,18 +158,32 @@ function ProjectionView({ t, f }: { t: Projection; f: NumFmt }) {
   );
 }
 
-/** A shortlisted / deep-dived business, rendered as a card with money tiles. */
-function DealCard({ d, l, f }: { d: Obj; l: Record<string, string>; f: NumFmt }) {
+/**
+ * What the model says its cover summarises. Same shape as the template's `cover`,
+ * arriving through the manifest — this file used to read `shortlist`/`deep_dives`
+ * and a field called `business`, so another model's report had no snapshot and no
+ * entity cards.
+ */
+interface CoverSpec {
+  from: string[];
+  nameKey: string;
+  figures?: Array<{ labelKey: string; agg: 'count' | 'range' | 'sum'; field?: string }>;
+  tiles?: Array<{ labelKey: string; field: string }>;
+}
+
+/** One of the things this model compares, as a card with figure tiles. */
+function DealCard({ d, l, f, cover }: { d: Obj; l: Record<string, string>; f: NumFmt; cover?: CoverSpec }) {
   const tiles: Array<{ value: string; label: string }> = [];
-  if (isNum(d.revenue)) tiles.push({ value: f.money(d.revenue), label: l.revenue! });
-  if (isNum(d.cashFlowSde)) tiles.push({ value: f.money(d.cashFlowSde), label: l.sde! });
-  if (isNum(d.askingPrice)) tiles.push({ value: f.money(d.askingPrice), label: l.asking! });
+  for (const spec of cover?.tiles ?? []) {
+    const v = d[spec.field];
+    if (isNum(v)) tiles.push({ value: f.money(v), label: l[spec.labelKey] ?? spec.labelKey });
+  }
   const prose = ['overview', 'financials', 'impliedMultiple', 'includedAssets', 'leaseTerms', 'reasonForSale', 'growthOpportunities'] as const;
   const url = typeof d.sourceUrl === 'string' ? d.sourceUrl : undefined;
   return (
     <div className="rv-deal">
       <div className="between" style={{ alignItems: 'baseline' }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>{String(d.business ?? '')}</div>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{String(d[cover?.nameKey ?? 'name'] ?? '')}</div>
         {d.match === 'relaxed' && <span className="badge" style={{ color: 'var(--accent)' }}>relaxed</span>}
       </div>
       {typeof d.location === 'string' && <div className="mono muted" style={{ fontSize: 11, marginTop: 3 }}>{d.location}</div>}
@@ -340,11 +354,11 @@ function ObjectFields({ o, l, f }: { o: Obj; l: Record<string, string>; f: NumFm
 }
 
 /** Dispatch a whole section to the right presentation. */
-function SectionBody({ v, l, f }: { v: unknown; l: Record<string, string>; f: NumFmt }) {
+function SectionBody({ v, l, f, cover }: { v: unknown; l: Record<string, string>; f: NumFmt; cover?: CoverSpec }) {
   if (Array.isArray(v)) {
     if (v.every(isChartSpec)) return <>{v.map((c, i) => <ChartSpecRender key={i} spec={c as ChartSpec} f={f} />)}</>;
-    if (v.length && typeof v[0] === 'object' && v[0] && 'business' in (v[0] as Obj)) {
-      return <div className="stack" style={{ gap: 14 }}>{(v as Obj[]).map((d, i) => <DealCard key={i} d={d} l={l} f={f} />)}</div>;
+    if (cover?.nameKey && v.length && typeof v[0] === 'object' && v[0] && cover.nameKey in (v[0] as Obj)) {
+      return <div className="stack" style={{ gap: 14 }}>{(v as Obj[]).map((d, i) => <DealCard key={i} d={d} l={l} f={f} cover={cover} />)}</div>;
     }
     return <Value v={v} l={l} f={f} />;
   }
@@ -352,11 +366,12 @@ function SectionBody({ v, l, f }: { v: unknown; l: Record<string, string>; f: Nu
 }
 
 // ── Snapshot (right rail) ──
-function collectDeals(report: Obj): Obj[] {
-  const src = [...((report.shortlist as Obj[]) ?? []), ...((report.deep_dives as Obj[]) ?? [])];
+function collectDeals(report: Obj, cover: CoverSpec | undefined): Obj[] {
+  if (!cover) return [];
+  const src = cover.from.flatMap((k) => (Array.isArray(report[k]) ? (report[k] as Obj[]) : []));
   const byName = new Map<string, Obj>();
   for (const d of src) {
-    const name = String(d.business ?? Math.random());
+    const name = String(d[cover.nameKey] ?? Math.random());
     const cur = byName.get(name) ?? {};
     for (const [k, val] of Object.entries(d)) if (val != null && cur[k] == null) cur[k] = val;
     byName.set(name, cur);
@@ -372,10 +387,12 @@ function collectDeals(report: Obj): Obj[] {
  * ("<template>@<version>") is exposed (data-report-version) so components can
  * identify a report's version for analytics or explicit version branching later.
  */
-export function ReportViewer({ report, sections, title, lang = 'en', meta, request, currency }: {
+export function ReportViewer({ report, sections, title, lang = 'en', meta, request, currency, cover }: {
   report: Obj; sections?: Array<{ key: string; title: string }>; title?: string; lang?: string; meta?: Obj;
   /** ISO 4217 the model's figures are in (from its manifest). Default USD. */
   currency?: string;
+  /** What this model summarises on the snapshot, from its manifest. */
+  cover?: CoverSpec;
   /** Request context appended to the right-rail Mandate card (mode, language, sources, credits). */
   request?: { modeLabel?: string | null; languageLabel?: string | null; sourcesFound?: number | null; creditsSpent?: number | null };
 }) {
@@ -388,7 +405,12 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
   // — a required enum becomes its first value, a required number becomes 0 — so
   // rendering one shows a fabricated recommendation and zero prices as findings.
   // The engine names them; the reader must never see the filler.
-  const degraded = new Set<string>(Array.isArray(meta?.degradedSections) ? (meta.degradedSections as string[]) : []);
+  // Only `lost` suppresses a body. An `unenriched` section holds real content a
+  // refiner never deepened — hiding it would take away work the buyer paid for and
+  // replace it with an apology that is not true.
+  const statuses = (Array.isArray(meta?.sections) ? meta.sections : []) as Array<{ key: string; status: string }>;
+  const degraded = new Set<string>(statuses.filter((x) => x.status === 'lost').map((x) => x.key));
+  const unenriched = new Set<string>(statuses.filter((x) => x.status === 'unenriched').map((x) => x.key));
   const ordered = (sections?.length ? sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))
     // A degraded section survives this filter even when its placeholder is `null`.
     // A schema that is nullable at the root degrades to exactly that, and dropping
@@ -399,15 +421,24 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
 
   // Snapshot metrics from the deals — never from a degraded section, or the
   // headline numbers are computed from placeholder zeros.
-  const deals = collectDeals(Object.fromEntries(Object.entries(report).filter(([k]) => !degraded.has(k))));
-  const prices = deals.map((d) => d.askingPrice).filter(isNum);
-  const revenue = deals.map((d) => d.revenue).filter(isNum).reduce((a, b) => a + b, 0);
-  const sde = deals.map((d) => d.cashFlowSde).filter(isNum).reduce((a, b) => a + b, 0);
+  const deals = collectDeals(Object.fromEntries(Object.entries(report).filter(([k]) => !degraded.has(k))), cover);
   const snap: Array<{ value: string; label: string }> = [];
-  if (deals.length) snap.push({ value: String(deals.length), label: l.targets! });
-  if (prices.length) snap.push({ value: prices.length > 1 ? `${f.money(Math.min(...prices))}–${f.money(Math.max(...prices))}` : f.money(prices[0]!), label: l.priceRange! });
-  if (revenue > 0) snap.push({ value: f.money(revenue), label: l.combinedRevenue! });
-  if (sde > 0) snap.push({ value: f.money(sde), label: l.combinedSde! });
+  for (const fig of cover?.figures ?? []) {
+    const label = l[fig.labelKey] ?? fig.labelKey;
+    if (fig.agg === 'count') { if (deals.length) snap.push({ value: String(deals.length), label }); continue; }
+    const nums = deals.map((d) => d[fig.field ?? '']).filter(isNum);
+    if (!nums.length) continue;
+    if (fig.agg === 'range') {
+      // `keyed` decides money vs plain from the FIELD NAME — the convention this
+      // file already uses everywhere else. A blanket `money()` put a currency
+      // symbol on a sum of acres.
+      const fmt = (n: number) => f.keyed(fig.field, n);
+      snap.push({ value: nums.length > 1 ? `${fmt(Math.min(...nums))}–${fmt(Math.max(...nums))}` : fmt(nums[0]!), label });
+    } else {
+      const total = nums.reduce((x, y) => x + y, 0);
+      if (total > 0) snap.push({ value: f.keyed(fig.field, total), label });
+    }
+  }
 
   // …and not through the side door either. `search_criteria` is hidden from the
   // section flow and rendered in the right-hand rail instead, so the degraded
@@ -446,9 +477,12 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
         {ordered.map((s, i) => (
           <section key={s.key} id={`sec-${s.key}`} className="rv-sec">
             <h2 className="rv-sechead"><span className="rv-secnum">{pad(i)}</span>{s.title}</h2>
+            {/* `unenriched` keeps its body and gains a line saying the deepening
+                pass did not run — the buyer used to be told nothing at all. */}
+            {unenriched.has(s.key) && <p className="rv-degraded soft">{l.unenrichedSection}</p>}
             {degraded.has(s.key)
               ? <p className="rv-degraded soft">{l.degradedSection}</p>
-              : <SectionBody v={report[s.key]} l={l} f={f} />}
+              : <SectionBody v={report[s.key]} l={l} f={f} cover={cover} />}
           </section>
         ))}
       </div>

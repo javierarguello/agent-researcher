@@ -1,3 +1,4 @@
+import type { CoverSpec } from '../templates/types.js';
 /**
  * Builds a print-ready HTML document for a research report — the SHARED base used
  * by every app's PDF (the worker renders this HTML to PDF with headless Chromium).
@@ -29,6 +30,8 @@ export interface BuildReportHtmlInput {
    */
   paramLabels?: Record<string, string>;
   instructionsField?: string;
+  /** How this model summarises its findings on the cover (from the template). */
+  cover?: CoverSpec;
   /** ISO 4217 the model's figures are in. Default USD. */
   currency?: string;
   lang?: string;
@@ -124,10 +127,10 @@ function mdToHtml(md: string): string {
 // ── localized field labels (report content is already in its language) ──
 type Lang = 'en' | 'es' | 'fr' | 'pt';
 const RL: Record<Lang, Record<string, string>> = {
-  en: { degradedSection: 'We could not complete this section for this report. Everything else was researched and written as usual.', contents: 'Contents', aiDisclaimer: 'AI-generated research — it can make mistakes. Always verify results against the original listings before acting.', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.', kicker: 'AI ANALYSIS REPORT', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', footerNote: 'AI-GENERATED — VERIFY RESULTS' },
-  es: { degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', contents: 'Contenido', aiDisclaimer: 'Investigación generada por IA — puede cometer errores. Verifica siempre los resultados con los avisos originales antes de actuar.', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.', kicker: 'INFORME DE ANÁLISIS CON IA', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', footerNote: 'GENERADO CON IA — VERIFICA LOS RESULTADOS' },
-  fr: { degradedSection: 'Nous n’avons pas pu terminer cette section pour ce rapport. Tout le reste a été recherché et rédigé normalement.', contents: 'Sommaire', aiDisclaimer: 'Recherche générée par IA — elle peut se tromper. Vérifiez toujours les résultats auprès des annonces d’origine avant d’agir.', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', yes: 'Oui', no: 'Non', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.', kicker: 'RAPPORT D’ANALYSE IA', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu cumulé', combinedSde: 'SDE cumulé', footerNote: 'GÉNÉRÉ PAR IA — VÉRIFIEZ LES RÉSULTATS' },
-  pt: { degradedSection: 'Não conseguimos concluir esta seção deste relatório. Todo o restante foi pesquisado e redigido normalmente.', contents: 'Conteúdo', aiDisclaimer: 'Pesquisa gerada por IA — pode cometer erros. Verifique sempre os resultados nos anúncios originais antes de agir.', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', yes: 'Sim', no: 'Não', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.', kicker: 'RELATÓRIO DE ANÁLISE COM IA', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', footerNote: 'GERADO POR IA — VERIFIQUE OS RESULTADOS' },
+  en: { degradedSection: 'We could not complete this section for this report. Everything else was researched and written as usual.', unenrichedSection: 'This section was researched and written, but the pass that adds extra depth to it did not finish. Everything here is sourced as usual.', contents: 'Contents', aiDisclaimer: 'AI-generated research — it can make mistakes. Always verify results against the original listings before acting.', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.', kicker: 'AI ANALYSIS REPORT', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', footerNote: 'AI-GENERATED — VERIFY RESULTS' },
+  es: { degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', unenrichedSection: 'Esta sección se investigó y redactó, pero la pasada que le agrega profundidad no llegó a completarse. Todo lo que ves aquí está documentado como siempre.', contents: 'Contenido', aiDisclaimer: 'Investigación generada por IA — puede cometer errores. Verifica siempre los resultados con los avisos originales antes de actuar.', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.', kicker: 'INFORME DE ANÁLISIS CON IA', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', footerNote: 'GENERADO CON IA — VERIFICA LOS RESULTADOS' },
+  fr: { degradedSection: 'Nous n’avons pas pu terminer cette section pour ce rapport. Tout le reste a été recherché et rédigé normalement.', unenrichedSection: 'Cette section a été recherchée et rédigée, mais la passe qui lui ajoute de la profondeur n’a pas abouti. Tout ce qui figure ici est sourcé comme d’habitude.', contents: 'Sommaire', aiDisclaimer: 'Recherche générée par IA — elle peut se tromper. Vérifiez toujours les résultats auprès des annonces d’origine avant d’agir.', index: 'Index du rapport', mandate: 'Mandat', snapshot: 'Aperçu', business: 'Transaction', location: 'Localisation', salePrice: 'Prix de vente', revenue: 'Revenu', multiple: 'Multiple', sde: 'SDE', asking: 'Prix', mentions: 'Mentions', netSentiment: 'Sentiment net', sentimentDist: 'Distribution du sentiment', positive: 'Positif', neutral: 'Neutre', negative: 'Négatif', source: 'source', yes: 'Oui', no: 'Non', howToRead: 'Comment lire ce rapport', howToReadBody: 'Les sections vont du résumé au détail. Les chiffres en couleur sont des estimations IA — vérifiez-les avant d’agir.', kicker: 'RAPPORT D’ANALYSE IA', targets: 'Cibles', priceRange: 'Fourchette de prix', combinedRevenue: 'Revenu cumulé', combinedSde: 'SDE cumulé', footerNote: 'GÉNÉRÉ PAR IA — VÉRIFIEZ LES RÉSULTATS' },
+  pt: { degradedSection: 'Não conseguimos concluir esta seção deste relatório. Todo o restante foi pesquisado e redigido normalmente.', unenrichedSection: 'Esta seção foi pesquisada e redigida, mas a passagem que lhe acrescenta profundidade não foi concluída. Tudo aqui está documentado como sempre.', contents: 'Conteúdo', aiDisclaimer: 'Pesquisa gerada por IA — pode cometer erros. Verifique sempre os resultados nos anúncios originais antes de agir.', index: 'Índice do relatório', mandate: 'Mandato', snapshot: 'Resumo', business: 'Transação', location: 'Localização', salePrice: 'Preço de venda', revenue: 'Receita', multiple: 'Múltiplo', sde: 'SDE', asking: 'Preço', mentions: 'Menções', netSentiment: 'Sentimento líquido', sentimentDist: 'Distribuição de sentimento', positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo', source: 'fonte', yes: 'Sim', no: 'Não', howToRead: 'Como ler este relatório', howToReadBody: 'As seções vão do resumo ao detalhe. Números em cor são estimativas de IA — verifique antes de agir.', kicker: 'RELATÓRIO DE ANÁLISE COM IA', targets: 'Alvos', priceRange: 'Faixa de preço', combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado', footerNote: 'GERADO POR IA — VERIFIQUE OS RESULTADOS' },
 };
 
 // ── structured-block detectors (mirror the on-screen viewer) ──
@@ -265,21 +268,27 @@ function sentimentHtml(v: { overview?: string; mentions: Mention[] }, l: Record<
     .join('');
   return `${tiles}${dist}${overview}<div class="mentions">${cards}</div>`;
 }
-function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme, f: NumFmt): string {
+function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme, f: NumFmt, cover?: CoverSpec, labels?: Record<string, string>): string {
   const tiles: Array<[string, string]> = [];
-  if (isNum(d.revenue)) tiles.push([f.money(d.revenue), l.revenue!]);
-  if (isNum(d.cashFlowSde)) tiles.push([f.money(d.cashFlowSde), l.sde!]);
-  if (isNum(d.askingPrice)) tiles.push([f.money(d.askingPrice), l.asking!]);
+  for (const spec of cover?.tiles ?? []) {
+    const v = d[spec.field];
+    if (isNum(v)) tiles.push([f.money(v), labels?.[spec.labelKey] ?? l[spec.labelKey] ?? spec.labelKey]);
+  }
   const tileHtml = tiles.length ? `<div class="dtiles">${tiles.map(([v, lab]) => `<div class="dtile"><div class="mlabel">${esc(lab)}</div><div class="mval">${esc(v)}</div></div>`).join('')}</div>` : '';
-  const prose = (['overview', 'financials', 'impliedMultiple', 'includedAssets', 'leaseTerms', 'reasonForSale', 'growthOpportunities'] as const)
-    .map((k) => (typeof d[k] === 'string' && d[k] ? `<div class="field"><div class="flabel">${esc(humanizeKey(k))}</div>${mdToHtml(d[k] as string)}</div>` : ''))
+  // EVERY string field, in the order the section declared them, rather than a
+  // hardcoded list of this model's seven. A field a template adds now appears
+  // without a change here; another model's fields appeared not at all before.
+  const skipProse = new Set([cover?.nameKey ?? '', 'location', 'sourceUrl']);
+  const prose = Object.entries(d)
+    .filter(([k, v]) => typeof v === 'string' && v && !skipProse.has(k))
+    .map(([k, v]) => `<div class="field"><div class="flabel">${esc(labels?.[k] ?? humanizeKey(k))}</div>${mdToHtml(v as string)}</div>`)
     .join('');
   const risks = Array.isArray(d.risks) && d.risks.length
     ? `<div class="field"><div class="flabel">${esc(humanizeKey('risks'))}</div>${(d.risks as unknown[]).every(isRisk) ? riskRows(d.risks as Risk[], t) : `<ul class="bullets">${(d.risks as string[]).map((r) => `<li>${mdInline(r)}</li>`).join('')}</ul>`}</div>`
     : '';
   const loc = typeof d.location === 'string' ? `<div class="mono muted dloc">${esc(d.location)}</div>` : '';
   const url = typeof d.sourceUrl === 'string' ? `<a class="mono srclink" href="${esc(d.sourceUrl)}" style="color:${t.colors.accent}">${esc(l.source)} ↗</a>` : '';
-  return `<div class="deal"><div class="dealname">${esc(String(d.business ?? ''))}</div>${loc}${tileHtml}${prose}${risks}${url}</div>`;
+  return `<div class="deal"><div class="dealname">${esc(String(d[cover?.nameKey ?? 'name'] ?? ''))}</div>${loc}${tileHtml}${prose}${risks}${url}</div>`;
 }
 
 // ── generic recursive value rendering ──
@@ -315,19 +324,31 @@ function objectFieldsHtml(o: Obj, l: Record<string, string>, t: PdfTheme, f: Num
     .map(([key, val]) => `<div class="field"><div class="flabel">${esc(humanizeKey(key))}</div>${valueHtml(val, key, l, t, f)}</div>`)
     .join('')}</div>`;
 }
-function sectionBodyHtml(v: unknown, l: Record<string, string>, t: PdfTheme, f: NumFmt): string {
-  if (Array.isArray(v) && v.length && typeof v[0] === 'object' && v[0] && 'business' in (v[0] as Obj)) {
-    return `<div class="stack">${(v as Obj[]).map((d) => dealCardHtml(d, l, t, f)).join('')}</div>`;
+function sectionBodyHtml(v: unknown, l: Record<string, string>, t: PdfTheme, f: NumFmt, cover?: CoverSpec, labels?: Record<string, string>): string {
+  // Entity cards when the array holds the things this model compares — recognised
+  // by the template's own `nameKey`, not by a field called `business`.
+  const nameKey = cover?.nameKey;
+  if (nameKey && Array.isArray(v) && v.length && typeof v[0] === 'object' && v[0] && nameKey in (v[0] as Obj)) {
+    return `<div class="stack">${(v as Obj[]).map((d) => dealCardHtml(d, l, t, f, cover, labels)).join('')}</div>`;
   }
   return valueHtml(v, undefined, l, t, f);
 }
 
 // ── snapshot (cover) ──
-function collectDeals(report: Obj): Obj[] {
-  const src = [...((report.shortlist as Obj[]) ?? []), ...((report.deep_dives as Obj[]) ?? [])];
+/**
+ * The entities this model compares, merged across the sections that hold them.
+ *
+ * Which sections, and which field names one, come from the template's `cover`
+ * spec. Both used to be this model's own — `shortlist`/`deep_dives` and
+ * `business` — so another model's dossier had no cover statistics and no entity
+ * cards, because nothing matched.
+ */
+function collectDeals(report: Obj, cover: CoverSpec | undefined): Obj[] {
+  if (!cover) return [];
+  const src = cover.from.flatMap((k: string) => (Array.isArray(report[k]) ? (report[k] as Obj[]) : []));
   const byName = new Map<string, Obj>();
   for (const d of src) {
-    const name = String(d.business ?? Math.random());
+    const name = String(d[cover.nameKey] ?? Math.random());
     const cur = byName.get(name) ?? {};
     for (const [k, val] of Object.entries(d)) if (val != null && cur[k] == null) cur[k] = val;
     byName.set(name, cur);
@@ -356,12 +377,16 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   // recommendation the engine never made, at a price of zero, into the artifact
   // the buyer keeps and forwards.
   //
-  // `meta.degradedSections` is the contract. The web viewer honoured it and this
-  // renderer did not, so the same report apologised on screen and fabricated in the
-  // PDF — the version that looks most authoritative.
-  const degraded = new Set<string>(
-    Array.isArray(input.meta?.degradedSections) ? (input.meta.degradedSections as string[]) : [],
-  );
+  // `meta.sections` is the contract. The web viewer honoured it and this renderer
+  // did not, so the same report apologised on screen and fabricated in the PDF —
+  // the version that looks most authoritative.
+  //
+  // Only `lost` suppresses. An `unenriched` section holds real content that a
+  // refiner never deepened; hiding it would take away work the buyer paid for and
+  // replace it with an apology that is not true.
+  const statuses = (Array.isArray(input.meta?.sections) ? input.meta.sections : []) as Array<{ key: string; status: string }>;
+  const degraded = new Set<string>(statuses.filter((x) => x.status === 'lost').map((x) => x.key));
+  const unenriched = new Set<string>(statuses.filter((x) => x.status === 'unenriched').map((x) => x.key));
   const lang = (['en', 'es', 'fr', 'pt'].includes(input.lang ?? '') ? input.lang : 'en') as Lang;
   const l = RL[lang];
   // Numbers in the reader's language, money in the model's currency. Built once
@@ -378,18 +403,33 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   // Cover snapshot from deals — never from a degraded section, or the headline
   // price range is computed from placeholder zeros and shows $0 as the cheapest
   // target found.
-  const deals = collectDeals(Object.fromEntries(Object.entries(report).filter(([k]) => !degraded.has(k))));
-  const prices = deals.map((d) => d.askingPrice).filter(isNum);
-  const revenue = deals.map((d) => d.revenue).filter(isNum).reduce((a, b) => a + b, 0);
-  const sde = deals.map((d) => d.cashFlowSde).filter(isNum).reduce((a, b) => a + b, 0);
+  const deals = collectDeals(Object.fromEntries(Object.entries(report).filter(([k]) => !degraded.has(k))), input.cover);
   const snap: Array<[string, string]> = [];
   // Localized like everything else on this page. The cover is the first thing the
   // buyer sees and it was English in all four languages — including the complete
   // Spanish case, where every other string on the page was translated.
-  if (deals.length) snap.push([String(deals.length), l.targets!]);
-  if (prices.length) snap.push([prices.length > 1 ? `${f.money(Math.min(...prices))}–${f.money(Math.max(...prices))}` : f.money(prices[0]!), l.priceRange!]);
-  if (revenue > 0) snap.push([f.money(revenue), l.combinedRevenue!]);
-  if (sde > 0) snap.push([f.money(sde), l.combinedSde!]);
+  // Declared by the model, not inferred from this one's field names. `askingPrice`,
+  // `revenue` and `cashFlowSde` were read straight off the report, so a template
+  // that calls its figures anything else got a cover with no statistics at all.
+  for (const fig of input.cover?.figures ?? []) {
+    const label = input.paramLabels?.[fig.labelKey] ?? l[fig.labelKey] ?? fig.labelKey;
+    if (fig.agg === 'count') {
+      if (deals.length) snap.push([String(deals.length), label]);
+      continue;
+    }
+    const nums = deals.map((d) => d[fig.field ?? '']).filter(isNum);
+    if (!nums.length) continue;
+    if (fig.agg === 'range') {
+      // `keyed` decides money vs plain from the FIELD NAME, the same convention
+      // every other number in this file already uses. A blanket `money()` put a
+      // currency symbol on a sum of acres.
+      const fmt = (n: number) => f.keyed(fig.field, n);
+      snap.push([nums.length > 1 ? `${fmt(Math.min(...nums))}–${fmt(Math.max(...nums))}` : fmt(nums[0]!), label]);
+    } else {
+      const total = nums.reduce((x, y) => x + y, 0);
+      if (total > 0) snap.push([f.keyed(fig.field, total), label]);
+    }
+  }
 
   const date = input.generatedAt ? new Date(input.generatedAt) : undefined;
   // `en-US` printed "03 AUG 2026" on a Portuguese dossier. The locale follows the
@@ -448,9 +488,11 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
       <div class="mono eyebrow accent">${pad(i)} · ${esc(s.title.toUpperCase())}</div>
       <h2 class="pagetitle">${esc(s.title)}</h2>
       <div class="seccontent">${
+        unenriched.has(s.key) ? `<p class="soft">${esc(l.unenrichedSection ?? '')}</p>` : ''
+      }${
         degraded.has(s.key)
           ? `<p class="soft">${esc(l.degradedSection ?? '')}</p>`
-          : sectionBodyHtml(report[s.key], l, t, f)
+          : sectionBodyHtml(report[s.key], l, t, f, input.cover, input.paramLabels)
       }</div>
     </div>
   </section>`)

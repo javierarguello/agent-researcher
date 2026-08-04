@@ -99,7 +99,8 @@ export interface JobSummary {
   /** The buyer-facing line for an incomplete report, in the report's language. */
   notice?: string;
   /** Sections filled with a degraded placeholder (an agent failed). */
-  degradedSections?: string[];
+  /** Sections that did not come out whole — see `ReportMeta.sections`. */
+  sections?: Array<{ key: string; status: 'lost' | 'unenriched' }>;
   /** Per-agent failures (message only; full stack is in trace.json). */
   agentErrors?: Array<{ agentId: string; error: string }>;
 }

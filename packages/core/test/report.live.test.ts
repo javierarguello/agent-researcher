@@ -68,7 +68,7 @@ describeLive('report generation — full pipeline, real local model', () => {
       // eslint-disable-next-line no-console
       console.log(
         `florida e2e: ${out.sources.length} sources, ${out.meta.cost.outputTokens} output tokens, ` +
-          `degraded: ${(out.meta.degradedSections ?? []).join(', ') || 'none'}`,
+          `degraded: ${((out.meta.sections ?? []).map((x) => x.key) ?? []).join(', ') || 'none'}`,
       );
 
       // Essential drops some sections; every section it DOES produce must validate.
@@ -79,7 +79,7 @@ describeLive('report generation — full pipeline, real local model', () => {
         const parsed = section.schema.safeParse(out.report[section.key]);
         expect(parsed.success, `section ${section.key}: ${JSON.stringify(parsed.error?.issues?.slice(0, 3))}`).toBe(true);
       }
-      expect((out.meta.degradedSections ?? []).length).toBeLessThan(produced.length);
+      expect(((out.meta.sections ?? []).map((x) => x.key) ?? []).length).toBeLessThan(produced.length);
     },
   );
 });

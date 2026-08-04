@@ -269,6 +269,17 @@ export interface ResearchTemplate<TParams = unknown> {
    */
   i18n?: Record<string, TemplateI18n>;
   /**
+   * What the PDF cover summarises, and which sections hold the things being
+   * compared.
+   *
+   * The renderers read `report.shortlist` / `report.deep_dives` and keyed on a
+   * field called `business` — this model's names. Another model's dossier
+   * therefore had no cover statistics at all and no entity cards, because nothing
+   * matched. Declaring it here is what makes the cover a feature of the catalog
+   * rather than of one template. Omit it and the cover simply has no snapshot.
+   */
+  cover?: CoverSpec;
+  /**
    * ISO 4217 code the figures in this model's reports are in. Default `USD`.
    *
    * The renderers hardcoded a `$`, so every model in the catalog billed in dollars
@@ -335,6 +346,22 @@ export interface AddonSpec {
 }
 
 /** Per-language overrides of a template's client-facing strings. */
+/** How one model's findings are summarised on the PDF cover. */
+export interface CoverSpec {
+  /** Sections whose arrays hold the entities (listings, sites, papers…). */
+  from: string[];
+  /** The field that NAMES one — used to merge duplicates and to title its card. */
+  nameKey: string;
+  /**
+   * Up to a few headline figures. `count` ignores `field`; `range` prints
+   * low–high; `sum` totals. `labelKey` is looked up in `TemplateI18n.cover`,
+   * falling back to the key itself.
+   */
+  figures?: Array<{ labelKey: string; agg: 'count' | 'range' | 'sum'; field?: string }>;
+  /** Numeric fields shown as tiles on an entity card, in order. */
+  tiles?: Array<{ labelKey: string; field: string }>;
+}
+
 export interface TemplateI18n {
   name?: string;
   description?: string;
@@ -352,6 +379,8 @@ export interface TemplateI18n {
   fields?: Record<string, { label?: string; help?: string; placeholder?: string; suggestions?: string[]; optionLabels?: Record<string, string> }>;
   /** Range-slider labels, keyed by the range's `minKey`. */
   ranges?: Record<string, string>;
+  /** Cover statistic + tile labels, keyed by `CoverSpec`'s `labelKey`. */
+  cover?: Record<string, string>;
   /** Workflow step overrides by agent id (label + description). */
   agentLabels?: Record<string, { label?: string; description?: string }>;
   /** Add-on label/description overrides by add-on key. */
@@ -411,6 +440,8 @@ export interface TemplateManifest {
   instructionsField?: string;
   /** ISO 4217 the figures in this model's reports are in. */
   currency?: string;
+  /** What this model summarises on the report's snapshot. */
+  cover?: { from: string[]; nameKey: string; figures?: Array<{ labelKey: string; agg: 'count' | 'range' | 'sum'; field?: string }>; tiles?: Array<{ labelKey: string; field: string }> };
   /** Report tiers the client picks from, with their credit cost. */
   modes: Array<{ key: ReportMode; label: string; credits: number }>;
   /** Paid add-on deliverables this model offers, with their credit cost. */

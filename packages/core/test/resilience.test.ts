@@ -40,7 +40,7 @@ describe('resilience — per-step retry, resume, degrade', () => {
     __setProviderForTests('gemini-vertex', failingMock('market_overview', 2));
     const out = await runResearch({ template, params: params(), jobId: 'r1', generatedAt: 't' });
     expect(out.trace.status).toBe('completed');
-    expect(out.meta.degradedSections).toBeUndefined();
+    expect(out.meta.sections ?? []).toEqual([]);
     const ma = out.trace.agents.find((a) => a.id === 'market-analyst')!;
     expect(ma.status).toBe('ok');
     expect(ma.attempts).toBe(2); // one retry
@@ -66,7 +66,7 @@ describe('resilience — per-step retry, resume, degrade', () => {
     const second = await runResearch({ template, params: params(), jobId: 'r3', generatedAt: 't', resume: first.checkpoint, finalize: true });
 
     expect(second.trace.status).toBe('completed');
-    expect(second.meta.degradedSections).toBeUndefined();
+    expect(second.meta.sections ?? []).toEqual([]);
     expect(Object.keys(second.report)).toHaveLength(12); // full essential report
 
     // The trace covers the WHOLE job, not just this dispatch: every agent appears
@@ -170,7 +170,7 @@ describe('resilience — per-step retry, resume, degrade', () => {
     __setProviderForTests('gemini-vertex', failingMock('market_overview', 999));
     const out = await runResearch({ template, params: params(), jobId: 'r4', generatedAt: 't', finalize: true });
     expect(out.trace.status).toBe('completed'); // deliver the rest
-    expect(out.meta.degradedSections).toContain('market_overview');
+    expect((out.meta.sections ?? []).map((x) => x.key)).toContain('market_overview');
     expect(out.trace.warnings?.some((w) => w.includes('market-analyst'))).toBe(true);
     expect(out.trace.durationMs).toBeGreaterThanOrEqual(0);
   });

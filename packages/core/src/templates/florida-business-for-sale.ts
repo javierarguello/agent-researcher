@@ -1026,6 +1026,24 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
   // How the admin form (and any model-specific web app) should render the params:
   // a condensed layout (paired min/max on one row), per-field help, and suggested
   // values that still allow manual entry. See docs/model-ui.md.
+  // What the PDF cover summarises. These were hardcoded in the renderer as this
+  // model's own field names, so any other model's dossier had no cover statistics
+  // and no entity cards at all.
+  cover: {
+    from: ['shortlist', 'deep_dives'],
+    nameKey: 'business',
+    figures: [
+      { labelKey: 'targets', agg: 'count' },
+      { labelKey: 'priceRange', agg: 'range', field: 'askingPrice' },
+      { labelKey: 'combinedRevenue', agg: 'sum', field: 'revenue' },
+      { labelKey: 'combinedSde', agg: 'sum', field: 'cashFlowSde' },
+    ],
+    tiles: [
+      { labelKey: 'revenue', field: 'revenue' },
+      { labelKey: 'sde', field: 'cashFlowSde' },
+      { labelKey: 'asking', field: 'askingPrice' },
+    ],
+  },
   paramsUi: {
     rows: [
       ['industry', 'location'],

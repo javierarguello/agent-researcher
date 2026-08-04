@@ -92,7 +92,7 @@ describe('a retry after a failed WRITE does not re-buy the research', () => {
     const out = await runResearch({ template: compactModel, params: params(), jobId: 'w3', generatedAt: 't' });
 
     expect(out.trace.status).toBe('completed');
-    expect(out.meta.degradedSections).toBeUndefined();
+    expect(out.meta.sections ?? []).toEqual([]);
     expect(out.sources.length).toBeGreaterThan(0);
   });
 

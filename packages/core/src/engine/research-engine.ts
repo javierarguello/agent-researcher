@@ -70,11 +70,30 @@ export interface ReportMeta {
   /** Total cost of the report (LLM exact + search estimate). */
   cost: Cost;
   /**
-   * SECTION KEYS that could not be completed and hold a placeholder — not agent
-   * ids, whatever this comment used to say. It is the contract both renderers key
-   * on to suppress a body, so the description is load-bearing.
+   * Sections with something to report, by SECTION KEY (not agent id).
+   *
+   *   - `lost` — nothing wrote it, so it holds a localized placeholder. Both
+   *     renderers key on this to SUPPRESS the body; that is load-bearing.
+   *   - `unenriched` — a producer wrote it and a refiner meant to deepen it never
+   *     finished. The content is real and MUST still be rendered; what the buyer
+   *     got is less depth than the tier they paid for.
+   *
+   * This replaced `degradedSections`, a list of strings that could only say "lost"
+   * — so `unenriched` was invisible: an admin warning and nothing else, and a
+   * comprehensive report whose four enrich passes all failed shipped as complete,
+   * at full price, with the buyer never told.
+   *
+   * NOT the manifest's `sections` (key + title, every section, for rendering).
+   * This one carries only what went wrong, and `status` leaves room for a third
+   * state without another parallel list to keep in step.
    */
-  degradedSections?: string[];
+  sections?: SectionStatus[];
+}
+
+/** One section that did not come out whole, and in what way. */
+export interface SectionStatus {
+  key: string;
+  status: 'lost' | 'unenriched';
 }
 
 /** Per-agent execution record — what it did, produced, and any error. */
@@ -165,7 +184,8 @@ export interface Checkpoint {
   doneAgentIds: string[];
   /** What each finished agent reported to the steps after it, by agent id. */
   handoffs?: Record<string, string>;
-  degraded: string[];
+  /** Section statuses so far — see `ReportMeta.sections`. */
+  degraded: SectionStatus[];
   /** Traces of agents already completed on prior dispatches — restored so the final
    *  trace/summary reflects the WHOLE run, not just the last resumed dispatch. */
   agentTraces?: AgentTrace[];
@@ -252,7 +272,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
 
   const evidence = createEvidence();
   const report: Record<string, unknown> = { ...(input.resume?.report ?? {}) };
-  const degraded: string[] = [...(input.resume?.degraded ?? [])];
+  const degraded: SectionStatus[] = [...(input.resume?.degraded ?? [])];
   // What each finished agent told the ones after it. Carried in the checkpoint, so
   // a resumed dispatch does not hand later steps an empty summary of the work its
   // predecessors already did.
@@ -509,7 +529,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     generatedAt,
     contentFormat: 'markdown',
     cost: trace.cost,
-    ...(degraded.length ? { degradedSections: degraded } : {}),
+    ...(degraded.length ? { sections: degraded } : {}),
   });
   const checkpoint: Checkpoint = snapshot();
 
@@ -573,11 +593,20 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     const lost = ownedKeys(agent).filter((key) => !delivered.has(key));
     for (const key of lost) {
       report[key] = degradedValue(effTemplate, key, degradedSectionNote(language));
-      if (!degraded.includes(key)) degraded.push(key);
+      const at = degraded.findIndex((d) => d.key === key);
+      // `lost` wins over `unenriched`: a section nobody wrote is not merely shallow.
+      if (at === -1) degraded.push({ key, status: 'lost' });
+      else degraded[at]!.status = 'lost';
     }
     // Still worth a warning even when nothing was lost: a step that never finished
     // is a step the admin should see, and "kept" says the section survived it.
     const kept = ownedKeys(agent).filter((key) => delivered.has(key));
+    // …and now it says it to the BUYER too. A kept key means the section exists and
+    // this step did not run on it — for a refiner, exactly the depth the tier was
+    // sold on. The body stays; only the label is added.
+    for (const key of kept) {
+      if (!degraded.some((d) => d.key === key)) degraded.push({ key, status: 'unenriched' });
+    }
     warnings.push(
       `Degraded [${lost.join(', ') || 'none'}] from agent "${agent.id}" after exhausting retries/re-dispatches: ${reason}` +
         (kept.length ? ` (kept, already written: ${kept.join(', ')})` : ''),

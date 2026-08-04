@@ -48,14 +48,37 @@ const NOTICE_MANY: Copy = {
   pt: '{n} seções deste dossiê não puderam ser concluídas com fontes confiáveis. Todo o restante está completo. Se essas seções forem importantes para você, escreva e nós revisamos.',
 };
 
+const SHALLOW_ONE: Copy = {
+  en: 'One section of this dossier was researched and written, but the pass that adds extra depth to it did not finish. Its content is complete and sourced as usual.',
+  es: 'Una sección de este dossier se investigó y redactó, pero la pasada que le agrega profundidad no llegó a completarse. Su contenido está completo y documentado como siempre.',
+  fr: 'Une section de ce dossier a été recherchée et rédigée, mais la passe qui lui ajoute de la profondeur n’a pas abouti. Son contenu est complet et sourcé comme d’habitude.',
+  pt: 'Uma seção deste dossiê foi pesquisada e redigida, mas a passagem que lhe acrescenta profundidade não foi concluída. Seu conteúdo está completo e documentado como sempre.',
+};
+
+const SHALLOW_MANY: Copy = {
+  en: '{n} sections of this dossier were researched and written, but the pass that adds extra depth to them did not finish. Their content is complete and sourced as usual.',
+  es: '{n} secciones de este dossier se investigaron y redactaron, pero la pasada que les agrega profundidad no llegó a completarse. Su contenido está completo y documentado como siempre.',
+  fr: '{n} sections de ce dossier ont été recherchées et rédigées, mais la passe qui leur ajoute de la profondeur n’a pas abouti. Leur contenu est complet et sourcé comme d’habitude.',
+  pt: '{n} seções deste dossiê foram pesquisadas e redigidas, mas a passagem que lhes acrescenta profundidade não foi concluída. Seu conteúdo está completo e documentado como sempre.',
+};
+
 /**
- * The one line shown above a delivered-but-incomplete report. Returns '' when
- * nothing degraded, so a complete report carries no notice at all.
+ * The line shown above a delivered-but-incomplete report. `''` when there is
+ * nothing to say, so a clean report carries no notice at all.
+ *
+ * The two states get DIFFERENT sentences, and that is the point: counting them
+ * together would tell a buyer a section "could not be completed" when it is right
+ * there in front of them, fully written — which is worse than the silence this
+ * replaced.
  */
-export function degradedNotice(lang: unknown, degradedCount: number): string {
-  if (degradedCount <= 0) return '';
+export function sectionsNotice(lang: unknown, statuses: Array<{ status: 'lost' | 'unenriched' }>): string {
   const l = asLang(lang);
-  return degradedCount === 1 ? pick(NOTICE_ONE, l) : pick(NOTICE_MANY, l).replace('{n}', String(degradedCount));
+  const lost = statuses.filter((x) => x.status === 'lost').length;
+  const shallow = statuses.filter((x) => x.status === 'unenriched').length;
+  const parts: string[] = [];
+  if (lost > 0) parts.push(lost === 1 ? pick(NOTICE_ONE, l) : pick(NOTICE_MANY, l).replace('{n}', String(lost)));
+  if (shallow > 0) parts.push(shallow === 1 ? pick(SHALLOW_ONE, l) : pick(SHALLOW_MANY, l).replace('{n}', String(shallow)));
+  return parts.join(' ');
 }
 
 const HELD_NOTICE: Copy = {

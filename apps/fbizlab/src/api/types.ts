@@ -41,6 +41,8 @@ export interface TemplateManifest {
   instructionsField?: string;
   /** ISO 4217 the figures in this model's reports are in. */
   currency?: string;
+  /** What this model summarises on the report's snapshot. */
+  cover?: { from: string[]; nameKey: string; figures?: Array<{ labelKey: string; agg: 'count' | 'range' | 'sum'; field?: string }>; tiles?: Array<{ labelKey: string; field: string }> };
   modes: ModeInfo[];
   addons: AddonInfo[];
   steps: StepInfo[];
@@ -77,7 +79,8 @@ export interface JobSummary {
   /** The one line to show when a report came back incomplete — already in the
    *  report's language. The raw diagnostics never reach this client. */
   notice?: string;
-  degradedSections?: string[];
+  /** Sections that did not come out whole. `lost` → the body is suppressed. */
+  sections?: Array<{ key: string; status: 'lost' | 'unenriched' }>;
 }
 /** `url` is a relative API path fetched WITH the session token (no shareable link). */
 export interface JobFileSigned { name: string; contentType: string; size: number | null; url: string; }

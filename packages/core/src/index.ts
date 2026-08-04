@@ -46,7 +46,7 @@ export {
   noteJobResolution,
 } from './jobs/firestore.js';
 export type { ResearchJob, JobStatus, JobFailureKind, JobHold, JobFile, JobProgress, JobSummary } from './jobs/types.js';
-export { degradedNotice, degradedSectionNote, heldNotice, closedNotice } from './jobs/report-copy.js';
+export { sectionsNotice, degradedSectionNote, heldNotice, closedNotice } from './jobs/report-copy.js';
 export { claimJobSlot, releaseJobSlot, releaseUnclaimedSlot, inFlightSlots, setJobSlotHeld } from './jobs/slots.js';
 export type { SlotClaim } from './jobs/slots.js';
 export { generateHeadline } from './jobs/headline.js';

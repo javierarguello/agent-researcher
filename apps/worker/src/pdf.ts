@@ -68,6 +68,7 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
     report: parsed.report, meta: parsed.meta, sections, title: job.title ?? undefined,
     params: job.params, paramLabels, instructionsField: manifest?.instructionsField,
     currency: manifest?.currency,
+    cover: template?.cover,
     lang, theme, generatedAt,
   });
 

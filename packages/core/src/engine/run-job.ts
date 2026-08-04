@@ -18,7 +18,7 @@ import {
 } from '../jobs/firestore.js';
 import { retryAsync } from '../util/retry.js';
 import { releaseJobSlot } from '../jobs/slots.js';
-import { degradedNotice, heldNotice } from '../jobs/report-copy.js';
+import { sectionsNotice, heldNotice } from '../jobs/report-copy.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
@@ -283,7 +283,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       language: output.language, mode: output.meta.mode, depth: output.meta.depth, generatedAt,
       turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, cost: output.meta.cost,
       status: output.trace.status, attempts,
-      ...(output.meta.degradedSections ? { degradedSections: output.meta.degradedSections } : {}),
+      ...(output.meta.sections ? { sections: output.meta.sections } : {}),
       ...(output.trace.warnings ? { warnings: output.trace.warnings } : {}),
     };
     let report: JobFile;
@@ -319,13 +319,13 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     const agentErrors = output.trace.agents
       .filter((a) => a.status === 'failed')
       .map((a) => ({ agentId: a.id, error: ((a.error ?? '').split('\n')[0] ?? '').slice(0, 500) }));
-    const notice = degradedNotice(output.language, output.meta.degradedSections?.length ?? 0);
+    const notice = sectionsNotice(output.language, output.meta.sections ?? []);
     const summary: JobSummary = {
       schemaVersion: output.meta.schemaVersion, language: output.language, mode: output.meta.mode, depth: output.meta.depth,
       turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, reportBytes: report.size ?? 0,
       durationMs, attempts, agents,
       ...(output.trace.warnings ? { warnings: output.trace.warnings } : {}),
-      ...(output.meta.degradedSections ? { degradedSections: output.meta.degradedSections } : {}),
+      ...(output.meta.sections ? { sections: output.meta.sections } : {}),
       ...(agentErrors.length ? { agentErrors } : {}),
       // What the buyer is shown instead of the warnings above.
       ...(notice ? { notice } : {}),
@@ -334,7 +334,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
 
     // WARNING for degraded sections, so it's easy to find later.
     if (output.trace.warnings?.length) {
-      log.warn('job.degraded', { degradedSections: output.meta.degradedSections, warnings: output.trace.warnings, attempts });
+      log.warn('job.degraded', { sections: output.meta.sections, warnings: output.trace.warnings, attempts });
     }
     // Its own ERROR, not folded into the warning above: a job that hit the spend
     // ceiling is an incident (a runaway, or a ceiling set too low), not the ordinary
@@ -342,7 +342,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     if (output.trace.budgetExceeded) {
       log.error('job.budget_exceeded', {
         costUsd: output.meta.cost.usd, limitUsd: output.trace.costCeilingUsd,
-        degradedSections: output.meta.degradedSections, attempts,
+        sections: output.meta.sections, attempts,
       });
     }
 
@@ -366,7 +366,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     log.info('job.completed', {
       sourcesFound: output.sources.length, turnsUsed: output.turnsUsed, durationMs, attempts,
       costUsd: output.meta.cost.usd, tokensIn: output.meta.cost.inputTokens, tokensOut: output.meta.cost.outputTokens,
-      ...(output.meta.degradedSections ? { degradedSections: output.meta.degradedSections } : {}),
+      ...(output.meta.sections ? { sections: output.meta.sections } : {}),
     });
     // If something ended this job while we were running it — the enqueue-failure
     // cleanup is the one that does — the delivery is refused and the work is lost.
@@ -391,7 +391,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       await recordReportStats({
         appId: input.appId, userId: input.userId, template: input.template,
         status: 'completed',
-        costUsd: output.meta.cost.usd, durationMs, degraded: !!output.meta.degradedSections,
+        costUsd: output.meta.cost.usd, durationMs, degraded: !!output.meta.sections,
       });
     } catch (err) {
       log.warn('stats.report_failed', { message: (err as Error).message });

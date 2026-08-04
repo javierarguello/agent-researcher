@@ -147,7 +147,8 @@ export interface JobSummary {
   attempts?: number;
   agents?: JobAgentSummary[];
   warnings?: string[];
-  degradedSections?: string[];
+  /** Sections that did not come out whole. `lost` → the body is suppressed. */
+  sections?: Array<{ key: string; status: 'lost' | 'unenriched' }>;
   agentErrors?: Array<{ agentId: string; error: string }>;
 }
 export interface JobFileSigned {

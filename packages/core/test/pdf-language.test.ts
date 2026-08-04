@@ -174,3 +174,37 @@ describe('numbers and money belong to the reader and the model', () => {
     expect(withDeal('en')).toContain('$');
   });
 });
+
+describe('the cover belongs to the model', () => {
+  const solar = {
+    report: { sites: [{ parcel: 'Caliche Flats', acres: 900, capacityMw: 120 }, { parcel: 'Salt Draw', acres: 400, capacityMw: 60 }] },
+    sections: [{ key: 'sites', title: 'Sites' }],
+    meta: {}, lang: 'en', theme: getPdfTheme('fbizlab'),
+    cover: {
+      from: ['sites'],
+      nameKey: 'parcel',
+      figures: [
+        { labelKey: 'targets', agg: 'count' as const },
+        { labelKey: 'combinedRevenue', agg: 'sum' as const, field: 'acres' },
+      ],
+      tiles: [{ labelKey: 'revenue', field: 'capacityMw' }],
+    },
+  };
+
+  it('gives a non-Florida model a snapshot at all', () => {
+    // `collectDeals` read `report.shortlist` / `report.deep_dives` and keyed on a
+    // field called `business` — this model's own names — so any other model's
+    // dossier had NO cover statistics and no entity cards, because nothing matched.
+    const html = buildReportHtml(solar as never);
+    expect(html).toMatch(/covstatval/);
+    expect(html).toContain('1,300'); // 900 + 400 acres, summed as the model declared
+    expect(html).toContain('Caliche Flats'); // …and the card is titled by ITS name key
+  });
+
+  it('renders nothing on the cover for a model that declares none', () => {
+    // The control, and the honest default: no `cover` means no snapshot, not a
+    // snapshot computed from fields we guessed at.
+    const { cover, ...noCover } = solar;
+    expect(buildReportHtml(noCover as never)).not.toContain('<div class="coverstats">');
+  });
+});
