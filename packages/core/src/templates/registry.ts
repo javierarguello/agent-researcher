@@ -149,6 +149,16 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     ...(t.instructionsField ? { instructionsField: t.instructionsField } : {}),
     currency: t.currency ?? 'USD',
     ...(t.cover ? { cover: t.cover } : {}),
+    // The cover's labels, resolved to the language this manifest is ACTUALLY in.
+    //
+    // `CoverSpec.labelKey` is documented as "looked up in `TemplateI18n.cover`",
+    // and nothing looked it up: `cover` went out raw and both renderers fell back
+    // to their own four-language dictionaries. Those dictionaries are Florida's
+    // vocabulary — `targets`, `priceRange`, `combinedSde` — so the flagship looked
+    // right and the SECOND model to declare a cover got its raw key printed as the
+    // label, in every language. Keyed off `actualLang`, so a model with no block
+    // for the requested language gets its English labels rather than a mixture.
+    ...(t.i18n?.[actualLang]?.cover ? { coverLabels: t.i18n[actualLang]!.cover } : {}),
     modes: REPORT_MODES.map((key) => {
       const cfg = t.modes?.[key] ?? DEFAULT_MODES[key];
       return { key, label: tr?.modeLabels?.[key] ?? cfg.label ?? key, credits: creditsForMode(cfg, key) };

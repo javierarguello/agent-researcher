@@ -22,16 +22,28 @@ import { burstOk, clientIp, __resetBurst } from '../src/public-limit.js';
 import { config } from '@agent-researcher/core';
 
 const sent: unknown[] = [];
-vi.stubGlobal(
-  'fetch',
-  vi.fn(async (url: unknown, init: { body?: string } = {}) => {
-    if (String(url).includes('postmarkapp.com')) {
-      sent.push(JSON.parse(init.body ?? '{}'));
-      return { ok: true, status: 200, text: async () => '{}' } as Response;
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  }),
-);
+/**
+ * The file-level `fetch`, reinstalled by name rather than by
+ * `vi.unstubAllGlobals()`.
+ *
+ * Two cases here stub `fetch` again to watch the captcha's outbound calls, and
+ * unstubbing ALL globals removed this one too — so the next test's Postmark send
+ * hit the real `fetch` and the route 500'd. A restore that reaches past its own
+ * scope is the same defect as no restore at all.
+ */
+function installFetch(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: unknown, init: { body?: string } = {}) => {
+      if (String(url).includes('postmarkapp.com')) {
+        sent.push(JSON.parse(init.body ?? '{}'));
+        return { ok: true, status: 200, text: async () => '{}' } as Response;
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+}
+installFetch();
 
 const seed = () => createApp({ appId: 'fbizlab', name: 'F', role: 'app', emailFrom: 'no-reply@f.test', webUrl: 'https://f.test' });
 // The shape this deployment actually receives: Cloud Run appends the peer, so the
@@ -207,6 +219,62 @@ describe('the preview route is metered like every other public one', () => {
     expect(codes.filter((c) => c === 429).length, `saw ${codes.join(',')}`).toBeGreaterThan(0);
     expect(codes.filter((c) => c !== 429).length).toBeLessThanOrEqual(4);
   });
+
+  it('meters its own bucket, not somebody else’s', async () => {
+    // Neither the counter key nor the config key was pinned, so pointing this
+    // route at `register`'s meter survived — and `toBeLessThanOrEqual(4)` cannot
+    // tell 4 from 3. Exhausting preflight must leave registration working.
+    await seedApp('fbizlab');
+    await grantCredits({ appId: 'fbizlab', userId: 'bucket@x.com', credits: 50 });
+    const t = await token('fbizlab', 'bucket@x.com');
+    const body = { template: 'florida-business-for-sale', params: { industry: 'x', mode: 'essential' } };
+    for (let i = 0; i < 6; i++) {
+      await app.inject({ method: 'POST', url: '/research/preflight', headers: { ...auth(t), 'x-forwarded-for': '198.51.100.22' }, payload: body });
+    }
+
+    // `seedApp` has no `emailFrom`; the register route needs the one `seed()` writes.
+    await seed();
+    // TWO of them, and that is the point: preflight allows 4/hour and register 5,
+    // so a single registration lands on the 5th slot and passes even when the two
+    // routes share a counter. The second is what tells them apart.
+    const codes2: number[] = [];
+    for (const email of ['after-bucket-1@x.com', 'after-bucket-2@x.com']) {
+      codes2.push((await app.inject({
+        method: 'POST', url: '/auth/register',
+        headers: { 'x-forwarded-for': '198.51.100.22' },
+        payload: { appId: 'fbizlab', email, password: 'sup3rsecret' },
+      })).statusCode);
+    }
+    expect(codes2, 'preflight is spending registration’s hourly allowance').toEqual([202, 202]);
+  });
+
+  it('caps a USER who moves between IPs', async () => {
+    // It was metered per IP only — on an AUTHENTICATED route, where every other
+    // multi-dimension meter in the API pairs an IP cap with one on the identity.
+    // An IP is shared by many users and a user is not tied to one IP; five
+    // Firestore reads a call is per-user work.
+    await seedApp('fbizlab');
+    await grantCredits({ appId: 'fbizlab', userId: 'roamer@x.com', credits: 50 });
+    const t = await token('fbizlab', 'roamer@x.com');
+    const body = { template: 'florida-business-for-sale', params: { industry: 'x', mode: 'essential' } };
+    const perUser = config.publicLimits.preflightPerHourPerUser;
+    writableConfig.publicLimits.preflightPerHourPerUser = 4;
+
+    const codes: number[] = [];
+    try {
+    for (let i = 0; i < 6; i++) {
+      // A different address every time, so the per-IP cap can never be what bites.
+      codes.push((await app.inject({
+        method: 'POST', url: '/research/preflight',
+        headers: { ...auth(t), 'x-forwarded-for': `198.51.100.${100 + i}` },
+        payload: body,
+      })).statusCode);
+    }
+    expect(codes.filter((c) => c === 429).length, `saw ${codes.join(',')}`).toBeGreaterThan(0);
+    } finally {
+      writableConfig.publicLimits.preflightPerHourPerUser = perUser;
+    }
+  });
 });
 
 describe('the captcha does not pay for an attacker’s burst', () => {
@@ -226,23 +294,114 @@ describe('the captcha does not pay for an attacker’s burst', () => {
     __resetBurst();
     const calls = { n: 0 };
     vi.stubGlobal('fetch', vi.fn(async () => { calls.n += 1; return new Response(JSON.stringify({ success: false }), { status: 200 }); }));
+    try {
+      const codes: number[] = [];
+      for (let i = 0; i < 8; i++) {
+        codes.push((await app.inject({
+          method: 'POST', url: '/auth/register',
+          payload: { appId: 'fbizlab', email: `b${i}@x.com`, password: 'sup3rsecret', captchaToken: 'junk' },
+        })).statusCode);
+      }
 
-    const codes: number[] = [];
-    for (let i = 0; i < 8; i++) {
-      codes.push((await app.inject({
-        method: 'POST', url: '/auth/register',
-        payload: { appId: 'fbizlab', email: `b${i}@x.com`, password: 'sup3rsecret', captchaToken: 'junk' },
-      })).statusCode);
+      expect(codes.filter((c) => c === 429).length, `saw ${codes.join(',')}`).toBeGreaterThan(0);
+      // The point of the ordering: the outbound calls stop when the burst does.
+      expect(calls.n, 'we kept calling Cloudflare for every request past the limit').toBeLessThanOrEqual(3);
+    } finally {
+      // In a `finally`, because these are GLOBAL: `captcha.secret`, the enabled
+      // flow set, the burst limit and the `fetch` stub all leaked out of this
+      // block, so one real failure here silently rewrote the environment for
+      // whichever describe happened to run next. `withHops` in this same file
+      // does it correctly.
+      installFetch();
+      writableConfig.captcha.secret = secret;
+      if (!hadFlow) config.captcha.flows.delete('register');
+      writableConfig.publicLimits.burstPerMinute = burst;
+      __resetBurst();
     }
+  });
 
-    expect(codes.filter((c) => c === 429).length, `saw ${codes.join(',')}`).toBeGreaterThan(0);
-    // The point of the ordering: the outbound calls stop when the burst does.
-    expect(calls.n, 'we kept calling Cloudflare for every request past the limit').toBeLessThanOrEqual(3);
-
-    vi.unstubAllGlobals();
-    writableConfig.captcha.secret = secret;
-    if (!hadFlow) config.captcha.flows.delete('register');
-    writableConfig.publicLimits.burstPerMinute = burst;
+  it('counts it ONCE, not once in each place', async () => {
+    // The preHandler counts, the route guard counts — and if the guard does not
+    // know the preHandler already did, every captcha'd route's burst limit is
+    // halved for everybody. The first version stored a boolean for exactly this,
+    // and then a second bug made the boolean the wrong thing to store.
+    const secret = config.captcha.secret;
+    const hadFlow = config.captcha.flows.has('register');
+    const burst = config.publicLimits.burstPerMinute;
+    writableConfig.captcha.secret = 'sekret';
+    config.captcha.flows.add('register');
+    writableConfig.publicLimits.burstPerMinute = 4;
     __resetBurst();
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown, init: { body?: string } = {}) => {
+      if (String(url).includes('postmarkapp.com')) { sent.push(JSON.parse(init.body ?? '{}')); return { ok: true, status: 200, text: async () => '{}' } as Response; }
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    }));
+    try {
+      await seed();
+      const codes: number[] = [];
+      for (let i = 0; i < 4; i++) {
+        codes.push((await app.inject({
+          method: 'POST', url: '/auth/register',
+          headers: { 'x-forwarded-for': '198.51.100.44' },
+          payload: { appId: 'fbizlab', email: `once${i}@x.com`, password: 'sup3rsecret', captchaToken: 'ok' },
+        })).statusCode);
+      }
+      // Four allowed per minute means four get through, not two.
+      expect(codes.filter((c) => c === 429), `saw ${codes.join(',')}`).toEqual([]);
+    } finally {
+      installFetch();
+      writableConfig.captcha.secret = secret;
+      if (!hadFlow) config.captcha.flows.delete('register');
+      writableConfig.publicLimits.burstPerMinute = burst;
+      __resetBurst();
+    }
+  });
+
+  it('counts a captcha’d request into the window its ROUTE uses', async () => {
+    // `burstOkOnce` stored a boolean, so it always counted against the SHARED
+    // window and the route guard then skipped its own check entirely. A captcha'd
+    // route asking for `isolatedBurst` got neither: it consumed the window that
+    // meters sign-in and registration, and its own stayed empty.
+    //
+    // That is the CGNAT lockout `public-limit.ts` documents — one active session
+    // on a busy read route locking out everyone behind the same egress address.
+    const secret = config.captcha.secret;
+    const hadFlow = config.captcha.flows.has('preflight');
+    const burst = config.publicLimits.burstPerMinute;
+    writableConfig.captcha.secret = 'sekret';
+    config.captcha.flows.add('preflight');
+    writableConfig.publicLimits.burstPerMinute = 3;
+    __resetBurst();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 })));
+    try {
+      await seedApp('fbizlab');
+      await grantCredits({ appId: 'fbizlab', userId: 'iso@x.com', credits: 50 });
+      const t = await token('fbizlab', 'iso@x.com');
+      const body = { template: 'florida-business-for-sale', params: { industry: 'x', mode: 'essential' } };
+
+      // Exhaust preflight's own window, and then some.
+      for (let i = 0; i < 6; i++) {
+        await app.inject({
+          method: 'POST', url: '/research/preflight',
+          headers: { ...auth(t), 'x-forwarded-for': '198.51.100.7' },
+          payload: { ...body, captchaToken: 'ok' },
+        });
+      }
+
+      // …and registration from the SAME address is still available, because the
+      // shared window was never touched.
+      const r = await app.inject({
+        method: 'POST', url: '/auth/register',
+        headers: { 'x-forwarded-for': '198.51.100.7' },
+        payload: { appId: 'fbizlab', email: 'after-iso@x.com', password: 'sup3rsecret', captchaToken: 'ok' },
+      });
+      expect(r.statusCode, 'preflight ate the window that meters sign-up').not.toBe(429);
+    } finally {
+      installFetch();
+      writableConfig.captcha.secret = secret;
+      if (!hadFlow) config.captcha.flows.delete('preflight');
+      writableConfig.publicLimits.burstPerMinute = burst;
+      __resetBurst();
+    }
   });
 });

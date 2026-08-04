@@ -1239,6 +1239,24 @@ app.post(
 );
 
 // --- Research: pre-flight validation (moderation + AI preview) ---------------
+/**
+ * Preflight's burst window and route id, in ONE place.
+ *
+ * The captcha preHandler counts a request into a burst window before the route
+ * guard ever runs, so the two have to agree on which window. They are the same
+ * object here rather than two literals that look alike.
+ *
+ * Isolated on purpose: this is a read route a busy page hits often, and on the
+ * shared window a single active session could exhaust it and 429 sign-in and
+ * registration for everyone behind the same egress address — a corporate NAT,
+ * CGNAT or mobile carrier is one IP to us.
+ */
+const PREFLIGHT_LIMIT = {
+  route: 'preflight',
+  perIp: config.publicLimits.preflightPerHourPerIp,
+  isolatedBurst: true,
+} as const;
+
 app.post(
   '/research/preflight',
   {
@@ -1274,13 +1292,13 @@ app.post(
         },
       },
     },
-    preHandler: requireCaptcha('preflight'),
+    preHandler: requireCaptcha('preflight', { burst: PREFLIGHT_LIMIT }),
   },
   async (req, reply) => {
     // A meter, which this route did not have. Reproduced at 60 consecutive 200s,
     // ~5 Firestore reads each, on the one route where every sibling carries one in
     // addition to the captcha.
-    if (await publicLimit(req, reply, { route: 'preflight', perIp: config.publicLimits.preflightPerHourPerIp })) return reply;
+    if (await publicLimit(req, reply, { ...PREFLIGHT_LIMIT, perKey: { limit: config.publicLimits.preflightPerHourPerUser, value: req.auth?.email } })) return reply;
 
     let validated;
     try {

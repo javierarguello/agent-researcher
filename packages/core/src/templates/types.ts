@@ -442,6 +442,8 @@ export interface TemplateManifest {
   currency?: string;
   /** What this model summarises on the report's snapshot. */
   cover?: { from: string[]; nameKey: string; figures?: Array<{ labelKey: string; agg: 'count' | 'range' | 'sum'; field?: string }>; tiles?: Array<{ labelKey: string; field: string }> };
+  /** Localized labels for the cover's `labelKey`s, in `lang`. */
+  coverLabels?: Record<string, string>;
   /** Report tiers the client picks from, with their credit cost. */
   modes: Array<{ key: ReportMode; label: string; credits: number }>;
   /** Paid add-on deliverables this model offers, with their credit cost. */

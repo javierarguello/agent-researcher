@@ -1145,6 +1145,14 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         instructions: { label: 'Instrucciones adicionales', help: 'Lo que las opciones anteriores no cubran. Es orientación: no cambia el contenido del reporte.' },
       },
       ranges: { askingPriceMin: 'Precio pedido' },
+      // The cover's own vocabulary. These words used to live in BOTH renderers'
+      // four-language dictionaries, which is why this model's cover looked right
+      // and any other model's printed its raw keys.
+      cover: {
+        targets: 'Objetivos', priceRange: 'Rango de precio',
+        combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado',
+        revenue: 'Ingresos', sde: 'SDE', asking: 'Precio',
+      },
       agentLabels: {
         'market-analyst': { label: 'Analista de mercado', description: 'Establece el contexto del mercado en Florida y reformula los criterios de búsqueda.' },
         'competition-analyst': { label: 'Analista de competencia', description: 'Mapea el panorama competitivo y los factores de demanda del sector en la zona.' },
@@ -1211,6 +1219,11 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         instructions: { label: 'Instructions supplémentaires', help: 'Ce que les options ci-dessus ne couvrent pas. C’est une orientation : cela ne change pas le contenu du rapport.' },
       },
       ranges: { askingPriceMin: 'Prix demandé' },
+      cover: {
+        targets: 'Cibles', priceRange: 'Fourchette de prix',
+        combinedRevenue: 'Revenu cumulé', combinedSde: 'SDE cumulé',
+        revenue: 'Revenu', sde: 'SDE', asking: 'Prix',
+      },
       agentLabels: {
         'market-analyst': { label: 'Analyste de marché', description: 'Pose le contexte du marché en Floride et reformule les critères de recherche.' },
         'competition-analyst': { label: 'Analyste de la concurrence', description: 'Cartographie le paysage concurrentiel et les moteurs de demande du secteur dans la zone.' },
@@ -1277,6 +1290,11 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         instructions: { label: 'Instruções adicionais', help: 'O que as opções acima não cobrem. É orientação: não muda o conteúdo do relatório.' },
       },
       ranges: { askingPriceMin: 'Preço pedido' },
+      cover: {
+        targets: 'Alvos', priceRange: 'Faixa de preço',
+        combinedRevenue: 'Receita combinada', combinedSde: 'SDE combinado',
+        revenue: 'Receita', sde: 'SDE', asking: 'Preço',
+      },
       agentLabels: {
         'market-analyst': { label: 'Analista de mercado', description: 'Estabelece o contexto do mercado na Flórida e reformula os critérios de busca.' },
         'competition-analyst': { label: 'Analista de concorrência', description: 'Mapeia o panorama competitivo e os fatores de demanda do setor na região.' },

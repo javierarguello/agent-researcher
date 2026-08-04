@@ -176,6 +176,10 @@ export const config = {
      * per-user allowance for the expensive half.
      */
     preflightPerHourPerIp: int('PUBLIC_PREFLIGHT_PER_HOUR_IP', 60),
+    /** …and per USER. This is an authenticated route; every other multi-dimension
+     *  meter in the API pairs an IP cap with one on the identity, because a user
+     *  moves between IPs and an IP is shared by many users. */
+    preflightPerHourPerUser: int('PREFLIGHT_PER_HOUR_PER_USER', 60),
     registerPerHourPerIp: int('PUBLIC_REGISTER_PER_HOUR_IP', 30),
     /** Per TARGET address. Registration emails a link to an address the caller
      *  chooses, so without this one inbox can be mail-bombed from many IPs — the

@@ -69,6 +69,9 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
     params: job.params, paramLabels, instructionsField: manifest?.instructionsField,
     currency: manifest?.currency,
     cover: template?.cover,
+    // From the MANIFEST, which resolves them to the language it is actually in —
+    // not off the template, where they are still keyed by language.
+    coverLabels: manifest?.coverLabels,
     lang, theme, generatedAt,
   });
 

@@ -255,4 +255,52 @@ describe('the cover belongs to the model', () => {
     const { cover, ...noCover } = solar;
     expect(buildReportHtml(noCover as never)).not.toContain('<div class="coverstats">');
   });
+
+  // A model whose cover vocabulary is ITS OWN. The fixture above reuses Florida's
+  // labelKeys (`targets`, `combinedRevenue`, `revenue`), so it was passing on
+  // words this renderer happens to hardcode — the accident that hid the defect.
+  const wind = {
+    ...solar,
+    cover: {
+      from: ['sites'], nameKey: 'parcel',
+      figures: [{ labelKey: 'parcelsScreened', agg: 'count' as const }, { labelKey: 'gridCapacity', agg: 'sum' as const, field: 'capacityMw' }],
+      tiles: [{ labelKey: 'usableAcres', field: 'acres' }],
+    },
+  };
+
+  it('labels the cover with the words the MODEL declares', () => {
+    // `CoverSpec.labelKey` is documented as "looked up in `TemplateI18n.cover`",
+    // and nothing looked it up: both renderers fell back to their own dictionary,
+    // whose cover entries are the flagship's vocabulary in all four languages.
+    const html = buildReportHtml({
+      ...wind, lang: 'es',
+      coverLabels: { parcelsScreened: 'Parcelas evaluadas', gridCapacity: 'Capacidad de red', usableAcres: 'Acres utilizables' },
+    } as never);
+    // Cover statistic labels are uppercased by the layout; the tile label is not.
+    expect(html).toContain('PARCELAS EVALUADAS');
+    expect(html).toContain('CAPACIDAD DE RED');
+    expect(html).toContain('Acres utilizables');
+  });
+
+  it('falls back to a readable English label, never to the raw key', () => {
+    // What a model with no localized cover block gets. `humanizeKey` is why the
+    // defect was invisible in English — and why the validator exempts English and
+    // requires the other three.
+    const html = buildReportHtml(wind as never);
+    expect(html).toContain('PARCELS SCREENED');
+    expect(html).toContain('GRID CAPACITY');
+    expect(html, 'the raw key on the first page of the artifact').not.toContain('parcelsScreened');
+  });
+
+  it('does not let a param label hijack a cover label', () => {
+    // The PDF resolved cover labels out of `paramLabels` first, so a model whose
+    // PARAM shares a name with a cover `labelKey` silently overrode one with the
+    // other. Both are localized and neither is the other.
+    const html = buildReportHtml({
+      ...wind,
+      paramLabels: { parcelsScreened: 'A FORM FIELD LABEL' },
+    } as never);
+    expect(html).not.toContain('A FORM FIELD LABEL');
+    expect(html).toContain('PARCELS SCREENED');
+  });
 });

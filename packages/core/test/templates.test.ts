@@ -131,6 +131,30 @@ describe('a localized template is localized in every language we publish', () =>
     } as typeof t0;
     expect(validateTemplate(thin).join(' ')).toMatch(/"fr" is missing section titles/);
   });
+
+  it('refuses a language block that misses a cover label', () => {
+    // The cover is the FIRST page of the artifact the buyer keeps, and its labels
+    // were the one localized string with no reader: `CoverSpec.labelKey` is
+    // documented as looked up in `TemplateI18n.cover` and nothing looked it up.
+    // Both renderers fell back to their own dictionaries, which are filled with
+    // THIS model's vocabulary in all four languages — so it looked right and the
+    // next model to declare a cover printed `combinedSde` as a heading.
+    const t0 = t();
+    const { priceRange, ...rest } = t0.i18n!.es!.cover!;
+    const thin = { ...t0, i18n: { ...t0.i18n, es: { ...t0.i18n!.es, cover: rest } } } as typeof t0;
+    expect(validateTemplate(thin).join(' ')).toMatch(/"es" is missing cover labels: priceRange/);
+  });
+
+  it('and the flagship passes it — its cover speaks all four', () => {
+    // The control. A rule nothing satisfies is a rule nobody notices breaking.
+    expect(validateTemplate(t())).toEqual([]);
+    for (const lang of ['es', 'fr', 'pt'] as const) {
+      const labels = toManifest(t(), lang).coverLabels ?? {};
+      expect(Object.keys(labels).length, lang).toBeGreaterThanOrEqual(7);
+      expect(labels.priceRange, lang).toBeTruthy();
+      expect(labels.priceRange, `${lang} is still the English word`).not.toBe('Price range');
+    }
+  });
 });
 
 describe('mock LLM sampleFromSchema', () => {

@@ -18,7 +18,7 @@
  */
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { captchaEnabled, config, logEvent, verifyCaptcha, TURNSTILE_TOKEN_FIELD } from '@agent-researcher/core';
-import { clientIp, burstOkOnce } from './public-limit.js';
+import { clientIp, burstOkOnce, burstKeyFor } from './public-limit.js';
 
 /**
  * A named user action a widget can be attached to. Adding one is just adding a
@@ -68,6 +68,14 @@ export function captchaRequired(flow: CaptchaFlow, req?: FastifyRequest): boolea
 
 export interface CaptchaOptions {
   /**
+   * The route's `publicLimit` spec, so the burst counted here lands in the same
+   * window the route guard checks. Without it a captcha'd route that asks for
+   * `isolatedBurst` was counted against the SHARED window here and skipped in the
+   * guard — the isolation doing nothing, and a busy read route able to 429 sign-in
+   * and registration for everyone behind one CGNAT address.
+   */
+  burst?: { route: string; isolatedBurst?: boolean };
+  /**
    * Narrows the guard to some requests on the route. Use it when one endpoint
    * serves paths with different risk: `/auth/session` takes both a password and a
    * Google id_token, and only the password path is worth a challenge — an
@@ -101,7 +109,7 @@ export function requireCaptcha(flow: CaptchaFlow, opts: CaptchaOptions = {}): pr
     // window is filled by the guard, which a request rejected at the captcha never
     // reaches — so junk tokens never counted and were never limited, which is
     // exactly the traffic this is for.
-    if (!burstOkOnce(req as { __burstCounted?: boolean }, ip)) {
+    if (!burstOkOnce(req as { __burstKey?: string }, burstKeyFor(ip, opts.burst))) {
       logEvent({ jobId: '-', appId: req.auth?.appId }, 'WARNING', 'captcha.burst_skipped', { flow, ip });
       await reply.code(429).send({ error: 'Too many requests. Please try again in a moment.', code: 'rate_limited' });
       return reply;

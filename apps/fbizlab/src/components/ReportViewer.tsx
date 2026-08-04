@@ -180,11 +180,11 @@ interface CoverSpec {
 }
 
 /** One of the things this model compares, as a card with figure tiles. */
-function DealCard({ d, l, f, cover }: { d: Obj; l: Record<string, string>; f: NumFmt; cover?: CoverSpec }) {
+function DealCard({ d, l, f, cover, coverLabels }: { d: Obj; l: Record<string, string>; f: NumFmt; cover?: CoverSpec; coverLabels?: Record<string, string> }) {
   const tiles: Array<{ value: string; label: string }> = [];
   for (const spec of cover?.tiles ?? []) {
     const v = d[spec.field];
-    if (isNum(v)) tiles.push({ value: f.money(v), label: l[spec.labelKey] ?? spec.labelKey });
+    if (isNum(v)) tiles.push({ value: f.money(v), label: coverLabels?.[spec.labelKey] ?? l[spec.labelKey] ?? humanizeKey(spec.labelKey) });
   }
   const prose = ['overview', 'financials', 'impliedMultiple', 'includedAssets', 'leaseTerms', 'reasonForSale', 'growthOpportunities'] as const;
   const url = typeof d.sourceUrl === 'string' ? d.sourceUrl : undefined;
@@ -362,11 +362,11 @@ function ObjectFields({ o, l, f }: { o: Obj; l: Record<string, string>; f: NumFm
 }
 
 /** Dispatch a whole section to the right presentation. */
-function SectionBody({ v, l, f, cover }: { v: unknown; l: Record<string, string>; f: NumFmt; cover?: CoverSpec }) {
+function SectionBody({ v, l, f, cover, coverLabels }: { v: unknown; l: Record<string, string>; f: NumFmt; cover?: CoverSpec; coverLabels?: Record<string, string> }) {
   if (Array.isArray(v)) {
     if (v.every(isChartSpec)) return <>{v.map((c, i) => <ChartSpecRender key={i} spec={c as ChartSpec} f={f} />)}</>;
     if (cover?.nameKey && v.length && typeof v[0] === 'object' && v[0] && cover.nameKey in (v[0] as Obj)) {
-      return <div className="stack" style={{ gap: 14 }}>{(v as Obj[]).map((d, i) => <DealCard key={i} d={d} l={l} f={f} cover={cover} />)}</div>;
+      return <div className="stack" style={{ gap: 14 }}>{(v as Obj[]).map((d, i) => <DealCard key={i} d={d} l={l} f={f} cover={cover} coverLabels={coverLabels} />)}</div>;
     }
     return <Value v={v} l={l} f={f} />;
   }
@@ -395,12 +395,21 @@ function collectDeals(report: Obj, cover: CoverSpec | undefined): Obj[] {
  * ("<template>@<version>") is exposed (data-report-version) so components can
  * identify a report's version for analytics or explicit version branching later.
  */
-export function ReportViewer({ report, sections, title, lang = 'en', meta, request, currency, cover }: {
+export function ReportViewer({ report, sections, title, lang = 'en', meta, request, currency, cover, coverLabels }: {
   report: Obj; sections?: Array<{ key: string; title: string }>; title?: string; lang?: string; meta?: Obj;
   /** ISO 4217 the model's figures are in (from its manifest). Default USD. */
   currency?: string;
   /** What this model summarises on the snapshot, from its manifest. */
   cover?: CoverSpec;
+  /**
+   * The cover's labels, already localized, from the manifest.
+   *
+   * `CoverSpec.labelKey` is documented as looked up in `TemplateI18n.cover`, and
+   * nothing looked it up: this component fell back to `RL`, whose cover entries
+   * are Florida's vocabulary in all four languages. The flagship looked right and
+   * the second model to declare a cover got its raw key printed as the label.
+   */
+  coverLabels?: Record<string, string>;
   /** Request context appended to the right-rail Mandate card (mode, language, sources, credits). */
   request?: { modeLabel?: string | null; languageLabel?: string | null; sourcesFound?: number | null; creditsSpent?: number | null };
 }) {
@@ -435,7 +444,10 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
   const deals = collectDeals(Object.fromEntries(Object.entries(report).filter(([k]) => !degraded.has(k))), cover);
   const snap: Array<{ value: string; label: string }> = [];
   for (const fig of cover?.figures ?? []) {
-    const label = l[fig.labelKey] ?? fig.labelKey;
+    // From the manifest, in the reader's language. `l` is this file's own
+    // dictionary and its cover entries are Florida's vocabulary, so any other
+    // model fell through to the raw key.
+    const label = coverLabels?.[fig.labelKey] ?? l[fig.labelKey] ?? humanizeKey(fig.labelKey);
     if (fig.agg === 'count') { if (deals.length) snap.push({ value: String(deals.length), label }); continue; }
     const nums = deals.map((d) => d[fig.field ?? '']).filter(isNum);
     if (!nums.length) continue;
@@ -493,7 +505,7 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
             {unenriched.has(s.key) && <p className="rv-degraded soft">{l.unenrichedSection}</p>}
             {degraded.has(s.key)
               ? <p className="rv-degraded soft">{l.degradedSection}</p>
-              : <SectionBody v={report[s.key]} l={l} f={f} cover={cover} />}
+              : <SectionBody v={report[s.key]} l={l} f={f} cover={cover} coverLabels={coverLabels} />}
           </section>
         ))}
       </div>

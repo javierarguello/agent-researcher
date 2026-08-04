@@ -33,6 +33,15 @@ export interface BuildReportHtmlInput {
   instructionsField?: string;
   /** How this model summarises its findings on the cover (from the template). */
   cover?: CoverSpec;
+  /**
+   * The cover's labels, already localized, from the manifest.
+   *
+   * `CoverSpec.labelKey` is documented as looked up in `TemplateI18n.cover`, and
+   * nothing looked it up — this renderer fell back to `RL`, whose cover entries
+   * are Florida's vocabulary in all four languages. So the flagship looked right
+   * and any other model got its raw key as the label.
+   */
+  coverLabels?: Record<string, string>;
   /** ISO 4217 the model's figures are in. Default USD. */
   currency?: string;
   lang?: string;
@@ -278,11 +287,11 @@ function sentimentHtml(v: { overview?: string; mentions: Mention[] }, l: Record<
     .join('');
   return `${tiles}${dist}${overview}<div class="mentions">${cards}</div>`;
 }
-function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme, f: NumFmt, cover?: CoverSpec, labels?: Record<string, string>): string {
+function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme, f: NumFmt, cover?: CoverSpec, labels?: Record<string, string>, coverLabels?: Record<string, string>): string {
   const tiles: Array<[string, string]> = [];
   for (const spec of cover?.tiles ?? []) {
     const v = d[spec.field];
-    if (isNum(v)) tiles.push([f.money(v), labels?.[spec.labelKey] ?? l[spec.labelKey] ?? spec.labelKey]);
+    if (isNum(v)) tiles.push([f.money(v), coverLabels?.[spec.labelKey] ?? l[spec.labelKey] ?? humanizeKey(spec.labelKey)]);
   }
   const tileHtml = tiles.length ? `<div class="dtiles">${tiles.map(([v, lab]) => `<div class="dtile"><div class="mlabel">${esc(lab)}</div><div class="mval">${esc(v)}</div></div>`).join('')}</div>` : '';
   // EVERY string field, in the order the section declared them, rather than a
@@ -334,12 +343,12 @@ function objectFieldsHtml(o: Obj, l: Record<string, string>, t: PdfTheme, f: Num
     .map(([key, val]) => `<div class="field"><div class="flabel">${esc(humanizeKey(key))}</div>${valueHtml(val, key, l, t, f)}</div>`)
     .join('')}</div>`;
 }
-function sectionBodyHtml(v: unknown, l: Record<string, string>, t: PdfTheme, f: NumFmt, cover?: CoverSpec, labels?: Record<string, string>): string {
+function sectionBodyHtml(v: unknown, l: Record<string, string>, t: PdfTheme, f: NumFmt, cover?: CoverSpec, labels?: Record<string, string>, coverLabels?: Record<string, string>): string {
   // Entity cards when the array holds the things this model compares — recognised
   // by the template's own `nameKey`, not by a field called `business`.
   const nameKey = cover?.nameKey;
   if (nameKey && Array.isArray(v) && v.length && typeof v[0] === 'object' && v[0] && nameKey in (v[0] as Obj)) {
-    return `<div class="stack">${(v as Obj[]).map((d) => dealCardHtml(d, l, t, f, cover, labels)).join('')}</div>`;
+    return `<div class="stack">${(v as Obj[]).map((d) => dealCardHtml(d, l, t, f, cover, labels, coverLabels)).join('')}</div>`;
   }
   return valueHtml(v, undefined, l, t, f);
 }
@@ -426,7 +435,9 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   // `revenue` and `cashFlowSde` were read straight off the report, so a template
   // that calls its figures anything else got a cover with no statistics at all.
   for (const fig of input.cover?.figures ?? []) {
-    const label = input.paramLabels?.[fig.labelKey] ?? l[fig.labelKey] ?? fig.labelKey;
+    // NOT out of `paramLabels`: a model whose PARAM happens to share a name with a
+    // cover `labelKey` silently overrode the cover's label with the form's.
+    const label = input.coverLabels?.[fig.labelKey] ?? l[fig.labelKey] ?? humanizeKey(fig.labelKey);
     if (fig.agg === 'count') {
       if (deals.length) snap.push([String(deals.length), label]);
       continue;
@@ -506,7 +517,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
       }${
         degraded.has(s.key)
           ? `<p class="soft">${esc(l.degradedSection ?? '')}</p>`
-          : sectionBodyHtml(report[s.key], l, t, f, input.cover, input.paramLabels)
+          : sectionBodyHtml(report[s.key], l, t, f, input.cover, input.paramLabels, input.coverLabels)
       }</div>
     </div>
   </section>`)

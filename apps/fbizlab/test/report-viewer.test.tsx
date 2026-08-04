@@ -77,3 +77,32 @@ describe('a degraded section is never rendered as findings', () => {
     expect(screen.queryByText(/could not complete this section for this report/i)).toBeNull();
   });
 });
+
+describe('the cover belongs to the model, on screen too', () => {
+  // This component has its own four-language dictionary, and its cover entries are
+  // the flagship's vocabulary — `targets`, `priceRange`, `combinedSde`. So the
+  // flagship looked right and any other model's snapshot printed its raw keys.
+  // `CoverSpec.labelKey` is documented as looked up in `TemplateI18n.cover`; the
+  // manifest now resolves that and passes it in.
+  const wind = {
+    report: { sites: [{ parcel: 'Caliche Flats', acres: 900, capacityMw: 120 }] },
+    sections: [{ key: 'sites', title: 'Sites' }],
+    cover: {
+      from: ['sites'], nameKey: 'parcel',
+      figures: [{ labelKey: 'parcelsScreened', agg: 'count' as const }],
+      tiles: [{ labelKey: 'usableAcres', field: 'acres' }],
+    },
+  };
+
+  it('uses the labels the manifest resolved, in the reader’s language', () => {
+    render(<ReportViewer {...wind} lang="es" coverLabels={{ parcelsScreened: 'Parcelas evaluadas', usableAcres: 'Acres utilizables' }} />);
+    expect(screen.getByText('Parcelas evaluadas')).toBeTruthy();
+    expect(screen.getByText('Acres utilizables')).toBeTruthy();
+  });
+
+  it('falls back to a readable label, never to the raw key', () => {
+    render(<ReportViewer {...wind} lang="en" />);
+    expect(screen.getByText('Parcels screened')).toBeTruthy();
+    expect(screen.queryByText('parcelsScreened'), 'the raw key, shown to a buyer').toBeNull();
+  });
+});

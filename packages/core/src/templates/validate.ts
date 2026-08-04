@@ -112,6 +112,21 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
       // buyer keeps and forwards, so a silent per-string fallback is at its most
       // visible here.
       if (missing.length) err(`"${lang}" is missing section titles: ${missing.join(', ')}`);
+      // The cover is the FIRST page of the artifact the buyer keeps, and its
+      // labels were the one localized string with no reader: `CoverSpec.labelKey`
+      // is documented as looked up in `TemplateI18n.cover`, and both renderers
+      // fell back to their own dictionaries instead — dictionaries filled with the
+      // flagship's vocabulary, in all four languages. So this model looked right
+      // and the next one printed `combinedSde` as a heading.
+      //
+      // English is exempt: `humanizeKey` turns a camelCase key into a passable
+      // English label ("Price range"), which is why the defect was invisible.
+      const keys = [
+        ...(t.cover?.figures ?? []).map((x) => x.labelKey),
+        ...(t.cover?.tiles ?? []).map((x) => x.labelKey),
+      ];
+      const noLabel = [...new Set(keys)].filter((k) => !block.cover?.[k]);
+      if (noLabel.length) err(`"${lang}" is missing cover labels: ${noLabel.join(', ')}`);
     }
   }
 

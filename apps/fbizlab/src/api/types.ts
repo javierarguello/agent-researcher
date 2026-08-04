@@ -43,6 +43,8 @@ export interface TemplateManifest {
   currency?: string;
   /** What this model summarises on the report's snapshot. */
   cover?: { from: string[]; nameKey: string; figures?: Array<{ labelKey: string; agg: 'count' | 'range' | 'sum'; field?: string }>; tiles?: Array<{ labelKey: string; field: string }> };
+  /** The cover's labels, already localized to `lang`. */
+  coverLabels?: Record<string, string>;
   modes: ModeInfo[];
   addons: AddonInfo[];
   steps: StepInfo[];
