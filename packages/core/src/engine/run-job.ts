@@ -167,6 +167,21 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
 
   // Retried: storage blips are transient, and losing the upload of a report that
   // already ran is the most expensive way to fail — the work is done and paid for.
+  /**
+   * Is this dispatch still the one the job belongs to?
+   *
+   * Latched: a dispatch that has lost the job never regains it, so once the answer
+   * is no it is no forever and costs nothing to ask again. That is what lets the
+   * chatty callers consult it without a Firestore read each.
+   */
+  let knownStale = false;
+  const stillOurs = async (): Promise<boolean> => {
+    if (knownStale) return false;
+    const ours = await isCurrentDispatch(input.jobId, dispatchId).catch(() => true);
+    if (!ours) knownStale = true;
+    return ours;
+  };
+
   const uploadJson = (name: string, data: unknown) =>
     retryAsync(() =>
       uploadObject({ jobId: input.jobId, name, data: JSON.stringify(data, null, 2), contentType: 'application/json; charset=utf-8' }),
@@ -202,7 +217,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         try {
           // If another dispatch has claimed the job, ours is the stale one: saving
           // would throw away whatever it has finished since.
-          if (!(await isCurrentDispatch(input.jobId, dispatchId))) {
+          if (!(await stillOurs())) {
             log.warn('checkpoint.skipped', { reason: 'another dispatch owns this job' });
             return;
           }
@@ -213,6 +228,10 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       },
       onProgress: async (p) => {
         log.info('step', { phase: p.phase, message: p.message, turnsUsed: p.turnsUsed, sourcesFound: p.sourcesFound });
+        // No read of its own: progress fires constantly and a Firestore read per
+        // line would cost more than the field is worth. It rides the latch the
+        // wave-boundary checks set — once a dispatch is stale it stays stale.
+        if (knownStale) return;
         // Best-effort. A rejection here propagates through `emit` into the middle of
         // the research loop, failing the attempt as `stalled` — which by the reuse
         // rule makes the retry re-buy the whole loop. A dashboard line the buyer
@@ -223,6 +242,12 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       },
       onTrace: async (trace) => {
+        // The trace and the cost are the job's DASHBOARD. A stale dispatch used to
+        // overwrite both with its own older numbers while the live one was running,
+        // so an admin read a cost and a per-agent history that belonged to a run
+        // that had already been superseded. Checked here rather than per progress
+        // line: this fires at wave boundaries, so it is a handful of reads.
+        if (!(await stillOurs())) return;
         await uploadTrace(trace);
         // Same reason, one wave further out: this is awaited at every wave boundary,
         // so one failed write threw out of the engine and parked a HEALTHY job as
@@ -313,6 +338,18 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       ...(output.meta.sections ? { sections: output.meta.sections } : {}),
       ...(output.trace.warnings ? { warnings: output.trace.warnings } : {}),
     };
+    // Nothing is DELIVERED by a dispatch that no longer owns the job.
+    //
+    // `markCompleted` refuses one, which is what stops the job document going
+    // backwards — but the artifacts are written before that call, so a stale run
+    // still overwrote `report.json` with its older report and then deleted the
+    // checkpoint the live run was resuming from. The refusal came too late to
+    // matter.
+    if (!(await stillOurs())) {
+      log.warn('delivery.skipped', { reason: 'another dispatch owns this job' });
+      return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'incomplete' };
+    }
+
     let report: JobFile;
     let sources: JobFile;
     let meta: JobFile;

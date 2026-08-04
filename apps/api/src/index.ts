@@ -501,7 +501,12 @@ app.post(
     // Redeemed only AFTER the password matched. Consuming it first would mean one
     // typo costs a legitimate user their registration — and would hand an attacker
     // a way to burn someone else's link by guessing wrong on purpose.
-    if (claims.tokenId && !(await consumeActionToken(claims.tokenId))) {
+    // A link with NO id is refused, not waved through. `claims.tokenId && …` was a
+    // migration shim for links minted before `b338240`, and it skipped the
+    // one-time check entirely — so any token that lacked an id stayed redeemable
+    // for its whole TTL. Those links expired within a day of that deploy; what
+    // remains is a hole with nothing legitimate left in it.
+    if (!claims.tokenId || !(await consumeActionToken(claims.tokenId))) {
       return reply.code(400).send({ error: 'This verification link has already been used.' });
     }
     await setEmailVerified(claims.appId, claims.email);
@@ -605,7 +610,12 @@ app.post(
     // scanner, an inbox backup or a shared browser was a repeatable account
     // takeover for its whole TTL, each redemption handing out a fresh seven-day
     // session.
-    if (claims.tokenId && !(await consumeActionToken(claims.tokenId))) {
+    // A link with NO id is refused, not waved through. `claims.tokenId && …` was a
+    // migration shim for links minted before `b338240`, and it skipped the
+    // one-time check entirely — so any token that lacked an id stayed redeemable
+    // for its whole TTL. Those links expired within a day of that deploy; what
+    // remains is a hole with nothing legitimate left in it.
+    if (!claims.tokenId || !(await consumeActionToken(claims.tokenId))) {
       return reply.code(400).send({ error: 'This reset link has already been used.' });
     }
     const passwordHash = await hashPassword(b.password);

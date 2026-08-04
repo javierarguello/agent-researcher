@@ -70,7 +70,7 @@ round.
   twenty-one dependencies). Assert the property.
 - **N1** — a half-improved section ships as whole with nothing in `meta`. Needs a
   price decision from you.
-- Smaller, in `N`: N4–N11. (C5's actionable half and K6–K8 are closed.)
+- Smaller, in `N`: N5–N7, N9–N11 — all cosmetic or unreachable. (C5's actionable half, K6–K8, N4 and N8 are closed.)
 
 ## Review round 4 — eight agents against `54cd7c0` (2026-08-03)
 
@@ -727,7 +727,7 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
 
 **Known gaps, small:**
 
-- **N4 — A stale dispatch still overwrites `trace.json`, `cost` and `progress`,**
+- ~~**N4 — A stale dispatch still overwrites `trace.json`, `cost` and `progress`,**~~ **Closed.**
   and can deliver its older report and delete the checkpoint before `markCompleted`
   refuses it. The token guards the checkpoint and the terminal writes; the
   intermediate artifacts are not token-scoped.
@@ -738,7 +738,7 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
 - **N7 — `refundForJob`'s `appId`/`userId` parameters are dead weight** now that
   the owner comes from the ledger. The signature still invites a caller to believe
   they choose the recipient.
-- **N8 — Old verify/reset links stay multi-use** until their TTL expires (24h/1h
+- ~~**N8 — Old verify/reset links stay multi-use**~~ **Closed** — the shim (`claims.tokenId && …`) skipped the one-time check entirely for any token without an id; the migration window it existed for closed within a day of `b338240`. until their TTL expires (24h/1h
   after the `b338240` deploy), because they carry no `tokenId`.
 - **N9 — A stale SPA bundle turns a good verification link into "expired".**
   Self-heals on reload; nothing tells the user that.

@@ -406,6 +406,24 @@ describe('a session lasts as long as the account says, not as long as the token'
     expect(replay.json().error).toMatch(/already been used/i);
   });
 
+  it('refuses a link that carries no id at all', async () => {
+    // `claims.tokenId && …` was a migration shim for links minted before the id
+    // existed, and it skipped the one-time check entirely: any token without one
+    // stayed redeemable for its whole TTL. Those links expired within a day of
+    // that deploy, so what was left is a hole with nothing legitimate in it.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'noid@x.com' } });
+    const core = await import('@agent-researcher/core');
+    // A well-signed token of the right scope — just without the id.
+    const legacy = await core.signSession(
+      { email: 'noid@x.com', appId: 'fbizlab', role: 'user', scope: 'verify-email' } as never,
+      3600,
+    );
+
+    const res = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: legacy, password: reg.password } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/already been used/i);
+  });
+
   it('an emailed verification link works exactly once', async () => {
     await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'twice@x.com' } });
     const link = tokenFromLast('verify');

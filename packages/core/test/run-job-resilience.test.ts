@@ -200,3 +200,53 @@ describe('a duplicate dispatch cannot overwrite the run that owns the job', () =
     expect(savedFor('h6b').length).toBeGreaterThan(0);
   });
 });
+
+describe('a stale dispatch delivers nothing and overwrites nothing', () => {
+  // The dispatch token guarded the checkpoint and the terminal writes, and nothing
+  // else. `markCompleted` refuses a stale run — but the artifacts are uploaded and
+  // the checkpoint deleted BEFORE that call, so the refusal came too late: a stale
+  // run overwrote `report.json` with its older report and then deleted the
+  // checkpoint the live run was resuming from.
+  const seedJob = (jobId: string) =>
+    createJob({ jobId, appId: APP, userId: USER, templateId: compactModel.id, params: {}, status: 'queued' } as never);
+
+  it('does not overwrite the delivered report, and leaves the checkpoint alone', async () => {
+    await seedJob('st1');
+    const jobs = await import('../src/jobs/firestore.js');
+    const spy = vi.spyOn(jobs, 'markCompleted');
+
+    // Claimed by someone else MID-RUN. Doing it before `runJob` proves nothing:
+    // the prologue calls `markRunning` and takes the job for itself, so this run
+    // would own it again — which is exactly how a duplicate delivery starts.
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    let claimed = false;
+    mock.generate = async (opts) => {
+      if (!claimed) {
+        claimed = true;
+        await jobs.markRunning('st1', 'a-different-dispatch');
+      }
+      return base(opts);
+    };
+
+    const res = await runJob(input('st1'));
+
+    expect(res.status, 'a stale run must not report a delivery').toBe('incomplete');
+    expect(res.files).toEqual([]);
+    expect([...OBJECTS.keys()].some((k) => k.includes('st1') && k.includes('report.json'))).toBe(false);
+    expect(spy, 'it should never have got as far as the terminal write').not.toHaveBeenCalled();
+    // …and the DASHBOARD is untouched too. The trace and the cost are what an
+    // admin reads to decide about a job; a stale run used to overwrite both with
+    // its own older numbers while the live one was still going.
+    const staleTrace = [...OBJECTS.keys()].filter((k) => k.includes('st1') && k.includes('trace.json'));
+    expect(staleTrace, 'a superseded run rewrote the job’s history').toEqual([]);
+  });
+
+  it('still delivers when the job is ours', async () => {
+    // The control: "delivers nothing, ever" would pass the assertions above.
+    await seedJob('st2');
+    const res = await runJob(input('st2'));
+    expect(res.status).toBe('completed');
+    expect([...OBJECTS.keys()].some((k) => k.includes('st2') && k.includes('report.json'))).toBe(true);
+  });
+});
