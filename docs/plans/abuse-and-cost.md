@@ -30,9 +30,18 @@ Worker timeout 1800s (`infra/deploy.sh:62`), `dispatchDeadlineSeconds` 1800
 56 search turns. When Cloud Run kills the request, in-flight agents' spend is lost
 **twice**: never added to `trace.cost`, and re-run from zero next dispatch.
 
-Adjacent: a failed checkpoint upload only warns (`run-job.ts:119`), and an
-unreadable checkpoint only warns and leaves `resume` undefined (`:86-88`) — a
-corrupted checkpoint silently replays the entire job up to 8 times.
+Adjacent, **now closed**: an unreadable checkpoint left `resume` undefined behind
+a warn line, so a corrupted object replayed the whole job — re-buying the report —
+on every dispatch, up to `maxJobAttempts` times. It now parks for a decision.
+
+Deliberately narrow: only a checkpoint that is THERE and fails to parse counts as
+corruption. A MISSING one is normal (a first dispatch, or a second where no agent
+finished, so nothing was saved and restarting costs nothing extra), and a download
+that THREW is a storage blip that may well succeed next time — parking on either
+would stop ordinary jobs and wait for a human.
+
+The deadline half of C5 is still open, and still unmeasured. Do not tune it from
+the config alone.
 
 ---
 

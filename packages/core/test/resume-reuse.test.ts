@@ -138,3 +138,44 @@ describe('a re-dispatch resumes from the checkpoint', () => {
     expect(JSON.stringify(delivered.report.findings)).toContain('FIRST PASS');
   });
 });
+
+describe('a checkpoint that cannot be read stops the job instead of re-buying it', () => {
+  it('parks a resumed dispatch whose checkpoint is corrupt', async () => {
+    // It used to warn, leave `resume` undefined, and start from zero — paying for
+    // the whole report again. A corrupted object repeats on every dispatch, so one
+    // bad write cost up to `maxJobAttempts` full reports, logged as a warning.
+    await seed('cp1');
+    failing('recommendation');
+    expect((await runJob(input('cp1'))).status).toBe('incomplete');
+
+    const key = [...OBJECTS.keys()].find((k) => k.includes('cp1') && k.includes('checkpoint'))!;
+    OBJECTS.set(key, Buffer.from('{ this is not json'));
+
+    await expect(runJob(input('cp1'))).rejects.toThrow(/checkpoint is unreadable/i);
+    const job = (await getJob('cp1'))!;
+    expect(job.status, 'a decision someone makes, not eight silent re-purchases').toBe('held');
+    expect(job.hold?.reason).toBe('run_failed');
+  });
+
+  it('does NOT park one that is merely missing', async () => {
+    // Deliberately not treated as corruption. A dispatch on which no agent
+    // finished saves nothing, so the next one legitimately finds no object — and
+    // restarting from zero costs nothing extra, because zero is where it was.
+    // Parking here would stop ordinary jobs and wait for a human.
+    await seed('cp2');
+    failing('recommendation');
+    await runJob(input('cp2'));
+    for (const k of [...OBJECTS.keys()]) if (k.includes('cp2') && k.includes('checkpoint')) OBJECTS.delete(k);
+
+    installMockProvider();
+    expect((await runJob(input('cp2'))).status).toBe('completed');
+  });
+
+  it('does not park a FIRST dispatch, which has no checkpoint by definition', async () => {
+    // The control, and the case that makes this subtle: "no checkpoint" is exactly
+    // what a normal first run looks like. Parking there would break every job.
+    await seed('cp3');
+    installMockProvider();
+    expect((await runJob(input('cp3'))).status).toBe('completed');
+  });
+});

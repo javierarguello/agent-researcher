@@ -127,14 +127,41 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
   }
 
   // Load a prior checkpoint (resume) if any.
+  //
+  // A failure here used to be a warning and nothing else, which meant `resume`
+  // stayed undefined and the engine started from zero — RE-BUYING the whole
+  // report. On a corrupted checkpoint that repeats on every dispatch, so one bad
+  // object costs up to `maxJobAttempts` full reports and only ever logs a warn.
+  //
+  // A MISSING object is not a failure and never means corruption: it is what a
+  // first dispatch looks like, and also what a second one looks like when no agent
+  // finished on the first (nothing was saved because nothing was done — and
+  // restarting from zero costs nothing extra, because zero is where it was).
+  //
+  // An object that is THERE and cannot be read is the corruption case, and the
+  // expensive one: it repeats on every dispatch, so the job silently re-buys the
+  // whole report up to `maxJobAttempts` times.
   let resume: Checkpoint | undefined;
   try {
     const raw = await downloadObject(input.jobId, CHECKPOINT);
     if (raw) {
-      resume = JSON.parse(raw) as Checkpoint;
+      try {
+        resume = JSON.parse(raw) as Checkpoint;
+      } catch (err) {
+        log.error('checkpoint.unreadable', { message: (err as Error).message, attempts });
+        // Park it. Someone can approve it — which re-runs from zero deliberately —
+        // or close it. Either is a decision, and both beat paying for the report
+        // again, seven more times, behind a warn line.
+        return parkAndRethrow(
+          new Error(`Could not resume: the checkpoint is unreadable (${(err as Error).message}).`),
+        );
+      }
       log.info('job.resume', { doneAgents: resume.doneAgentIds.length });
     }
   } catch (err) {
+    // A download that THREW is transient (storage blipped), not corruption: the
+    // object may well be fine next dispatch, and parking on it would turn a blip
+    // into a job that waits for a human.
     log.warn('checkpoint.load_failed', { message: (err as Error).message });
   }
 

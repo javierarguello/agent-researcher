@@ -14,6 +14,8 @@ export const secs = (ms: number | null | undefined): string =>
   ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 
 export const int = (n: number | null | undefined): string =>
+  // The admin app is ours and runs in English; the locale is stated rather than
+  // implied, so nobody copies `en-US` out of here into a buyer-facing surface.
   n == null ? '—' : n.toLocaleString('en-US');
 
 /** Short absolute datetime, e.g. "Jul 14, 15:32". */

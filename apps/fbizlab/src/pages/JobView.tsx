@@ -125,7 +125,7 @@ export function JobView() {
               <div key={f.name} className="between"><span className="mono" style={{ fontSize: 13 }}>{f.name}</span><button className="mono accent" style={{ fontSize: 12, background: 'none', border: 0, cursor: 'pointer' }} onClick={() => downloadFile(f.url, f.name).catch(() => {})}>{t.download} ↓</button></div>
             ))}
           </div>
-          <p className="mono muted" style={{ fontSize: 10.5, marginTop: 10 }}>{shortDate(job.finishedAt)}</p>
+          <p className="mono muted" style={{ fontSize: 10.5, marginTop: 10 }}>{shortDate(job.finishedAt, reportLang)}</p>
         </div>
       )}
     </div>
