@@ -13,7 +13,7 @@
  * would have to know it too — and it does not.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -116,6 +116,7 @@ vi.mock('../src/auth/captcha', () => ({ captchaConfigured: () => false }));
 vi.mock('../src/components/Turnstile', () => ({ Turnstile: () => null }));
 
 import { NewReport } from '../src/pages/NewReport';
+import { ApiError } from '../src/api/client';
 import { LangProvider } from '../src/i18n';
 
 function renderForm() {
@@ -267,5 +268,46 @@ describe('the form is the model’s, not one model’s', () => {
     // subject of the research.
     renderForm();
     expect(await screen.findByRole('button', { name: 'MISO South' })).toBeTruthy();
+  });
+});
+
+describe('a rate-limited preview does not become an order', () => {
+  // The catch had branches for 422, `captcha_failed` and 403, and a 429 fell
+  // through to the `else`, which calls `submit()`. The person clicked "Validate &
+  // continue" to SEE the review — summary, proposed corrections, findings — and
+  // instead the job was created, their credits were spent, and they were
+  // navigated to a job page they never asked to start.
+  //
+  // The comment justifying that fallback argues from a 5xx or a dropped
+  // connection, where generating anyway is the kind thing. A 429 is neither: it
+  // means "ask again in a moment", and the answer is to say so.
+  const rateLimited = () => {
+    hooks.preflight.mockRejectedValue(
+      Object.assign(new ApiError(429, 'Too many requests.', { code: 'rate_limited' }), {}),
+    );
+  };
+
+  it('spends nothing and says why', async () => {
+    rateLimited();
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+
+    expect(hooks.createJob, 'it created the job the user never confirmed').not.toHaveBeenCalled();
+    expect(await screen.findByText(/nothing was charged/i)).toBeTruthy();
+  });
+
+  it('still generates anyway when the review itself breaks', async () => {
+    // The control, and the behaviour that must NOT regress: the review is
+    // advisory, so a 5xx or a dropped connection generates rather than blocking a
+    // paying customer on a component that is only meant to help.
+    hooks.preflight.mockRejectedValue(new ApiError(500, 'boom', {}));
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+
+    await waitFor(() => expect(hooks.createJob).toHaveBeenCalled());
   });
 });

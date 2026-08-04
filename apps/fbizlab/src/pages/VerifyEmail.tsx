@@ -12,6 +12,7 @@ const T = {
     ok: 'Email verified — sign in to continue.',
     wrong: 'That password does not match the one chosen when this account was created.',
     fail: 'This verification link is invalid or has expired.',
+    busy: 'Too many attempts from your network just now. Your link is still valid — wait a moment and press the button again.',
     login: 'Go to sign in', missing: 'This link is missing its token.',
   },
   es: {
@@ -21,6 +22,7 @@ const T = {
     ok: 'Email verificado — ingresa para continuar.',
     wrong: 'Esa contraseña no coincide con la que se eligió al crear esta cuenta.',
     fail: 'Este enlace de verificación es inválido o expiró.',
+    busy: 'Demasiados intentos desde tu red ahora mismo. Tu enlace sigue siendo válido — espera un momento y vuelve a pulsar el botón.',
     login: 'Ir al ingreso', missing: 'A este enlace le falta su token.',
   },
   fr: {
@@ -30,6 +32,7 @@ const T = {
     ok: 'Email vérifié — connectez-vous pour continuer.',
     wrong: 'Ce mot de passe ne correspond pas à celui choisi à la création du compte.',
     fail: 'Ce lien de vérification est invalide ou a expiré.',
+    busy: 'Trop de tentatives depuis votre réseau en ce moment. Votre lien reste valide — attendez un instant et appuyez à nouveau.',
     login: 'Aller à la connexion', missing: 'Ce lien n’a pas son jeton.',
   },
   pt: {
@@ -39,6 +42,7 @@ const T = {
     ok: 'Email verificado — entre para continuar.',
     wrong: 'Essa senha não corresponde à escolhida quando esta conta foi criada.',
     fail: 'Este link de verificação é inválido ou expirou.',
+    busy: 'Muitas tentativas da sua rede agora. Seu link continua válido — aguarde um instante e pressione o botão de novo.',
     login: 'Ir para o login', missing: 'Falta o token neste link.',
   },
 };
@@ -58,7 +62,7 @@ export function VerifyEmail() {
   const t = pick(T, lang);
   const nav = useNavigate();
   const [password, setPassword] = useState('');
-  const [state, setState] = useState<'idle' | 'working' | 'ok' | 'wrong' | 'fail'>('idle');
+  const [state, setState] = useState<'idle' | 'working' | 'ok' | 'wrong' | 'busy' | 'fail'>('idle');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,7 +75,16 @@ export function VerifyEmail() {
     } catch (err) {
       // A wrong password leaves the link usable — one typo must not cost a
       // legitimate user their registration.
-      setState((err as { status?: number }).status === 401 ? 'wrong' : 'fail');
+      //
+      // And a 429 is not a dead link. Every non-401 used to render "this link is
+      // invalid or has expired", which for a rate-limited caller is simply false:
+      // the link is fine, we refused to look at it. It is also a dead end — the
+      // only routes out are registering again (409, the address is taken) and
+      // forgot-password, metered on the same address — so a whole CGNAT could be
+      // told their signup was broken. `busy` keeps the form up so they can press
+      // again.
+      const status = (err as { status?: number }).status;
+      setState(status === 401 ? 'wrong' : status === 429 ? 'busy' : 'fail');
     }
   }
 
@@ -101,7 +114,7 @@ export function VerifyEmail() {
           </div>
         )}
 
-        {token && (state === 'idle' || state === 'working' || state === 'wrong') && (
+        {token && (state === 'idle' || state === 'working' || state === 'wrong' || state === 'busy') && (
           <form className="stack" style={{ gap: 14 }} onSubmit={submit}>
             <h1 style={{ fontSize: 19, margin: 0 }}>{t.title}</h1>
             <p className="soft" style={{ fontSize: 14, margin: 0 }}>{t.sub}</p>
@@ -113,6 +126,7 @@ export function VerifyEmail() {
               />
             </label>
             {state === 'wrong' && <p className="soft" style={{ fontSize: 14, color: 'var(--danger, #b4453c)' }}>{t.wrong}</p>}
+            {state === 'busy' && <p className="soft" style={{ fontSize: 14 }}>{t.busy}</p>}
             <button className="btn btn--black btn--sm" type="submit" disabled={state === 'working' || !password}>
               {state === 'working' ? t.working : t.submit}
             </button>

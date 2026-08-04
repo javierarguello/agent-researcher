@@ -130,6 +130,35 @@ export function heldNotice(lang: unknown): string {
   return pick(HELD_NOTICE, asLang(lang));
 }
 
+const RATE_LIMIT_USER: Copy = {
+  en: 'You have reached the limit of reports per hour. Please try again shortly.',
+  es: 'Has alcanzado el límite de informes por hora. Inténtalo de nuevo en un rato.',
+  fr: 'Vous avez atteint la limite de rapports par heure. Réessayez dans un moment.',
+  pt: 'Você atingiu o limite de relatórios por hora. Tente novamente em instantes.',
+};
+
+const RATE_LIMIT_CAPACITY: Copy = {
+  en: 'We are at capacity right now. Please try again shortly — nothing was charged.',
+  es: 'Estamos al límite de capacidad ahora mismo. Inténtalo de nuevo en un rato — no se te cobró nada.',
+  fr: 'Nous sommes à pleine capacité en ce moment. Réessayez dans un moment — rien ne vous a été facturé.',
+  pt: 'Estamos no limite de capacidade agora. Tente novamente em instantes — nada foi cobrado.',
+};
+
+/**
+ * What a buyer reads when a report request is rate-limited.
+ *
+ * Two sentences, because there are two different facts. `user` is this person's
+ * own hourly cap. `app` is the bucket EVERY customer of the app draws from, and
+ * the old message — `Rate limit exceeded: 100 reports/hour per app` — told a
+ * buyer who had generated one report that they had exceeded a hundred. In
+ * English, whatever they read. It named an internal scope, blamed them for
+ * someone else's traffic, and did not say the thing they most need to know,
+ * which is that no credits moved.
+ */
+export function rateLimitNotice(lang: unknown, scope: string): string {
+  return pick(scope === 'user' ? RATE_LIMIT_USER : RATE_LIMIT_CAPACITY, asLang(lang));
+}
+
 const CLOSED_NOTICE: Copy = {
   en: 'This report could not be completed.',
   es: 'Este informe no pudo completarse.',

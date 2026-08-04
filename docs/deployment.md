@@ -185,9 +185,12 @@ sends, password hashing), so they are capped per client IP and per target email.
 | `PUBLIC_BURST_PER_MINUTE` | `30` | In-process burst guard per IP, across all public routes. |
 | `PUBLIC_REGISTER_PER_HOUR_IP` | `30` | Registrations per IP per hour. One office or CGNAT carrier is many people behind one address; the per-TARGET cap below is what stops mail-bombing. |
 | `PUBLIC_LOGIN_PER_HOUR_IP` / `_EMAIL` | `30` / `10` | Login attempts per IP / per targeted account. |
-| `PUBLIC_RESET_PER_HOUR_IP` / `_EMAIL` | `5` / `3` | Password-reset emails per IP / per target inbox. |
-| `PUBLIC_CONTACT_PER_HOUR_IP` | `5` | Contact-form submissions per IP. |
-| `PUBLIC_TOKEN_PER_HOUR_IP` | `30` | Verify-email / reset-password link submissions per IP. |
+| `PUBLIC_RESET_PER_HOUR_IP` / `_EMAIL` | `30` / `3` | Password-reset emails per IP / per target inbox. Same reasoning as registration: five per hour is five for a whole co-working floor, and the sixth person to forget their password is locked out with no other way in. |
+| `PUBLIC_CONTACT_PER_HOUR_IP` | `30` | Contact-form submissions per IP. |
+| `PUBLIC_TOKEN_PER_HOUR_IP` | `120` | Verify-email and reset-password link submissions per IP — **one bucket each**, not shared. Clicking the link in your own signup mail is the most ordinary thing a new customer does; at 30 shared, a run of resets behind one carrier NAT could tell every new signup that their link had expired. |
+| `PUBLIC_PREFLIGHT_PER_HOUR_IP` / `PREFLIGHT_PER_HOUR_PER_USER` | `240` / `60` | Report previews per shared address / per person. The IP figure is deliberately 4× the user one: set equal, it always trips first and the per-user cap can never fire. |
+| `PUBLIC_PLANS_PER_HOUR_IP` / `PLANS_PER_HOUR_PER_USER` | `60` / `60` | Pricing-catalog reads per IP / per user. |
+| `CHECKOUT_PER_HOUR_PER_USER` | `20` | Stripe checkout sessions per user per hour. |
 | `TRUSTED_PROXY_HOPS` | `0` | `X-Forwarded-For` entries added by infrastructure BEYOND the one holding the real peer. **0** when the API is reached directly on `*.run.app` (this deployment) — Cloud Run appends the peer, so the last entry is real. **1** behind a global external load balancer. Too high and every per-IP limit keys on a header the caller writes. |
 | `TURNSTILE_SECRET` | — | Cloudflare Turnstile secret for the registered widget. **Empty disables the bot check entirely** — every guarded flow behaves exactly as before. Server-side only. |
 | `TURNSTILE_SITE_KEY` | `0x4AAAAAAD_OEtqrL5B2NN6f` | Public site key. Ships in the HTML; the web app has the same default via `VITE_TURNSTILE_SITE_KEY`. |

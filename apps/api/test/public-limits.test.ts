@@ -18,7 +18,7 @@ import { writableConfig } from './writable-config.js';
 import { app } from '../src/index.js';
 import { createApp, grantCredits } from '@agent-researcher/core';
 import { seedApp, token, auth } from './helpers.js';
-import { burstOk, clientIp, __resetBurst } from '../src/public-limit.js';
+import { burstOk, clientIp, secondsToNextHour, __resetBurst } from '../src/public-limit.js';
 import { config } from '@agent-researcher/core';
 
 const sent: unknown[] = [];
@@ -402,6 +402,58 @@ describe('the captcha does not pay for an attacker’s burst', () => {
       if (!hadFlow) config.captcha.flows.delete('preflight');
       writableConfig.publicLimits.burstPerMinute = burst;
       __resetBurst();
+    }
+  });
+});
+
+describe('a 429 tells the truth about itself', () => {
+  it('says how long to wait, and it is the real figure', async () => {
+    // `ApiError.retryAfterSeconds` has been read off the body since it was
+    // written, and no limit in `public-limit.ts` ever sent it — so it was
+    // permanently `undefined` and nothing could tell a user when to come back.
+    //
+    // And the bucket is a CALENDAR hour (`yyyy-mm-ddTHH`), not a sliding window,
+    // so the flat `3600` was wrong by up to an hour in the direction that matters:
+    // it told someone who could retry in ninety seconds to come back tomorrow.
+    await seed();
+    for (let i = 1; i <= 5; i++) {
+      await post('/auth/register', { appId: 'fbizlab', email: `w${i}@x.com`, password: 'sup3rsecret' }, '203.0.113.77');
+    }
+    const blocked = await post('/auth/register', { appId: 'fbizlab', email: 'w6@x.com', password: 'sup3rsecret' }, '203.0.113.77');
+    expect(blocked.statusCode).toBe(429);
+
+    const wait = blocked.json().retryAfterSeconds as number;
+    expect(wait, 'the client reads this and got undefined').toBeGreaterThan(0);
+    expect(wait).toBeLessThanOrEqual(3600);
+    expect(String(wait), 'the header and the body must not disagree').toBe(blocked.headers['retry-after']);
+    // The honest figure tracks the clock; a hardcoded 3600 only matches in the
+    // first second of an hour.
+    expect(wait).toBe(secondsToNextHour());
+  });
+
+  it('does not pool the verification link with the password-reset link', async () => {
+    // They shared one `token` bucket at 30/hour per IP. Clicking the link in your
+    // own signup mail is the most ordinary thing a new customer does, and behind a
+    // carrier NAT a run of resets spent the allowance for everyone's signup —
+    // after which each new user was told, falsely, that their link had expired.
+    await seed();
+    const cap = config.publicLimits.tokenPerHourPerIp;
+    // Lowered so the bucket can actually be EXHAUSTED here. At the real 120 both
+    // routes stay far under it and a shared bucket looks identical to two.
+    writableConfig.publicLimits.tokenPerHourPerIp = 4;
+    try {
+      const junk = { token: 'not-a-real-token', password: 'sup3rsecret' };
+      const codes: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        codes.push((await post('/auth/reset-password', junk, '203.0.113.88')).statusCode);
+      }
+      // The premise: the reset bucket really is spent.
+      expect(codes.filter((c) => c === 429).length, `saw ${codes.join(',')}`).toBeGreaterThan(0);
+
+      const verify = await post('/auth/verify-email', junk, '203.0.113.88');
+      expect(verify.statusCode, 'the reset traffic spent verification’s allowance').not.toBe(429);
+    } finally {
+      writableConfig.publicLimits.tokenPerHourPerIp = cap;
     }
   });
 });

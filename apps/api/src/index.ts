@@ -11,7 +11,7 @@
  * tokens (whitelisted emails on the admin app) unlock /admin/*. Docs: /docs.
  */
 import { randomUUID } from 'node:crypto';
-import type { FastifyError } from 'fastify';
+import type { FastifyError, FastifyReply } from 'fastify';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
@@ -61,6 +61,7 @@ import {
   moderateResearchParams,
   moderationMessage,
   blockedMessage,
+  rateLimitNotice,
   asLang,
   runPreflight,
   modeLabel,
@@ -119,7 +120,7 @@ import type Stripe from 'stripe';
 import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan, isValidAppId } from './stripe.js';
 import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_EMPTY_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
-import { publicLimit, clientIp } from './public-limit.js';
+import { publicLimit, clientIp, secondsToNextHour } from './public-limit.js';
 import { requireCaptcha, captchaBodyProperties } from './captcha.js';
 
 // bodyLimit caps every request body at 512 KB — far above any legitimate payload
@@ -468,7 +469,11 @@ app.post(
     },
   },
   async (req, reply) => {
-    if (await publicLimit(req, reply, { route: 'token', perIp: config.publicLimits.tokenPerHourPerIp })) return reply;
+    // `verify-token`, not the `token` bucket this used to share with
+    // `/auth/reset-password`. They are different acts by different people — one is
+    // a brand-new customer finishing signup — and pooling them meant a run of
+    // resets behind one address spent the allowance for everyone else's signup.
+    if (await publicLimit(req, reply, { route: 'verify-token', perIp: config.publicLimits.tokenPerHourPerIp })) return reply;
     const { token, password } = req.body as { token: string; password: string };
     let claims;
     try {
@@ -599,7 +604,8 @@ app.post(
     },
   },
   async (req, reply) => {
-    if (await publicLimit(req, reply, { route: 'token', perIp: config.publicLimits.tokenPerHourPerIp })) return reply;
+    // Its own bucket — see the note on `/auth/verify-email`.
+    if (await publicLimit(req, reply, { route: 'reset-token', perIp: config.publicLimits.tokenPerHourPerIp })) return reply;
     const b = req.body as { token: string; password: string };
     const pwProblem = passwordProblem(b.password);
     if (pwProblem) return reply.code(400).send({ error: pwProblem });
@@ -723,6 +729,41 @@ const langQuery = {
 } as const;
 
 /** The manifest language: the validated `lang` query, or the default. */
+/**
+ * The 429 for a report request. ONE function, because there are two places that
+ * send it.
+ *
+ * The report route checks its quota twice — a cheap read-only peek before the
+ * expensive work, and the authoritative serializing transaction after it — and
+ * both used to build this response inline. Fixing the message at one of them and
+ * leaving the other in English is green in every test: with the in-memory
+ * Firestore the peek always wins (measured — nine of nine refusals in a
+ * twelve-request "simultaneous" burst came from the peek), so the second site is
+ * not reachable from a test at all. The way to guard a branch no test can enter
+ * is to stop having two of them.
+ */
+function sendRateLimited(
+  reply: FastifyReply,
+  violation: { scope: string; limit: number; count: number },
+  lang: string,
+): FastifyReply {
+  const wait = secondsToNextHour();
+  reply.header('Retry-After', String(wait));
+  return reply.code(429).send({
+    // In the buyer's language, and honest about WHOSE limit it is. `app` is the
+    // bucket every customer of the app draws from, and the old sentence — `Rate
+    // limit exceeded: 100 reports/hour per app` — told a buyer with one report to
+    // their name that they had exceeded a hundred, in English, naming an internal
+    // scope.
+    error: rateLimitNotice(lang, violation.scope),
+    code: 'rate_limited',
+    scope: violation.scope,
+    limit: violation.limit,
+    used: violation.count,
+    retryAfterSeconds: wait,
+  });
+}
+
 function reqLang(req: { query?: unknown }): string {
   // No membership check. Every caller carries `langQuery`, whose `enum` makes ajv
   // reject an unsupported value with a 400 before this runs — so the branch that
@@ -1071,15 +1112,7 @@ app.post(
         // Read-only: rejects a caller who is ALREADY over without writing anything,
         // so an over-limit request doesn't pay for moderation. The authoritative,
         // serializing check runs later — see `checkRateLimits` below.
-        if (!rl.allowed && rl.violation) {
-          reply.header('Retry-After', '3600');
-          return reply.code(429).send({
-            error: `Rate limit exceeded: ${rl.violation.limit} reports/hour per ${rl.violation.scope}.`,
-            scope: rl.violation.scope,
-            limit: rl.violation.limit,
-            used: rl.violation.count,
-          });
-        }
+        if (!rl.allowed && rl.violation) return sendRateLimited(reply, rl.violation, paramsLang(validated.params));
       }
 
       const jobId = randomUUID();
@@ -1128,15 +1161,7 @@ app.post(
       // so it is not a lever.
       if (config.server.appEnv !== 'local' && !isAdmin) {
         const rl = await checkRateLimits(rateEntries);
-        if (!rl.allowed && rl.violation) {
-          reply.header('Retry-After', '3600');
-          return reply.code(429).send({
-            error: `Rate limit exceeded: ${rl.violation.limit} reports/hour per ${rl.violation.scope}.`,
-            scope: rl.violation.scope,
-            limit: rl.violation.limit,
-            used: rl.violation.count,
-          });
-        }
+        if (!rl.allowed && rl.violation) return sendRateLimited(reply, rl.violation, paramsLang(validated.params));
       }
 
       // Credits gate: consume the mode's credit cost up front.

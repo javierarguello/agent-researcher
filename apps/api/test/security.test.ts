@@ -632,3 +632,68 @@ describe('a report is the buyer\u2019s; the diagnostics are ours', () => {
     expect((JSON.parse(forUs.body) as { meta: { cost?: unknown } }).meta.cost).toBeTruthy();
   });
 });
+
+describe('what a rate-limited buyer is actually told', () => {
+  beforeEach(async () => {
+    await seedApp('fbizlab');
+  });
+
+  it('does not blame them for a bucket every customer shares', async () => {
+    // `Rate limit exceeded: 100 reports/hour per app` — in English, whatever they
+    // read, naming an internal scope, and telling a buyer who had generated ONE
+    // report that they had exceeded a hundred. The `app` bucket is, per this
+    // file's own test above, the one every customer of the app draws from.
+    await updateApp('fbizlab', { rateLimitPerHour: 1 });
+    await grantCredits({ appId: 'fbizlab', userId: 'first@x.com', credits: 50 });
+    await grantCredits({ appId: 'fbizlab', userId: 'second@x.com', credits: 50 });
+    const spanish = { ...research, params: { ...research.params, language: 'es' } };
+
+    const first = await app.inject({ method: 'POST', url: '/research', headers: auth(await token('fbizlab', 'first@x.com')), payload: spanish });
+    expect(first.statusCode, 'the premise: the shared bucket is now spent').toBe(202);
+
+    const blocked = await app.inject({ method: 'POST', url: '/research', headers: auth(await token('fbizlab', 'second@x.com')), payload: spanish });
+    expect(blocked.statusCode).toBe(429);
+    const body = blocked.json();
+    // In the buyer's language…
+    expect(body.error).toMatch(/capacidad/i);
+    // …saying the thing they most need to know…
+    expect(body.error).toMatch(/no se te cobró/i);
+    // …and not naming our internals or accusing them of anything.
+    expect(body.error, 'it named an internal scope').not.toMatch(/\bapp\b/i);
+    expect(body.error, 'it told them THEY exceeded a shared quota').not.toMatch(/reports\/hour/i);
+    expect(body.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  // NOT tested from a burst, deliberately. The route checks its quota twice — a
+  // read-only peek and the authoritative transaction — and I wrote a test that
+  // claimed to reach the second one through a simultaneous burst. Measured: nine
+  // of nine refusals in a twelve-request burst came from the PEEK, because the
+  // in-memory Firestore does not model contention. The scenario was unreachable
+  // and the assertion was about a branch it never entered.
+  //
+  // So the duplication is gone instead: both sites call `sendRateLimited`, and
+  // the cases here cover it. A branch no test can enter is not guarded by writing
+  // a test that pretends to.
+
+  it('but does say so plainly when the limit really is theirs', async () => {
+    // The control. One apologetic sentence for both scopes would pass the case
+    // above and would stop telling a heavy user why they are being throttled.
+    const settings = await import('@agent-researcher/core');
+    await settings.updateSettings({ userRateLimitPerHour: 1 });
+    await updateApp('fbizlab', { rateLimitPerHour: 1000 });
+    await grantCredits({ appId: 'fbizlab', userId: 'heavy@x.com', credits: 50 });
+    const t = await token('fbizlab', 'heavy@x.com');
+    const spanish = { ...research, params: { ...research.params, language: 'es' } };
+
+    const first = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: spanish });
+    expect(first.statusCode).toBe(202);
+    // Give the slot back, or the CONCURRENCY cap answers 409 before the hourly one
+    // is ever consulted and this test is about a different limit than it says.
+    const core = await import('@agent-researcher/core');
+    await core.releaseJobSlot(first.json().jobId);
+
+    const blocked = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: spanish });
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().error).toMatch(/has alcanzado el l[ií]mite/i);
+  });
+});

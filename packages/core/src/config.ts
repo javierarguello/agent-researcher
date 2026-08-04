@@ -160,26 +160,36 @@ export const config = {
     /** In-process burst guard per IP (requests/minute across all public routes). */
     burstPerMinute: int('PUBLIC_BURST_PER_MINUTE', 30),
     /**
+     * `/research/preflight` per CLIENT IP — the SHARED-ADDRESS cap, not the
+     * per-person one.
+     *
+     * This route had NO meter at all: 60 consecutive calls all returned 200, at
+     * roughly five Firestore reads each, while every sibling carries one in
+     * ADDITION to its captcha.
+     *
+     * Four times the per-user figure, deliberately. Set to the SAME number, this
+     * one always trips first — `checkRateLimits` returns the first violation in
+     * the order `publicLimit` pushes them, IP before identity — so for anyone on a
+     * single address the per-user cap could never fire. It was enforcement in name
+     * only. An IP is many people; a user is one.
+     */
+    preflightPerHourPerIp: int('PUBLIC_PREFLIGHT_PER_HOUR_IP', 240),
+    /**
+     * …and per USER, which is the cap that actually binds one person. This is an
+     * authenticated route, and every other multi-dimension meter in the API pairs
+     * an IP cap with one on the identity: a user moves between IPs, an IP is
+     * shared by many users. Generous — a buyer refining a request legitimately
+     * previews it several times, and the assist pass has its own allowance for the
+     * expensive half.
+     */
+    preflightPerHourPerUser: int('PREFLIGHT_PER_HOUR_PER_USER', 60),
+    /**
      * Per CLIENT IP. Raised from 5 (Javier, 2026-07-31): one office, one
      * co-working floor or one CGNAT carrier is many people behind a single
      * address, and 5/h turned a normal Monday morning into a lockout. The cap that
      * actually stops mail-bombing is the per-TARGET one below — this one only
      * catches a single machine hammering the route.
      */
-    /**
-     * `/research/preflight` per CLIENT IP.
-     *
-     * This route had NO meter at all — 60 consecutive calls all returned 200, at
-     * roughly five Firestore reads each, while every sibling carries one in
-     * ADDITION to its captcha. Generous on purpose: a buyer refining a request
-     * legitimately previews it several times, and the assist pass has its own
-     * per-user allowance for the expensive half.
-     */
-    preflightPerHourPerIp: int('PUBLIC_PREFLIGHT_PER_HOUR_IP', 60),
-    /** …and per USER. This is an authenticated route; every other multi-dimension
-     *  meter in the API pairs an IP cap with one on the identity, because a user
-     *  moves between IPs and an IP is shared by many users. */
-    preflightPerHourPerUser: int('PREFLIGHT_PER_HOUR_PER_USER', 60),
     registerPerHourPerIp: int('PUBLIC_REGISTER_PER_HOUR_IP', 30),
     /** Per TARGET address. Registration emails a link to an address the caller
      *  chooses, so without this one inbox can be mail-bombed from many IPs — the
@@ -187,11 +197,36 @@ export const config = {
     registerPerHourPerEmail: int('PUBLIC_REGISTER_PER_HOUR_EMAIL', 3),
     loginPerHourPerIp: int('PUBLIC_LOGIN_PER_HOUR_IP', 30),
     loginPerHourPerEmail: int('PUBLIC_LOGIN_PER_HOUR_EMAIL', 10),
-    resetPerHourPerIp: int('PUBLIC_RESET_PER_HOUR_IP', 5),
+    /**
+     * Reset and contact per CLIENT IP: 30, the same number and for the same reason
+     * registration was raised from 5. That argument was about shared egress
+     * addresses — an office, a co-working floor, a CGNAT carrier — and these two
+     * were left behind at 5, which is five password recoveries per hour for
+     * everyone behind one address. The sixth person to forget their password is
+     * locked out of their own account, and their only other route (registering
+     * again) answers 409.
+     *
+     * As with registration, the cap that stops mail-bombing is the per-TARGET one.
+     */
+    resetPerHourPerIp: int('PUBLIC_RESET_PER_HOUR_IP', 30),
     resetPerHourPerEmail: int('PUBLIC_RESET_PER_HOUR_EMAIL', 3),
-    contactPerHourPerIp: int('PUBLIC_CONTACT_PER_HOUR_IP', 5),
-    /** Token-consuming link endpoints (verify-email / reset-password). */
-    tokenPerHourPerIp: int('PUBLIC_TOKEN_PER_HOUR_IP', 30),
+    contactPerHourPerIp: int('PUBLIC_CONTACT_PER_HOUR_IP', 30),
+    /**
+     * Token-consuming link endpoints, per CLIENT IP — one bucket EACH now, not one
+     * shared between verify-email and reset-password.
+     *
+     * Raised from 30. Clicking the link in your own signup mail is the most
+     * ordinary thing a new customer does, and 30/hour was 30 for an entire carrier
+     * NAT — after which every new signup behind that address was told, falsely,
+     * that their verification link had expired, with no working recovery:
+     * registering again answers 409 and forgot-password is metered on the same
+     * address.
+     *
+     * These are single-use tokens signed by us, so what this protects against is
+     * brute force, and guessing a valid signature AND a live token id is not
+     * something 120 attempts an hour buys.
+     */
+    tokenPerHourPerIp: int('PUBLIC_TOKEN_PER_HOUR_IP', 120),
     /** The public pricing catalog. The landing no longer calls it (the catalog is
      *  baked into the build), so this now only meters direct API consumers. */
     plansPerHourPerIp: int('PUBLIC_PLANS_PER_HOUR_IP', 60),

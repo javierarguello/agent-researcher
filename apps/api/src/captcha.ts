@@ -111,7 +111,16 @@ export function requireCaptcha(flow: CaptchaFlow, opts: CaptchaOptions = {}): pr
     // exactly the traffic this is for.
     if (!burstOkOnce(req as { __burstKey?: string }, burstKeyFor(ip, opts.burst))) {
       logEvent({ jobId: '-', appId: req.auth?.appId }, 'WARNING', 'captcha.burst_skipped', { flow, ip });
-      await reply.code(429).send({ error: 'Too many requests. Please try again in a moment.', code: 'rate_limited' });
+      // Same shape as `publicLimit`'s 429, which this one did not have: no
+      // `Retry-After` header at all, and no `retryAfterSeconds` for the client
+      // that reads it. A 429 that cannot say how long to wait is a dead end.
+      reply.header('Retry-After', '60');
+      await reply.code(429).send({
+        error: 'Too many requests. Please try again in a moment.',
+        code: 'rate_limited',
+        scope: 'burst',
+        retryAfterSeconds: 60,
+      });
       return reply;
     }
 

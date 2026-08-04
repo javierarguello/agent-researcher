@@ -154,11 +154,28 @@ export async function publicLimit(req: FastifyRequest, reply: FastifyReply, spec
   if (rl.allowed) return false;
 
   logEvent({ jobId: '-' }, 'WARNING', 'public.rate_limited', { route: spec.route, scope: rl.violation?.scope ?? 'burst', ip });
-  reply.header('Retry-After', tooFast ? '60' : '3600');
+  const wait = tooFast ? 60 : secondsToNextHour();
+  reply.header('Retry-After', String(wait));
   await reply.code(429).send({
     error: 'Too many requests. Please wait a moment and try again.',
     code: 'rate_limited',
     scope: rl.violation?.scope,
+    // The client has read `retryAfterSeconds` off the body since it was written
+    // and no limit in this file ever sent it, so `ApiError.retryAfterSeconds` was
+    // permanently `undefined` and nothing could tell the user how long to wait.
+    retryAfterSeconds: wait,
   });
   return true;
+}
+
+/**
+ * Seconds until the hourly counter resets.
+ *
+ * The bucket is a CALENDAR hour (`yyyy-mm-ddTHH` in `checkRateLimits`), not a
+ * sliding window, so a flat `3600` was wrong by up to an hour in the direction
+ * that matters: it tells someone who can retry in ninety seconds to come back
+ * tomorrow morning. Floored at 1 so a client never sees `Retry-After: 0`.
+ */
+export function secondsToNextHour(now = new Date()): number {
+  return Math.max(1, 3600 - (now.getUTCMinutes() * 60 + now.getUTCSeconds()));
 }
