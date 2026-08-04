@@ -34,32 +34,59 @@ export function degradedSectionNote(lang: unknown): string {
   return pick(SECTION_NOTE, asLang(lang));
 }
 
-const NOTICE_ONE: Copy = {
-  en: 'One section of this dossier could not be completed with sources we were confident in. Everything else is complete. If this section matters to you, reply and we will look at it.',
-  es: 'Una sección de este dossier no pudo completarse con fuentes confiables. Todo lo demás está completo. Si esa sección te importa, escríbenos y la revisamos.',
-  fr: 'Une section de ce dossier n’a pas pu être complétée avec des sources fiables. Tout le reste est complet. Si cette section vous importe, écrivez-nous et nous la reprendrons.',
-  pt: 'Uma seção deste dossiê não pôde ser concluída com fontes confiáveis. Todo o restante está completo. Se essa seção for importante para você, escreva e nós revisamos.',
+const LOST_ONE: Copy = {
+  en: 'One section of this dossier could not be completed with sources we were confident in.',
+  es: 'Una sección de este dossier no pudo completarse con fuentes confiables.',
+  fr: 'Une section de ce dossier n’a pas pu être complétée avec des sources fiables.',
+  pt: 'Uma seção deste dossiê não pôde ser concluída com fontes confiáveis.',
 };
 
-const NOTICE_MANY: Copy = {
-  en: '{n} sections of this dossier could not be completed with sources we were confident in. Everything else is complete. If those sections matter to you, reply and we will look at it.',
-  es: '{n} secciones de este dossier no pudieron completarse con fuentes confiables. Todo lo demás está completo. Si esas secciones te importan, escríbenos y las revisamos.',
-  fr: '{n} sections de ce dossier n’ont pas pu être complétées avec des sources fiables. Tout le reste est complet. Si ces sections vous importent, écrivez-nous et nous les reprendrons.',
-  pt: '{n} seções deste dossiê não puderam ser concluídas com fontes confiáveis. Todo o restante está completo. Se essas seções forem importantes para você, escreva e nós revisamos.',
+const LOST_MANY: Copy = {
+  en: '{n} sections of this dossier could not be completed with sources we were confident in.',
+  es: '{n} secciones de este dossier no pudieron completarse con fuentes confiables.',
+  fr: '{n} sections de ce dossier n’ont pas pu être complétées avec des sources fiables.',
+  pt: '{n} seções deste dossiê não puderam ser concluídas com fontes confiáveis.',
 };
 
+/**
+ * Only said when NOTHING else is wrong.
+ *
+ * It used to be part of the sentence above, so a report with one lost section and
+ * one shallow one told the buyer "Everything else is complete." and then, in the
+ * next sentence, that it was not.
+ */
+const ALL_ELSE_OK: Copy = {
+  en: 'Everything else is complete.',
+  es: 'Todo lo demás está completo.',
+  fr: 'Tout le reste est complet.',
+  pt: 'Todo o restante está completo.',
+};
+
+const WRITE_TO_US: Copy = {
+  en: 'If that matters to you, reply and we will look at it.',
+  es: 'Si eso te importa, escríbenos y lo revisamos.',
+  fr: 'Si cela vous importe, écrivez-nous et nous le reprendrons.',
+  pt: 'Se isso for importante para você, escreva e nós revisamos.',
+};
+
+/**
+ * "The pass that adds extra depth" — an internal step, named for a buyer.
+ *
+ * The French said `la passe` and the Portuguese `a passagem`, which are a sports
+ * pass and a passageway. `l'étape` and `a etapa` are what a person would say.
+ */
 const SHALLOW_ONE: Copy = {
-  en: 'One section of this dossier was researched and written, but the pass that adds extra depth to it did not finish. Its content is complete and sourced as usual.',
-  es: 'Una sección de este dossier se investigó y redactó, pero la pasada que le agrega profundidad no llegó a completarse. Su contenido está completo y documentado como siempre.',
-  fr: 'Une section de ce dossier a été recherchée et rédigée, mais la passe qui lui ajoute de la profondeur n’a pas abouti. Son contenu est complet et sourcé comme d’habitude.',
-  pt: 'Uma seção deste dossiê foi pesquisada e redigida, mas a passagem que lhe acrescenta profundidade não foi concluída. Seu conteúdo está completo e documentado como sempre.',
+  en: 'One section of this dossier was researched and written, but the step that adds extra depth to it did not finish. Its content is complete and sourced as usual.',
+  es: 'Una sección de este dossier se investigó y redactó, pero la etapa que le agrega profundidad no llegó a completarse. Su contenido está completo y documentado como siempre.',
+  fr: 'Une section de ce dossier a été recherchée et rédigée, mais l’étape qui lui ajoute de la profondeur n’a pas abouti. Son contenu est complet et sourcé comme d’habitude.',
+  pt: 'Uma seção deste dossiê foi pesquisada e redigida, mas a etapa que lhe acrescenta profundidade não foi concluída. Seu conteúdo está completo e documentado como sempre.',
 };
 
 const SHALLOW_MANY: Copy = {
-  en: '{n} sections of this dossier were researched and written, but the pass that adds extra depth to them did not finish. Their content is complete and sourced as usual.',
-  es: '{n} secciones de este dossier se investigaron y redactaron, pero la pasada que les agrega profundidad no llegó a completarse. Su contenido está completo y documentado como siempre.',
-  fr: '{n} sections de ce dossier ont été recherchées et rédigées, mais la passe qui leur ajoute de la profondeur n’a pas abouti. Leur contenu est complet et sourcé comme d’habitude.',
-  pt: '{n} seções deste dossiê foram pesquisadas e redigidas, mas a passagem que lhes acrescenta profundidade não foi concluída. Seu conteúdo está completo e documentado como sempre.',
+  en: '{n} sections of this dossier were researched and written, but the step that adds extra depth to them did not finish. Their content is complete and sourced as usual.',
+  es: '{n} secciones de este dossier se investigaron y redactaron, pero la etapa que les agrega profundidad no llegó a completarse. Su contenido está completo y documentado como siempre.',
+  fr: '{n} sections de ce dossier ont été recherchées et rédigées, mais l’étape qui leur ajoute de la profondeur n’a pas abouti. Leur contenu est complet et sourcé comme d’habitude.',
+  pt: '{n} seções deste dossiê foram pesquisadas e redigidas, mas a etapa que lhes acrescenta profundidade não foi concluída. Seu conteúdo está completo e documentado como sempre.',
 };
 
 /**
@@ -76,8 +103,12 @@ export function sectionsNotice(lang: unknown, statuses: Array<{ status: 'lost' |
   const lost = statuses.filter((x) => x.status === 'lost').length;
   const shallow = statuses.filter((x) => x.status === 'unenriched').length;
   const parts: string[] = [];
-  if (lost > 0) parts.push(lost === 1 ? pick(NOTICE_ONE, l) : pick(NOTICE_MANY, l).replace('{n}', String(lost)));
+  if (lost > 0) parts.push(lost === 1 ? pick(LOST_ONE, l) : pick(LOST_MANY, l).replace('{n}', String(lost)));
   if (shallow > 0) parts.push(shallow === 1 ? pick(SHALLOW_ONE, l) : pick(SHALLOW_MANY, l).replace('{n}', String(shallow)));
+  // Only claimed when it is true. Said unconditionally, it contradicted the very
+  // next sentence on a report that had both kinds.
+  if (lost > 0 && shallow === 0) parts.push(pick(ALL_ELSE_OK, l));
+  if (lost > 0) parts.push(pick(WRITE_TO_US, l));
   return parts.join(' ');
 }
 

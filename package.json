@@ -21,7 +21,7 @@
     "reset:dev": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/reset-dev.ts",
     "unblock:moderation": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/unblock-moderation.ts",
     "apps": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/apps.ts",
-    "test": "npm run test -w @agent-researcher/core && npm run test -w @agent-researcher/api && npm run test -w @agent-researcher/worker && npm run test -w @agent-researcher/fbizlab",
+    "test": "npm run test -w @agent-researcher/core && npm run test -w @agent-researcher/api && npm run test -w @agent-researcher/worker && npm run test -w @agent-researcher/fbizlab && npm run test -w @agent-researcher/admin",
     "test:local-llm": "TEST_LLM=ollama npm run test -w @agent-researcher/core && TEST_LLM=ollama npm run test -w @agent-researcher/api",
     "llm:up": "docker compose -f docker-compose.local.yml up -d --wait ollama && docker compose -f docker-compose.local.yml run --rm puller",
     "llm:down": "docker compose -f docker-compose.local.yml down"

@@ -92,6 +92,40 @@ describe('a localized template is localized in every language we publish', () =>
     }
   });
 
+  it('reports the language it is actually in, not the one that was asked for', () => {
+    // `lang` echoed the request unconditionally, so a model with no block for the
+    // asked-for language answered `lang: 'pt'` with English throughout and a client
+    // had no way to detect it and fall back deliberately. The API's `?lang` enum
+    // stops that for the languages we publish; an English-only model is the case it
+    // cannot see. The fix had no test at all.
+    const englishOnly = { ...t(), i18n: undefined } as ReturnType<typeof t>;
+    const m = toManifest(englishOnly, 'pt');
+    expect(m.lang, 'it claimed to be Portuguese').toBe('en');
+    expect(m.name).toBe(englishOnly.name);
+  });
+
+  it('is in ONE language, not a mixture', () => {
+    // Steps and directives are translated globally, so building them from the
+    // REQUEST while the model's own texts fell back to English produced a manifest
+    // in two languages — and a `lang` field that was wrong about part of it
+    // whichever value it took.
+    const englishOnly = { ...t(), i18n: undefined } as ReturnType<typeof t>;
+    const pt = toManifest(englishOnly, 'pt');
+    const en = toManifest(englishOnly, 'en');
+
+    expect(pt.steps.map((x) => x.label), 'the workflow steps stayed Portuguese').toEqual(en.steps.map((x) => x.label));
+    expect(JSON.stringify(pt.directives), 'the directive block stayed Portuguese').toBe(JSON.stringify(en.directives));
+  });
+
+  it('and a model that DOES speak it answers in it — the control', () => {
+    // Without this, "always fall back to English" passes both cases above.
+    const pt = toManifest(t(), 'pt');
+    expect(pt.lang).toBe('pt');
+    const en = toManifest(t(), 'en');
+    expect(pt.steps.map((x) => x.label)).not.toEqual(en.steps.map((x) => x.label));
+    expect(JSON.stringify(pt.directives)).not.toBe(JSON.stringify(en.directives));
+  });
+
   it('does not ship English in a block that claims to be a translation', () => {
     // The assertions above read the value from the same block they check, which is
     // honest about wiring and blind about content: filling `fr` with `TODO-fr-1`,

@@ -105,6 +105,35 @@ describe('the notice tells the two apart', () => {
     expect(both).toMatch(/One section .* did not finish/i);
   });
 
+  it('does not claim everything else is complete when it is not', () => {
+    // "Everything else is complete." was part of the lost sentence, so a report
+    // with one of each said it and then, in the next sentence, said the opposite.
+    // A buyer reading two contradictory claims trusts neither.
+    const both = sectionsNotice('en', [{ status: 'lost' }, { status: 'unenriched' }]);
+    expect(both).not.toMatch(/everything else is complete/i);
+    expect(both, 'and still says both things').toMatch(/could not be completed/i);
+    expect(both).toMatch(/did not finish/i);
+  });
+
+  it('still says it when it IS true', () => {
+    // The control: deleting the sentence outright would pass the case above, and
+    // "one section failed" with no reassurance reads worse than it is.
+    expect(sectionsNotice('en', [{ status: 'lost' }])).toMatch(/everything else is complete/i);
+    for (const [lang, re] of Object.entries({ es: /todo lo demás está completo/i, fr: /tout le reste est complet/i, pt: /todo o restante está completo/i })) {
+      expect(sectionsNotice(lang, [{ status: 'lost' }]), lang).toMatch(re);
+    }
+  });
+
+  it('calls a processing step a step, in every language', () => {
+    // `la passe` is a sports pass and `a passagem` is a passageway. Neither is
+    // what a French or Portuguese reader would call a stage of processing, and
+    // both went out in the sentence that exists to reassure them.
+    expect(sectionsNotice('fr', [{ status: 'unenriched' }])).toMatch(/l’étape/);
+    expect(sectionsNotice('fr', [{ status: 'unenriched' }])).not.toMatch(/\bla passe\b/);
+    expect(sectionsNotice('pt', [{ status: 'unenriched' }])).toMatch(/a etapa/);
+    expect(sectionsNotice('pt', [{ status: 'unenriched' }])).not.toMatch(/passagem/);
+  });
+
   it('is empty for a clean report', () => {
     expect(sectionsNotice('en', [])).toBe('');
   });
@@ -165,6 +194,35 @@ describe('what the renderers do with data written before this shape existed', ()
   // said either. Fail-open, on the one contract that must fail closed.
   it.each(LEGACY_SHAPES)('$why', ({ args, expected }) => {
     expect(normalizeSectionStatuses(...args)).toEqual(expected);
+  });
+
+  it('puts the notice on the COVER, not only beside the section', async () => {
+    // The artifact the buyer forwards. The per-section lines say what is missing
+    // where; someone who opens the PDF without ever seeing the web page had no
+    // way to know the dossier was incomplete at all.
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    const html = buildReportHtml({
+      report: { market: { text: 'Real content.' } },
+      sections: [{ key: 'market', title: 'Market' }],
+      meta: { sections: [{ key: 'verdict', status: 'lost' }] },
+      lang: 'es', theme: getPdfTheme('fbizlab'),
+    } as never);
+    expect(html).toContain('<div class="covernotice">');
+    expect(html, 'in the buyer\u2019s language, like the rest of the page').toMatch(/no pudo completarse con fuentes confiables/i);
+  });
+
+  it('says nothing on the cover of a clean report', async () => {
+    // The control: an empty notice must not render an empty box.
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    const html = buildReportHtml({
+      report: { market: { text: 'Real content.' } },
+      sections: [{ key: 'market', title: 'Market' }],
+      meta: {}, lang: 'es', theme: getPdfTheme('fbizlab'),
+    } as never);
+    // The class name is always in the stylesheet; the DIV is what must not be there.
+    expect(html).not.toContain('<div class="covernotice">');
   });
 
   it('suppresses a legacy degradedSections body in the PDF', async () => {

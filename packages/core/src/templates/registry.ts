@@ -125,6 +125,12 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
   // client had no way to detect it and fall back deliberately. The API's `?lang`
   // enum stops that for the languages we publish; a model that ships English-only
   // is the case it could not see.
+  //
+  // `actualLang` is then what the REST of this manifest is built in, not just what
+  // it reports. Steps and directives are translated globally (`phases.ts`,
+  // `directives.ts`), so building them from the request while the model's own
+  // texts fell back to English produced a manifest in two languages — and a `lang`
+  // field that was wrong about part of it whichever value it took.
   const actualLang = lang === DEFAULT_LANG || tr ? lang : DEFAULT_LANG;
   return {
     id: t.id,
@@ -140,7 +146,7 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     // change. Note what is NOT here — the prompt text these render into. That is
     // built server-side from the submitted values; the client never sees or edits it.
     ...(t.directives
-      ? { directives: manifestDirectives(t.directives, lang), directivesKey: t.directives.key }
+      ? { directives: manifestDirectives(t.directives, actualLang), directivesKey: t.directives.key }
       : {}),
     // Which param carries the buyer's free text. A client needs it to render that
     // one field differently (a textarea with a minimum, not a line input) and to
@@ -172,7 +178,7 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
         credits: a.credits,
       };
     }),
-    steps: buildSteps(t, tr, lang),
+    steps: buildSteps(t, tr, actualLang),
     reportSchema: z.toJSONSchema(reportSchemaOf(t)),
   };
 }

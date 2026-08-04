@@ -314,6 +314,12 @@ describe('gather bounds what a research turn may emit, and stops at the ceiling'
       // turn; it does not write the report, so anything near a synthesis-sized
       // budget is a bug whatever the constant says.
       expect(opts.maxOutputTokens, 'a research turn does not need a synthesis budget').toBeLessThanOrEqual(8_192);
+      // The same argument, applied to the line above it — which was left reading
+      // its own constant, one line under the comment explaining why that proves
+      // nothing. On Gemini 2.5 thinking tokens are billed as OUTPUT, so raising
+      // this is exactly as expensive as raising the cap next to it, and the suite
+      // could not tell a thousandfold change from a correct value.
+      expect(opts.thinkingBudget, 'a search-loop turn does not need to deliberate').toBeLessThanOrEqual(4_096);
     }
   });
 

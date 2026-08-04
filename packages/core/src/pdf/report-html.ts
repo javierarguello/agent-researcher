@@ -9,6 +9,7 @@ import type { CoverSpec } from '../templates/types.js';
  */
 import type { PdfTheme } from './theme.js';
 import { normalizeSectionStatuses } from '../engine/section-status.js';
+import { sectionsNotice } from '../jobs/report-copy.js';
 
 type Obj = Record<string, unknown>;
 
@@ -415,6 +416,12 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   // Numbers in the reader's language, money in the model's currency. Built once
   // and threaded like the theme; both used to be `en-US` and `$` everywhere.
   const f = makeNumFmt(lang, input.currency);
+  // On the COVER, not only beside the sections it happened to.
+  //
+  // The per-section lines say what is missing where; this says it once, on the
+  // first page, in the artifact the buyer forwards to a partner or a lender.
+  // Whoever opens the PDF without ever seeing the web page had no way to know.
+  const notice = sectionsNotice(input.lang, statuses);
   const pad = (i: number) => String(i + 1).padStart(2, '0');
   const HIDE = new Set(['search_criteria']);
   const ordered = (input.sections?.length ? input.sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))
@@ -491,6 +498,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
       <div class="mono kicker">${esc(l.kicker)}</div>
       <h1 class="covertitle">${esc(input.title ?? t.brand)}</h1>
       ${snap.length ? `<div class="coverstats">${snap.map(([v, lab]) => `<div><div class="mono covstatlab">${esc(lab.toUpperCase())}</div><div class="covstatval">${esc(v)}</div></div>`).join('')}</div>` : ''}
+      ${notice ? `<div class="covernotice">${esc(notice)}</div>` : ''}
       <div class="coverdisc">${esc(l.aiDisclaimer)}</div>
     </div>
   </section>`;
@@ -561,6 +569,7 @@ function css(t: PdfTheme): string {
   .kicker { font-size:12px; letter-spacing:0.28em; opacity:0.85; margin-bottom:22px; }
   .covertitle { font-size:58px; font-weight:800; letter-spacing:-0.03em; line-height:1.0; margin-bottom:26px; }
   .coverstats { display:flex; gap:34px; flex-wrap:wrap; }
+  .covernotice { margin-top:26px; font-size:11.5px; line-height:1.5; max-width:62ch; opacity:0.85; }
   .coverdisc { font-size:10px; line-height:1.55; opacity:0.85; margin-top:28px; max-width:5.4in; }
   .covstatlab { font-size:9px; letter-spacing:0.12em; opacity:0.8; margin-bottom:6px; }
   .covstatval { font-size:26px; font-weight:800; letter-spacing:-0.01em; }

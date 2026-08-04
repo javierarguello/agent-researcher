@@ -309,6 +309,32 @@ describe('the slot counter can never go negative, and never flags a parked job',
     expect(await slots.inFlightSlots(APP, USER)).toBe(1);
   });
 
+  it('floors the OTHER release too — the one that goes through a job', async () => {
+    // The comment above says both floors could be deleted with 388 tests green and
+    // that they are not the same guard. It then covered one of them.
+    //
+    // `releaseJobSlot` reads the counter through the job, so it looked protected by
+    // `slotHeld`. It is not: the flag says this JOB owes a slot back, and it says
+    // nothing about whether the COUNTER has one to give. A compensating release
+    // (`releaseUnclaimedSlot`, no job to consult) can empty the counter first, and
+    // then a perfectly ordinary terminal release takes it to -1 — which uncaps
+    // concurrent spend for that buyer until something claims the deficit back.
+    await seed('sl0');
+    const slots = await import('../src/jobs/slots.js');
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    await slots.setJobSlotHeld('sl0', true);
+    // The counter is emptied by the path that does not go through this job.
+    await slots.releaseUnclaimedSlot(APP, USER);
+    expect(await slots.inFlightSlots(APP, USER), 'the premise: nothing left to release').toBe(0);
+
+    await slots.releaseJobSlot('sl0');
+    expect(await slots.inFlightSlots(APP, USER)).toBe(0);
+
+    // …and the cap still bites, which is what a negative counter breaks.
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    expect(await slots.inFlightSlots(APP, USER)).toBe(1);
+  });
+
   it('refuses to flag the slot of a parked job', async () => {
     // A parked job is explicitly NOT in flight — it spends nothing and waits on us.
     // Flagging its slot is how an approval's forced claim stuck at 1 when a

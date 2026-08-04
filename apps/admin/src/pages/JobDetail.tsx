@@ -326,6 +326,32 @@ export function JobDetail() {
       )}
       {job.error && <Alert color="red" title="Job error">{job.error}</Alert>}
 
+      {/* Which sections, and in what state.
+          `summary.sections` was written by the engine, served by the API and typed
+          here, and rendered by nothing — so the one page that exists to decide
+          about a job could see THAT it degraded (the dashboard KPI) and never
+          which parts, or whether the buyer lost a section or just got a shallower
+          one. Those are different conversations with the customer. */}
+      {s?.sections && s.sections.length > 0 && (
+        <Alert color={s.sections.some((x) => x.status === 'lost') ? 'orange' : 'yellow'} title="Sections that did not come out whole">
+          <Stack gap={4}>
+            {s.sections.map((x) => (
+              <Group key={x.key} gap="xs">
+                <Badge size="sm" color={x.status === 'lost' ? 'orange' : 'yellow'} variant="light">
+                  {x.status === 'lost' ? 'lost' : 'shallow'}
+                </Badge>
+                <Mono size="sm">{x.key}</Mono>
+                <Text size="sm" c="dimmed">
+                  {x.status === 'lost'
+                    ? 'nothing wrote it — the body is a placeholder and both renderers suppress it'
+                    : 'written and delivered, but the step that deepens it never finished'}
+                </Text>
+              </Group>
+            ))}
+          </Stack>
+        </Alert>
+      )}
+
       {s?.warnings && s.warnings.length > 0 && (
         <Alert color="yellow" title="Warnings — review what happened">
           <Stack gap={4}>{s.warnings.map((w, i) => <Text key={i} size="sm">{w}</Text>)}</Stack>

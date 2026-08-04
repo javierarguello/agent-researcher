@@ -66,6 +66,12 @@ export function ReadReport() {
         {!token && <Notice text={t.missing} />}
         {token && expired && <Notice text={t.expired} />}
         {token && !expired && !report.data && <Notice text={t.loading} live />}
+        {/* The forwarded copy. `JobView` shows this line and this page did not, so
+            the person a buyer shares the report WITH — the partner, the lender —
+            read an incomplete dossier with nothing saying so. */}
+        {token && !expired && report.data && job.data?.summary?.notice && (
+          <Notice text={job.data.summary.notice} />
+        )}
         {token && !expired && report.data && (
           <ReportViewer
             currency={template.data?.currency} cover={template.data?.cover} coverLabels={template.data?.coverLabels}
