@@ -82,6 +82,13 @@ app.post('/run', async (req, reply) => {
     if (result.status === 'incomplete') {
       return reply.code(503).send({ status: 'incomplete' });
     }
+    // 'superseded' → this task lost the job to a newer dispatch. ACK it. A 503 here
+    // would retry the stale task, which would then take the job back from the run
+    // that owns it, and so on — every cycle paying for another research pass.
+    if (result.status === 'superseded') {
+      app.log.warn({ jobId }, 'worker: dispatch superseded by a newer one; acking');
+      return reply.code(200).send({ status: 'superseded', skipped: true });
+    }
     // Email the user their report is ready (best-effort — never fail the job on it).
     if (result.status === 'completed') {
       await notifyReportReady(jobId).catch((err) => app.log.warn({ err, jobId }, 'worker: report-ready email failed'));

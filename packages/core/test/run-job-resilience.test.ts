@@ -17,6 +17,7 @@ import { runJob } from '../src/engine/run-job.js';
 import { createJob, getJob, markFailed, setJobAttempts, setJobCost, setProgress } from '../src/jobs/firestore.js';
 import { installMockProvider } from './mocks/llm.js';
 import { config } from '../src/config.js';
+import { writableConfig } from './writable-config.js';
 import { OBJECTS } from './mocks/storage.js';
 import { compactModel } from './fixtures/compact-model.js';
 import { __registerTemplateForTests, __clearTestTemplates } from '../src/templates/registry.js';
@@ -233,7 +234,10 @@ describe('a stale dispatch delivers nothing and overwrites nothing', () => {
 
     const res = await runJob(input('st1'));
 
-    expect(res.status, 'a stale run must not report a delivery').toBe('incomplete');
+    // `superseded`, not `incomplete`: the worker ACKs this one. A 503 would retry
+    // the stale task, which would then take the job back from the run that owns
+    // it — and every cycle of that pays for another research pass.
+    expect(res.status, 'a stale run must not report a delivery').toBe('superseded');
     expect(res.files).toEqual([]);
     expect([...OBJECTS.keys()].some((k) => k.includes('st1') && k.includes('report.json'))).toBe(false);
     expect(spy, 'it should never have got as far as the terminal write').not.toHaveBeenCalled();
@@ -323,5 +327,107 @@ describe('what the admin dashboard is told about a partial delivery', () => {
     const stored = JSON.parse(OBJECTS.get([...OBJECTS.keys()].find((k) => k.includes('s2') && k.endsWith('report.json'))!)!.toString()) as { meta: { sections?: Array<{ status: string }> } };
     expect(stored.meta.sections?.map((x) => x.status)).toEqual(['lost']);
     expect(booked.mock.calls[0]?.[0].degraded).toBe(true);
+  });
+});
+
+describe('a stale dispatch writes no outcome of any kind', () => {
+  // The delivery path was guarded and the other three exits were not. Everything
+  // here is about a run that has already lost the job to a newer dispatch and is
+  // still holding the numbers an admin reads and the slot the buyer needs.
+  const seedJob = (jobId: string) =>
+    createJob({ jobId, appId: APP, userId: USER, templateId: compactModel.id, params: {}, status: 'queued' } as never);
+
+  /** Hand the job to another dispatch on the first model call. */
+  function stolenMidRun(jobId: string, jobs: typeof import('../src/jobs/firestore.js')): void {
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    let claimed = false;
+    mock.generate = async (opts) => {
+      if (!claimed) {
+        claimed = true;
+        await jobs.markRunning(jobId, 'a-different-dispatch');
+      }
+      return base(opts);
+    };
+  }
+
+  it('does not overwrite the cost the live run is reporting', async () => {
+    // The LAST and authoritative write of the field the admin dashboard shows as
+    // the job's cost. The per-wave writes were guarded; this one sat between the
+    // engine returning and the delivery gate, so a stale run's older total landed
+    // on top of the live run's every time.
+    await seedJob('st3');
+    const jobs = await import('../src/jobs/firestore.js');
+    await setJobCost('st3', { usd: 9.99, llmUsd: 9.99, searchUsd: 0, inputTokens: 1, outputTokens: 1, searchCalls: 0 } as never);
+    stolenMidRun('st3', jobs);
+
+    const res = await runJob(input('st3'));
+    expect(res.status).toBe('superseded');
+    expect((await getJob('st3'))!.cost?.usd, 'the live run’s number, untouched').toBe(9.99);
+  });
+
+  it('does not park the job or release the buyer’s slot', async () => {
+    // The whole `held` branch ran before the gate: it uploaded a trace, called
+    // `markHeld`, and released the slot. `markHeld` refuses a stale dispatch, but
+    // its result was discarded and its three siblings never checked at all.
+    //
+    // `releaseJobSlot` is the one that costs money: it keys on the job's `slotHeld`
+    // flag, not on the dispatch, so a stale run hitting its ceiling frees the LIVE
+    // run's slot and the buyer starts a second report while the first is going.
+    await seedJob('st4');
+    const jobs = await import('../src/jobs/firestore.js');
+    const slots = await import('../src/jobs/slots.js');
+    const held = vi.spyOn(jobs, 'markHeld');
+    const released = vi.spyOn(slots, 'releaseJobSlot');
+    const ceiling = config.workflow.maxJobCostUsd;
+    writableConfig.workflow.maxJobCostUsd = 0.000001; // every run parks on this
+    try {
+      stolenMidRun('st4', jobs);
+      const res = await runJob(input('st4'));
+      expect(res.status, 'not held — this run does not get to decide that').toBe('superseded');
+      expect(held).not.toHaveBeenCalled();
+      expect(released).not.toHaveBeenCalled();
+    } finally {
+      writableConfig.workflow.maxJobCostUsd = ceiling;
+    }
+  });
+
+  it('never writes an OUTCOME progress line', async () => {
+    // The latch is deliberately loose on `onProgress`: it only trips at a wave
+    // boundary, so a step line written between the theft and the next boundary
+    // still lands. That is the accepted cost of not spending a Firestore read per
+    // progress line, and it is a step line — the live run overwrites it within
+    // seconds.
+    //
+    // What must NEVER land is a terminal one. `phase: 'incomplete'` and
+    // `phase: 'held'` are what the buyer's UI reads as "this stopped", and a
+    // superseded run wrote them over a job that was still going.
+    await seedJob('st6');
+    const jobs = await import('../src/jobs/firestore.js');
+    stolenMidRun('st6', jobs);
+    const res = await runJob(input('st6'));
+    expect(res.status).toBe('superseded');
+
+    const phase = (await getJob('st6'))!.progress?.phase;
+    expect(['incomplete', 'held', 'done'], 'a superseded run told the buyer the job had stopped').not.toContain(phase);
+  });
+
+  it('still parks and releases when the job IS ours', async () => {
+    // The control. "Never parks, never releases" would pass everything above.
+    await seedJob('st5');
+    const jobs = await import('../src/jobs/firestore.js');
+    const slots = await import('../src/jobs/slots.js');
+    const held = vi.spyOn(jobs, 'markHeld');
+    const released = vi.spyOn(slots, 'releaseJobSlot');
+    const ceiling = config.workflow.maxJobCostUsd;
+    writableConfig.workflow.maxJobCostUsd = 0.000001;
+    try {
+      const res = await runJob(input('st5'));
+      expect(res.status).toBe('held');
+      expect(held).toHaveBeenCalled();
+      expect(released).toHaveBeenCalled();
+    } finally {
+      writableConfig.workflow.maxJobCostUsd = ceiling;
+    }
   });
 });

@@ -72,6 +72,20 @@ describe('what the worker tells the queue', () => {
     expect(res.json().status).toBe('incomplete');
   });
 
+  it('acks a SUPERSEDED dispatch instead of asking for a retry', async () => {
+    await seedJob();
+    runJob.mockResolvedValue({ files: [], reportBytes: 0, sourcesFound: 0, status: 'superseded' });
+
+    // This task lost the job to a newer dispatch. A 503 retries THIS task, which
+    // then takes the job back from the run that owns it, which supersedes the
+    // first one again — a loop, and every cycle of it pays for another pass over
+    // whatever the checkpoint had not finished. It used to return `incomplete`,
+    // which is exactly the 503 path above.
+    const res = await run();
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('superseded');
+  });
+
   it('acks a HELD job instead of asking for a retry', async () => {
     await seedJob();
     runJob.mockResolvedValue({ files: [], reportBytes: 0, sourcesFound: 0, status: 'held' });

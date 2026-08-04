@@ -61,8 +61,15 @@ export interface RunJobResult {
   files: JobFile[];
   reportBytes: number;
   sourcesFound: number;
-  /** 'incomplete' → the worker should return a retryable status so the queue resumes it. */
-  status: 'completed' | 'failed' | 'incomplete' | 'held';
+  /**
+   * 'incomplete'  → the worker returns a retryable status so the queue resumes it.
+   * 'superseded'  → this dispatch no longer owns the job; another one does. The
+   *                 worker must ACK it. Returning 'incomplete' here made the queue
+   *                 re-dispatch the stale task, which then took ownership from the
+   *                 live run — and the cycle repeats, each turn of it a paid pass
+   *                 over whatever the checkpoint had not finished.
+   */
+  status: 'completed' | 'failed' | 'incomplete' | 'held' | 'superseded';
 }
 
 export async function runJob(input: RunJobInput): Promise<RunJobResult> {
@@ -270,6 +277,23 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       },
     });
 
+    // Everything from here writes the job's OUTCOME, and a dispatch that no longer
+    // owns the job has no business writing one. The delivery path was guarded and
+    // the other three exits were not: the final `setJobCost` — the authoritative
+    // write of the field the admin reads as the job's cost — the `incomplete`
+    // progress line, and the entire `held` branch, which uploads a trace, parks the
+    // job, and releases the buyer's concurrency slot.
+    //
+    // `releaseJobSlot` is the expensive one. It keys on the job's `slotHeld` flag,
+    // not on the dispatch, so a stale run hitting its ceiling freed the LIVE run's
+    // slot and the buyer could start a second report while the first was still
+    // going. Idempotent, so no negative counter — the cap is simply gone for the
+    // rest of the run.
+    if (!(await stillOurs())) {
+      log.warn('outcome.skipped', { reason: 'another dispatch owns this job', traceStatus: output.trace.status });
+      return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
+    }
+
     // headlineCost is folded into the trace via `baseCost`, so meta.cost already
     // includes it. Best-effort, like every other bookkeeping write here: the figure
     // is also in the trace and the checkpoint, and losing it must not park a job
@@ -345,9 +369,12 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     // still overwrote `report.json` with its older report and then deleted the
     // checkpoint the live run was resuming from. The refusal came too late to
     // matter.
+    // Re-read, not a re-use of the check above: the uploads and the engine's
+    // finalize sit between them, and that window is exactly when a re-dispatch
+    // happens.
     if (!(await stillOurs())) {
       log.warn('delivery.skipped', { reason: 'another dispatch owns this job' });
-      return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'incomplete' };
+      return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
     }
 
     let report: JobFile;
