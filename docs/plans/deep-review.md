@@ -764,3 +764,97 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
   **Closed.** Moved to `afterEach`, which runs whether the assertions passed or
   threw. One case keeps its inline restore on purpose: it drives the captured saver
   against a live engine, so its spy has to be gone before the assertions start.
+
+---
+
+## Round 6 — eight agents against `cd5740b..622e527`, then four commits
+
+Eight reviewers, nine commits under review. Six of the eight findings that
+survived verification were about the batch that had just been shipped to close
+round 5, which is the whole argument for running the round.
+
+**Closed (`4fe6f28`, `71cbc10`, `8f8506e`):**
+
+- **The `meta.sections` rename failed OPEN on every report already written.**
+  `degradedSections: string[]` → `sections: SectionStatus[]` with no reader for
+  the old shape, and both stores still hold it: `report.json`, which the worker
+  re-renders on demand and the viewer reads directly, and `checkpoint.json`,
+  which a HELD job keeps on purpose so an approval can resume. `status === 'lost'`
+  matched nothing, so both renderers printed the fabricated placeholder — a
+  recommendation the engine never made, at a price of zero — and `sectionsNotice`
+  returned `''`, so the buyer was told nothing either. Three agents found it
+  independently; two demonstrated it against the real renderer. Coerced at all
+  three read points; an unrecognised status becomes `lost`, because every shape
+  that can arrive from a store predates `status` and meant exactly that.
+- **The invariant the previous commit exists to protect had no test.** Making
+  either renderer suppress `unenriched` bodies — deleting real, paid-for content
+  and replacing it with an apology that is false — left all four suites green.
+  No test anywhere passed `unenriched` to a renderer.
+- **`pdf-wiring.test.ts` still pinned `degradedSections`** — the one test written
+  because that contract had been dead in production, green through the rename
+  that killed it again, because it asserted pass-through of an arbitrary key
+  instead of the field the renderer reads.
+- **Three unguarded outcome paths**: the final `setJobCost`, the `incomplete`
+  progress line, and the entire `held` branch — which parks the job and releases
+  the buyer's slot. `releaseJobSlot` keys on the job's `slotHeld` flag, not the
+  dispatch, so a stale run freed the LIVE run's slot and the cap was gone for the
+  rest of the run. A superseded dispatch now returns `superseded`, which the
+  worker ACKs: `incomplete` is a 503, which retried the stale task, which took the
+  job back, in a loop that paid for a research pass each cycle.
+- **`cred.passwordHash && !verifyPassword(…)`** — the same vacuous shape as the
+  `tokenId` shim four lines below, in the same handler. Reachable via
+  `upsertGoogleUser`, which deletes the hash of an unverified account while its
+  link is live.
+- **The reset-password half of N8 had no test** — the route its own comment calls
+  a repeatable account takeover for its whole TTL.
+- **`buildReportHtml` was 1.85x slower**: 1,821 `Intl.NumberFormat` constructions
+  per render, 91% of the time. The browser copy of the same function already
+  hoisted it. Byte-identical output at 1/5th the time.
+- **`narrowSymbol` collapsed CAD/AUD/MXN/SGD/HKD/NZD onto `$`** — the same defect
+  as the hardcoded `$` the currency work replaced, and it survived that fix
+  because the only assertions were USD and EUR, the two that look right anyway.
+- **`stats.degraded` counted any status**, so a shallow refiner lit the admin's
+  "Degraded / partial delivery" KPI. `run-local.ts` printed `[object Object]`.
+  The frontend SKILL.md and four docs still published `degradedSections`, which
+  would have reproduced the fail-open in any client built from them.
+
+**A third standing lesson, earned this round:**
+
+3. **A rename is a migration.** Every one of the P0s above is the same move —
+   the field was renamed, the readers were updated, and the DATA was not. The
+   stores outlive the deploy: `report.json` is re-rendered on demand for the life
+   of the product, and a held checkpoint waits for a human. Renaming a field that
+   is persisted means writing the coercion in the same commit, and testing it
+   with a fixture that carries the old shape.
+
+**Still open from this round:**
+
+- **The checkpoint SAVE failure is a bare warn** (`run-job.ts:225`), and the
+  load-side fix now documents a MISSING checkpoint as normal — so the money loss
+  C5 closed on the read side is fully re-openable from the write side, behind a
+  comment saying the symptom is fine. Count consecutive failures and park.
+- **`gather.ts:252` charges for a search before running it** and swallows the
+  failure with no log at all. A degraded provider burns the whole search budget
+  on queries that all fail, and the only evidence is a thin report.
+- **`TemplateI18n.cover` has zero readers.** `labelKey` is documented as looked
+  up there; both renderers read `RL`/`paramLabels` instead. Florida works only
+  because its labelKeys are already hardcoded Florida vocabulary in both
+  renderers, in all four languages. The second model to declare a cover gets its
+  raw key as the label.
+- **`/research/preflight` is metered per IP only** — an authenticated route,
+  where every other multi-dimension meter in the file pairs `perIp` with `perKey`.
+- **K6+K7 put preflight and the captcha in the SHARED burst window**, the CGNAT
+  lockout `public-limit.ts` documents; `isolatedBurst` is defeated on any
+  captcha'd route.
+- **`config.gatherThinkingBudget` is pinned by reading its own constant** — one
+  line below the assertion that exists because that proves nothing. Same for the
+  second of the two slot floors, and `toManifest`'s `actualLang`, which has no
+  test at all.
+- The notice self-contradicts ("Everything else is complete." followed by a
+  sentence saying it is not); the PDF, the ready email and `ReadReport` carry no
+  notice at all; fr `passe` and pt `passagem` are the wrong words for a
+  processing pass.
+- `JobSummary.sections` is served and read by nothing, so an admin cannot see
+  which sections degraded or how.
+- Three earlier commit messages overstate their test counts (616→612, 619→615,
+  623→621): the parenthesised total includes skips.
