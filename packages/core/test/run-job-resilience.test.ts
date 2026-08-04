@@ -431,3 +431,87 @@ describe('a stale dispatch writes no outcome of any kind', () => {
     }
   });
 });
+
+describe('a dispatch that could not save anything does not hand the bill to the next one', () => {
+  // The load path parks an UNREADABLE checkpoint, and its comment says a MISSING
+  // one is normal — which it is, when nothing was attempted. It also covers the
+  // case where every save was attempted and every one failed, and that is the
+  // expensive half: the next dispatch finds no object, starts from zero, and
+  // re-buys every agent this one already paid for, up to `maxJobAttempts` times,
+  // behind a warn that repeats per agent.
+  const seedJob = (jobId: string) =>
+    createJob({ jobId, appId: APP, userId: USER, templateId: compactModel.id, params: {}, status: 'queued' } as never);
+  const checkpointsFor = (jobId: string) => [...OBJECTS.keys()].filter((k) => k.includes(jobId) && k.includes('checkpoint'));
+
+  /** The first agent finishes (so a checkpoint IS attempted), the second never does. */
+  function oneAgentThenFailure(): void {
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    let structured = 0;
+    mock.generate = async (opts) => {
+      if (opts.responseSchema && ++structured > 2) {
+        return { text: 'not json', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+      return base(opts);
+    };
+  }
+
+  /** Fail only the checkpoint upload; the report and the trace still store fine. */
+  async function breakCheckpointUploads(): Promise<void> {
+    const storage = await import('../src/storage/gcs.js');
+    const real = storage.uploadObject;
+    vi.spyOn(storage, 'uploadObject').mockImplementation(async (o) => {
+      if (o.name.includes('checkpoint')) throw new Error('storage unavailable');
+      return real(o);
+    });
+  }
+
+  it('parks instead of asking to be retried', async () => {
+    await seedJob('cs1');
+    oneAgentThenFailure();
+    await breakCheckpointUploads();
+
+    const res = await runJob(input('cs1'));
+    expect(res.status, '`incomplete` re-dispatches into a full re-buy').toBe('held');
+    const job = (await getJob('cs1'))!;
+    expect(job.status).toBe('held');
+    expect(job.hold?.detail).toMatch(/checkpoint/i);
+    // The admin decides about MONEY here, so the figure has to be the real one.
+    // `parkAndRethrow` reports 0 because the paths it serves park before anything
+    // has run; this job has run.
+    expect(job.hold?.spentUsd, 'a job that spent nothing needs no decision').toBeGreaterThan(0);
+    expect(checkpointsFor('cs1'), 'the premise: nothing was written').toEqual([]);
+  });
+
+  it('does not park a dispatch whose saves worked but whose agents did not', async () => {
+    // Why this is not just "incomplete → park". Measured while writing it: even a
+    // dispatch where NO agent succeeded still writes a checkpoint at the wave
+    // boundary (saved: 1, failed: 0), so "no agent finished" and "nothing was
+    // written" are different states and only the second is expensive.
+    //
+    // Stated plainly because it limits the test above: narrowing the guard to
+    // `checkpointsSaved === 0` is GREEN across this file. The extra clause is a
+    // statement of intent for a future path that attempts no save at all, and no
+    // assertion here can tell the two apart.
+    await seedJob('cs2');
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    mock.generate = async (opts) =>
+      (opts.responseSchema ? { text: 'not json', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } } : base(opts));
+
+    const res = await runJob(input('cs2'));
+    expect(res.status, 'nothing attempted, nothing to park for').toBe('incomplete');
+    expect((await getJob('cs2'))!.status).not.toBe('held');
+  });
+
+  it('still resumes normally when the saves work', async () => {
+    // The control: "park on any incomplete" would pass the first case, and
+    // "never park" would pass the second.
+    await seedJob('cs3');
+    oneAgentThenFailure();
+
+    const res = await runJob(input('cs3'));
+    expect(res.status).toBe('incomplete');
+    expect(checkpointsFor('cs3').length, 'a checkpoint the next dispatch can resume from').toBeGreaterThan(0);
+  });
+});

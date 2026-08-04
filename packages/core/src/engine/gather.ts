@@ -179,6 +179,21 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   const charge = (c: Cost) => input.spend?.add(c);
   const maxIterations = maxTurns * 2 + 6;
   const note = async (m: string) => onNote?.(m);
+  /**
+   * Consecutive failing searches, and the point at which we stop paying for more.
+   *
+   * The turn and the charge are taken BEFORE the call — deliberately, because a
+   * provider that took the request may well have billed it, and pretending
+   * otherwise under-reports what a job cost. What was wrong is that the failure
+   * then went into a tool result and nowhere else: no note, no log, nothing in
+   * the trace. A degraded provider burned the entire search budget and the entire
+   * estimated search spend on queries that all failed, and the only evidence was
+   * that the report came out thin.
+   *
+   * Three in a row is a broken provider, not a bad query. Stop, and say so.
+   */
+  let searchFailures = 0;
+  const MAX_SEARCH_FAILURES = 3;
   // Assume the worst until the loop ends for a reason: an unexpected exit is a
   // half-finished pass, and a half-finished pass must not be handed to a retry as
   // if it were research already done.
@@ -249,10 +264,27 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           });
           continue;
         }
+        if (searchFailures >= MAX_SEARCH_FAILURES) {
+          // Not charged and not counted against the turn budget: we are not
+          // calling anything.
+          messages.push({
+            role: 'tool',
+            toolResult: {
+              name: call.name,
+              response: {
+                stop: true,
+                message: `Search is unavailable (${searchFailures} consecutive failures). Write with the evidence you have.`,
+                turnsLeft: 0,
+              },
+            },
+          });
+          continue;
+        }
         turnsUsed += 1;
         charge(searchCost(1, searchCostPerCall('search')));
         try {
           const results = await searchWeb(query);
+          searchFailures = 0;
           for (const r of results) {
             if (r.url && !evidence.seenUrls.has(r.url)) {
               evidence.seenUrls.add(r.url);
@@ -273,6 +305,11 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           });
           await note(`Searched: ${query}`);
         } catch (error) {
+          searchFailures += 1;
+          // Into the TRACE, which is what an admin reads to decide about a job.
+          // This was the most expensive silently-swallowed catch in the job path:
+          // charged, failed, and invisible.
+          await note(`Search failed (${searchFailures}/${MAX_SEARCH_FAILURES}): ${query} — ${(error as Error).message}`);
           messages.push({
             role: 'tool',
             toolResult: { name: call.name, response: { query, error: (error as Error).message, results: [] } },

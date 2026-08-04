@@ -181,6 +181,24 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
    * is no it is no forever and costs nothing to ask again. That is what lets the
    * chatty callers consult it without a Firestore read each.
    */
+  // Did this dispatch manage to WRITE a checkpoint?
+  //
+  // The load path treats a missing object as normal, and its comment says so. What
+  // that reasoning does not cover is a dispatch where saves were ATTEMPTED and
+  // every one failed: the next dispatch finds no object, starts from zero, and
+  // re-buys everything this one paid for — behind a `warn`, repeating per agent
+  // per dispatch, up to `maxJobAttempts` times.
+  //
+  // Measured, not assumed: the engine checkpoints at every wave boundary, so an
+  // incomplete dispatch has always attempted at least one save (even one where no
+  // agent succeeded — it saves the empty state). `checkpointsSaved === 0` at that
+  // point therefore already means "every attempt failed". `checkpointsFailed > 0`
+  // is kept as the statement of what is actually wrong, and so this stays correct
+  // if a future path ever reaches the branch having attempted nothing — but no
+  // test can separate the two clauses today, and none pretends to.
+  let checkpointsSaved = 0;
+  let checkpointsFailed = 0;
+
   let knownStale = false;
   const stillOurs = async (): Promise<boolean> => {
     if (knownStale) return false;
@@ -229,8 +247,15 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
             return;
           }
           await uploadJson(CHECKPOINT, cp);
+          checkpointsSaved += 1;
         } catch (err) {
-          log.warn('checkpoint.save_failed', { message: (err as Error).message });
+          checkpointsFailed += 1;
+          // ERROR once nothing at all has landed: at that point every agent this
+          // dispatch finishes is work the next one will pay for again.
+          const at = checkpointsSaved === 0 && checkpointsFailed > 1 ? 'error' : 'warn';
+          log[at]('checkpoint.save_failed', {
+            message: (err as Error).message, saved: checkpointsSaved, failed: checkpointsFailed,
+          });
         }
       },
       onProgress: async (p) => {
@@ -304,6 +329,38 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
 
     // --- Incomplete: some steps still pending → resume on the next dispatch. ---
     if (output.trace.status === 'incomplete') {
+      // …except there is nothing to resume FROM. Every save was attempted and every
+      // one failed, so the next dispatch starts from zero and re-buys the agents
+      // this one already paid for — and so does the one after that, up to
+      // `maxJobAttempts`. This is the same money `checkpoint.unreadable` parks for,
+      // reached from the write side instead of the read side.
+      //
+      // An approval re-runs from zero deliberately, which is the right call to
+      // make once, by a person who can also look at why storage is refusing us.
+      if (checkpointsSaved === 0 && checkpointsFailed > 0) {
+        const hold = {
+          reason: 'run_failed' as const,
+          heldAt: new Date().toISOString(),
+          // The real figure, not a zero. This job spent money and an admin decides
+          // what to do about it; `parkAndRethrow` reports 0 because the paths it
+          // serves park before anything has run.
+          spentUsd: output.meta.cost.usd,
+          detail:
+            `Could not save a checkpoint (${checkpointsFailed} attempt(s) failed), so there is nothing to ` +
+            `resume from. Approving re-runs the whole report from zero.`,
+        };
+        await markHeld(input.jobId, hold, undefined, dispatchId);
+        await releaseJobSlot(input.jobId).catch(() => {});
+        await setProgress(input.jobId, {
+          phase: 'held', message: heldNotice(output.language),
+          turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
+        }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
+        log.error('job.held', {
+          reason: hold.reason, costUsd: output.meta.cost.usd, attempts,
+          message: 'every checkpoint save failed; a re-dispatch would restart from zero',
+        });
+        return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'held' };
+      }
       log.warn('job.incomplete', {
         attempts,
         pending: output.trace.agents.filter((a) => a.status !== 'ok').map((a) => a.id),
