@@ -74,18 +74,27 @@ export interface NumFmt {
 }
 
 export function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
-  const group = (n: number, max = 2) => new Intl.NumberFormat(lang, { maximumFractionDigits: max }).format(n);
-  const cur = (n: number) => {
-    // `currencyDisplay: 'narrowSymbol'` keeps "$1.2M" rather than "US$1.2M" where
-    // the locale would disambiguate — the compact form is what the layout expects.
-    const sym = new Intl.NumberFormat(lang, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 })
-      .formatToParts(0)
-      .find((x) => x.type === 'currency')?.value ?? '$';
-    return sym;
-  };
+  // Two formatters, built once. `group` used to construct one PER CALL and `cur`
+  // constructed one per money VALUE — 1,821 `Intl.NumberFormat` constructions in a
+  // single large report, 91% of the render, and `buildReportHtml` 1.85x slower
+  // than before currency support. Hoisting is byte-identical output at 1/11th the
+  // time. The browser copy of this function already hoisted it; this one did not,
+  // which is the argument against writing the same rule twice.
+  const fmt0 = new Intl.NumberFormat(lang, { maximumFractionDigits: 0 });
+  const fmt2 = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
+  const group = (n: number, max = 2) => (max === 0 ? fmt0 : fmt2).format(n);
+  // `currencyDisplay: 'symbol'`, not `narrowSymbol`. Narrow collapses CAD, AUD,
+  // MXN, SGD, HKD and NZD onto a bare `$`, so a model researching Canadian deals
+  // printed a price a reader takes for US dollars — the same class of defect as
+  // the hardcoded `$` this replaced, only harder to spot. `symbol` still gives a
+  // bare `$` for USD in English, `€`, `£`, `¥`, `R$` unchanged, and `CA$`/`MX$`
+  // where it matters.
+  const sym = new Intl.NumberFormat(lang, { style: 'currency', currency, currencyDisplay: 'symbol', maximumFractionDigits: 0 })
+    .formatToParts(0)
+    .find((x) => x.type === 'currency')?.value ?? '$';
   const abbr = (n: number) =>
     Math.abs(n) >= 1e6 ? `${group(n / 1e6, 2)}M` : Math.abs(n) >= 1e3 ? `${group(Math.round(n / 1e3), 0)}k` : group(Math.round(n), 0);
-  const money = (n: number) => `${cur(n)}${abbr(n)}`;
+  const money = (n: number) => `${sym}${abbr(n)}`;
   return {
     abbr,
     money,

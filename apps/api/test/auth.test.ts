@@ -489,3 +489,72 @@ describe('the revocation check fails OPEN, deliberately', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe('the guards that were written the forbidden way', () => {
+  beforeEach(async () => {
+    sent.length = 0;
+    await seedEmailApp();
+  });
+
+  // `x && check(x)` passes whenever `x` is absent. It shipped three times in this
+  // file — `claims.tokenId &&` on two routes and `cred.passwordHash &&` on one —
+  // and each time the test that covered its sibling stayed green.
+
+  it('refuses to verify an account that has no password to prove', async () => {
+    // Reachable: `upsertGoogleUser` DELETES the hash of an unverified account
+    // while its verification link is still live. With `cred.passwordHash &&`, any
+    // string at all verified the address — the exact hole the block comment above
+    // it says was closed.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'nohash@x.com' } });
+    const link = tokenFromLast('verify');
+    const core = await import('@agent-researcher/core');
+    await core.upsertGoogleUser({ appId: 'fbizlab', email: 'nohash@x.com', name: 'G' } as never);
+
+    const res = await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: link, password: 'anything-at-all-9!' },
+    });
+    expect(res.statusCode, 'a password nobody chose must not verify an address').toBe(401);
+  });
+
+  it('still verifies with the password that WAS chosen', async () => {
+    // The control. "Always 401" would pass the assertion above.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'hashed@x.com' } });
+    const res = await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: tokenFromLast('verify'), password: reg.password },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('refuses a RESET link that carries no id at all', async () => {
+    // The other half of the same fix, and the one that was left uncovered — on the
+    // route its own comment calls "a repeatable account takeover for its whole
+    // TTL, each redemption handing out a fresh seven-day session". Only
+    // `/auth/verify-email` got a case; restoring the shim here was green.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'noidreset@x.com' } });
+    const core = await import('@agent-researcher/core');
+    const legacy = await core.signSession(
+      { email: 'noidreset@x.com', appId: 'fbizlab', role: 'user', scope: 'reset-password' } as never,
+      3600,
+    );
+
+    const res = await app.inject({
+      method: 'POST', url: '/auth/reset-password',
+      payload: { token: legacy, password: 'Brand-New-9!' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/already been used/i);
+  });
+
+  it('accepts a reset link that has one', async () => {
+    // The control, again: a 400 on every reset would pass the case above.
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'withid@x.com' } });
+    await app.inject({ method: 'POST', url: '/auth/request-password-reset', payload: { appId: 'fbizlab', email: 'withid@x.com' } });
+    const res = await app.inject({
+      method: 'POST', url: '/auth/reset-password',
+      payload: { token: tokenFromLast('reset'), password: 'Brand-New-9!' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});

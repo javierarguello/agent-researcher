@@ -24,8 +24,15 @@ const CURRENCY_RE = /price|revenue|cash.?flow|sde|sale|amount|cost|ebitda|valuat
 interface NumFmt { abbr: (n: number) => string; money: (n: number) => string; plain: (n: number) => string; keyed: (k: string | undefined, n: number) => string }
 
 function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
-  const group = (n: number, max = 2) => new Intl.NumberFormat(lang, { maximumFractionDigits: max }).format(n);
-  const sym = new Intl.NumberFormat(lang, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 })
+  // Built once, like the symbol below already was — `group` constructed a fresh
+  // `Intl.NumberFormat` on every call.
+  const fmt0 = new Intl.NumberFormat(lang, { maximumFractionDigits: 0 });
+  const fmt2 = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
+  const group = (n: number, max = 2) => (max === 0 ? fmt0 : fmt2).format(n);
+  // `symbol`, not `narrowSymbol`: narrow collapses CAD, AUD, MXN, SGD, HKD and NZD
+  // onto a bare `$`, so a Canadian model's prices read as US dollars. Kept in step
+  // with `makeNumFmt` in `packages/core/src/pdf/report-html.ts`.
+  const sym = new Intl.NumberFormat(lang, { style: 'currency', currency, currencyDisplay: 'symbol', maximumFractionDigits: 0 })
     .formatToParts(0).find((x) => x.type === 'currency')?.value ?? '$';
   const abbr = (n: number) =>
     Math.abs(n) >= 1e6 ? `${group(n / 1e6, 2)}M` : Math.abs(n) >= 1e3 ? `${group(Math.round(n / 1e3), 0)}k` : group(Math.round(n), 0);

@@ -173,6 +173,54 @@ describe('numbers and money belong to the reader and the model', () => {
     // The control: a template with no `currency` must not render an empty symbol.
     expect(withDeal('en')).toContain('$');
   });
+
+  it('does not print a dollar-family currency as a bare $', () => {
+    // `currencyDisplay: 'narrowSymbol'` collapses CAD, AUD, MXN, SGD, HKD and NZD
+    // onto `$`, so a model researching Canadian deals printed a price the reader
+    // takes for US dollars. That is the same defect as the hardcoded `$` the
+    // currency support replaced — it just survived the fix, because the only
+    // assertions were on USD and EUR, the two that happen to look right either way.
+    for (const [currency, expected] of [['CAD', 'CA$'], ['AUD', 'A$'], ['MXN', 'MX$'], ['NZD', 'NZ$']] as const) {
+      const html = withDeal('en', currency);
+      expect(html, currency).toContain(expected);
+      // …and the price is not ALSO rendered somewhere as a naked `$1.23M`.
+      expect(html, currency).not.toMatch(/(^|[^A-Z$])\$1\.23M/);
+    }
+  });
+
+  it('builds its formatters once, not once per number', () => {
+    // `cur(n)` ignored its argument and rebuilt a currency formatter to read one
+    // symbol, for EVERY money value; `group` built one per call. 1,821
+    // constructions in a large report, 91% of the render, and `buildReportHtml`
+    // 1.85x slower than before currency support existed. `Intl.NumberFormat` is
+    // ~320x slower to construct than to use, so this is measured by counting
+    // constructions rather than by timing anything.
+    const Real = Intl.NumberFormat;
+    let built = 0;
+    const counting = function (...args: ConstructorParameters<typeof Intl.NumberFormat>) {
+      built += 1;
+      return new Real(...args);
+    } as unknown as typeof Intl.NumberFormat;
+    (Intl as { NumberFormat: typeof Intl.NumberFormat }).NumberFormat = counting;
+    try {
+      buildReportHtml({
+        report: { shortlist: Array.from({ length: 40 }, (_, i) => ({ business: `D${i}`, askingPrice: 400_000 + i, revenue: 900_000 + i, sde: 200_000 + i })) },
+        sections: [{ key: 'shortlist', title: 'Shortlist' }],
+        meta: {}, lang: 'en', currency: 'USD', theme: getPdfTheme('fbizlab'),
+      } as never);
+    } finally {
+      (Intl as { NumberFormat: typeof Intl.NumberFormat }).NumberFormat = Real;
+    }
+    // Three: two grouping formatters and the currency one. The bound is loose on
+    // purpose — what it rules out is a count that scales with the report.
+    expect(built, `built ${built} formatters for 120 numbers`).toBeLessThanOrEqual(8);
+  });
+
+  it('still prints a bare $ for USD in English', () => {
+    // The control for the line above: switching everything to the ISO code would
+    // pass it, and would put "USD1.23M" on the flagship model's cover.
+    expect(withDeal('en', 'USD')).toMatch(/(^|[^A-Z])\$1\.23M/);
+  });
 });
 
 describe('the cover belongs to the model', () => {

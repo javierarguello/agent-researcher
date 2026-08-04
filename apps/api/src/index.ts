@@ -494,7 +494,15 @@ app.post(
     // So verification proves two things now: you read the mail, and you are the
     // person who signed up. A victim cannot supply a password they never chose,
     // and the account stays unverified and unusable.
-    if (cred.passwordHash && !(await verifyPassword(password, cred.passwordHash))) {
+    //
+    // `!cred.passwordHash ||`, not `cred.passwordHash &&`: the second is the same
+    // vacuous shape as the `claims.tokenId &&` shim four lines below, and it means
+    // a credential with no hash proves nothing and ANY password verifies.
+    // `upsertGoogleUser` deletes the hash of an unverified account while its
+    // verification link is still live, so the shape is reachable — and a Google
+    // account is already `emailVerified`, which makes refusing this link the
+    // correct answer as well as the safe one.
+    if (!cred.passwordHash || !(await verifyPassword(password, cred.passwordHash))) {
       logEvent({ jobId: '-', appId: claims.appId, userId: claims.email }, 'WARNING', 'auth.verify_wrong_password', {});
       return reply.code(401).send({ error: 'That password does not match the one chosen when this account was created.' });
     }
