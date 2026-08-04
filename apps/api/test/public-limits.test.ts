@@ -14,8 +14,10 @@ vi.mock('../src/stripe.js', () => ({
   listStripePlans: async () => [],
 }));
 
+import { writableConfig } from './writable-config.js';
 import { app } from '../src/index.js';
-import { createApp } from '@agent-researcher/core';
+import { createApp, grantCredits } from '@agent-researcher/core';
+import { seedApp, token, auth } from './helpers.js';
 import { burstOk, clientIp, __resetBurst } from '../src/public-limit.js';
 import { config } from '@agent-researcher/core';
 
@@ -184,5 +186,63 @@ describe('burst guard', () => {
     expect(burstOk('9.9.9.9', 3, now)).toBe(false);
     expect(burstOk('8.8.8.8', 3, now)).toBe(true); // unrelated caller unaffected
     expect(burstOk('9.9.9.9', 3, now + 61_000)).toBe(true); // window rolled over
+  });
+});
+
+describe('the preview route is metered like every other public one', () => {
+  it('stops an IP that keeps asking', async () => {
+    // It had NO meter: 60 consecutive calls all returned 200, at roughly five
+    // Firestore reads each, on the one route where every sibling carries one in
+    // addition to its captcha.
+    await seedApp('fbizlab');
+    await grantCredits({ appId: 'fbizlab', userId: 'u@x.com', credits: 50 });
+    const t = await token('fbizlab', 'u@x.com');
+    const body = { template: 'florida-business-for-sale', params: { industry: 'x', mode: 'essential' } };
+
+    const codes: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      codes.push((await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(t), payload: body })).statusCode);
+    }
+    // PUBLIC_PREFLIGHT_PER_HOUR_IP=4 in this suite.
+    expect(codes.filter((c) => c === 429).length, `saw ${codes.join(',')}`).toBeGreaterThan(0);
+    expect(codes.filter((c) => c !== 429).length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('the captcha does not pay for an attacker’s burst', () => {
+  it('refuses on the burst window before calling Cloudflare', async () => {
+    // `verifyCaptcha` is an outbound call holding a 5s timeout, and it ran BEFORE
+    // any rate limit because the limit lives in the route guard and the captcha is
+    // a preHandler. 80 registrations with a junk token produced 80 outbound calls:
+    // the attacker spends one HTTP request, we spend a socket and five seconds.
+    const secret = config.captcha.secret;
+    const hadFlow = config.captcha.flows.has('register');
+    const burst = config.publicLimits.burstPerMinute;
+    writableConfig.captcha.secret = 'sekret';
+    // A `Set` survives the readonly mapping intact, so it is mutated through
+    // `config` — `Writable<T>` recurses into it and breaks `.add`.
+    config.captcha.flows.add('register');
+    writableConfig.publicLimits.burstPerMinute = 3;
+    __resetBurst();
+    const calls = { n: 0 };
+    vi.stubGlobal('fetch', vi.fn(async () => { calls.n += 1; return new Response(JSON.stringify({ success: false }), { status: 200 }); }));
+
+    const codes: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      codes.push((await app.inject({
+        method: 'POST', url: '/auth/register',
+        payload: { appId: 'fbizlab', email: `b${i}@x.com`, password: 'sup3rsecret', captchaToken: 'junk' },
+      })).statusCode);
+    }
+
+    expect(codes.filter((c) => c === 429).length, `saw ${codes.join(',')}`).toBeGreaterThan(0);
+    // The point of the ordering: the outbound calls stop when the burst does.
+    expect(calls.n, 'we kept calling Cloudflare for every request past the limit').toBeLessThanOrEqual(3);
+
+    vi.unstubAllGlobals();
+    writableConfig.captcha.secret = secret;
+    if (!hadFlow) config.captcha.flows.delete('register');
+    writableConfig.publicLimits.burstPerMinute = burst;
+    __resetBurst();
   });
 });

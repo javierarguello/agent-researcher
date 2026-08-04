@@ -67,6 +67,9 @@ export default defineConfig({
       PUBLIC_RESET_PER_HOUR_IP: '5',
       PUBLIC_RESET_PER_HOUR_EMAIL: '3',
       PUBLIC_CONTACT_PER_HOUR_IP: '3',
+      // Low enough that a test can reach it in a few calls — the real default is
+      // 60, which no test would ever exercise.
+      PUBLIC_PREFLIGHT_PER_HOUR_IP: '4',
       LOG_LEVEL: 'silent',
     },
   },

@@ -1259,6 +1259,11 @@ app.post(
     preHandler: requireCaptcha('preflight'),
   },
   async (req, reply) => {
+    // A meter, which this route did not have. Reproduced at 60 consecutive 200s,
+    // ~5 Firestore reads each, on the one route where every sibling carries one in
+    // addition to the captcha.
+    if (await publicLimit(req, reply, { route: 'preflight', perIp: config.publicLimits.preflightPerHourPerIp })) return reply;
+
     let validated;
     try {
       validated = validateRequest(req.body);

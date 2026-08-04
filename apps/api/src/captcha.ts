@@ -18,7 +18,7 @@
  */
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { captchaEnabled, config, logEvent, verifyCaptcha, TURNSTILE_TOKEN_FIELD } from '@agent-researcher/core';
-import { clientIp } from './public-limit.js';
+import { clientIp, burstOkOnce } from './public-limit.js';
 
 /**
  * A named user action a widget can be attached to. Adding one is just adding a
@@ -88,6 +88,25 @@ export function requireCaptcha(flow: CaptchaFlow, opts: CaptchaOptions = {}): pr
     if (opts.when && !opts.when(req)) return;
 
     const ip = clientIp(req);
+    // The burst window FIRST, and this is the whole point of the ordering.
+    //
+    // `verifyCaptcha` is an outbound call to Cloudflare holding a 5s timeout. It
+    // used to run before any rate limit, because the limit lives in the route
+    // guard and this is a preHandler — so 80 registrations with a junk token
+    // produced 80 outbound calls and 80 held connections. The attacker's cost is
+    // one HTTP request; ours was a socket and five seconds.
+    //
+    // It COUNTS here, and marks the request so the route guard does not count it
+    // again. A read-only peek was the first attempt and it does not work: the
+    // window is filled by the guard, which a request rejected at the captcha never
+    // reaches — so junk tokens never counted and were never limited, which is
+    // exactly the traffic this is for.
+    if (!burstOkOnce(req as { __burstCounted?: boolean }, ip)) {
+      logEvent({ jobId: '-', appId: req.auth?.appId }, 'WARNING', 'captcha.burst_skipped', { flow, ip });
+      await reply.code(429).send({ error: 'Too many requests. Please try again in a moment.', code: 'rate_limited' });
+      return reply;
+    }
+
     const result = await verifyCaptcha(tokenFrom(req), ip);
     if (result.ok) return;
 

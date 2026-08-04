@@ -70,7 +70,7 @@ round.
   twenty-one dependencies). Assert the property.
 - **N1** — a half-improved section ships as whole with nothing in `meta`. Needs a
   price decision from you.
-- Smaller, in `N`: C5, K6–K8, N4–N11.
+- Smaller, in `N`: N4–N11. (C5's actionable half and K6–K8 are closed.)
 
 ## Review round 4 — eight agents against `54cd7c0` (2026-08-03)
 
@@ -505,13 +505,13 @@ together, and `store.ts` is the only writer. What is left is who is trusted.
 - ~~**K5 — Soft hyphen and Unicode tag characters walk past the pre-screen.**~~ **Closed `2c41984`.**
   `util/text.ts:23`. **Reproduced.** One line: add `­` and
   `\u{E0000}-\u{E007F}` to `INVISIBLE`.
-- **K6 — `/research/preflight` has no request meter at all.**
+- ~~**K6 — `/research/preflight` has no request meter at all.**~~ **Closed.**
   `index.ts:1085-1210`. **Reproduced** — 60 consecutive calls, all 200, ~5 Firestore
   ops each. Every sibling route carries a meter *in addition* to the captcha.
-- **K7 — The burst guard runs after the outbound captcha verify.**
+- ~~**K7 — The burst guard runs after the outbound captcha verify.**~~ **Closed.**
   `captcha.ts:85-92` vs `public-limit.ts:106`. **Reproduced** — 80 registrations
   with a junk token produced 80 outbound Cloudflare calls, each holding a 5s timeout.
-- **K8 — An appended payload survives `acceptCorrections` on a long field.**
+- ~~**K8 — An appended payload survives `acceptCorrections` on a long field.**~~ **Closed** — and it was two bugs, not one: the expansion bound grew with the input (`max(len*3, …)`), AND sanitizing TRUNCATED an over-long proposal into an acceptable one, so an injected suffix arrived in the params as a "correction".
   `enrich.ts:59`. **Reproduced.** The existing test uses an 11-character field, so
   what rejects the attack there is the length bound at its tightest — not the
   similarity logic it claims to test.

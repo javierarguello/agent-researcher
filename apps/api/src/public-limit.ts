@@ -77,6 +77,24 @@ export function burstOk(ip: string, perMinute = config.publicLimits.burstPerMinu
   return true;
 }
 
+/**
+ * Count this request against the shared window from the EARLIEST point, and say
+ * whether it may proceed.
+ *
+ * Called by the captcha preHandler. A read-only peek was the first attempt and it
+ * does not work: the window is filled by the route guard, which a request
+ * rejected at the captcha never reaches — so an attacker sending junk tokens
+ * never counts and is never limited, which is the whole scenario.
+ *
+ * It marks the request so `publicLimit` does not count it a second time; counting
+ * once in two places would halve the effective limit for everybody.
+ */
+export function burstOkOnce(req: { __burstCounted?: boolean }, ip: string): boolean {
+  if (req.__burstCounted) return true;
+  req.__burstCounted = true;
+  return burstOk(ip);
+}
+
 // --- Route guard -------------------------------------------------------------
 
 export interface PublicLimitSpec {
@@ -106,7 +124,15 @@ export interface PublicLimitSpec {
 export async function publicLimit(req: FastifyRequest, reply: FastifyReply, spec: PublicLimitSpec): Promise<boolean> {
   const ip = clientIp(req);
 
-  const tooFast = !burstOk(spec.isolatedBurst ? `${spec.route}:${ip}` : ip);
+  // An isolated window is this route's own and is never what the preHandler
+  // counted, so it is always checked. The shared one is skipped when the captcha
+  // already counted this request.
+  const counted = (req as { __burstCounted?: boolean }).__burstCounted === true;
+  const tooFast = spec.isolatedBurst
+    ? !burstOk(`${spec.route}:${ip}`)
+    : counted
+      ? false
+      : !burstOk(ip);
   const entries: RateLimitEntry[] = [];
   if (!tooFast) {
     if (spec.perIp) entries.push({ key: `pub:${spec.route}:ip:${ip}`, limit: spec.perIp, scope: 'ip' });

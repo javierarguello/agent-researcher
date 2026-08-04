@@ -166,6 +166,16 @@ export const config = {
      * actually stops mail-bombing is the per-TARGET one below — this one only
      * catches a single machine hammering the route.
      */
+    /**
+     * `/research/preflight` per CLIENT IP.
+     *
+     * This route had NO meter at all — 60 consecutive calls all returned 200, at
+     * roughly five Firestore reads each, while every sibling carries one in
+     * ADDITION to its captcha. Generous on purpose: a buyer refining a request
+     * legitimately previews it several times, and the assist pass has its own
+     * per-user allowance for the expensive half.
+     */
+    preflightPerHourPerIp: int('PUBLIC_PREFLIGHT_PER_HOUR_IP', 60),
     registerPerHourPerIp: int('PUBLIC_REGISTER_PER_HOUR_IP', 30),
     /** Per TARGET address. Registration emails a link to an address the caller
      *  chooses, so without this one inbox can be mail-bombed from many IPs — the
