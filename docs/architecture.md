@@ -128,7 +128,8 @@ credits }`) — nothing in Firestore. Full detail: [credits.md](credits.md).
 If an agent throws (after its provider retries), the executor catches it, fills
 that agent's sections with a **schema-valid degraded placeholder**
 (`emptyFromJsonSchema` walks the section's JSON Schema and puts the failure reason
-into the first string field), records the key in `meta.degradedSections`, and
+into the first string field), records the key in `meta.sections` as
+`{ key, status: 'lost' }`, and
 continues. One agent failing never loses the work of the others.
 
 The **final** schema validation is a job-level check: if the assembled report
@@ -224,7 +225,7 @@ stats. `Cost = { usd, llmUsd, searchUsd, inputTokens, outputTokens, searchCalls 
   are short-lived **V4 signed URLs** minted on poll (default 60 min).
 - **Firestore** tracks the job: `status`, `progress` (updated per agent/wave),
   running `cost`, auto-generated `title`/`shortDescription`, and a denormalized
-  `summary` (metrics + `degradedSections` + `agentErrors`) on completion/failure.
+  `summary` (metrics + `sections` + `agentErrors`) on completion/failure.
 - **Two environments** (`dev`/`prod`) selected by `ENV`; every stateful resource
   is suffixed per environment (`agent-researcher-<env>-*`). Local runs use `.env`
   with `APP_ENV=local`. See [deployment.md](deployment.md).

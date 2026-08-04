@@ -51,7 +51,7 @@ async function main() {
   console.error(
     `\nDone [lang=${out.language}, mode=${out.meta.mode}, schema=${out.meta.schemaVersion}]. Report: ${dir}/report.json  ` +
       `(${out.sources.length} sources, ${out.turnsUsed} searches` +
-      `${out.meta.sections ? `, degraded: ${out.meta.sections.join(', ')}` : ''})\n` +
+      `${out.meta.sections?.length ? `, sections: ${out.meta.sections.map((s) => `${s.key}=${s.status}`).join(', ')}` : ''})\n` +
       `Cost: $${c.usd.toFixed(4)} (llm $${c.llmUsd.toFixed(4)} + search $${c.searchUsd.toFixed(4)}; ` +
       `${c.inputTokens.toLocaleString()} in / ${c.outputTokens.toLocaleString()} out tokens)`,
   );

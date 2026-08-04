@@ -111,7 +111,7 @@ token's). Returns newest-first summaries:
 Ownership: admins read any job; a regular user only their own (same `appId` +
 email), else `403`. `404` if unknown. **Non-admin callers get only client-facing
 fields** — no `cost`, token/turn counts, or per-agent internals; `progress` keeps
-`phase`+`message`, `summary` keeps only `warnings`/`degradedSections`. Admins see
+`phase`+`message`, `summary` keeps only `warnings`/`sections`/`notice`. Admins see
 everything. (Same for the `cost` field in `GET /research`.)
 
 While `queued`/`running`/`failed`:
@@ -128,7 +128,7 @@ While `queued`/`running`/`failed`:
             "inputTokens": 1200000, "outputTokens": 40000, "searchCalls": 40 },
   "summary": null, "createdAt", "updatedAt", "error": null }
 ```
-When `completed`/`failed`, `summary` is populated (metrics + `degradedSections` +
+When `completed`/`failed`, `summary` is populated (metrics + `sections` +
 `agentErrors`). When `completed`, the response also includes short-lived **signed
 download URLs**:
 ```jsonc

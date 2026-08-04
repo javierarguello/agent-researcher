@@ -82,7 +82,7 @@ describe('an incomplete report explains itself in the buyer’s words', () => {
     show({
       status: 'completed',
       progress: null,
-      summary: { notice: 'Una sección de este dossier no pudo completarse con fuentes confiables.', degradedSections: ['x'] },
+      summary: { notice: 'Una sección de este dossier no pudo completarse con fuentes confiables.', sections: [{ key: 'x', status: 'lost' }] },
     }, 'es');
 
     expect(screen.getByText(/no pudo completarse con fuentes confiables/i)).toBeTruthy();

@@ -9,12 +9,14 @@
  * deleted the only copy of the work.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { z } from 'zod';
 
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 
 import { runJob } from '../src/engine/run-job.js';
-import { createJob, getJob, markFailed, setJobCost, setProgress } from '../src/jobs/firestore.js';
+import { createJob, getJob, markFailed, setJobAttempts, setJobCost, setProgress } from '../src/jobs/firestore.js';
 import { installMockProvider } from './mocks/llm.js';
+import { config } from '../src/config.js';
 import { OBJECTS } from './mocks/storage.js';
 import { compactModel } from './fixtures/compact-model.js';
 import { __registerTemplateForTests, __clearTestTemplates } from '../src/templates/registry.js';
@@ -248,5 +250,78 @@ describe('a stale dispatch delivers nothing and overwrites nothing', () => {
     const res = await runJob(input('st2'));
     expect(res.status).toBe('completed');
     expect([...OBJECTS.keys()].some((k) => k.includes('st2') && k.includes('report.json'))).toBe(true);
+  });
+});
+
+describe('what the admin dashboard is told about a partial delivery', () => {
+  /** A producer, and a refiner that only deepens the producer's section. */
+  const enrichModel = {
+    id: 'stats-enrich', name: 'Enrich', description: 'x', version: 1,
+    basePrompt: 'Be useful.',
+    paramsSchema: z.object({}),
+    sections: [{ key: 'base', title: 'Base', guidance: 'Write it.', schema: z.object({ text: z.string() }) }],
+    agents: [
+      { id: 'producer', role: 'producer', objective: 'Produce.', produces: ['base'], researchBudget: 1 },
+      { id: 'refiner', role: 'producer', objective: 'Refine.', enriches: ['base'], dependsOn: ['producer'], researchBudget: 1 },
+    ],
+    buildBrief: () => 'Find things.',
+  } as never;
+
+  /** Fail only the enrichment pass, by the prompt that is unique to it. */
+  function failEnrichment(): void {
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    mock.generate = async (opts) => {
+      const text = opts.messages.map((m) => m.text ?? '').join('\n');
+      if (opts.responseSchema && text.includes('Improve and enrich the sections below')) {
+        return { text: 'not json', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+      return base(opts);
+    };
+  }
+
+  /** Seeded on its LAST attempt, so this dispatch finalizes instead of resuming. */
+  const seedFinal = async (jobId: string): Promise<void> => {
+    await createJob({ jobId, appId: APP, userId: USER, templateId: 'stats-enrich', params: {}, status: 'queued' } as never);
+    await setJobAttempts(jobId, config.workflow.maxJobAttempts - 1);
+  };
+
+  it('does not count an unenriched-only report as a degraded delivery', async () => {
+    // `degraded: !!output.meta.sections` was true for ANY status, so a report that
+    // lost nothing and had one shallow refiner lit the admin's "Degraded / partial
+    // delivery" KPI — the number someone acts on. The two statuses exist because
+    // they are not the same event.
+    __registerTemplateForTests(enrichModel);
+    failEnrichment();
+    await seedFinal('s1');
+    const stats = await import('../src/stats/store.js');
+    const booked = vi.spyOn(stats, 'recordReportStats').mockResolvedValue(undefined as never);
+
+    const res = await runJob(input('s1', 'stats-enrich'));
+    expect(res.status, 'the job itself still delivers').toBe('completed');
+    // The precondition. Without an `unenriched` entry the assertion below is
+    // about a report with nothing wrong with it, and proves nothing.
+    const stored = JSON.parse(OBJECTS.get([...OBJECTS.keys()].find((k) => k.includes('s1') && k.endsWith('report.json'))!)!.toString()) as { meta: { sections?: Array<{ status: string }> } };
+    expect(stored.meta.sections?.map((x) => x.status)).toEqual(['unenriched']);
+    expect(booked.mock.calls[0]?.[0].degraded, 'nothing was lost').toBeFalsy();
+  });
+
+  it('still counts one when a section really was lost', async () => {
+    // The control. Without it the fix above also passes on a field wired to
+    // `false`, which is the failure this whole backlog keeps finding.
+    __registerTemplateForTests(enrichModel);
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    mock.generate = async (opts) =>
+      (opts.responseSchema ? { text: 'not json', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } } : base(opts));
+    await seedFinal('s2');
+    const stats = await import('../src/stats/store.js');
+    const booked = vi.spyOn(stats, 'recordReportStats').mockResolvedValue(undefined as never);
+
+    const res = await runJob(input('s2', 'stats-enrich'));
+    expect(res.status).toBe('completed');
+    const stored = JSON.parse(OBJECTS.get([...OBJECTS.keys()].find((k) => k.includes('s2') && k.endsWith('report.json'))!)!.toString()) as { meta: { sections?: Array<{ status: string }> } };
+    expect(stored.meta.sections?.map((x) => x.status)).toEqual(['lost']);
+    expect(booked.mock.calls[0]?.[0].degraded).toBe(true);
   });
 });

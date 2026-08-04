@@ -86,16 +86,20 @@ The deliverable `report.json` is `{ meta, report }`:
     "generatedAt": "…", "contentFormat": "markdown",
     "cost": { "usd": 1.9, "llmUsd": 1.6, "searchUsd": 0.3,
               "inputTokens": 1200000, "outputTokens": 45000, "searchCalls": 38 },
-    "degradedSections": ["financial_analysis"]
+    "sections": [{ "key": "financial_analysis", "status": "lost" }]
   },
   "report": { "executive_summary": { … }, "shortlist": [ … ], … }
 }
 ```
 
 `report`'s keys are exactly the (effective) section keys, in the template's section
-order. `meta.degradedSections` is present only if an agent failed and its sections
-were filled with a schema-valid placeholder. `meta.cost` includes the auto-headline
-cost folded in.
+order. `meta.sections` is present only when something did not come out whole:
+`lost` (nothing wrote it, so it holds a schema-valid placeholder that renderers
+must suppress) or `unenriched` (written, but the pass that deepens it never
+finished — the content is real and is rendered normally). Reports written before
+this field carry `meta.degradedSections: string[]`, which means `lost`.
+
+`meta.cost` includes the auto-headline cost folded in.
 
 ## Language
 

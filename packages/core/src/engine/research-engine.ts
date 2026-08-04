@@ -23,6 +23,7 @@ import {
   type ResearchTemplate,
 } from '../templates/types.js';
 import { degradedSectionNote } from '../jobs/report-copy.js';
+import { normalizeSectionStatuses, type SectionStatus } from './section-status.js';
 import { createEvidence, gather, gatherCompleted, type Evidence } from './gather.js';
 import { synthesizeStructured } from './synthesize.js';
 import {
@@ -90,11 +91,7 @@ export interface ReportMeta {
   sections?: SectionStatus[];
 }
 
-/** One section that did not come out whole, and in what way. */
-export interface SectionStatus {
-  key: string;
-  status: 'lost' | 'unenriched';
-}
+export type { SectionStatus };
 
 /** Per-agent execution record — what it did, produced, and any error. */
 export interface AgentTrace {
@@ -272,7 +269,12 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
 
   const evidence = createEvidence();
   const report: Record<string, unknown> = { ...(input.resume?.report ?? {}) };
-  const degraded: SectionStatus[] = [...(input.resume?.degraded ?? [])];
+  // Coerced, not spread: a job HELD before the `degraded: string[]` -> `SectionStatus[]`
+  // rename keeps its checkpoint on purpose, and resumes here after it. Spreading
+  // carried the old strings straight into `meta.sections`, where nothing matched
+  // `'lost'` and the fabricated placeholder shipped in both renderers with no
+  // notice. See `section-status.ts`.
+  const degraded: SectionStatus[] = normalizeSectionStatuses(input.resume?.degraded);
   // What each finished agent told the ones after it. Carried in the checkpoint, so
   // a resumed dispatch does not hand later steps an empty summary of the work its
   // predecessors already did.

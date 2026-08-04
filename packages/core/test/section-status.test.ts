@@ -21,6 +21,8 @@ vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 import { runResearch } from '../src/engine/research-engine.js';
 import { installMockProvider } from './mocks/llm.js';
 import { sectionsNotice } from '../src/jobs/report-copy.js';
+import { normalizeSectionStatuses } from '../src/engine/section-status.js';
+import { LEGACY_SHAPES } from './fixtures/legacy-section-shapes.js';
 import type { ResearchTemplate } from '../src/templates/types.js';
 
 /** A producer and a refiner that deepens the producer's section in place. */
@@ -111,5 +113,81 @@ describe('the notice tells the two apart', () => {
     for (const [lang, re] of Object.entries({ es: /profundidad/i, fr: /profondeur/i, pt: /profundidade/i })) {
       expect(sectionsNotice(lang, [{ status: 'unenriched' }]), lang).toMatch(re);
     }
+  });
+});
+
+describe('an unenriched section reaches the PDF whole', () => {
+  // The mutation that proved this was missing: make the renderer suppress BOTH
+  // statuses — `statuses.filter(x => x.status === 'lost')` → `statuses` — and the
+  // whole suite stayed green. No test anywhere passed `unenriched` to a renderer,
+  // so the one behaviour this status exists for was guarded by nothing: real,
+  // paid-for, sourced content replaced by "we could not complete this section".
+  const call = async (statuses: unknown) => {
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    return buildReportHtml({
+      report: { market: { text: 'Laundromat demand in Miami-Dade grew 12% year over year.' } },
+      sections: [{ key: 'market', title: 'Market' }],
+      meta: { sections: statuses },
+      lang: 'en',
+      theme: getPdfTheme('fbizlab'),
+    } as never);
+  };
+
+  it('keeps the body and does not apologise for it', async () => {
+    const html = await call([{ key: 'market', status: 'unenriched' }]);
+    expect(html, 'the work the buyer paid for').toContain('grew 12% year over year');
+    expect(html, 'the apology belongs to `lost` alone').not.toMatch(/could not complete this section/i);
+  });
+
+  it('still says the depth pass did not finish', async () => {
+    // Keeping the body silently would be the old defect in reverse: full price,
+    // less depth than the tier bought, and nothing said.
+    const html = await call([{ key: 'market', status: 'unenriched' }]);
+    expect(html).toMatch(/pass that adds extra depth/i);
+  });
+
+  it('suppresses the body when the same section is lost', async () => {
+    // The control. Without it, "keeps the body" passes on a renderer that
+    // suppresses nothing at all.
+    const html = await call([{ key: 'market', status: 'lost' }]);
+    expect(html).not.toContain('grew 12% year over year');
+    expect(html).toMatch(/could not complete this section/i);
+  });
+});
+
+describe('what the renderers do with data written before this shape existed', () => {
+  // `meta.degradedSections` and `checkpoint.degraded: string[]` are both still in
+  // the stores: the worker re-renders a PDF from a saved `report.json` on demand,
+  // and a job HELD before the rename keeps its checkpoint so an approval can
+  // resume it. Neither matched `status === 'lost'`, so both rendered the
+  // fabricated placeholder — and `sectionsNotice` returned '', so nothing was
+  // said either. Fail-open, on the one contract that must fail closed.
+  it.each(LEGACY_SHAPES)('$why', ({ args, expected }) => {
+    expect(normalizeSectionStatuses(...args)).toEqual(expected);
+  });
+
+  it('suppresses a legacy degradedSections body in the PDF', async () => {
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    const html = buildReportHtml({
+      report: { verdict: { recommendation: 'buy', price: 0, summary: 'ZZPLACEHOLDER' } },
+      sections: [{ key: 'verdict', title: 'Verdict' }],
+      meta: { degradedSections: ['verdict'] },
+      lang: 'en',
+      theme: getPdfTheme('fbizlab'),
+    } as never);
+    expect(html, 'the recommendation the engine never made').not.toContain('ZZPLACEHOLDER');
+    expect(html).toMatch(/could not complete this section/i);
+  });
+
+  it('carries a pre-rename checkpoint into meta.sections as lost', async () => {
+    // The held-job path, end to end: strings in, statuses out.
+    installMockProvider();
+    const out = await runResearch({
+      template: tpl, params: {}, jobId: 'ss-legacy', generatedAt: 't',
+      resume: { report: {}, sources: [], doneAgentIds: [], degraded: ['extra'] as never },
+    } as never);
+    expect(out.meta.sections).toContainEqual({ key: 'extra', status: 'lost' });
   });
 });

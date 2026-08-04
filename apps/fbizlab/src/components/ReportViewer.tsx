@@ -4,6 +4,7 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { normalizeSectionStatuses } from '../lib/section-status';
 
 function humanizeKey(k: string): string {
   const s = k.replace(/([A-Z])/g, ' $1').replace(/[_-]/g, ' ').toLowerCase().trim();
@@ -408,7 +409,10 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
   // Only `lost` suppresses a body. An `unenriched` section holds real content a
   // refiner never deepened — hiding it would take away work the buyer paid for and
   // replace it with an apology that is not true.
-  const statuses = (Array.isArray(meta?.sections) ? meta.sections : []) as Array<{ key: string; status: string }>;
+  // Read through the coercion, never off the raw field: this viewer is handed the
+  // STORED `meta`, and every report written before `meta.sections` existed says
+  // `degradedSections` instead. See `lib/section-status.ts`.
+  const statuses = normalizeSectionStatuses(meta?.sections, meta?.degradedSections);
   const degraded = new Set<string>(statuses.filter((x) => x.status === 'lost').map((x) => x.key));
   const unenriched = new Set<string>(statuses.filter((x) => x.status === 'unenriched').map((x) => x.key));
   const ordered = (sections?.length ? sections : Object.keys(report).map((k) => ({ key: k, title: humanizeKey(k) })))

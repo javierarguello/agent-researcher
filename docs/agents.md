@@ -124,8 +124,12 @@ the rest. Two layers (`research-engine.ts` + `run-job.ts`):
 3. **Degrade & deliver the rest.** On the **final** attempt, any section still
    unfilled is degraded to a placeholder, a `warnings[]` entry is added to the job +
    trace (and `log.warn('job.degraded')` is emitted so you can investigate later),
-   and the rest of the report is delivered normally. `report.meta.degradedSections`
-   lists them; stats count the report as `degraded`.
+   and the rest of the report is delivered normally. `report.meta.sections` lists
+   them as `{ key, status: 'lost' }`; stats count the report as `degraded`.
+4. **Deliver a shallow section as shallow.** A section a producer wrote and a
+   refiner never deepened is recorded as `{ key, status: 'unenriched' }`. Its
+   content is real and is rendered as usual — only the buyer's notice differs.
+   Statuses other than `lost` are NOT counted as a degraded delivery.
 
 The `checkpoint.json` is deleted once the job reaches a terminal state.
 

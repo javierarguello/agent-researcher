@@ -49,6 +49,13 @@ vi.mock('puppeteer-core', () => ({
 }));
 
 const REPORT = {
+  meta: { sections: [{ key: 'verdict', status: 'lost' }], mode: 'essential' },
+  report: { verdict: { recommendation: 'buy', price: 0 } },
+};
+
+/** A report.json written before `degradedSections` was renamed. Still in the
+ *  bucket, still re-rendered on demand, still has to reach the coercion. */
+const LEGACY_REPORT = {
   meta: { degradedSections: ['verdict'], mode: 'essential' },
   report: { verdict: { recommendation: 'buy', price: 0 } },
 };
@@ -64,14 +71,28 @@ beforeEach(() => {
 });
 
 describe('what the worker hands the PDF renderer', () => {
-  it('passes the report meta through, so degraded sections stay suppressed', async () => {
+  it('passes the section statuses through, so a lost section stays suppressed', async () => {
     const { renderJobPdf } = await import('../src/pdf.js');
     await renderJobPdf(job);
 
     expect(buildReportHtml).toHaveBeenCalledTimes(1);
-    const arg = buildReportHtml.mock.calls[0]?.[0] as unknown as { meta?: { degradedSections?: string[] } };
-    // Without this the renderer's whole degradation contract is dead code in
-    // production while its own unit test stays green.
+    const arg = buildReportHtml.mock.calls[0]?.[0] as unknown as { meta?: { sections?: unknown } };
+    // Pinned to the FIELD the renderer reads, not to pass-through of some key.
+    // This assertion used to name `degradedSections`, and stayed green through
+    // the rename that made the renderer stop honouring it — in the one test
+    // written because that contract had been dead in production before.
+    expect(arg.meta?.sections).toEqual([{ key: 'verdict', status: 'lost' }]);
+  });
+
+  it('passes a pre-rename meta through untouched, for the coercion to read', async () => {
+    // The worker must not "clean up" what it forwards: every report.json in the
+    // bucket older than the rename says `degradedSections`, and dropping it here
+    // puts the fabricated body back in the PDF with no notice anywhere.
+    downloadObject.mockResolvedValue(JSON.stringify(LEGACY_REPORT));
+    const { renderJobPdf } = await import('../src/pdf.js');
+    await renderJobPdf(job);
+
+    const arg = buildReportHtml.mock.calls[0]?.[0] as unknown as { meta?: { degradedSections?: unknown } };
     expect(arg.meta?.degradedSections).toEqual(['verdict']);
   });
 

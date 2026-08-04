@@ -8,6 +8,7 @@ import type { CoverSpec } from '../templates/types.js';
  * community sentiment), so any report version renders without failing.
  */
 import type { PdfTheme } from './theme.js';
+import { normalizeSectionStatuses } from '../engine/section-status.js';
 
 type Obj = Record<string, unknown>;
 
@@ -384,7 +385,11 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   // Only `lost` suppresses. An `unenriched` section holds real content that a
   // refiner never deepened; hiding it would take away work the buyer paid for and
   // replace it with an apology that is not true.
-  const statuses = (Array.isArray(input.meta?.sections) ? input.meta.sections : []) as Array<{ key: string; status: string }>;
+  //
+  // Read through the coercion, never off the raw field: this renderer is called
+  // on a STORED `report.json`, on demand and with `force`, so most of what it
+  // sees was written before `meta.sections` existed at all.
+  const statuses = normalizeSectionStatuses(input.meta?.sections, input.meta?.degradedSections);
   const degraded = new Set<string>(statuses.filter((x) => x.status === 'lost').map((x) => x.key));
   const unenriched = new Set<string>(statuses.filter((x) => x.status === 'unenriched').map((x) => x.key));
   const lang = (['en', 'es', 'fr', 'pt'].includes(input.lang ?? '') ? input.lang : 'en') as Lang;

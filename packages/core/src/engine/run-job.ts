@@ -455,7 +455,13 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       await recordReportStats({
         appId: input.appId, userId: input.userId, template: input.template,
         status: 'completed',
-        costUsd: output.meta.cost.usd, durationMs, degraded: !!output.meta.sections,
+        costUsd: output.meta.cost.usd, durationMs,
+        // `lost` only. This feeds the admin's "Degraded / partial delivery" KPI —
+        // the number someone acts on — and `!!output.meta.sections` counted a
+        // report that lost nothing and had one shallow refiner as a partial
+        // delivery. The whole point of the two statuses is that they are not the
+        // same event; this was the one place left collapsing them.
+        degraded: !!output.meta.sections?.some((s) => s.status === 'lost'),
       });
     } catch (err) {
       log.warn('stats.report_failed', { message: (err as Error).message });

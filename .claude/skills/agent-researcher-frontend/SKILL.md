@@ -146,10 +146,20 @@ Reference implementation: `apps/admin/src/components/JsonSchemaForm.tsx` in the 
    raw id).
 3. On `status:"completed"` the response adds `files[]` = `{ name, contentType,
    size, url, expiresAt }` with short-lived signed download URLs. `summary` has
-   per-agent timing + any `warnings`/`degradedSections`. For an **in-app viewer**,
+   per-agent timing, any `warnings`, and `sections[]` = `{ key, status }` for every
+   section that did not come out whole (`status: 'lost' | 'unenriched'`). For an
+   **in-app viewer**,
    `GET /research/:jobId/report` returns the parsed `{ meta, report }` (proxied, no
    CORS) — render each `sections[]` in order; a section value is Markdown (render
    styled) or a nested object/array (render recursively).
+   **`meta.sections` is load-bearing:** a `lost` section's body is a schema-valid
+   placeholder, so a required enum holds its first value and a required number
+   holds `0` — rendering it prints a recommendation the engine never made, at a
+   price of zero. Suppress the body and show an apology instead. An `unenriched`
+   section holds real, sourced content and MUST be rendered; say only that the
+   depth pass did not finish. Reports written before this field existed carry
+   `meta.degradedSections: string[]`, which means the same as `lost` — read both,
+   and treat any status you do not recognise as `lost`.
 4. `status:"failed"` → show `error`. (Admins can re-run via `POST
    /admin/jobs/:jobId/retry`.)
 
