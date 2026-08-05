@@ -6,9 +6,12 @@
  * verify it against Cloudflare with the client IP the edge actually saw, and stop
  * the request before the handler runs.
  *
- * Generic by design — a route opts in with one line:
+ * Generic by design — a route opts in with one line, naming the burst window it
+ * shares with its own rate limit (see `CaptchaOptions.burst` for why that is not
+ * optional):
  *
- *   app.post('/thing', { preHandler: requireCaptcha('my-flow'), schema: {...} }, handler)
+ *   const THING_BURST = { route: 'thing' } as const;
+ *   app.post('/thing', { preHandler: requireCaptcha('my-flow', { burst: THING_BURST }), schema: {...} }, handler)
  *
  * …and whether that flow is enforced is then a deployment decision
  * (`TURNSTILE_FLOWS`), not a code change. A new app in this monorepo gets the
@@ -18,7 +21,7 @@
  */
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { captchaEnabled, config, logEvent, verifyCaptcha, TURNSTILE_TOKEN_FIELD } from '@agent-researcher/core';
-import { clientIp, burstOkOnce, burstKeyFor } from './public-limit.js';
+import { clientIp, burstOkOnce, burstKeyFor, type BurstWindow } from './public-limit.js';
 
 /**
  * A named user action a widget can be attached to. Adding one is just adding a
@@ -68,13 +71,23 @@ export function captchaRequired(flow: CaptchaFlow, req?: FastifyRequest): boolea
 
 export interface CaptchaOptions {
   /**
-   * The route's `publicLimit` spec, so the burst counted here lands in the same
-   * window the route guard checks. Without it a captcha'd route that asks for
-   * `isolatedBurst` was counted against the SHARED window here and skipped in the
-   * guard — the isolation doing nothing, and a busy read route able to 429 sign-in
-   * and registration for everyone behind one CGNAT address.
+   * The route's burst window — the same object its `publicLimit` spec is built
+   * from, so the burst counted here lands where the route guard looks for it.
+   *
+   * REQUIRED, and that is the whole fix. It was optional, which made
+   * `isolatedBurst` a two-place opt-in with nothing enforcing the second place:
+   * a captcha'd route that asked for its own window and forgot this was counted
+   * into the SHARED one here and into `route:ip` there — twice, and the half that
+   * mattered drained the window metering sign-in and registration for everyone
+   * behind one CGNAT address. Nothing failed; the isolation simply did not
+   * happen. Now the omission does not compile, and a route that shares the
+   * default window says so by passing a spec without `isolatedBurst` rather than
+   * by saying nothing at all.
+   *
+   * Two declarations that disagree are still possible — pass the SAME object,
+   * and see `publicLimit` for the runtime check that shouts when they don't.
    */
-  burst?: { route: string; isolatedBurst?: boolean };
+  burst: BurstWindow;
   /**
    * Narrows the guard to some requests on the route. Use it when one endpoint
    * serves paths with different risk: `/auth/session` takes both a password and a
@@ -90,7 +103,7 @@ export interface CaptchaOptions {
  * machine-readable `code` so a client can tell "solve it again" apart from a
  * genuine authorization failure.
  */
-export function requireCaptcha(flow: CaptchaFlow, opts: CaptchaOptions = {}): preHandlerHookHandler {
+export function requireCaptcha(flow: CaptchaFlow, opts: CaptchaOptions): preHandlerHookHandler {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!captchaRequired(flow, req)) return;
     if (opts.when && !opts.when(req)) return;

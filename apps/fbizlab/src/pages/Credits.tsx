@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { useBalance, useCheckout, usePlans, useTemplates } from '../api/hooks';
 import { ApiError, DRAFT_KEY } from '../api/client';
+import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 
 const T = {
   en: {
@@ -98,7 +99,15 @@ export function Credits() {
       const res = await checkout.mutateAsync({ planId, successUrl: `${url}?ok=1`, cancelUrl: url });
       window.location.href = res.url;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Checkout failed.');
+      // The only page here where "nothing was charged" is both true and the
+      // question actually being asked: the 429 happens before Stripe is reached,
+      // so no session exists and no card was touched. It said "Too many checkout
+      // attempts. Please try again later." in English, to someone who had just
+      // pressed Buy and had no idea whether their money had moved.
+      setError(
+        isRateLimited(err) ? rateLimitMessage(err, lang, { nothingCharged: true })
+          : err instanceof ApiError ? err.message : 'Checkout failed.',
+      );
       setBusyId(null);
     }
   }

@@ -9,6 +9,7 @@ import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { captchaConfigured } from '../auth/captcha';
 import { useCheckout } from '../api/hooks';
 import { ApiError, PENDING_PLAN_KEY, register, requestPasswordReset } from '../api/client';
+import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 
 const BRAND = 'Florida Biz Labs';
 const MARK = '/icons/favicon.svg';
@@ -173,7 +174,14 @@ export function Login() {
         await loginWithGoogle(idToken);
         await afterLogin();
       } catch (err) {
-        setError(err instanceof ApiError && err.status === 403 ? t.denied : err instanceof ApiError ? err.message : 'Login failed.');
+        // The Google button reaches the same metered `/auth/session` as the
+        // password form below, so it gets the same 429 treatment — it used to
+        // render the API's English sentence verbatim.
+        setError(
+          err instanceof ApiError && err.status === 403 ? t.denied
+            : isRateLimited(err) ? rateLimitMessage(err, lang)
+              : err instanceof ApiError ? err.message : 'Login failed.',
+        );
       }
     })
       .then((id) => { if (!cancelled && btnRef.current) renderGoogleButton(id, btnRef.current); })
@@ -208,6 +216,12 @@ export function Login() {
       else if (err instanceof ApiError && err.status === 409) setError(t.errTaken);
       else if (err instanceof ApiError && err.code === 'disposable_email') setError(t.errDisposable);
       else if (err instanceof ApiError && err.status === 401) setError(t.errInvalid);
+      // All three modes land here, and all three are metered: sign-in per IP and
+      // per email, registration per IP and per target inbox, forgot-password the
+      // same. The fallback below printed the API's English sentence — on the one
+      // screen a customer meets before they have an account, in whatever language
+      // they had been reading the site.
+      else if (isRateLimited(err)) setError(rateLimitMessage(err, lang));
       else setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {
       // Turnstile tokens are single-use: hand the next submit a fresh one.

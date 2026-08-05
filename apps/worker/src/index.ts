@@ -24,7 +24,15 @@ async function notifyReportReady(jobId: string): Promise<void> {
   // The title is generated in the REPORT's language (`headline`), so the shell
   // around it has to match — an English frame around a French title was the most
   // visible half-translation we shipped, and the language was right here all along.
-  const tpl = reportReadyTemplate(app.name, job.title ?? '', link, job.params?.language);
+  //
+  // `summary.notice` is what the buyer is told when the dossier did not come out
+  // whole (`sectionsNotice`, from `meta.sections`). It reached the viewer, the
+  // shared page and the PDF cover, and not this mail — so the one message that
+  // arrives unprompted, and is often all a buyer reads before opening the PDF,
+  // announced a report with a missing section as finished. `runJob` writes the
+  // summary before it marks the job completed, so it is on the document we just
+  // read; a clean report has no notice and the mail is unchanged.
+  const tpl = reportReadyTemplate(app.name, job.title ?? '', link, job.params?.language, job.summary?.notice);
   await sendAppEmail({ app, to: job.userId, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text });
 }
 

@@ -3,13 +3,14 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { pick, useLang } from '../i18n';
 import { ApiError, resetPassword } from '../api/client';
+import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 
 const MARK = '/icons/favicon.svg';
 const T = {
-  en: { title: 'Choose a new password', sub: 'Enter a new password for your account.', label: 'New password', ph: '••••••••', submit: 'Reset password', busy: 'Please wait…', missing: 'This reset link is missing its token.', invalid: 'This reset link is invalid or has expired.', login: 'Back to sign in', tooShort: 'Password must be at least 8 characters.' },
-  es: { title: 'Elige una nueva contraseña', sub: 'Ingresa una nueva contraseña para tu cuenta.', label: 'Nueva contraseña', ph: '••••••••', submit: 'Restablecer contraseña', busy: 'Espera…', missing: 'A este enlace le falta su token.', invalid: 'Este enlace es inválido o expiró.', login: 'Volver al ingreso', tooShort: 'La contraseña debe tener al menos 8 caracteres.' },
-  fr: { title: 'Choisissez un nouveau mot de passe', sub: 'Saisissez un nouveau mot de passe pour votre compte.', label: 'Nouveau mot de passe', ph: '••••••••', submit: 'Réinitialiser', busy: 'Patientez…', missing: 'Ce lien n’a pas son jeton.', invalid: 'Ce lien est invalide ou a expiré.', login: 'Retour à la connexion', tooShort: 'Le mot de passe doit contenir au moins 8 caractères.' },
-  pt: { title: 'Escolha uma nova senha', sub: 'Digite uma nova senha para sua conta.', label: 'Nova senha', ph: '••••••••', submit: 'Redefinir senha', busy: 'Aguarde…', missing: 'Falta o token neste link.', invalid: 'Este link é inválido ou expirou.', login: 'Voltar ao login', tooShort: 'A senha deve ter pelo menos 8 caracteres.' },
+  en: { title: 'Choose a new password', sub: 'Enter a new password for your account.', label: 'New password', ph: '••••••••', submit: 'Reset password', busy: 'Please wait…', missing: 'This reset link is missing its token.', invalid: 'This reset link is invalid or has expired.', login: 'Back to sign in', tooShort: 'Password must be at least 8 characters.', linkOk: 'Your reset link is still valid.' },
+  es: { title: 'Elige una nueva contraseña', sub: 'Ingresa una nueva contraseña para tu cuenta.', label: 'Nueva contraseña', ph: '••••••••', submit: 'Restablecer contraseña', busy: 'Espera…', missing: 'A este enlace le falta su token.', invalid: 'Este enlace es inválido o expiró.', login: 'Volver al ingreso', tooShort: 'La contraseña debe tener al menos 8 caracteres.', linkOk: 'Tu enlace para restablecer sigue siendo válido.' },
+  fr: { title: 'Choisissez un nouveau mot de passe', sub: 'Saisissez un nouveau mot de passe pour votre compte.', label: 'Nouveau mot de passe', ph: '••••••••', submit: 'Réinitialiser', busy: 'Patientez…', missing: 'Ce lien n’a pas son jeton.', invalid: 'Ce lien est invalide ou a expiré.', login: 'Retour à la connexion', tooShort: 'Le mot de passe doit contenir au moins 8 caractères.', linkOk: 'Votre lien de réinitialisation reste valide.' },
+  pt: { title: 'Escolha uma nova senha', sub: 'Digite uma nova senha para sua conta.', label: 'Nova senha', ph: '••••••••', submit: 'Redefinir senha', busy: 'Aguarde…', missing: 'Falta o token neste link.', invalid: 'Este link é inválido ou expirou.', login: 'Voltar ao login', tooShort: 'A senha deve ter pelo menos 8 caracteres.', linkOk: 'Seu link de redefinição continua válido.' },
 };
 
 export function ResetPassword() {
@@ -33,7 +34,16 @@ export function ResetPassword() {
       applySession(res);
       nav('/app', { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 400 ? t.invalid : err instanceof ApiError ? err.message : t.invalid);
+      // A 429 is not a dead link, and every non-400 fell through to `err.message`
+      // — the API's English. Worse, this page's own fallback for anything it does
+      // not recognise is "invalid or has expired", which for a rate-limited caller
+      // is false and is a dead end: the way to get a new link is the reset form,
+      // metered on the same address.
+      setError(
+        isRateLimited(err) ? rateLimitMessage(err, lang, { also: t.linkOk })
+          : err instanceof ApiError && err.status === 400 ? t.invalid
+            : err instanceof ApiError ? err.message : t.invalid,
+      );
     } finally {
       setBusy(false);
     }

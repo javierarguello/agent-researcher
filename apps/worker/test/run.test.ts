@@ -26,12 +26,14 @@ vi.mock('@agent-researcher/core', async (importOriginal) => ({
   sendAppEmail: notify,
 }));
 
-import { createJob, getApp, createApp, getJob, markCompleted, markHeld } from '@agent-researcher/core';
+import { createJob, getApp, createApp, getJob, markCompleted, markHeld, setJobSummary, sectionsNotice } from '@agent-researcher/core';
 import { app } from '../src/index.js';
 
 const JOB = 'job-1';
 
 const run = (jobId: string = JOB) => app.inject({ method: 'POST', url: '/run', payload: { jobId } });
+/** The mail body the worker actually handed `sendAppEmail`. */
+const lastMail = () => (notify.mock.calls.at(-1) as unknown as [{ htmlBody: string; textBody: string }])[0];
 const runWithNoJobId = () => app.inject({ method: 'POST', url: '/run', payload: {} });
 
 async function seedJob(jobId = JOB) {
@@ -113,6 +115,53 @@ describe('what the worker tells the queue', () => {
     runJob.mockResolvedValue({ files: [], reportBytes: 0, sourcesFound: 3, status: 'completed' });
     expect((await run()).statusCode).toBe(200);
     expect(notify).toHaveBeenCalled();
+  });
+
+  it('tells the buyer in the email that the dossier is incomplete', async () => {
+    // This is the production caller, and it is the whole point of the fix: the
+    // notice existed and was rendered on the viewer, the shared page and the PDF
+    // cover, while the ONE message that arrives unprompted — and that many buyers
+    // read instead of opening the PDF — announced the report as finished.
+    //
+    // `runJob` writes the summary before it marks the job completed, so the mock
+    // does the same: a test that set the summary first would pass against a
+    // worker that reads the job BEFORE running it, which is not the order here.
+    await seedJob();
+    const notice = sectionsNotice('en', [{ status: 'lost' }]);
+    runJob.mockImplementation(async () => {
+      await setJobSummary(JOB, { notice } as never);
+      return { files: [], reportBytes: 0, sourcesFound: 3, status: 'completed' };
+    });
+
+    expect((await run()).statusCode).toBe(200);
+    const sent = lastMail();
+    expect(sent.htmlBody).toContain(notice);
+    expect(sent.textBody).toContain(notice);
+  });
+
+  it('and does not hedge a report that came back whole', async () => {
+    // The live control. A mail that always carries the caveat is as wrong as one
+    // that never does — it tells a buyer holding a complete dossier that part of
+    // it is missing.
+    //
+    // Two mutations had to be run to arrive at these assertions, and both are
+    // worth the comment:
+    //  - `not.toMatch(/could not be completed/)` stayed green against a default
+    //    hedge worded differently ("some sections may be incomplete");
+    //  - comparing the mail to `reportReadyTemplate(...)` built here stayed green
+    //    too, because both sides come out of the same mutated function. A guard
+    //    that reads its own constant cannot fail.
+    // So: nothing extra between the body and the button, and the text is the
+    // three paragraphs it has always been — neither claim reuses the code.
+    await seedJob();
+    runJob.mockResolvedValue({ files: [], reportBytes: 0, sourcesFound: 3, status: 'completed' });
+
+    await run();
+    const sent = lastMail();
+    expect(sent.htmlBody).toMatch(/ready to view\.<\/p>\s*<a href=/);
+    const paras = sent.textBody.split('\n\n');
+    expect(paras, `an extra paragraph reached a buyer whose report was fine: ${sent.textBody}`).toHaveLength(3);
+    expect(paras[2]).toMatch(/^AI-generated research/);
   });
 
   it('does not email on a job that did not finish', async () => {

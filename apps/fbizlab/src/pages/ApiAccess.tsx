@@ -6,6 +6,7 @@ import { LangSwitcher } from '../components/LangSwitcher';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { captchaConfigured } from '../auth/captcha';
 import { ApiError, contactRequest } from '../api/client';
+import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 
 const BRAND = 'Florida Biz Labs';
 const MARK = '/icons/favicon.svg';
@@ -79,7 +80,10 @@ function ContactForm({ variant }: { variant: 'api' | 'info' }) {
       await contactRequest({ subject: subject || undefined, name, email, message }, await captcha.current?.getToken());
       setSent(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.err);
+      // `/contact` is metered per IP, and behind one office NAT the second
+      // person to write in gets the 429 — with the API's English sentence, on a
+      // page whose entire purpose is that they reach us.
+      setError(isRateLimited(err) ? rateLimitMessage(err, lang) : err instanceof ApiError ? err.message : t.err);
     } finally {
       captcha.current?.reset(); // tokens are single-use
       setBusy(false);

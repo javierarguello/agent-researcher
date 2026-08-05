@@ -18,7 +18,7 @@ import { writableConfig } from './writable-config.js';
 import { app } from '../src/index.js';
 import { createApp, grantCredits } from '@agent-researcher/core';
 import { seedApp, token, auth } from './helpers.js';
-import { burstOk, clientIp, secondsToNextHour, __resetBurst } from '../src/public-limit.js';
+import { burstOk, clientIp, publicLimit, secondsToNextHour, __resetBurst } from '../src/public-limit.js';
 import { config } from '@agent-researcher/core';
 
 const sent: unknown[] = [];
@@ -454,6 +454,99 @@ describe('a 429 tells the truth about itself', () => {
       expect(verify.statusCode, 'the reset traffic spent verification’s allowance').not.toBe(429);
     } finally {
       writableConfig.publicLimits.tokenPerHourPerIp = cap;
+    }
+  });
+});
+
+describe('the two places that count a burst cannot disagree quietly', () => {
+  /**
+   * `isolatedBurst` is declared twice — in the route's `publicLimit` spec and in
+   * the burst window handed to `requireCaptcha` — and used to be enforced in
+   * neither. A captcha'd route that asked for its own window and forgot the
+   * second declaration was counted into the SHARED `ip` window by the captcha
+   * and into `route:ip` here: twice, and the half that mattered drained the
+   * window metering sign-in and registration for everyone behind one CGNAT.
+   *
+   * The omission itself no longer compiles (`CaptchaOptions.burst` is required),
+   * which no test can assert — `npm run typecheck` is that test, and removing
+   * `{ burst: PREFLIGHT_LIMIT }` from `/research/preflight` fails it. What is
+   * left, and what these cover, is the two declarations disagreeing: types
+   * cannot see that, so it has to be loud at runtime.
+   */
+  const IP = '198.51.100.200';
+  const fakeReq = (countedAs?: string) =>
+    ({ headers: { 'x-forwarded-for': IP }, ip: IP, ...(countedAs ? { __burstKey: countedAs } : {}) }) as never;
+  const fakeReply = () => {
+    const sentBodies: unknown[] = [];
+    const reply = {
+      sent: sentBodies,
+      header: () => reply,
+      code: () => reply,
+      send: async (b: unknown) => { sentBodies.push(b); return reply; },
+    };
+    return reply as never as import('fastify').FastifyReply & { sent: unknown[] };
+  };
+
+  beforeEach(() => __resetBurst());
+
+  it('does not spend a second burst slot when the captcha counted another window', async () => {
+    const perMinute = config.publicLimits.burstPerMinute;
+    writableConfig.publicLimits.burstPerMinute = 1;
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((line: string) => { errors.push(line); });
+    try {
+      // The misconfiguration: the captcha counted the SHARED window (no
+      // `isolatedBurst` in its copy), the route guard wants its own.
+      const blocked = await publicLimit(fakeReq(IP), fakeReply(), { route: 'iso', isolatedBurst: true });
+      expect(blocked, 'the request itself must still go through').toBe(false);
+
+      // The isolated window is untouched — one request cost one slot, not two.
+      // Of the two wrong behaviours this is the cheap one: under-metering one
+      // route beats locking a whole carrier NAT out of signing in, which is what
+      // the second count did.
+      expect(burstOk(`iso:${IP}`), 'the same request was counted in both windows').toBe(true);
+
+      // …and it is not silent. This is a wiring bug in our own code, invisible in
+      // the product, so the log is the only place it can surface.
+      const event = errors.map((l) => JSON.parse(l)).find((e) => e.event === 'public.burst_window_mismatch');
+      expect(event, `no mismatch logged: ${errors.join('|')}`).toBeTruthy();
+      expect(event.severity).toBe('ERROR');
+      expect(event.countedAs).toBe(IP);
+      expect(event.expected).toBe(`iso:${IP}`);
+    } finally {
+      spy.mockRestore();
+      writableConfig.publicLimits.burstPerMinute = perMinute;
+      __resetBurst();
+    }
+  });
+
+  it('still counts the route’s own window when nothing counted it first', async () => {
+    // The live control, and the one that matters most: "never count here" passes
+    // the case above and turns the burst guard off for every route that has no
+    // captcha in front of it.
+    const perMinute = config.publicLimits.burstPerMinute;
+    writableConfig.publicLimits.burstPerMinute = 1;
+    try {
+      const blocked = await publicLimit(fakeReq(), fakeReply(), { route: 'iso', isolatedBurst: true });
+      expect(blocked).toBe(false);
+      expect(burstOk(`iso:${IP}`), 'the guard did not count the request at all').toBe(false);
+    } finally {
+      writableConfig.publicLimits.burstPerMinute = perMinute;
+      __resetBurst();
+    }
+  });
+
+  it('says nothing when the two agree, which is every route we ship', async () => {
+    // The other control: a mismatch ERROR on correct wiring would page someone
+    // for `/research/preflight`, which is wired right.
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((line: string) => { errors.push(line); });
+    try {
+      await publicLimit(fakeReq(`iso:${IP}`), fakeReply(), { route: 'iso', isolatedBurst: true });
+      await publicLimit(fakeReq(IP), fakeReply(), { route: 'shared' });
+      expect(errors.filter((l) => l.includes('burst_window_mismatch'))).toEqual([]);
+    } finally {
+      spy.mockRestore();
     }
   });
 });

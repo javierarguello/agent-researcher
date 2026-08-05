@@ -49,9 +49,11 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { getBalance, listTransactions, grantCredits, createApp, updateApp } from '@agent-researcher/core';
+import { getBalance, listTransactions, grantCredits, createApp, updateApp, config } from '@agent-researcher/core';
 import { listStripePlans } from '../src/stripe.js';
 import { seedApp, token, auth, seedAdmin } from './helpers.js';
+import { secondsToNextHour } from '../src/public-limit.js';
+import { writableConfig } from './writable-config.js';
 
 function purchaseEvent(
   paymentId: string,
@@ -253,6 +255,39 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     // Metered per user, so a different customer is untouched.
     const other = await token('fbizlab', 'other@x.com');
     expect((await app.inject({ method: 'GET', url: '/credits/plans', headers: auth(other) })).statusCode).toBe(200);
+  });
+
+  it('a limited buyer is told when to come back, and the figure is real', async () => {
+    // Both 429s on this page sent `Retry-After: 3600` and no `retryAfterSeconds`
+    // at all — the field the client reads. So the credits page could say nothing
+    // about when, and the header it did send was wrong by up to an hour in the
+    // direction that matters: the bucket is a CALENDAR hour, so someone ninety
+    // seconds from the reset was told to come back after lunch.
+    const heavy = await token('fbizlab', 'clockwatcher@x.com');
+    let blocked;
+    for (let i = 0; i < 62 && !blocked; i++) {
+      const r = await app.inject({ method: 'GET', url: '/credits/plans', headers: auth(heavy) });
+      if (r.statusCode === 429) blocked = r;
+    }
+    expect(blocked, 'the cap was never reached').toBeTruthy();
+    const wait = blocked!.json().retryAfterSeconds as number;
+    expect(wait, 'the client reads this and got undefined').toBe(secondsToNextHour());
+    expect(String(wait), 'the header and the body must not disagree').toBe(blocked!.headers['retry-after']);
+
+    // …and the same on the button that takes their money.
+    const cap = config.publicLimits.checkoutPerHourPerUser;
+    writableConfig.publicLimits.checkoutPerHourPerUser = 1;
+    try {
+      const buyer = await token('fbizlab', 'buyer429@x.com');
+      const body = { planId: 'investor', successUrl: 'https://x/ok', cancelUrl: 'https://x/no' };
+      await app.inject({ method: 'POST', url: '/credits/checkout', headers: auth(buyer), payload: body });
+      const second = await app.inject({ method: 'POST', url: '/credits/checkout', headers: auth(buyer), payload: body });
+      expect(second.statusCode).toBe(429);
+      expect(second.json().retryAfterSeconds).toBe(secondsToNextHour());
+      expect(second.headers['retry-after']).toBe(String(secondsToNextHour()));
+    } finally {
+      writableConfig.publicLimits.checkoutPerHourPerUser = cap;
+    }
   });
 
   it('CONCURRENT duplicate webhooks credit only once (no over-credit)', async () => {

@@ -123,6 +123,39 @@ import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_EMPTY_TTL_MS, PUBLIC_BRO
 import { publicLimit, clientIp, secondsToNextHour } from './public-limit.js';
 import { requireCaptcha, captchaBodyProperties } from './captcha.js';
 
+/**
+ * The burst window each captcha'd route counts into — one object per route, read
+ * by BOTH the captcha preHandler and the route's own `publicLimit` call.
+ *
+ * They are here together, and not inline at each route, because the decision they
+ * encode is only reviewable as a set: everything on the SHARED window is what
+ * stops someone spreading a flood across routes to stay under each individual
+ * cap, and every `isolatedBurst` taken out of it is a route that can no longer
+ * contribute to that. Isolation is for read routes legitimate traffic hits often
+ * (see `/research/preflight`) — a busy page must not exhaust the shared window
+ * and 429 sign-in for everyone behind a corporate NAT, CGNAT or mobile carrier,
+ * all of which are one address to us.
+ *
+ * `requireCaptcha` takes one of these because it must: it counts the request
+ * before the handler runs, and when the two disagreed about the window the
+ * request was counted twice — the isolation silently doing nothing, on exactly
+ * the routes it exists for. `perIp`/`perKey` stay at the call site, where they
+ * are read per request from live config.
+ */
+const BURST = {
+  login: { route: 'login' },
+  register: { route: 'register' },
+  // `reset`, not `password-reset`: the flow name and the counter's route id are
+  // different namespaces, and this is the id every `pub:reset:*` bucket is keyed
+  // on. Copying the flow name here would have quietly split the counter.
+  passwordReset: { route: 'reset' },
+  contact: { route: 'contact' },
+  // Authenticated and metered by the report quota rather than by `publicLimit`,
+  // so it has no second declaration to disagree with — it still names its window
+  // rather than leaving it to be guessed.
+  research: { route: 'research' },
+} as const;
+
 // bodyLimit caps every request body at 512 KB — far above any legitimate payload
 // (research params are bounded per-field, a Google id_token is ~2 KB, Stripe
 // events are small) but blocks an attacker from sending a huge body at all.
@@ -250,7 +283,7 @@ app.post(
     },
     // Password sign-in only: a Google id_token already proves an account Google
     // vouched for, and the Google button never renders a widget to solve.
-    preHandler: requireCaptcha('login', { when: (req) => (req.body as { provider?: string } | undefined)?.provider === 'password' }),
+    preHandler: requireCaptcha('login', { burst: BURST.login, when: (req) => (req.body as { provider?: string } | undefined)?.provider === 'password' }),
   },
   async (req, reply) => {
     const b = req.body as { appId?: string; provider?: string; idToken?: string; email?: string; password?: string };
@@ -260,7 +293,7 @@ app.post(
     // so neither a spray across accounts nor a brute force on one is cheap.
     if (
       await publicLimit(req, reply, {
-        route: 'login',
+        ...BURST.login,
         perIp: config.publicLimits.loginPerHourPerIp,
         perKey: { limit: config.publicLimits.loginPerHourPerEmail, value: normalizeEmail(b.email ?? '') },
       })
@@ -379,7 +412,7 @@ app.post(
         },
       },
     },
-    preHandler: requireCaptcha('register'),
+    preHandler: requireCaptcha('register', { burst: BURST.register }),
   },
   async (req, reply) => {
     const b = req.body as { appId: string; email: string; password: string; name?: string; lang?: string };
@@ -396,7 +429,7 @@ app.post(
     // by adding dots or a +tag.
     if (
       await publicLimit(req, reply, {
-        route: 'register',
+        ...BURST.register,
         perIp: config.publicLimits.registerPerHourPerIp,
         perKey: { limit: config.publicLimits.registerPerHourPerEmail, value: email },
       })
@@ -549,7 +582,7 @@ app.post(
         },
       },
     },
-    preHandler: requireCaptcha('password-reset'),
+    preHandler: requireCaptcha('password-reset', { burst: BURST.passwordReset }),
   },
   async (req, reply) => {
     const b = req.body as { appId: string; email: string; lang?: string };
@@ -561,7 +594,7 @@ app.post(
     // target, so it can't be used to mail-bomb someone else's inbox.
     if (
       await publicLimit(req, reply, {
-        route: 'reset',
+        ...BURST.passwordReset,
         perIp: config.publicLimits.resetPerHourPerIp,
         perKey: { limit: config.publicLimits.resetPerHourPerEmail, value: email },
       })
@@ -668,12 +701,12 @@ app.post(
         },
       },
     },
-    preHandler: requireCaptcha('contact'),
+    preHandler: requireCaptcha('contact', { burst: BURST.contact }),
   },
   async (req, reply) => {
     const b = req.body as { appId: string; subject?: string; name: string; email: string; message: string };
     // Anonymous + sends an email on our account.
-    if (await publicLimit(req, reply, { route: 'contact', perIp: config.publicLimits.contactPerHourPerIp })) return reply;
+    if (await publicLimit(req, reply, { ...BURST.contact, perIp: config.publicLimits.contactPerHourPerIp })) return reply;
     // Goes out as Reply-To, which is a recipient field like any other.
     if (!isSingleEmail(normalizeEmail(b.email))) return reply.code(400).send({ error: 'A valid email is required.' });
     const appRec = await getApp(b.appId);
@@ -949,7 +982,12 @@ async function moderateParams(
       body: {
         error: moderationMessage(verdict.categories[0] ?? 'other', lang),
         code: 'refusal_limit',
-        retryAfterSeconds: 3600,
+        // The counter is a CALENDAR hour, so a flat 3600 tells someone who can
+        // try again in ninety seconds to come back in an hour. This one is the
+        // worst place to overstate it: the person has just been refused by a
+        // moderation call that may well be a false positive, and the number is
+        // how long they think they are locked out for.
+        retryAfterSeconds: secondsToNextHour(),
       },
     };
   }
@@ -1027,7 +1065,7 @@ app.post(
         },
       },
     },
-    preHandler: requireCaptcha('research'),
+    preHandler: requireCaptcha('research', { burst: BURST.research }),
   },
   async (req, reply) => {
     let validated;
@@ -1827,8 +1865,14 @@ app.get(
         { key: `plans:${appId}:${userId}`, limit: config.publicLimits.plansPerHourPerUser, scope: 'user' },
       ]);
       if (!rl.allowed) {
-        reply.header('Retry-After', '3600');
-        return reply.code(429).send({ error: 'Too many requests. Please try again later.', code: 'rate_limited' });
+        // The bucket is a CALENDAR hour, so `3600` told someone who could retry
+        // in ninety seconds to come back in an hour — and the body never carried
+        // `retryAfterSeconds` at all, which is the field the client reads to say
+        // anything about when. The public limits were fixed and these two,
+        // reached by the SAME buyer page, were left behind.
+        const wait = secondsToNextHour();
+        reply.header('Retry-After', String(wait));
+        return reply.code(429).send({ error: 'Too many requests. Please try again later.', code: 'rate_limited', retryAfterSeconds: wait });
       }
     }
 
@@ -1888,8 +1932,12 @@ app.post(
         { key: `checkout:${appId}:${userId}`, limit: config.publicLimits.checkoutPerHourPerUser, scope: 'user' },
       ]);
       if (!rl.allowed) {
-        reply.header('Retry-After', '3600');
-        return reply.code(429).send({ error: 'Too many checkout attempts. Please try again later.', code: 'rate_limited' });
+        // Same calendar-hour bucket, same missing field — and this one is the
+        // button a buyer pressed to give us money, so "try again later" with no
+        // figure is the worst place to leave them.
+        const wait = secondsToNextHour();
+        reply.header('Retry-After', String(wait));
+        return reply.code(429).send({ error: 'Too many checkout attempts. Please try again later.', code: 'rate_limited', retryAfterSeconds: wait });
       }
     }
 

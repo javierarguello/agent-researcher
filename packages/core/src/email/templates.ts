@@ -32,7 +32,13 @@ function t(copy: Copy, lang: unknown, vars: Record<string, string> = {}): string
   return out;
 }
 
-function shell(appName: string, heading: string, body: string, cta: { label: string; url: string }, footer: string, linkLine: string): string {
+function shell(appName: string, heading: string, body: string, cta: { label: string; url: string }, footer: string, linkLine: string, notice?: string): string {
+  // Between the body and the button, so it is read on the way to the report
+  // rather than under it. Tinted and ruled, because the whole point is that it
+  // must not be skimmed past.
+  const noticeBlock = notice
+    ? `<p style="font-size:14px;line-height:1.6;color:${INK};margin:0 0 22px;padding:12px 14px;background:#fdf6ee;border-left:3px solid ${ACCENT};border-radius:4px;">${notice}</p>`
+    : '';
   return `<!doctype html><html><body style="margin:0;background:#f5f0e8;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
     <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5dfd4;border-radius:10px;overflow:hidden;">
@@ -43,6 +49,7 @@ function shell(appName: string, heading: string, body: string, cta: { label: str
       <tr><td style="padding:8px 36px 0;">
         <h1 style="font-size:22px;font-weight:800;letter-spacing:-0.02em;color:${INK};margin:12px 0 14px;">${heading}</h1>
         <p style="font-size:15px;line-height:1.6;color:${INK};margin:0 0 22px;">${body}</p>
+        ${noticeBlock}
         <a href="${cta.url}" style="display:inline-block;background:${INK};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:0.04em;padding:13px 22px;border-radius:6px;">${cta.label}</a>
         <p style="font-size:12.5px;line-height:1.6;color:${MUTED};margin:24px 0 0;">${linkLine}<br><a href="${cta.url}" style="color:${ACCENT};word-break:break-all;">${cta.url}</a></p>
       </td></tr>
@@ -138,24 +145,51 @@ const READY_TITLE_FALLBACK: Copy = {
   en: 'Your research summary', es: 'Tu investigación',
   fr: 'Votre recherche', pt: 'Sua pesquisa',
 };
+// Split from the disclaimer below so the incomplete-report notice can sit between
+// them. It is the one sentence that changes what the reader does next, and after
+// the legal footer is where nobody looks.
 const READY_TEXT: Copy = {
-  en: 'Your {app} report is ready\n\n{title} has finished generating. View it: {url}\n\nAI-generated research — verify independently before acting.',
-  es: 'Tu informe de {app} está listo\n\n{title} terminó de generarse. Verlo: {url}\n\nInvestigación generada por IA: verifica por tu cuenta antes de actuar.',
-  fr: 'Votre rapport {app} est prêt\n\n{title} a fini d’être généré. Le consulter : {url}\n\nRecherche générée par IA — vérifiez par vous-même avant d’agir.',
-  pt: 'Seu relatório do {app} está pronto\n\n{title} terminou de ser gerado. Ver: {url}\n\nPesquisa gerada por IA — verifique por conta própria antes de agir.',
+  en: 'Your {app} report is ready\n\n{title} has finished generating. View it: {url}',
+  es: 'Tu informe de {app} está listo\n\n{title} terminó de generarse. Verlo: {url}',
+  fr: 'Votre rapport {app} est prêt\n\n{title} a fini d’être généré. Le consulter : {url}',
+  pt: 'Seu relatório do {app} está pronto\n\n{title} terminou de ser gerado. Ver: {url}',
+};
+const READY_TEXT_FOOT: Copy = {
+  en: 'AI-generated research — verify independently before acting.',
+  es: 'Investigación generada por IA: verifica por tu cuenta antes de actuar.',
+  fr: 'Recherche générée par IA — vérifiez par vous-même avant d’agir.',
+  pt: 'Pesquisa gerada por IA — verifique por conta própria antes de agir.',
 };
 
-export function reportReadyTemplate(appName: string, reportTitle: string, url: string, lang?: unknown): AccountEmail {
+/**
+ * `notice` is the incomplete-report line — `sectionsNotice`, already written in
+ * the buyer's language by the caller, the same string the web viewer, the shared
+ * page and the PDF cover carry.
+ *
+ * It is passed in rather than computed here for one reason: there must be exactly
+ * one sentence describing a partial delivery, and it must be the one the buyer
+ * has already been shown. Rebuilding it in the mail is how two surfaces end up
+ * disagreeing about the same report.
+ *
+ * Without it this mail announced every report as finished. It is often the only
+ * thing read before the PDF is opened, so a dossier with a section missing
+ * arrived described as complete — by us, in writing.
+ */
+export function reportReadyTemplate(appName: string, reportTitle: string, url: string, lang?: unknown, notice?: string): AccountEmail {
   // The title itself is written by `headline` in the REPORT's language, which is
   // why the shell around it has to match — an English frame around a French title
   // was the most visible half-translation we shipped.
   const title = reportTitle?.trim() || t(READY_TITLE_FALLBACK, lang);
   const v = { app: appName, url, title: title.replace(/[<>&]/g, '') };
+  // Stripped like the title: the notice is our own copy, but it lands in a raw
+  // template literal, and the rule in this file is that nothing reaches the markup
+  // unchecked.
+  const note = notice?.trim().replace(/[<>&]/g, '') || undefined;
   return {
     subject: t(READY_SUBJECT, lang, { ...v, title }),
     html: shell(appName, t(READY_HEADING, lang, v), t(READY_BODY, lang, v),
-      { label: t(READY_CTA, lang, v), url }, t(READY_FOOTER, lang, v), t(LINK_LINE, lang)),
-    text: t(READY_TEXT, lang, { ...v, title }),
+      { label: t(READY_CTA, lang, v), url }, t(READY_FOOTER, lang, v), t(LINK_LINE, lang), note),
+    text: [t(READY_TEXT, lang, { ...v, title }), note, t(READY_TEXT_FOOT, lang)].filter(Boolean).join('\n\n'),
   };
 }
 

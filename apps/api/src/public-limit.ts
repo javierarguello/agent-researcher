@@ -78,11 +78,21 @@ export function burstOk(ip: string, perMinute = config.publicLimits.burstPerMinu
 }
 
 /**
+ * Which burst window a route counts into — the half of `PublicLimitSpec` the
+ * captcha preHandler also needs.
+ *
+ * It is a named type because `requireCaptcha` REQUIRES one: the two places that
+ * count a request had to agree, and agreement by convention lasted exactly as
+ * long as the person who wrote it remembered. See `CaptchaOptions.burst`.
+ */
+export type BurstWindow = Pick<PublicLimitSpec, 'route' | 'isolatedBurst'>;
+
+/**
  * The window a route counts against: its own when it is isolated, the shared one
  * otherwise. One definition, used by both the captcha preHandler and the route
  * guard, so the two cannot disagree about which bucket a request belongs in.
  */
-export function burstKeyFor(ip: string, spec?: { route?: string; isolatedBurst?: boolean }): string {
+export function burstKeyFor(ip: string, spec?: BurstWindow): string {
   return spec?.isolatedBurst && spec.route ? `${spec.route}:${ip}` : ip;
 }
 
@@ -140,7 +150,28 @@ export async function publicLimit(req: FastifyRequest, reply: FastifyReply, spec
   // Counted once, in whichever window this route uses. The captcha preHandler
   // counts the same key when it runs, and says so on the request.
   const key = burstKeyFor(ip, spec);
-  const tooFast = (req as { __burstKey?: string }).__burstKey === key ? false : !burstOk(key);
+  const counted = (req as { __burstKey?: string }).__burstKey;
+
+  // The second half of the `isolatedBurst` guard, and the reason it is here
+  // rather than in a startup assertion: nothing at boot can see these specs. They
+  // are built inside handlers, one per request, so the earliest moment the two
+  // windows can be compared is the first request that uses both.
+  //
+  // `requireCaptcha` now REQUIRES a burst window, so the omission this catches
+  // cannot compile — what is left is the two declarations disagreeing, which the
+  // type system cannot see. It costs a route double: counted into the shared `ip`
+  // window by the captcha and into `route:ip` here, draining the window that
+  // meters sign-in and registration for everyone behind one CGNAT address.
+  //
+  // ERROR, not a silent correction: a mismatch is a wiring bug in our code, not
+  // a condition a caller can cause, and it will not be found by looking at the
+  // product. Only the second count is dropped — of the two wrong behaviours,
+  // under-metering one route is far cheaper than locking a whole carrier NAT out
+  // of signing in.
+  if (counted !== undefined && counted !== key) {
+    logEvent({ jobId: '-' }, 'ERROR', 'public.burst_window_mismatch', { route: spec.route, countedAs: counted, expected: key });
+  }
+  const tooFast = counted !== undefined ? false : !burstOk(key);
   const entries: RateLimitEntry[] = [];
   if (!tooFast) {
     if (spec.perIp) entries.push({ key: `pub:${spec.route}:ip:${ip}`, limit: spec.perIp, scope: 'ip' });
