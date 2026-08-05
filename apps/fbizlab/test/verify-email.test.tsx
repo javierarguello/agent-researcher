@@ -118,3 +118,53 @@ describe('a rate-limited attempt is not a dead link', () => {
     await waitFor(() => expect(screen.getByText(/does not match/i)).toBeTruthy());
   });
 });
+
+describe('a page the API would not even look at is not a dead link either (N9)', () => {
+  // This app ships as a static bundle the browser caches. After a deploy that
+  // changes what `/auth/verify-email` accepts, an already-open tab is still running
+  // the OLD code: it posts the old shape, ajv refuses it with `FST_ERR_VALIDATION`,
+  // and the catch mapped every non-401 to "this link is invalid or has expired".
+  // The link was fine and a reload fixed it — but the person had already been told
+  // their signup was broken, and the two ways out (register again, forgot password)
+  // both dead-end on an address that is taken.
+  //
+  // `apps/api/test/auth.test.ts` pins the API half: that a request of the wrong
+  // shape really does come back 400 with that code, and that a genuinely dead token
+  // comes back 400 WITHOUT it. This side owns what the buyer is told.
+  const submit = async (err: Record<string, unknown>) => {
+    verifyEmail.mockRejectedValue(Object.assign(new Error('nope'), err));
+    at('?token=t2');
+    await userEvent.type(screen.getByLabelText(/password|contraseña/i), 'sup3rsecret');
+    await userEvent.click(screen.getByRole('button', { name: /verify my email/i }));
+  };
+
+  it('a stale bundle is told to reload, not that its link died', async () => {
+    await submit({ status: 400, code: 'FST_ERR_VALIDATION' });
+    await waitFor(() => expect(screen.getByText(/still valid/i)).toBeTruthy());
+    expect(screen.queryByText(/invalid or has expired/i), 'a false statement about their link').toBeNull();
+    // And the way out is offered, not merely described.
+    expect(screen.getByRole('button', { name: /reload and try again/i })).toBeTruthy();
+  });
+
+  it('so is an outage', async () => {
+    // The server never judged the token — `consumeActionToken` runs only after the
+    // password verifies, so the link is still there when the API comes back.
+    await submit({ status: 503 });
+    await waitFor(() => expect(screen.getByText(/still valid/i)).toBeTruthy());
+  });
+
+  it('and so is a reply we cannot read at all', async () => {
+    // A 502 HTML page from the load balancer, or a rejected `fetch`: the client's
+    // own `JSON.parse` throws, so the error reaching this page has no status.
+    await submit({});
+    await waitFor(() => expect(screen.getByText(/still valid/i)).toBeTruthy());
+  });
+
+  it('but a 400 in the API’s own words still means the link is gone', async () => {
+    // The control, and the one that matters: "everything is a reload" would leave
+    // someone re-loading a link that will never work again.
+    await submit({ status: 400 });
+    await waitFor(() => expect(screen.getByText(/invalid or has expired/i)).toBeTruthy());
+    expect(screen.queryByText(/still valid/i)).toBeNull();
+  });
+});

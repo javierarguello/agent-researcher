@@ -62,6 +62,18 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
     for (const k of cfg?.exclude ?? []) {
       if (!sectionKeys.has(k)) err(`mode "${modeKey}" excludes unknown section "${k}"`);
     }
+    // A price, and a price is a positive whole number of credits (N11).
+    //
+    // `credits: 0` compiles, validates, renders in the manifest as free, and then
+    // 500s the buyer on submit: `consumeCredits` reaches `applyEntry`, whose
+    // "amounts must be positive whole numbers" guard throws something that is not
+    // an `InsufficientCreditsError`, so the route rethrows it. A free mode is a
+    // pricing decision that has never been made, and the way to make one is not a
+    // stack trace on someone's first report. `undefined` is untouched — that is the
+    // code default (5/18), which is always positive.
+    if (cfg?.credits !== undefined && (!Number.isInteger(cfg.credits) || cfg.credits <= 0)) {
+      err(`mode "${modeKey}" costs ${cfg.credits} credits; a mode's price must be a positive whole number`);
+    }
   }
 
   // Dependencies + enriched sections must reference existing agents/producers.

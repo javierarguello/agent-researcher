@@ -167,7 +167,7 @@ describe('a refund reads the job, and the ledger, not the caller', () => {
     await markFailed('r1', 'x');
     await createJob({ jobId: 'r1', appId: APP, userId: USER, templateId: 't', params: {}, status: 'queued' } as never);
 
-    expect(await refundForJob(APP, USER, 'r1')).toBe(false);
+    expect(await refundForJob('r1')).toBe(false);
     expect(await getBalance(APP, USER)).toBe(before);
   });
 
@@ -180,7 +180,7 @@ describe('a refund reads the job, and the ledger, not the caller', () => {
     const before = await getBalance(APP, USER);
     await markRunning('r4');
 
-    expect(await refundForJob(APP, USER, 'r4')).toBe(false);
+    expect(await refundForJob('r4')).toBe(false);
     expect(await getBalance(APP, USER)).toBe(before);
   });
 
@@ -190,23 +190,34 @@ describe('a refund reads the job, and the ledger, not the caller', () => {
     const spent = await getBalance(APP, USER);
     await markFailed('r2', 'x');
 
-    expect(await refundForJob(APP, USER, 'r2')).toBe(true);
+    expect(await refundForJob('r2')).toBe(true);
     expect(await getBalance(APP, USER)).toBe(spent + 4);
   });
 
-  it('credits whoever paid, not whoever asked', async () => {
-    await seedJob('r3');
+  it('credits whoever paid, not whoever the job says it belongs to', async () => {
+    // `refundForJob` no longer TAKES a recipient — a mismatched pair used to credit
+    // the stranger and write the refund marker anyway, so the person who actually
+    // paid could never be refunded at all, and the signature stopped inviting that
+    // when the parameters were removed.
+    //
+    // What is still a live choice is WHICH record the owner is read from: the
+    // consume entry, or the job document that sits right there in the same
+    // transaction. So this makes the two disagree. The divergence is contrived —
+    // nothing in the API can produce it — and it is here as the mutation control
+    // for the invariant the function's comment states, not as a reachable path.
+    await createJob({
+      jobId: 'r3', appId: 'other-app', userId: 'stranger@x.com',
+      templateId: 'florida-business-for-sale', params: {}, status: 'queued',
+    } as never);
     await consumeCredits(APP, USER, 4, 'r3');
     await markFailed('r3', 'x');
     const payer = await getBalance(APP, USER);
     const other = await getBalance('other-app', 'stranger@x.com');
 
-    // A mismatched pair used to credit the stranger AND write the refund marker,
-    // so the person who actually paid could never be refunded at all.
-    await refundForJob('other-app', 'stranger@x.com', 'r3');
+    expect(await refundForJob('r3')).toBe(true);
 
-    expect(await getBalance(APP, USER)).toBe(payer + 4);
-    expect(await getBalance('other-app', 'stranger@x.com')).toBe(other);
+    expect(await getBalance(APP, USER), 'the payer was not made whole').toBe(payer + 4);
+    expect(await getBalance('other-app', 'stranger@x.com'), 'the job document’s owner was credited').toBe(other);
   });
 });
 
@@ -353,5 +364,44 @@ describe('the slot counter can never go negative, and never flags a parked job',
     await seed('sl2');
     const slots = await import('../src/jobs/slots.js');
     expect(await slots.setJobSlotHeld('sl2', true)).toBe(true);
+  });
+});
+
+describe('a park that was REFUSED hands nothing back', () => {
+  // `markHeld` refuses a job somebody already resolved, and refuses a dispatch
+  // that no longer owns it. Its answer was discarded at all five park sites, and
+  // what follows a park is not bookkeeping: `releaseJobSlot` keys on the job's
+  // `slotHeld` flag and NOT on the dispatch, so a refused park still freed the
+  // live run's slot and the buyer could start a second report while the first was
+  // going. Four of the five were fixed together; this covers the fifth, which
+  // `parkAndRethrow` owns — the path every unexpected throw takes.
+  const seed = (jobId: string, status = 'queued') =>
+    createJob({ jobId, appId: APP, userId: USER, template: 't', params: {}, status } as never);
+
+  it('does not release a slot for a job somebody already resolved', async () => {
+    await seed('pk1');
+    const slots = await import('../src/jobs/slots.js');
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    await slots.setJobSlotHeld('pk1', true);
+    // Resolved by a person while this run was still going. `markHeld` refuses.
+    await markFailed('pk1', 'closed by an admin');
+
+    const refused = await markHeld('pk1', { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 });
+    expect(refused, 'the premise: the park has to be refused').toBe(false);
+    // …and the slot is still the live run's.
+    expect(await slots.inFlightSlots(APP, USER)).toBe(1);
+  });
+
+  it('still hands it back when the park sticks — the control', async () => {
+    // Without this, "never release" passes the case above and locks the buyer out
+    // of the product for as long as nobody looks at their job.
+    await seed('pk2');
+    const slots = await import('../src/jobs/slots.js');
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    await slots.setJobSlotHeld('pk2', true);
+
+    expect(await markHeld('pk2', { reason: 'run_failed', heldAt: new Date().toISOString(), spentUsd: 0 })).toBe(true);
+    await slots.releaseJobSlot('pk2');
+    expect(await slots.inFlightSlots(APP, USER)).toBe(0);
   });
 });

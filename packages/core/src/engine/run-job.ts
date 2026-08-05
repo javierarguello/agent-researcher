@@ -20,7 +20,7 @@ import { retryAsync } from '../util/retry.js';
 import { releaseJobSlot } from '../jobs/slots.js';
 import { sectionsNotice, heldNotice } from '../jobs/report-copy.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
-import type { JobFile, JobSummary } from '../jobs/types.js';
+import type { JobFile, JobHold, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
 import { createCostSink, emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
@@ -63,11 +63,13 @@ export interface RunJobResult {
   sourcesFound: number;
   /**
    * 'incomplete'  → the worker returns a retryable status so the queue resumes it.
-   * 'superseded'  → this dispatch no longer owns the job; another one does. The
-   *                 worker must ACK it. Returning 'incomplete' here made the queue
-   *                 re-dispatch the stale task, which then took ownership from the
-   *                 live run — and the cycle repeats, each turn of it a paid pass
-   *                 over whatever the checkpoint had not finished.
+   * 'superseded'  → this run's outcome was REFUSED: another dispatch owns the job,
+   *                 or someone already resolved it. Either way nothing this run
+   *                 decided was recorded, and the worker must ACK it. Returning
+   *                 'incomplete' here made the queue re-dispatch the stale task,
+   *                 which then took ownership from the live run — and the cycle
+   *                 repeats, each turn of it a paid pass over whatever the
+   *                 checkpoint had not finished.
    */
   status: 'completed' | 'failed' | 'incomplete' | 'held' | 'superseded';
 }
@@ -84,13 +86,23 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
    */
   const parkAndRethrow = async (error: unknown): Promise<never> => {
     log.error('job.error', { message: (error as Error).stack ?? (error as Error).message ?? String(error) });
-    await markHeld(input.jobId, {
+    // The FIFTH park, and it was left behind when the other four were routed
+    // through `park()`. Same defect: it discarded `markHeld`'s answer and released
+    // the slot regardless, so a run whose park was REFUSED — because the job had
+    // already been resolved, or belongs to a newer dispatch — handed back a slot
+    // that was not its own, and the buyer could start a second report while the
+    // first was still running.
+    //
+    // `markHeld` refuses a resolved job even with no `dispatchId` (the status check
+    // is unconditional), so the refusal this catches is reachable from the outer
+    // catch, which is where a straggler's throw lands.
+    const parked = await markHeld(input.jobId, {
       reason: 'run_failed',
       heldAt: new Date().toISOString(),
       spentUsd: 0,
       detail: ((error as Error).message ?? String(error)).slice(0, 500),
-    }).catch(() => {});
-    await releaseJobSlot(input.jobId).catch(() => {});
+    }).catch(() => false);
+    if (parked) await releaseJobSlot(input.jobId).catch(() => {});
     throw error;
   };
 
@@ -205,6 +217,37 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     const ours = await isCurrentDispatch(input.jobId, dispatchId).catch(() => true);
     if (!ours) knownStale = true;
     return ours;
+  };
+
+  /**
+   * Park the job and hand the buyer's slot back — but only if the park STUCK.
+   *
+   * `markHeld` refuses a dispatch that no longer owns the job, and refuses one
+   * whose job somebody already resolved. Its answer was discarded at all four call
+   * sites, and what follows a park is not bookkeeping: `releaseJobSlot` keys on the
+   * job's `slotHeld` flag and not on the dispatch, so a REFUSED park still freed
+   * the live run's slot and the buyer could start a second report while the first
+   * was going. The callers then wrote a `held` progress line over a job that was
+   * still running, and told the worker `held` about an outcome nobody recorded.
+   *
+   * The `stillOurs()` gates above make this a race rather than the common case —
+   * they are checked before the engine's uploads, and a re-dispatch can land in the
+   * window between. Returns false when the caller must report `superseded` instead.
+   */
+  const park = async (hold: JobHold, files?: JobFile[]): Promise<boolean> => {
+    if (await markHeld(input.jobId, hold, files, dispatchId)) {
+      // A parked job is not in flight — it is waiting on us, and holding the
+      // buyer's only slot while it waits would lock them out of the product for as
+      // long as nobody looks. Idempotent, so a re-dispatch cannot double-release.
+      await releaseJobSlot(input.jobId).catch(() => {});
+      return true;
+    }
+    knownStale = true; // nothing else this run writes speaks for the job either
+    log.warn('hold.refused', {
+      reason: 'another dispatch owns this job, or it was already resolved',
+      wouldHaveBeen: hold.reason,
+    });
+    return false;
   };
 
   const uploadJson = (name: string, data: unknown) =>
@@ -349,8 +392,9 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
             `Could not save a checkpoint (${checkpointsFailed} attempt(s) failed), so there is nothing to ` +
             `resume from. Approving re-runs the whole report from zero.`,
         };
-        await markHeld(input.jobId, hold, undefined, dispatchId);
-        await releaseJobSlot(input.jobId).catch(() => {});
+        if (!(await park(hold))) {
+          return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
+        }
         await setProgress(input.jobId, {
           phase: 'held', message: heldNotice(output.language),
           turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
@@ -390,11 +434,9 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // an approval spends, and the checkpoint is what it resumes from. Nor any
       // report stats — this job has not finished, and booking it now would count it
       // twice when it does.
-      await markHeld(input.jobId, hold, traceFile ? [traceFile] : undefined, dispatchId);
-      // A parked job is not in flight — it is waiting on us, and holding the
-      // buyer's only slot while it waits would lock them out of the product for as
-      // long as nobody looks. Idempotent, so a re-dispatch cannot double-release.
-      await releaseJobSlot(input.jobId).catch(() => {});
+      if (!(await park(hold, traceFile ? [traceFile] : undefined))) {
+        return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
+      }
       await setProgress(input.jobId, {
         phase: 'held', message: heldNotice(output.language),
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
@@ -448,8 +490,9 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         spentUsd: output.meta.cost.usd,
         detail: `Could not store the report: ${(err as Error).message}`.slice(0, 500),
       };
-      await markHeld(input.jobId, hold, undefined, dispatchId);
-      await releaseJobSlot(input.jobId).catch(() => {});
+      if (!(await park(hold))) {
+        return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
+      }
       log.error('job.held', {
         reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: (err as Error).message,
       });
@@ -505,8 +548,9 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         spentUsd: output.meta.cost.usd,
         detail: (output.trace.error ?? 'The report could not be assembled.').slice(0, 500),
       };
-      await markHeld(input.jobId, hold, files, dispatchId);
-      await releaseJobSlot(input.jobId).catch(() => {});
+      if (!(await park(hold, files))) {
+        return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
+      }
       log.error('job.held', { reason: hold.reason, costUsd: output.meta.cost.usd, attempts, message: output.trace.error });
       return { files, reportBytes: report.size ?? 0, sourcesFound: output.sources.length, status: 'held' };
     }

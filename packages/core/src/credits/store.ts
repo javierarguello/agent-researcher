@@ -175,8 +175,21 @@ export async function wasJobRefunded(jobId: string): Promise<boolean> {
   return (await ledger().doc(`refund_${jobId}`).get()).exists;
 }
 
-/** Refund the credits a job consumed (only if it was consumed and not already refunded). */
-export async function refundForJob(appId: string, userId: string, jobId: string, note?: string): Promise<boolean> {
+/**
+ * Refund the credits a job consumed (only if it was consumed and not already
+ * refunded).
+ *
+ * Takes no `appId`/`userId`, and that is the point. It used to, long after the
+ * body stopped reading them: the recipient comes from the CONSUME ENTRY, because
+ * a job's credits are charged to and returned to the job's OWNER — never to the
+ * admin who pressed the button, and never to whoever the caller passed. A
+ * signature that asks for a recipient it then ignores invites exactly the belief
+ * the rule forbids, and one caller already passed a mismatched pair.
+ *
+ * Every refund in this system is a decision a person made (Javier, 2026-07-31);
+ * nothing refunds automatically, so there is no path where the owner is unknown.
+ */
+export async function refundForJob(jobId: string, note?: string): Promise<boolean> {
   const consumeRef = ledger().doc(`consume_${jobId}`);
   const refundRef = ledger().doc(`refund_${jobId}`);
   const jobRef = firestore().collection(config.jobs.collection).doc(jobId);

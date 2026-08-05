@@ -12,17 +12,26 @@ import type { ExtractedPage, SearchResult } from '../tools/web-search.js';
 import type { AgentSpec, ReportSection, ResearchTemplate } from '../templates/types.js';
 import { renderDirectives } from '../templates/directives.js';
 import { DEPTH_PROFILES } from '../depth.js';
+import type { Lang } from '../languages.js';
 
 // --- Language ---------------------------------------------------------------
 
-export const LANGUAGES = {
+/**
+ * How each language is NAMED to the model — not the same strings as
+ * `LANGUAGE_LABELS`, which are what a buyer reads in the picker.
+ *
+ * Keyed by `Lang` on purpose: a language added to the supported list with no
+ * entry here used to fall through to the raw code, so the prompt read
+ * "professional, native-level business de" and the model wrote English.
+ */
+export const LANGUAGES: Record<Lang, string> = {
   en: 'English',
   es: 'Spanish (español)',
   fr: 'French (français)',
   pt: 'Portuguese (português)',
-} as const;
+};
 
-export type Language = keyof typeof LANGUAGES;
+export type Language = Lang;
 
 export function isLanguage(v: unknown): v is Language {
   return typeof v === 'string' && v in LANGUAGES;

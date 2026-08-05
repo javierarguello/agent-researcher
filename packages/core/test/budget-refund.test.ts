@@ -259,7 +259,7 @@ describe('resolving a hold', () => {
     // resolve route's own window between the flip and the money. `refundForJob`
     // permits it (a held job is neither queued nor running), so the only thing
     // between this job and a free run is the guard inside `approveHold`.
-    expect(await refundForJob(APP, USER, 'ja4', 'support refund')).toBe(true);
+    expect(await refundForJob('ja4', 'support refund')).toBe(true);
 
     expect(await approveHold('ja4', 'admin@x.com')).toBe(false);
     expect((await getJob('ja4'))!.status).toBe('held');
@@ -279,7 +279,7 @@ describe('resolving a hold', () => {
     await runCapped('jr1');
 
     expect(await rejectHold('jr1', 'Not approved.')).toBe(true);
-    expect(await refundForJob(APP, USER, 'jr1', 'hold rejected')).toBe(true);
+    expect(await refundForJob('jr1', 'hold rejected')).toBe(true);
     expect(await getBalance(APP, USER)).toBe(5);
 
     // "Exactly once" is the title, and until now nothing here tested it: the refund
@@ -287,7 +287,7 @@ describe('resolving a hold', () => {
     // have satisfied at that point. Every refund is manual, so the realistic way to
     // get two is two people resolving the same hold — and the idempotency key is
     // what has to stop the second, not the resolver's own status gate.
-    expect(await refundForJob(APP, USER, 'jr1', 'hold rejected')).toBe(false);
+    expect(await refundForJob('jr1', 'hold rejected')).toBe(false);
     expect(await getBalance(APP, USER)).toBe(5);
 
     const job = (await getJob('jr1'))!;

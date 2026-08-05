@@ -179,6 +179,31 @@ describe('a localized template is localized in every language we publish', () =>
     expect(validateTemplate(thin).join(' ')).toMatch(/"es" is missing cover labels: priceRange/);
   });
 
+  it('refuses a mode that costs nothing, or a fraction of a credit (N11)', () => {
+    // A mode is a PRICE. `credits: 0` compiles, validates, renders in the manifest
+    // as free — and then 500s the buyer on submit, because `consumeCredits` reaches
+    // the ledger's "positive whole numbers" guard, which throws something the route
+    // does not recognise as an affordability problem and rethrows.
+    //
+    // The alternative (a free path through the credits gate) would be a pricing
+    // decision nobody has made. Refusing it at load is the honest failure: it is a
+    // deploy that does not start, not a stack trace on someone's first report.
+    const t0 = t();
+    for (const bad of [0, -3, 2.5]) {
+      const priced = { ...t0, modes: { ...t0.modes, essential: { ...t0.modes!.essential!, credits: bad } } } as typeof t0;
+      expect(validateTemplate(priced).join(' '), String(bad)).toMatch(/must be a positive whole number/);
+    }
+  });
+
+  it('and a mode that declares no price at all is still fine — the control', () => {
+    // `undefined` means "use the code default" (5/18), which is always positive.
+    // A rule that also refused the default would refuse every unpriced model.
+    const t0 = t();
+    const { credits, ...essential } = t0.modes!.essential!;
+    const unpriced = { ...t0, modes: { ...t0.modes, essential } } as typeof t0;
+    expect(validateTemplate(unpriced)).toEqual([]);
+  });
+
   it('and the flagship passes it — its cover speaks all four', () => {
     // The control. A rule nothing satisfies is a rule nobody notices breaking.
     expect(validateTemplate(t())).toEqual([]);

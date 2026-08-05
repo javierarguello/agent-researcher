@@ -433,6 +433,32 @@ describe('a session lasts as long as the account says, not as long as the token'
     expect(replay.statusCode).toBe(400);
     expect(replay.json().error).toMatch(/already been used/i);
   });
+
+  it('a request of the wrong SHAPE is refused differently from a dead token (N9)', async () => {
+    // The signal the buyer app reads to tell "your link expired" from "this page is
+    // out of date, reload it". A cached bundle from before a deploy posts the old
+    // request shape; ajv refuses it, and without something machine-readable on the
+    // body the SPA showed the same "invalid or has expired" as a genuinely dead
+    // link — for a link that was fine, and self-healed on a reload nobody suggested.
+    //
+    // Asserted against the real Fastify error handler, not against a constant the
+    // SPA also holds: the code is Fastify's, and if a version bump changes it this
+    // goes red here rather than silently reverting the SPA to lying.
+    const stale = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: 'abc' } });
+    expect(stale.statusCode).toBe(400);
+    expect(stale.json().code, 'the SPA has nothing to tell a stale bundle by').toBe('FST_ERR_VALIDATION');
+
+    // The control. A dead token is a 400 the API judged, and carries no such code —
+    // if it did, an expired link would be reported to the buyer as "reload me".
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { ...reg, email: 'shape@x.com' } });
+    const dead = await app.inject({
+      method: 'POST', url: '/auth/verify-email',
+      payload: { token: 'not-a-real-token', password: reg.password },
+    });
+    expect(dead.statusCode).toBe(400);
+    expect(dead.json().code, 'a dead link would be reported as a stale page').toBeUndefined();
+    expect(dead.json().error).toMatch(/invalid or has expired/i);
+  });
 });
 
 describe('the revocation check fails OPEN, deliberately', () => {

@@ -40,7 +40,31 @@ export interface CreateAppInput {
   webUrl?: string;
 }
 
+/**
+ * The shape an app id may have. Enforced HERE, not only in the admin route's JSON
+ * schema, because there are two creation surfaces and the CLI (`npm run apps`) is
+ * the other one — so the rule was enforced at one of them and the tool an operator
+ * reaches for first could still mint an id the product cannot use.
+ *
+ * Underscores are the reason the rule exists: balances, credentials and stats are
+ * keyed `<appId>__<userId>`, so an appId containing `_` makes two different
+ * identities share one key. Uppercase, dots and anything longer than 64 characters
+ * are refused for the other half — `isValidAppId` (apps/api/src/stripe.ts) guards
+ * the Stripe search DSL, and an id outside it is silently unbillable: no catalog,
+ * no checkout, and nothing in the logs to explain it months later.
+ *
+ * A generated `randomUUID()` satisfies this, which is what makes it safe to apply
+ * to the default path too.
+ */
+const APP_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
 export async function createApp(input: CreateAppInput): Promise<AppRecord> {
+  if (input.appId != null && !APP_ID_RE.test(input.appId)) {
+    throw new Error(
+      `Invalid appId "${input.appId}": lowercase letters, digits and "-" only, starting with a letter or digit, ` +
+        'at most 64 characters. Underscores are not allowed — balances and credentials are keyed `<appId>__<userId>`.',
+    );
+  }
   const now = nowIso();
   const app: AppRecord = {
     appId: input.appId ?? randomUUID(),

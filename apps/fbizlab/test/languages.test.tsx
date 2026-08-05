@@ -12,8 +12,10 @@
  * is a leaf module with no imports, so reaching across is cheap.
  */
 import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { LANGUAGE_LABELS } from '../../../packages/core/src/languages';
 import { LANGS, LANG_LABELS } from '../src/i18n';
+import { ReportViewer } from '../src/components/ReportViewer';
 
 describe('the languages this app offers', () => {
   it('are all languages the API will accept', () => {
@@ -29,5 +31,43 @@ describe('the languages this app offers', () => {
     // thing that compiles because `Record<Lang, string>` is satisfied by the type
     // and not by the content.
     for (const l of LANGS) expect(LANG_LABELS[l], l).toBeTruthy();
+  });
+});
+
+describe('the report viewer speaks every one of them', () => {
+  /**
+   * `ReportViewer`'s `RL` table used to declare its OWN `'en' | 'es' | 'fr' | 'pt'`,
+   * shadowing the app-wide `Lang`, so a language could be added to `LANGS` — offered
+   * in the switcher, put in the URL, sent to the API — with no entry here, and
+   * `RL[lang] ?? RL.en` served English headings over the buyer's translated report.
+   * It is keyed by the app-wide `Lang` now, so a MISSING language is a build error.
+   *
+   * This is the half the compiler cannot reach: a block that exists and holds the
+   * English string. `Record<Lang, Record<string, string>>` is satisfied by copy-paste.
+   * So assert the words, and only for the languages that are not English.
+   */
+  const at = (lang: string) =>
+    render(
+      <ReportViewer
+        report={{ verdict: { recommendation: 'buy', price: 0, summary: 'x' } }}
+        sections={[{ key: 'verdict', title: 'Verdict' }]}
+        meta={{ sections: [{ key: 'verdict', status: 'lost' }] }}
+        lang={lang}
+      />,
+    );
+
+  it('does not fall back to English for any of them', () => {
+    const english = at('en').container.textContent ?? '';
+    for (const lang of LANGS.filter((l) => l !== 'en')) {
+      const shown = at(lang).container.textContent ?? '';
+      expect(shown, `the viewer renders ${lang} in English`).not.toBe(english);
+    }
+  });
+
+  it('and still renders English as English', () => {
+    // The control. "Never equals English" also passes if every language, English
+    // included, renders something else entirely.
+    at('en');
+    expect(screen.getByText(/could not complete this section/i)).toBeTruthy();
   });
 });

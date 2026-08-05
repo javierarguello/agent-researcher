@@ -1232,7 +1232,7 @@ app.post(
         const refunded =
           config.server.appEnv === 'local'
             ? true
-            : await refundForJob(appId, userId, jobId, 'Job could not be created').catch(() => false);
+            : await refundForJob(jobId, 'Job could not be created').catch(() => false);
         logEvent(logCtx, 'ERROR', 'job.create_failed', { message: (err as Error).message, refunded });
         // Never claim a refund that did not happen — the same rule the enqueue
         // branch below states, and this branch was written without it. The likely
@@ -1276,7 +1276,7 @@ app.post(
           // slot. This is the one refund that stays automatic: no work was done and
           // no money was spent, so there is nothing for an admin to decide.
           await releaseJobSlot(jobId);
-          refunded = await refundForJob(appId, userId, jobId, 'enqueue failed');
+          refunded = await refundForJob(jobId, 'enqueue failed');
         } catch (e) {
           logEvent(logCtx, 'ERROR', 'job.enqueue_cleanup_failed', { message: (e as Error).message });
         }
@@ -2042,6 +2042,29 @@ app.post(
           'credits.purchased',
           { credits, plan: m.planId, applied: res.applied },
         );
+      } else {
+        // Money arrived and we cannot say whose it is (N11). Every session OUR
+        // checkout route creates carries the three fields, so this is unreachable
+        // from the product — but a Payment Link made in the Stripe dashboard, or a
+        // subscription invoice, reaches this same endpoint carrying none of them,
+        // and the `if` above simply skipped and answered 200. A paid customer with
+        // no credits and nothing in the logs is the worst version of this: support
+        // has to find it from the Stripe side, if anyone reports it at all.
+        //
+        // ERROR, not WARNING, and still a 200: retrying the webhook would produce
+        // the same unattributable session forever. What is needed is a person.
+        logEvent(
+          { jobId: s.id, appId: m.appId ?? '-', userId: m.userId ?? '-' },
+          'ERROR',
+          'credits.purchase_unattributed',
+          {
+            paymentStatus: s.payment_status,
+            amountUsd: (s.amount_total ?? 0) / 100,
+            plan: m.planId,
+            credits: m.credits,
+            message: 'a paid session carried no appId/userId/credits metadata; nothing was credited',
+          },
+        );
       }
     }
     return reply.code(200).send({ received: true });
@@ -2619,7 +2642,7 @@ app.post(
     let refundThrew = false;
     if (outcome === 'refund') {
       try {
-        refunded = await refundForJob(job.appId, job.userId, jobId, reason ?? 'admin resolved a held job');
+        refunded = await refundForJob(jobId, reason ?? 'admin resolved a held job');
       } catch {
         // Same reason the enqueue-failure refund has a catch: the likely cause is
         // Firestore being unavailable, and a 500 here leaves the admin with a job

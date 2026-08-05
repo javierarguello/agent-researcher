@@ -34,9 +34,9 @@ describe('credits store', () => {
   it('refunds only a consumed job, once', async () => {
     await grantCredits({ appId: A, userId: U, credits: 5 });
     await consumeCredits(A, U, 2, 'job2');
-    expect(await refundForJob(A, U, 'job2')).toBe(true);
-    expect(await refundForJob(A, U, 'job2')).toBe(false); // already refunded
-    expect(await refundForJob(A, U, 'never-consumed')).toBe(false);
+    expect(await refundForJob('job2')).toBe(true);
+    expect(await refundForJob('job2')).toBe(false); // already refunded
+    expect(await refundForJob('never-consumed')).toBe(false);
     expect(await getBalance(A, U)).toBe(5);
   });
 

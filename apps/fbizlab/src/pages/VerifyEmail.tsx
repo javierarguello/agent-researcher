@@ -13,6 +13,8 @@ const T = {
     wrong: 'That password does not match the one chosen when this account was created.',
     fail: 'This verification link is invalid or has expired.',
     busy: 'Too many attempts from your network just now. Your link is still valid — wait a moment and press the button again.',
+    retry: 'We could not complete this just now. Your link is still valid — reload this page and try again.',
+    reload: 'Reload and try again',
     login: 'Go to sign in', missing: 'This link is missing its token.',
   },
   es: {
@@ -23,6 +25,8 @@ const T = {
     wrong: 'Esa contraseña no coincide con la que se eligió al crear esta cuenta.',
     fail: 'Este enlace de verificación es inválido o expiró.',
     busy: 'Demasiados intentos desde tu red ahora mismo. Tu enlace sigue siendo válido — espera un momento y vuelve a pulsar el botón.',
+    retry: 'No pudimos completar esto ahora. Tu enlace sigue siendo válido — recarga esta página e inténtalo de nuevo.',
+    reload: 'Recargar e intentar de nuevo',
     login: 'Ir al ingreso', missing: 'A este enlace le falta su token.',
   },
   fr: {
@@ -33,6 +37,8 @@ const T = {
     wrong: 'Ce mot de passe ne correspond pas à celui choisi à la création du compte.',
     fail: 'Ce lien de vérification est invalide ou a expiré.',
     busy: 'Trop de tentatives depuis votre réseau en ce moment. Votre lien reste valide — attendez un instant et appuyez à nouveau.',
+    retry: 'Nous n’avons pas pu terminer pour le moment. Votre lien reste valide — rechargez cette page et réessayez.',
+    reload: 'Recharger et réessayer',
     login: 'Aller à la connexion', missing: 'Ce lien n’a pas son jeton.',
   },
   pt: {
@@ -43,6 +49,8 @@ const T = {
     wrong: 'Essa senha não corresponde à escolhida quando esta conta foi criada.',
     fail: 'Este link de verificação é inválido ou expirou.',
     busy: 'Muitas tentativas da sua rede agora. Seu link continua válido — aguarde um instante e pressione o botão de novo.',
+    retry: 'Não conseguimos concluir agora. Seu link continua válido — recarregue esta página e tente de novo.',
+    reload: 'Recarregar e tentar de novo',
     login: 'Ir para o login', missing: 'Falta o token neste link.',
   },
 };
@@ -62,7 +70,7 @@ export function VerifyEmail() {
   const t = pick(T, lang);
   const nav = useNavigate();
   const [password, setPassword] = useState('');
-  const [state, setState] = useState<'idle' | 'working' | 'ok' | 'wrong' | 'busy' | 'fail'>('idle');
+  const [state, setState] = useState<'idle' | 'working' | 'ok' | 'wrong' | 'busy' | 'retry' | 'fail'>('idle');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -83,8 +91,26 @@ export function VerifyEmail() {
       // forgot-password, metered on the same address — so a whole CGNAT could be
       // told their signup was broken. `busy` keeps the form up so they can press
       // again.
+      //
+      // And a request the API would not even LOOK at is not a dead link either.
+      //
+      // This page is served from a static bundle the browser caches. After a deploy
+      // that changed what `/auth/verify-email` accepts, an open tab is still running
+      // the old code — it posts the old shape, ajv refuses it with
+      // `FST_ERR_VALIDATION`, and every non-401 landed on "invalid or has expired".
+      // The link was fine; a reload fixes it; nothing said so, and the person had
+      // already been told their signup was broken. Same for a 5xx or a response we
+      // cannot parse: the server never got as far as judging the token.
+      //
+      // Safe to promise the link survives all of these: `consumeActionToken` runs
+      // only AFTER the password verifies, so anything short of success — and short
+      // of a 401, which is its own message — leaves the token unredeemed.
+      //
+      // A 400 in the API's OWN words is the real thing, and stays `fail`.
       const status = (err as { status?: number }).status;
-      setState(status === 401 ? 'wrong' : status === 429 ? 'busy' : 'fail');
+      const code = (err as { code?: string }).code;
+      const judged = status === 400 && code !== 'FST_ERR_VALIDATION';
+      setState(status === 401 ? 'wrong' : status === 429 ? 'busy' : judged ? 'fail' : 'retry');
     }
   }
 
@@ -114,7 +140,7 @@ export function VerifyEmail() {
           </div>
         )}
 
-        {token && (state === 'idle' || state === 'working' || state === 'wrong' || state === 'busy') && (
+        {token && (state === 'idle' || state === 'working' || state === 'wrong' || state === 'busy' || state === 'retry') && (
           <form className="stack" style={{ gap: 14 }} onSubmit={submit}>
             <h1 style={{ fontSize: 19, margin: 0 }}>{t.title}</h1>
             <p className="soft" style={{ fontSize: 14, margin: 0 }}>{t.sub}</p>
@@ -127,6 +153,15 @@ export function VerifyEmail() {
             </label>
             {state === 'wrong' && <p className="soft" style={{ fontSize: 14, color: 'var(--danger, #b4453c)' }}>{t.wrong}</p>}
             {state === 'busy' && <p className="soft" style={{ fontSize: 14 }}>{t.busy}</p>}
+            {/* The form stays up, and the reload is offered rather than described:
+                the whole point is that the running bundle may be the stale part, and
+                pressing submit again would only re-send the same refused shape. */}
+            {state === 'retry' && (
+              <>
+                <p className="soft" style={{ fontSize: 14 }}>{t.retry}</p>
+                <button type="button" className="link-accent" onClick={() => window.location.reload()}>{t.reload}</button>
+              </>
+            )}
             <button className="btn btn--black btn--sm" type="submit" disabled={state === 'working' || !password}>
               {state === 'working' ? t.working : t.submit}
             </button>

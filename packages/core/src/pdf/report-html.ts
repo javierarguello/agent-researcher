@@ -10,6 +10,7 @@ import type { CoverSpec } from '../templates/types.js';
 import type { PdfTheme } from './theme.js';
 import { normalizeSectionStatuses } from '../engine/section-status.js';
 import { sectionsNotice } from '../jobs/report-copy.js';
+import { LANGS, type Lang } from '../languages.js';
 
 type Obj = Record<string, unknown>;
 
@@ -145,7 +146,10 @@ function mdToHtml(md: string): string {
 }
 
 // ── localized field labels (report content is already in its language) ──
-type Lang = 'en' | 'es' | 'fr' | 'pt';
+// `Lang` comes from `languages.ts`; this file used to declare its own copy of the
+// union, so the supported list could gain a language and this table stayed
+// compiling — and the guards below then collapsed that language to `en`, which is
+// the exact shape of the bug: translated prose under English headings.
 const RL: Record<Lang, Record<string, string>> = {
   en: { degradedSection: 'We could not complete this section for this report. Everything else was researched and written as usual.', unenrichedSection: 'This section was researched and written, but the pass that adds extra depth to it did not finish. Everything here is sourced as usual.', contents: 'Contents', aiDisclaimer: 'AI-generated research — it can make mistakes. Always verify results against the original listings before acting.', index: 'Report index', mandate: 'Mandate', snapshot: 'Snapshot', business: 'Transaction', location: 'Location', salePrice: 'Sale price', revenue: 'Revenue', multiple: 'Multiple', sde: 'SDE', asking: 'Asking', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative', source: 'source', yes: 'Yes', no: 'No', howToRead: 'How to read this report', howToReadBody: 'Sections are ordered from summary to detail. Figures in accent colour are AI estimates — verify against primary documents before acting.', kicker: 'AI ANALYSIS REPORT', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', footerNote: 'AI-GENERATED — VERIFY RESULTS' },
   es: { degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', unenrichedSection: 'Esta sección se investigó y redactó, pero la pasada que le agrega profundidad no llegó a completarse. Todo lo que ves aquí está documentado como siempre.', contents: 'Contenido', aiDisclaimer: 'Investigación generada por IA — puede cometer errores. Verifica siempre los resultados con los avisos originales antes de actuar.', index: 'Índice del reporte', mandate: 'Mandato', snapshot: 'Resumen', business: 'Transacción', location: 'Ubicación', salePrice: 'Precio de venta', revenue: 'Ingresos', multiple: 'Múltiplo', sde: 'SDE', asking: 'Precio', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo', source: 'fuente', yes: 'Sí', no: 'No', howToRead: 'Cómo leer este reporte', howToReadBody: 'Las secciones van de resumen a detalle. Las cifras en color son estimaciones de IA — verifícalas con documentos primarios antes de actuar.', kicker: 'INFORME DE ANÁLISIS CON IA', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', footerNote: 'GENERADO CON IA — VERIFICA LOS RESULTADOS' },
@@ -385,7 +389,7 @@ function collectDeals(report: Obj, cover: CoverSpec | undefined): Obj[] {
  * of every dossier, including the fully-translated Spanish one.
  */
 export function pdfFooterNote(lang: unknown): string {
-  const l = (['en', 'es', 'fr', 'pt'].includes(String(lang)) ? String(lang) : 'en') as Lang;
+  const l = (LANGS as string[]).includes(String(lang)) ? (String(lang) as Lang) : 'en';
   return RL[l].footerNote!;
 }
 
@@ -411,7 +415,7 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
   const statuses = normalizeSectionStatuses(input.meta?.sections, input.meta?.degradedSections);
   const degraded = new Set<string>(statuses.filter((x) => x.status === 'lost').map((x) => x.key));
   const unenriched = new Set<string>(statuses.filter((x) => x.status === 'unenriched').map((x) => x.key));
-  const lang = (['en', 'es', 'fr', 'pt'].includes(input.lang ?? '') ? input.lang : 'en') as Lang;
+  const lang = ((LANGS as string[]).includes(input.lang ?? '') ? input.lang : 'en') as Lang;
   const l = RL[lang];
   // Numbers in the reader's language, money in the model's currency. Built once
   // and threaded like the theme; both used to be `en-US` and `$` everywhere.

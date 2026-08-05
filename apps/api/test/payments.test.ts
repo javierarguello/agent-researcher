@@ -326,6 +326,50 @@ describe('credits wait for the money', () => {
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(before + 15);
   });
 
+  it('says so, loudly, when a paid session cannot be attributed (N11)', async () => {
+    // Unreachable through our own checkout — it always sets the three metadata
+    // fields — but a Payment Link created in the Stripe dashboard hits this same
+    // endpoint carrying none of them. The handler skipped the crediting branch and
+    // answered 200: money taken, no credits, and NOTHING in the logs to find it by.
+    const orphan = purchaseEvent('pi_orphan', 15);
+    // Metadata a Payment Link might carry, minus the three fields that say who
+    // this is. The accent stays for the raw-body check the `webhook` helper needs.
+    orphan.data.object.metadata = { note: 'café' } as never;
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((line: unknown) => void errors.push(String(line)));
+    try {
+      const before = await getBalance('fbizlab', 'u@x.com');
+      const res = await webhook(orphan);
+
+      // Still acked: a retry would bring back the same unattributable session.
+      expect(res.statusCode).toBe(200);
+      expect(await getBalance('fbizlab', 'u@x.com'), 'credited someone at random').toBe(before);
+
+      const logged = errors.map((l) => JSON.parse(l) as Record<string, unknown>);
+      const entry = logged.find((e) => e.event === 'credits.purchase_unattributed');
+      expect(entry, `nothing was logged; lines seen: ${errors.length}`).toBeTruthy();
+      expect(entry!.severity, 'a WARNING nobody pages on').toBe('ERROR');
+      // The figure support needs to find the session in Stripe, not just a shrug.
+      expect(entry!.amountUsd, 'the log does not say how much was taken').toBe(100);
+      expect(entry!.jobId, 'the log does not name the session').toBe('cs_pi_orphan');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('and an attributable one is not reported as a problem — the control', async () => {
+    // "Always log the error" would pass the case above and page on every purchase.
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((line: unknown) => void errors.push(String(line)));
+    try {
+      await webhook(purchaseEvent('pi_normal', 15));
+      expect(errors.join(' ')).not.toMatch(/purchase_unattributed/);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await getBalance('fbizlab', 'u@x.com')).toBeGreaterThan(0);
+  });
+
   it('still credits a zero-cost checkout', async () => {
     // A 100% promo code settles as `no_payment_required`, and that IS paid.
     const before = await getBalance('fbizlab', 'u@x.com');

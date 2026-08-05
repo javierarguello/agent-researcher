@@ -1,28 +1,37 @@
 /**
- * Seven copies of the same list, and nothing linking them.
+ * What is left of the seven copies of the supported-language list, and what still
+ * has to be pinned by hand.
  *
- * `languages.ts` (which the API's `?lang` enum derives from), `moderation/copy.ts`,
- * `engine/prompt.ts`, each template's own `language` enum, the PDF string table,
- * `apps/fbizlab/src/i18n.tsx` and `apps/fbizlab/scripts/fetch-plans.mjs`. They must
- * all agree, and the failure modes are asymmetric:
+ * It used to be seven independent lists with nothing linking them, and the failure
+ * modes were asymmetric: ADDING a language failed loudly at boot
+ * (`assertTemplatesValid` throws) and then silently everywhere else, while REMOVING
+ * one failed NOTHING — `?lang=pt` stopped being accepted, the template's enum still
+ * took `pt`, the engine still wrote Portuguese prose, and the manifest served
+ * English titles over it. That is the defect `e89b812` fixed, reintroduced with no
+ * test anywhere going red.
  *
- *   - ADDING a language fails loudly at boot (`assertTemplatesValid` throws), then
- *     silently everywhere else — the engine falls back to the raw code in the
- *     prompt, `asLang` collapses to English, and `fetch-plans` never fetches it, so
- *     the pricing page for that language is blank.
- *   - REMOVING one failed NOTHING. `?lang=pt` stops being accepted, the template's
- *     enum still takes `pt`, the engine still writes Portuguese prose, and the
- *     manifest serves English titles over it — exactly the defect `e89b812` fixed,
- *     reintroduced with no test anywhere going red.
+ * `languages.ts` now exports the `Lang` type as well as the labels, and every table
+ * that was keyed by its own hand-written union — `moderation/copy.ts` (which
+ * `report-copy.ts`, `email/templates.ts`, `deterministic.ts` and `florida-preflight.ts`
+ * all import), `engine/prompt.ts`, the PDF's `RL`, the SPA viewer's `RL` — is now
+ * `Record<Lang, …>`. A fresh object literal fails that in BOTH directions: a
+ * missing key on an addition, an excess key on a removal. Measured: either edit to
+ * `LANGUAGE_LABELS` breaks the build in seven core files.
  *
- * This is that test. It is deliberately a pin rather than a refactor: the lists
- * live in three packages with different module systems, and one assertion that
- * fails in both directions is worth more than a clever indirection.
+ * Three copies the compiler cannot reach are what remains, and they are what this
+ * file pins:
+ *
+ *   - each template's Zod `language` enum (a runtime value),
+ *   - `apps/fbizlab/scripts/fetch-plans.mjs` (plain ESM, no types at all),
+ *   - the PDF's per-language STRINGS, as opposed to its per-language keys —
+ *     `Record<Lang, …>` is satisfied by copy-pasting the English block.
+ *
+ * The SPA's own list lives in another package and is pinned from there, in
+ * `apps/fbizlab/test/languages.test.tsx`.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { LANGUAGE_LABELS } from '../src/languages.js';
-import { LANGS as MODERATION_LANGS } from '../src/moderation/copy.js';
 import { LANGUAGES as ENGINE_LANGUAGES } from '../src/engine/prompt.js';
 import { pdfFooterNote } from '../src/pdf/report-html.js';
 import { listTemplates } from '../src/templates/registry.js';
@@ -31,8 +40,15 @@ import { z } from 'zod';
 const SUPPORTED = Object.keys(LANGUAGE_LABELS);
 
 describe('every copy of the supported-language list agrees', () => {
-  it('moderation and the engine cover exactly what the API publishes', () => {
-    expect([...MODERATION_LANGS].sort()).toEqual([...SUPPORTED].sort());
+  it('the engine has a name for each of them to put in the prompt', () => {
+    // The moderation half of this assertion is GONE, not forgotten: `LANGS` there
+    // is now re-exported from `languages.ts`, so comparing the two compared a value
+    // with itself and would have passed for any answer at all.
+    //
+    // This one is kept because it is not that. `LANGUAGES` is still a hand-written
+    // literal; what makes it agree is the `Record<Lang, string>` annotation, and
+    // this goes red the moment someone unties it (back to `as const` + `keyof
+    // typeof`) and drops a language — which is exactly how it was written before.
     expect(Object.keys(ENGINE_LANGUAGES).sort()).toEqual([...SUPPORTED].sort());
   });
 

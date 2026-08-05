@@ -412,6 +412,39 @@ describe('a stale dispatch writes no outcome of any kind', () => {
     expect(['incomplete', 'held', 'done'], 'a superseded run told the buyer the job had stopped').not.toContain(phase);
   });
 
+  it('does not release the slot when the park itself is REFUSED', async () => {
+    // The window the gates above cannot close. `stillOurs()` is checked before the
+    // engine's uploads; a re-dispatch that lands between that check and `markHeld`
+    // gets a park REFUSED by the transaction — and the four call sites discarded
+    // that answer, so the run went on to release the slot (which keys on the job's
+    // `slotHeld` flag, not on the dispatch, so it frees the LIVE run's), write a
+    // `held` progress line over a job that was still going, and tell the worker
+    // `held` about an outcome nobody recorded.
+    //
+    // Driven with a spy rather than by timing the race: the race is real but not
+    // schedulable, and what is under test is what the run does with a `false`.
+    //
+    // No progress-phase assertion here, deliberately. The engine emits its own
+    // `held` notice at the ceiling, and at that moment this run still owned the
+    // job — that line was true when it was written. The stale-latch case is the
+    // one above; what this case is about is what happens AFTER the refusal.
+    await seedJob('st7');
+    const jobs = await import('../src/jobs/firestore.js');
+    const slots = await import('../src/jobs/slots.js');
+    const held = vi.spyOn(jobs, 'markHeld').mockResolvedValue(false);
+    const released = vi.spyOn(slots, 'releaseJobSlot');
+    const ceiling = config.workflow.maxJobCostUsd;
+    writableConfig.workflow.maxJobCostUsd = 0.000001; // every run parks on this
+    try {
+      const res = await runJob(input('st7'));
+      expect(held, 'the park was never attempted, so the refusal was not exercised').toHaveBeenCalled();
+      expect(res.status, 'reported an outcome the job never took').toBe('superseded');
+      expect(released, 'freed a slot this run no longer owns').not.toHaveBeenCalled();
+    } finally {
+      writableConfig.workflow.maxJobCostUsd = ceiling;
+    }
+  });
+
   it('still parks and releases when the job IS ours', async () => {
     // The control. "Never parks, never releases" would pass everything above.
     await seedJob('st5');
@@ -513,5 +546,48 @@ describe('a dispatch that could not save anything does not hand the bill to the 
     const res = await runJob(input('cs3'));
     expect(res.status).toBe('incomplete');
     expect(checkpointsFor('cs3').length, 'a checkpoint the next dispatch can resume from').toBeGreaterThan(0);
+  });
+});
+
+describe('the park that every unexpected throw takes', () => {
+  // `parkAndRethrow` was the FIFTH park site and the one left behind when the
+  // other four were routed through `park()`. It discarded `markHeld`'s answer and
+  // released the slot regardless — so a run whose park was REFUSED, because the
+  // job had already been resolved by a person, handed back a slot that was not
+  // its own and the buyer could start a second report while the first still ran.
+  //
+  // Driven through `runJob` rather than against `markHeld` directly: the unit
+  // behaviour was already covered and stayed green through the defect, because
+  // what was wrong was the WIRING.
+  it('does not release the slot when the park is refused', async () => {
+    await createJob({ jobId: 'pr1', appId: APP, userId: USER, templateId: compactModel.id, params: {}, status: 'queued' } as never);
+    const slots = await import('../src/jobs/slots.js');
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    await slots.setJobSlotHeld('pr1', true);
+    // Resolved by an admin. `markHeld` refuses a resolved job even with no
+    // dispatch id, which is what makes this reachable from the outer catch.
+    await markFailed('pr1', 'closed by an admin');
+
+    // A retired template throws in the prologue — the shortest route to
+    // `parkAndRethrow`, and it happens before anything claims the job.
+    await expect(runJob(input('pr1', 'a-template-we-retired'))).rejects.toThrow(/unknown template/i);
+
+    expect(await slots.inFlightSlots(APP, USER), 'it gave away the live run’s slot').toBe(1);
+    expect((await getJob('pr1'))!.status, 'and it must not have reopened a resolved job').toBe('failed');
+  });
+
+  it('still releases it when the park sticks — the control', async () => {
+    // "Never release" locks the buyer out of the product for as long as nobody
+    // looks at their job, which is the failure the unconditional release existed
+    // to prevent.
+    await createJob({ jobId: 'pr2', appId: APP, userId: USER, templateId: compactModel.id, params: {}, status: 'queued' } as never);
+    const slots = await import('../src/jobs/slots.js');
+    await slots.claimJobSlot(APP, USER, 1, { force: true });
+    await slots.setJobSlotHeld('pr2', true);
+
+    await expect(runJob(input('pr2', 'a-template-we-retired'))).rejects.toThrow(/unknown template/i);
+
+    expect((await getJob('pr2'))!.status).toBe('held');
+    expect(await slots.inFlightSlots(APP, USER)).toBe(0);
   });
 });

@@ -5,6 +5,7 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { normalizeSectionStatuses } from '../lib/section-status';
+import type { Lang } from '../i18n';
 
 function humanizeKey(k: string): string {
   const s = k.replace(/([A-Z])/g, ' $1').replace(/[_-]/g, ' ').toLowerCase().trim();
@@ -54,7 +55,11 @@ function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
 // with another's currency.
 
 // ── Localised UI labels (report content itself is already in the report language) ──
-type Lang = 'en' | 'es' | 'fr' | 'pt';
+// `Lang` from `../i18n`, not a copy of the union declared here. This file used to
+// shadow the app-wide one, so a language could be added to `LANGS` — offered in
+// the switcher, carried in the URL, sent to the API — with no entry in this table,
+// and `?? RL.en` below then served English headings over the translated report.
+// Now the missing key is a build error.
 const RL: Record<Lang, Record<string, string>> = {
   en: { aiDisclaimer: 'AI-generated — can make mistakes. Always verify results before acting.', unenrichedSection: 'This section was researched and written, but the pass that adds extra depth to it did not finish. Everything here is sourced as usual.', degradedSection: 'We could not complete this section for this report. Everything else below was researched and written as usual.', sections: 'Sections', snapshot: 'Snapshot', aiReport: 'AI analysis dossier', dossier: 'Generated dossier', reqMode: 'Mode', reqLang: 'Dossier language', reqSources: 'Sources consulted', reqCredits: 'Credits spent', targets: 'Targets', priceRange: 'Price range', combinedRevenue: 'Combined revenue', combinedSde: 'Combined SDE', criteria: 'Mandate', revenue: 'Revenue', sde: 'SDE', asking: 'Asking', location: 'Location', industry: 'Industry', priceBand: 'Price band', revenueFloor: 'Min revenue', cashFlowFloor: 'Min cash flow', financingPreference: 'Financing', realEstatePreference: 'Real estate', business: 'Transaction', salePrice: 'Sale price', multiple: 'Multiple', mentions: 'Mentions', netSentiment: 'Net sentiment', sentimentDist: 'Sentiment distribution', positive: 'Positive', neutral: 'Neutral', negative: 'Negative' },
   es: { aiDisclaimer: 'Generado por IA — puede cometer errores. Verifica siempre los resultados antes de actuar.', unenrichedSection: 'Esta sección se investigó y redactó, pero la pasada que le agrega profundidad no llegó a completarse. Todo lo que ves aquí está documentado como siempre.', degradedSection: 'No pudimos completar esta sección para este informe. Todo lo demás se investigó y redactó con normalidad.', sections: 'Secciones', snapshot: 'Resumen', aiReport: 'Dossier de análisis IA', dossier: 'Dossier generado', reqMode: 'Modo', reqLang: 'Idioma del dossier', reqSources: 'Fuentes consultadas', reqCredits: 'Créditos gastados', targets: 'Objetivos', priceRange: 'Rango de precio', combinedRevenue: 'Ingresos combinados', combinedSde: 'SDE combinado', criteria: 'Mandato', revenue: 'Ingresos', sde: 'SDE', asking: 'Precio', location: 'Ubicación', industry: 'Industria', priceBand: 'Rango de precio', revenueFloor: 'Ingreso mín', cashFlowFloor: 'Flujo mín', financingPreference: 'Financiamiento', realEstatePreference: 'Inmueble', business: 'Transacción', salePrice: 'Precio de venta', multiple: 'Múltiplo', mentions: 'Menciones', netSentiment: 'Sentimiento neto', sentimentDist: 'Distribución de sentimiento', positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' },

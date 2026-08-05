@@ -10,8 +10,12 @@
  * user-facing text deterministic and translatable.
  */
 
-export type Lang = 'en' | 'es' | 'fr' | 'pt';
-export const LANGS: Lang[] = ['en', 'es', 'fr', 'pt'];
+// Re-exported, not redeclared. This file used to write the union out again, which
+// meant `LANGUAGE_LABELS` could lose a language and every `Record<Lang, …>` table
+// below stayed happily compiling with a key nobody supports — and, the direction
+// that reaches a buyer, gain one that no table here has strings for.
+import { LANGS, type Lang } from '../languages.js';
+export { LANGS, type Lang };
 
 export function asLang(v: unknown): Lang {
   return typeof v === 'string' && (LANGS as string[]).includes(v) ? (v as Lang) : 'en';

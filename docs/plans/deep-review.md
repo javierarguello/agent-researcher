@@ -76,7 +76,42 @@ round.
   discount, no partial refund, no proration for a shallow section — the research
   ran and was paid for. A report that lost a section outright is a different case
   and is what the manual-refund path exists for.
-- Smaller, in `N`: N5–N7, N9–N11 — all cosmetic or unreachable. (C5's actionable half, K6–K8, N4 and N8 are closed.)
+- ~~Smaller, in `N`: N5–N7, N9–N11.~~ **All closed or dismissed 2026-08-05** — see
+  the `N` section for each. One correction worth carrying: N5 was filed as
+  "cosmetic" and was not. The `held` it reported to the worker was cosmetic; the
+  slot release and the terminal progress line that ran *after* the discarded answer
+  were the defect. "Cosmetic" was a judgement about the return value, made without
+  reading what followed it. N6 is the one dismissed rather than fixed, and the
+  reason is written out there. (C5's actionable half, K6–K8, N4 and N8 are closed.)
+- ~~**The seven independent language lists.**~~ **Closed 2026-08-05, by removing
+  most of them.** `language-lists.test.ts` had already made REMOVAL as loud as
+  addition — measured before touching anything: dropping `pt` from
+  `LANGUAGE_LABELS` turned six tests red across three packages. What it could not
+  reach was that the lists were still seven independent hand-written unions, so the
+  pin was the only thing holding them together, and two copies had no pin at all:
+  `ReportViewer.tsx`'s `RL` shadowed the app-wide `Lang` with its own union, so a
+  language added to the SPA's `LANGS` compiled cleanly and served English headings
+  over the buyer's translated report (`RL[lang] ?? RL.en`).
+
+  `languages.ts` now exports `Lang` and `LANGS` as well as the labels, and every
+  table that wrote the union out again — `moderation/copy.ts` (which
+  `report-copy.ts`, `email/templates.ts`, `deterministic.ts` and
+  `florida-preflight.ts` all import from), `engine/prompt.ts`, the PDF's `RL`, the
+  viewer's `RL` — is keyed by it. A fresh object literal fails `Record<Lang, …>` in
+  BOTH directions, so either edit is now a build failure, not a test failure:
+  measured, adding `de` and removing `pt` each break the same seven core files, and
+  adding one to the SPA's `LANGS` breaks `ReportViewer.tsx` (which it did not
+  before — verified by restoring the local union with the addition in place, and
+  watching the error disappear).
+
+  Three copies the compiler cannot reach are what is left, and they stay pinned at
+  runtime: the per-template Zod `language` enums, `fetch-plans.mjs` (plain ESM), and
+  the SPA's own `LANGS` in another package. Two content pins guard what
+  `Record<Lang, …>` is satisfied by copy-paste: the PDF's footer note, and a new one
+  in `apps/fbizlab/test/languages.test.tsx` that renders the viewer in every
+  language and refuses an English fallback. One assertion was DELETED rather than
+  kept: `MODERATION_LANGS` vs `SUPPORTED` became a value compared with itself once
+  the copies collapsed, and would have passed for any answer at all.
 
 ## Review round 4 — eight agents against `54cd7c0` (2026-08-03)
 
@@ -744,21 +779,81 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
   and can deliver its older report and delete the checkpoint before `markCompleted`
   refuses it. The token guards the checkpoint and the terminal writes; the
   intermediate artifacts are not token-scoped.
-- **N5 — `run-job` ignores `markHeld`'s return value** at three sites: a refused
-  park still reports `held` to the worker. Cosmetic today.
-- **N6 — Grant dedupe is broken across the `825d51d` deploy boundary** — one-time,
-  and only for scripted callers, since the admin SPA never sends a key.
-- **N7 — `refundForJob`'s `appId`/`userId` parameters are dead weight** now that
-  the owner comes from the ledger. The signature still invites a caller to believe
-  they choose the recipient.
+- ~~**N5 — `run-job` ignores `markHeld`'s return value**~~ **Closed 2026-08-05.**
+  Called cosmetic, and it was not. The `held` reported to the worker IS cosmetic —
+  the worker ACKs `held` and `superseded` identically — but the two lines that ran
+  *after* the discarded answer are not. `releaseJobSlot` keys on the job's
+  `slotHeld` flag and not on the dispatch, so a REFUSED park still freed the LIVE
+  run's slot and the buyer could start a second report while the first was going;
+  and `setProgress({ phase: 'held' })` told them a running job had stopped. This is
+  N4's defect reached through the window between `stillOurs()` and `markHeld` — the
+  gates close the common case, not the race. All four sites (the entry said three)
+  now go through one `park()` helper that returns whether the park stuck; a refusal
+  latches `knownStale`, skips the release and the progress line, and reports
+  `superseded`. `RunJobResult`'s doc now says `superseded` covers "already
+  resolved" too, which is what a refusal can also mean.
+- ~~**N6 — Grant dedupe is broken across the `825d51d` deploy boundary.**~~
+  **Dismissed 2026-08-05 — not fixed, on purpose.** Three reasons, in order of
+  weight. (1) An idempotency key dedupes a RETRY — a blip, a double-click, seconds
+  to minutes — and the route's own description says exactly that ("dedupes
+  retries/double-clicks"). Nothing offers it as a durable record of grants already
+  made, so there is no promise being broken. (2) Neither admin surface sends one:
+  `Users.tsx` and `JobDetail.tsx` both call `useGrantCredits` without the field, so
+  the affected caller is a script that would have had to store keys AND replay one
+  across 2026-08-01. (3) The only available fix is to read both the old
+  `grant_<key>` id and the new `grant_<app>__<user>_<key>` on every grant, forever:
+  a permanent extra read and a second namespace to reason about, bought for a
+  window that closed four days ago. The worst outcome if it happens is a doubled
+  free grant, visible in the ledger, made by an admin's own script.
+- ~~**N7 — `refundForJob`'s `appId`/`userId` parameters are dead weight**~~
+  **Closed 2026-08-05.** Signature is `refundForJob(jobId, note?)`. The recipient
+  was already read from the consume entry; the parameters only invited the belief
+  the standing rule forbids — every refund is manual, and a job's credits are
+  charged to and returned to its OWNER, never the admin. The test that covered this
+  passed a mismatched pair, which is no longer expressible; it now makes the job
+  DOCUMENT disagree with the ledger instead, which is the live control for the one
+  choice still open (read the owner from the job, or from the entry).
 - ~~**N8 — Old verify/reset links stay multi-use**~~ **Closed** — the shim (`claims.tokenId && …`) skipped the one-time check entirely for any token without an id; the migration window it existed for closed within a day of `b338240`. until their TTL expires (24h/1h
   after the `b338240` deploy), because they carry no `tokenId`.
-- **N9 — A stale SPA bundle turns a good verification link into "expired".**
-  Self-heals on reload; nothing tells the user that.
-- **N10 — `createApp` in core validates no appId at all** (the CLI path), so the
-  `_` rule is enforced at one of two creation surfaces.
-- **N11 — Zero-credit modes and paid sessions with no metadata** both fail
-  awkwardly (a 500 and a silent drop). Neither is reachable today.
+- ~~**N9 — A stale SPA bundle turns a good verification link into "expired".**~~
+  **Closed 2026-08-05.** The mechanism, measured against the real handler: a cached
+  bundle posts the pre-deploy request shape, ajv refuses it, and the API answers
+  `400 { code: 'FST_ERR_VALIDATION' }` — while a genuinely dead token answers `400`
+  with no code. `VerifyEmail` mapped every non-401/429 to "invalid or has expired",
+  so a live link was reported dead to someone whose only ways out (register again,
+  forgot password) both dead-end on an address that is taken. It now separates "the
+  API judged the token" from "the API never looked": a validation 400, a 5xx, and
+  an error with no status at all (a rejected `fetch`, or a body the client cannot
+  parse) all render a `retry` state that keeps the form up and offers a reload. Safe
+  to promise the link survives all of them — `consumeActionToken` runs only after
+  the password verifies. Pinned on both sides: `auth.test.ts` owns the API signal,
+  `verify-email.test.tsx` owns what the buyer is told.
+- ~~**N10 — `createApp` in core validates no appId at all**~~ **Closed 2026-08-05.**
+  The rule now lives in `createApp`, so both creation surfaces enforce it and the
+  CLI (`npm run apps create --appId=…`) can no longer mint an id the product cannot
+  use. `_` is the expensive one — balances, credentials and stats are keyed
+  `<appId>__<userId>`, so an underscore makes two identities share a key — and the
+  rest of the shape is what keeps the app billable (`isValidAppId` guards the
+  Stripe search DSL; an id outside it has no catalog and no checkout, with nothing
+  in the logs to say why). A generated `randomUUID()` satisfies it, so the default
+  path is unchanged.
+- ~~**N11 — Zero-credit modes and paid sessions with no metadata**~~
+  **Closed 2026-08-05.** Two halves, two different answers.
+  **Zero-credit modes: proved unreachable, at load.** `validateTemplate` now refuses
+  a mode whose declared `credits` is not a positive whole number, so the deploy does
+  not start rather than 500ing a buyer on submit (`consumeCredits` reached the
+  ledger's "positive whole numbers" guard, which throws something the route does not
+  recognise as an affordability problem and rethrows). `undefined` is untouched —
+  that is the 5/18 code default. The other route in, `PUT /admin/pricing/:id`,
+  already enforced `minimum: 1`.
+  **Unattributable paid sessions: made to fail honestly.** The webhook's
+  `if (m.appId && m.userId && m.credits)` had no `else`, so a paid session with no
+  metadata was skipped and acked — money taken, no credits, nothing in the logs. Our
+  own checkout always sets the three fields, but a Payment Link made in the Stripe
+  dashboard hits the same endpoint carrying none. It now logs
+  `credits.purchase_unattributed` at ERROR with the amount and the session id, and
+  still acks: a retry would bring back the same unattributable session, so what is
+  needed is a person, not a redelivery.
 
 **Untested guards the mutation pass named:**
 
