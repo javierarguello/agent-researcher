@@ -68,8 +68,14 @@ round.
   number instead of a property passes for the wrong formula until the input grows
   past where they diverge (the context budget agreed with the broken formula up to
   twenty-one dependencies). Assert the property.
-- **N1** — a half-improved section ships as whole with nothing in `meta`. Needs a
-  price decision from you.
+- ~~**N1** — a half-improved section ships as whole with nothing in `meta`.~~
+  **Closed.** The `meta` half shipped in `e6d80b4`: a section a producer wrote and
+  a refiner never deepened is recorded as `{ key, status: 'unenriched' }`, said to
+  the buyer in their own language, and kept out of the admin's degraded-delivery
+  count. The PRICE half is **decided: full price** (Javier, 2026-08-05). No
+  discount, no partial refund, no proration for a shallow section — the research
+  ran and was paid for. A report that lost a section outright is a different case
+  and is what the manual-refund path exists for.
 - Smaller, in `N`: N5–N7, N9–N11 — all cosmetic or unreachable. (C5's actionable half, K6–K8, N4 and N8 are closed.)
 
 ## Review round 4 — eight agents against `54cd7c0` (2026-08-03)
@@ -711,13 +717,20 @@ Everything the ten reviewers found that was NOT fixed in `af7f9f0`, with why.
 
 **Product decisions, not defects:**
 
-- **N1 — A half-improved section ships as whole.** When a refiner fails but its
-  producer succeeded, the section is kept (right — real content beats a
-  placeholder) and delivered as complete. The only record is an admin warning, and
-  `meta.degradedSections` lists fully-lost keys only, so the buyer's notice never
-  fires and the price is unchanged. The flagship sells partly on its four enrich
-  passes. Expressing it needs a new meta field (`unenrichedSections` or similar)
-  and a decision about the price.
+- ~~**N1 — A half-improved section ships as whole.**~~ **Closed 2026-08-05.**
+  When a refiner fails but its producer succeeded, the section is kept (right —
+  real content beats a placeholder). What was missing was any record of it: the
+  only trace was an admin warning, `meta.degradedSections` listed fully-lost keys
+  only, so the buyer's notice never fired.
+
+  Both halves are settled now. **The record:** `meta.sections` carries
+  `{ key, status: 'unenriched' }`, the buyer is told in their own language that
+  the depth pass did not finish and that the content is real and sourced, and the
+  admin's degraded-delivery KPI counts `lost` only, because the two are not the
+  same event. **The price: full, decided by Javier.** The research ran and was
+  paid for; a shallower section is not a partial delivery. A report that LOST a
+  section is the case the manual-refund path exists for, and that path is
+  unchanged.
 - **N2 — Stripe clawback.** No handling for refunds or disputes: credits already
   granted stay granted. Policy, not a bug.
 - **N3 — PDFs rendered before `3f12880` are still fabricated in storage.**
