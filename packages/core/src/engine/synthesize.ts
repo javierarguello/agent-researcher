@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { BudgetExceededError, llmCost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage } from '../llm/provider.js';
+import { stripFenceMarker } from './prompt.js';
 
 export interface SynthesizeStructuredInput<T> {
   model: ResolvedModel;
@@ -112,7 +113,7 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
         const message = (err as Error).message;
         throw new StructuredOutputError(`Model did not return valid JSON: ${message}`, jsonFailureSignature(message));
       }
-      messages.push({ role: 'model', text: res.text });
+      messages.push({ role: 'model', text: stripFenceMarker(res.text) });
       messages.push({ role: 'user', text: `That was not valid JSON (${(err as Error).message}). Return ONLY the JSON object.` });
       continue;
     }
@@ -125,7 +126,7 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
       throw new StructuredOutputError(`Structured output failed schema validation: ${issues}`, schemaFailureSignature(result.error.issues));
     }
     const issues = result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
-    messages.push({ role: 'model', text: res.text });
+    messages.push({ role: 'model', text: stripFenceMarker(res.text) });
     messages.push({
       role: 'user',
       text: `The JSON did not match the required schema. Fix these problems and return the corrected JSON only:\n${issues}`,

@@ -344,33 +344,29 @@ const CURRENT_FINDINGS = {
  * "you are REWRITING these … NEVER drop an item" preamble. Built by string
  * replacement on today's prompt so the ONLY difference is that block.
  */
+/**
+ * Since M-A1 shipped, the enricher builder renders `current` through the same
+ * fenced `currentBlock` the producer path uses — the "fenced" arm IS today's
+ * prompt. Kept so the live A/B still runs (both arms identical = the control).
+ */
 function fencedEnricherPrompt(input: Parameters<typeof buildEnricherSynthPrompt>[0]): string {
-  const today = buildEnricherSynthPrompt(input);
-  const json = JSON.stringify(input.current, null, 2);
-  const oldBlock = `CURRENT VERSION of your sections (keep what is correct, fix gaps, add detail):\n"""\n${json}\n"""\n\n`;
-  expect(today).toContain(oldBlock);
-  const newBlock =
-    `THE CURRENT VERSION OF YOUR OWN SECTIONS — you are REWRITING these, and what you ` +
-    `return replaces them. Keep every entry that is already correct, improve what you can, and ` +
-    `NEVER drop an item because you have nothing to add to it:\n` +
-    untrusted(json) +
-    `\n\n`;
-  return today.replace(oldBlock, newBlock);
+  return buildEnricherSynthPrompt(input);
 }
 
 describe('3a · the enricher’s current block, today and fenced', () => {
-  it('today: `current` is inside triple quotes, whole; the label that vouches for it is "keep what is correct" and nothing more', () => {
+  it('the enricher’s `current` block is the producer’s `currentBlock`: whole, fenced, and told never to drop an item (before the fix: inside triple quotes with "keep what is correct" and nothing more)', () => {
     const p = buildEnricherSynthPrompt({ agent: refiner, brief: BRIEF, sections: [findingsSection], current: CURRENT_FINDINGS, evidence: [], extracted: [], lang: 'en' });
     for (const l of SIX_LISTINGS) expect(p).toContain(l.business);
-    expect(p).toContain('keep what is correct, fix gaps, add detail');
-    // Nothing tells the enricher not to drop an item — unlike `currentBlock` in the
-    // producer path. So the "delete on enrich" hazard is not created by the fence:
-    // it exists today, unfenced, with a weaker preamble.
-    expect(p).not.toMatch(/NEVER drop an item/);
+    // Mutation that reds this: render `current` raw again in buildEnricherSynthPrompt.
+    expect(p).toMatch(/NEVER drop an item/);
+    expect(p).not.toContain('"""');
+    expect((p.split(SOURCE_FENCE).length - 1) % 2).toBe(0);
+    const inside = p.split(SOURCE_FENCE).filter((_, i) => i % 2 === 1).join('\n');
+    expect(inside).toContain('Coral Way Coin Laundry');
   });
 
-  it('fenced (fix a): every listing still arrives, and the marker count stays even', () => {
-    const p = fencedEnricherPrompt({ agent: refiner, brief: BRIEF, sections: [findingsSection], current: CURRENT_FINDINGS, evidence: [], extracted: [], lang: 'en' });
+  it('every listing still arrives, and the marker count stays even; the current block sits BEFORE the dossier label', () => {
+    const p = buildEnricherSynthPrompt({ agent: refiner, brief: BRIEF, sections: [findingsSection], current: CURRENT_FINDINGS, evidence: [], extracted: [], lang: 'en' });
     for (const l of SIX_LISTINGS) expect(p).toContain(l.business);
     expect((p.split(SOURCE_FENCE).length - 1) % 2).toBe(0);
     // What changes for the model: its own sections now sit between the same
@@ -392,7 +388,7 @@ describe('3a · the enricher’s current block, today and fenced', () => {
     expect(inside).toContain('Coral Way Coin Laundry');
   });
 
-  it.fails('an enricher that returns fewer listings than it was handed DELETES them from the report, job green (fails today; the live 3B model did exactly this 5/5)', async () => {
+  it('an enricher that returns fewer listings than it was handed still REPLACES the section (a rewrite may drop a duplicate or a sold listing) — but the trace now says so, where an admin reads (before the fix: silent, job green)', async () => {
     // The test the task asked for: the harness's obedient mock returns lorem for
     // every write, so a deleting enricher is invisible to it. This mock plays a
     // scout that finds six listings and a refiner that hands back three — the
@@ -420,8 +416,15 @@ describe('3a · the enricher’s current block, today and fenced', () => {
     const listings = (out.report.findings as { listings: unknown[] }).listings;
     expect(out.trace.status).toBe('completed');
     expect(out.meta.sections ?? []).toEqual([]);
-    // Six went in; what comes out is what the buyer gets.
-    expect(listings.length).toBe(6);
+    // Six went in; three come out — a rewrite replaces, by design (a refusal would
+    // block the honest shrinks: dedup, sold listings, misleading charts)…
+    expect(listings.length).toBe(3);
+    // …and the admin can see it happened. Mutation that reds this: drop the shrink
+    // note in research-engine.ts (the `enriches` loop before Object.assign).
+    const refinerTrace = out.trace.agents.find((a) => a.id === 'refiner')!;
+    expect(refinerTrace.notes.some((n) => n.includes('rewrite of "findings.listings" returned 3 item(s) where the current version had 6'))).toBe(true);
+    // The analyst's six are still in the trace, recoverable.
+    expect(JSON.stringify(out.trace.agents.find((a) => a.id === 'scout')!.output)).toContain('Coral Way Coin Laundry');
   });
 });
 
@@ -473,10 +476,10 @@ describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () =>
     // eslint-disable-next-line no-console
     console.log(`context trim: ${total.toLocaleString('en-US')} chars → ${kept.toLocaleString('en-US')} kept (${((kept / total) * 100).toFixed(0)}%)`);
     expect(kept).toBeLessThan(41_000);
-    expect(p).toContain('This section is complete in the report, and the summary above covers it.');
+    expect(p).toContain('This section is complete in the report, and the briefings above cover it.');
   });
 
-  it('cuts at a character count, so the extract can end inside a figure or a URL — which the prompt then calls "exact"', () => {
+  it('cuts at a VALUE boundary, so the extract never ends inside a figure or a URL — which the prompt calls "exact" (before the fix: `"askingPrice":538` for $538,138, `https://example`)', () => {
     // 40,000 / 2 dependencies = 20,000 chars each. Two sections, the second one
     // large: its extract is JSON.slice(0, 20000) — wherever that lands.
     const ctx = { comps: bigSection(4, 'C'), deals: bigSection(400, 'D') };
@@ -489,7 +492,10 @@ describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () =>
     // kind of place it is: inside a URL. The directive two paragraphs down says
     // "cite evidence INLINE as Markdown links using the actual URLs" — and this
     // one is `https://example`.
-    expect(extract).toMatch(/https?:\/\/[^"]*$/);
+    // Mutation that reds this: `json.slice(0, share)` instead of `cutJson`.
+    expect(extract).not.toMatch(/https?:\/\/[^"]*$/);
+    expect(extract!.endsWith('}') || extract!.endsWith(',') || extract!.endsWith(']')).toBe(true);
+    expect(p).toContain(' … [cut]]');
     // Same mechanism, one dependency (share 40,000), content padded so the cut
     // lands inside a price: the model reads `"askingPrice":538` for a $538,138
     // listing, under the sentence "Use these for exact figures".
@@ -497,12 +503,13 @@ describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () =>
     const e2 = trimmedExtract(p2, 'deals')!;
     // eslint-disable-next-line no-console
     console.log(`…and with a 27-char pad: …${JSON.stringify(e2.slice(-30))}`);
-    expect(e2).toMatch(/"askingPrice":538$/);
+    expect(e2).not.toMatch(/"askingPrice":538$/);
+    expect(e2).not.toMatch(/\d$/);
     expect(JSON.stringify(bigSection(400, 'D', 27))).toContain('"askingPrice":538138');
     expect(p2).toContain('Use these for exact figures');
   });
 
-  it.fails('claims "the summary above covers it" when there is no summary above (fails today: no handoffs, note still points at one)', () => {
+  it('does not claim "the summary above covers it" when there is no summary above (before the fix it did, with no handoffs)', () => {
     // When does this happen? A dependency that degraded (no handoff written), a
     // resume from a checkpoint older than handoffs, or a model that returned an
     // empty briefing. The note is then a false statement in the highest-authority
@@ -512,6 +519,8 @@ describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () =>
     expect(p).toContain('[Trimmed to fit');
     expect(p).not.toContain('WHAT THE EARLIER STEPS REPORTED');
     expect(p).not.toContain('the summary above covers it');
+    expect(p).not.toContain('the briefings above cover it');
+    expect(p).toContain('This section is complete in the report. Extract:');
   });
 
   it('a handoff longer than 1,500 chars is cut mid-sentence and the cut is what every later step reads', async () => {
@@ -540,7 +549,7 @@ describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () =>
     expect(stored.endsWith('…')).toBe(true);
   });
 
-  it.fails('cuts a handoff by UTF-16 code unit, so a briefing whose 1,500th char is an emoji is stored with a lone surrogate (fails today)', async () => {
+  it('cuts a handoff by code point: a briefing whose 1,500th char is an emoji is stored whole (before the fix: a lone surrogate)', async () => {
     // Improbable in business prose, cheap to get right (`Array.from(text).slice`);
     // recorded because `slice` on model output is the kind of thing that only ever
     // fails in a language the tests do not write in.

@@ -567,6 +567,19 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
           let failure: Error | undefined;
           try {
             const { slice, handoff } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend, research, handoffs });
+            // A rewrite REPLACES the section. When it comes back with fewer items
+            // than it was handed, say so where an admin reads — a note, never a
+            // refusal: dropping a duplicate, a sold listing or a misleading chart is
+            // a rewrite doing its job, and the trace still holds the analyst's
+            // output. What this catches is the other case: a pass that came back
+            // shorter for no reason, delivered green (M-A1).
+            for (const key of agent.enriches ?? []) {
+              for (const [label, before, after] of arrayFields(key, report[key], slice[key])) {
+                if (after < before) {
+                  at.notes.push(`${new Date().toISOString()} rewrite of "${label}" returned ${after} item(s) where the current version had ${before}; the previous version is in the analyst's trace output.`);
+                }
+              }
+            }
             Object.assign(report, slice);
             if (handoff) handoffs[agent.id] = handoff;
             at.status = 'ok';
@@ -878,7 +891,8 @@ async function runAgent(ctx: {
         'A short briefing for the LATER steps that build on your work: what you found, the figures and ' +
           'names that matter, and anything they should not repeat or contradict. Written for a colleague ' +
           'who will not read your sections in full. Full sentences — not a list of links, not citations, ' +
-          'not headings. A briefing made of bare URLs tells the next step nothing.',
+          `not headings. A briefing made of bare URLs tells the next step nothing. Under ${MAX_HANDOFF_CHARS} ` +
+          'characters: anything past that is cut.',
       ),
   });
   const synthModel = resolveModel(agent.model ?? config.llm.defaultSynthModel);
@@ -980,7 +994,10 @@ async function runAgent(ctx: {
 function splitHandoff(value: Record<string, unknown>): { slice: Record<string, unknown>; handoff: string } {
   const { [HANDOFF_KEY]: handoff, ...slice } = value;
   const text = typeof handoff === 'string' ? handoff.trim() : '';
-  return { slice, handoff: text.length > MAX_HANDOFF_CHARS ? `${text.slice(0, MAX_HANDOFF_CHARS)}…` : text };
+  // By code point, not UTF-16 unit: a cut through an emoji left a lone surrogate
+  // in the checkpoint.
+  const chars = Array.from(text);
+  return { slice, handoff: chars.length > MAX_HANDOFF_CHARS ? `${chars.slice(0, MAX_HANDOFF_CHARS).join('')}…` : text };
 }
 
 // --- DAG ---------------------------------------------------------------------
@@ -1066,6 +1083,25 @@ function contextFor(
 }
 
 // --- utils -------------------------------------------------------------------
+
+/**
+ * The array-valued parts of a section, before and after a rewrite: the section
+ * itself if it is an array (`charts`, `shortlist`), and each array field one
+ * level down if it is an object (`findings.listings`). Deeper than that a rewrite
+ * is restructuring, not shrinking.
+ */
+function arrayFields(key: string, before: unknown, after: unknown): Array<[string, number, number]> {
+  if (Array.isArray(before) && Array.isArray(after)) return [[key, before.length, after.length]];
+  if (before && after && typeof before === 'object' && typeof after === 'object' && !Array.isArray(before) && !Array.isArray(after)) {
+    const out: Array<[string, number, number]> = [];
+    for (const [k, v] of Object.entries(before as Record<string, unknown>)) {
+      const w = (after as Record<string, unknown>)[k];
+      if (Array.isArray(v) && Array.isArray(w)) out.push([`${key}.${k}`, v.length, w.length]);
+    }
+    return out;
+  }
+  return [];
+}
 
 function pick(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};

@@ -314,7 +314,9 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     });
     if (res.usage) charge(llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
 
-    messages.push({ role: 'model', text: res.text, toolCalls: res.toolCalls });
+    // The model's own turn, back to it — the one other place text entered a prompt
+    // outside `untrusted()`. Its own authority, but the marker still must not ride.
+    messages.push({ role: 'model', text: stripFenceMarker(res.text), toolCalls: res.toolCalls });
 
     const planOnly = res.toolCalls.length > 0 && res.toolCalls.every((c) => c.name === 'update_plan');
     planOnlyTurns = planOnly ? planOnlyTurns + 1 : 0;

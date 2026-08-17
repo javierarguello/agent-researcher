@@ -50,7 +50,8 @@ function languageDirective(lang: Language): string {
 const MARKDOWN_DIRECTIVE =
   'FORMATTING: Every prose/string field is MARKDOWN. Use it — **emphasis**, bullet/numbered lists, ' +
   'short sub-headings — and cite evidence INLINE as Markdown links `[label](https://real-url)` using the ' +
-  'actual URLs from the evidence. Do not use bare `[S3]`/`[P2]` tags. Never invent facts or URLs; where ' +
+  'actual URLs from the evidence. No tables and no images: put comparisons in lists or in the structured ' +
+  'fields. Do not use bare `[S3]`/`[P2]` tags. Never invent facts or URLs; where ' +
   'evidence is missing, say so and (for numeric fields) use null.';
 
 /** Fallback depth directive when a caller does not pass one. */
@@ -381,8 +382,8 @@ function contextBlock(context: Record<string, unknown>, handoffs: Record<string,
       trimmed[key] =
         json && json.length > share
           ? `[Trimmed to fit: ${json.length.toLocaleString('en-US')} characters, of which the opening is ` +
-            `below. This section is complete in the report, and the summary above covers it. ` +
-            `Extract: ${json.slice(0, share)}]`
+            `below. This section is complete in the report${notes.length ? ', and the briefings above cover it' : ''}. ` +
+            `Extract: ${cutJson(json, share)} … [cut]]`
           : value;
     }
     // Fenced like the handoffs, and for the same reason: these values are model
@@ -396,6 +397,22 @@ function contextBlock(context: Record<string, unknown>, handoffs: Record<string,
       untrusted(JSON.stringify(trimmed, null, 2));
   }
   return out;
+}
+
+/**
+ * Cut a JSON string at a VALUE boundary, not a character count.
+ *
+ * `slice(0, share)` used to leave `"askingPrice":538` for a listing priced
+ * $538,138, and `"sourceUrl":"https://example` — under a heading that says "Use
+ * these for exact figures". The cut moves back to the last `,` or `}` before the
+ * budget, so the extract ends on a complete value; a value longer than the whole
+ * budget (one huge string) is cut where it was, and the `… [cut]` the caller
+ * appends says so either way.
+ */
+function cutJson(json: string, max: number): string {
+  const head = json.slice(0, max);
+  const at = Math.max(head.lastIndexOf(','), head.lastIndexOf('}'), head.lastIndexOf(']'));
+  return at > max / 2 ? head.slice(0, at) : head;
 }
 
 /**
@@ -530,9 +547,15 @@ export function buildEnricherSynthPrompt(input: {
   return (
     `Improve and enrich the sections below with the newly-gathered evidence. ${agent.objective}\n\n` +
     briefBlock(brief) +
-    `CURRENT VERSION of your sections (keep what is correct, fix gaps, add detail):\n"""\n` +
-    `${JSON.stringify(current, null, 2)}\n"""\n\n` +
-    `SECTION REQUIREMENTS:\n${sectionGuidance(sections)}\n\n` +
+    // The one builder that rendered model output — written after reading fetched
+    // pages — with no fence and no marker strip, inside a delimiter a page can
+    // type. `JSON.stringify` kept the triple quotes from being closed by accident;
+    // a marker in a section value still inverted the whole prompt (M-A1). Same
+    // block as the producer path now: whole, fenced, and told never to drop an
+    // item — this builder's preamble had lacked that sentence.
+    `SECTION REQUIREMENTS:\n${sectionGuidance(sections)}\n` +
+    currentBlock(current) +
+    `\n\n` +
     `EVIDENCE (original + your enrichment pass):\n${buildDossier(evidence, extracted, { fetched, touched, referenced: urlsIn(current) })}\n\n` +
     `${depthDirective} Your refined version must be clearly more detailed than the current one (unless depth ` +
     `is light).\n\n${MARKDOWN_DIRECTIVE}\n\n${languageDirective(lang)}\n\n` +

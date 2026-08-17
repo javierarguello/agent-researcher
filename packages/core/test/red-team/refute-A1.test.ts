@@ -75,10 +75,15 @@ describe('refute A1 · the production caller: which Florida agents reach buildEn
       console.log(`[${mode}] enricher-builder prompts: ${enricherPrompts.map((p) => p.agent).join(', ') || '(none)'}`);
       expect(by('market-refiner')[0]).toMatch(/^Improve and enrich/);
       expect(by('deep-dive-refiner')[0]).toMatch(/^Improve and enrich/);
-      // …and the current value really is in that block, unfenced (this is what A1 is about).
+      // …and the current value is in that block, FENCED (before M-A1 shipped it was
+      // the one unfenced block; mutation that reds this: render `current` raw again).
       const dive = by('deep-dive-refiner')[0]!;
-      const diveBlock = dive.slice(dive.indexOf('CURRENT VERSION of your sections'), dive.indexOf('SECTION REQUIREMENTS:'));
-      expect(diveBlock.split(SOURCE_FENCE).length - 1).toBe(0);
+      const from = dive.indexOf('THE CURRENT VERSION OF YOUR OWN SECTIONS');
+      expect(from).toBeGreaterThan(-1);
+      const diveBlock = dive.slice(from, dive.indexOf('EVIDENCE (original + your enrichment pass)'));
+      expect(diveBlock.split(SOURCE_FENCE).length - 1).toBe(2);
+      // (The scout's sentinel is not asserted here: the valuation-analyst enriches
+      // `deep_dives` before the refiner and the mock's rewrite replaces it.)
       expect(by('market-refiner')[0]).toContain(MARKET_SENTINEL);
       if (mode === 'comprehensive') {
         // chart-refiner is `role: 'synthesizer'` + `enriches: ['charts']`. It goes
@@ -143,18 +148,13 @@ const CURRENT = {
   },
 };
 
+/**
+ * Since M-A1 shipped, the enricher builder renders `current` through the same
+ * fenced `currentBlock` the producer path uses — the "fenced" arm IS today's
+ * prompt. Kept so the live A/B still runs (both arms identical = the control).
+ */
 function fencedEnricherPrompt(input: Parameters<typeof buildEnricherSynthPrompt>[0]): string {
-  const today = buildEnricherSynthPrompt(input);
-  const json = JSON.stringify(input.current, null, 2);
-  const oldBlock = `CURRENT VERSION of your sections (keep what is correct, fix gaps, add detail):\n"""\n${json}\n"""\n\n`;
-  expect(today).toContain(oldBlock);
-  const newBlock =
-    `THE CURRENT VERSION OF YOUR OWN SECTIONS — you are REWRITING these, and what you ` +
-    `return replaces them. Keep every entry that is already correct, improve what you can, and ` +
-    `NEVER drop an item because you have nothing to add to it:\n` +
-    untrusted(json) +
-    `\n\n`;
-  return today.replace(oldBlock, newBlock);
+  return buildEnricherSynthPrompt(input);
 }
 
 const FENCE_LOOSE = /[<≪＜]{2,3}\s*untrusted[\s\-‑–—_]*source[\s\-‑–—_]*content\s*[>≫＞]{2,3}/giu;
