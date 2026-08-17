@@ -190,11 +190,12 @@ The ceiling bounds the bill, not the waste inside it.
    finders, nine refuters; consolidated verdicts in `deep-review.md § "M step 2"`,
    raw reports in `m-red-team-reports/`, tests in `packages/core/test/red-team/`
    and `apps/*/test/red-team-*.tsx` (935 tests green, the `it.fails` are the
-   defects). Fixes: **not yet shipped** — seven P1 clusters, in order: C1 img
-   beacon, B1 own-first dossier, B2 plan breaker + stalled→budget + record stop,
-   C3 structured/localized progress, C5 PDF double-escape + list split, D1
-   gatheredAgentIds + failure signature + Gemini schema forwarding, chart-refiner
-   `current`. Then the P2 batch.
+   defects). Fixes: **all seven P1 clusters shipped 2026-08-17** — C1 img beacon
+   `ae9826b`, C5 PDF `b0178ce`, chart-refiner `a68d656`, B2 loop `805b49a`, B1
+   own-first dossier `1fa5d31`, C3 progress `9850bdf`, D1 write-failure multiplier
+   `6264887` (962 tests). Each revert-verified; the tests that pinned the old
+   behaviour now assert the new one and say what the old was. **The P2 batch is
+   open** (deep-review.md § "M step 2 › Downgraded").
 3. Ollama tier — used inline where the model was the mechanism (A2 variants
    0/12, A1 marker echo 0/3, A-legit imperatives 10 vs 9, B-legit handoffs); a
    frontier-tier pass is what would move A2 (and D1's trigger) either way.

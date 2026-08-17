@@ -977,6 +977,10 @@ per cluster, told to refute by default). Tests: `packages/core/test/red-team/`,
 rest pin the guards and the measurements. Mock tier throughout, Ollama
 (qwen2.5:3b) only where the model IS the mechanism, small N, stated as such.
 
+**Status 2026-08-17 (end of day): all seven P1 clusters CLOSED** — `ae9826b`
+(C1), `b0178ce` (C5), `a68d656` (chart-refiner), `805b49a` (B2), `1fa5d31` (B1),
+`9850bdf` (C3), `6264887` (D1); 962 tests green. The P2 batch below is open.
+
 **Verdict per surface, after refutation:** A fence — held (one unfenced path,
 P2); B loop — broken for RESOURCES, held for injection; C render — broken (one
 P1 exfil path, the rest hygiene); D cost — held by accident (the ceiling is 5–15×
@@ -1000,7 +1004,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
 
 ### Confirmed — P1, in fix order
 
-- **M‑C1 · A Markdown image is a tracking beacon in the web report.**
+- ~~**M‑C1 · A Markdown image is a tracking beacon in the web report.**~~ **Closed `ae9826b`** — `img: () => null` in the shared `MD` (element level, so protocol-relative and same-origin srcs die too), the PDF strips image syntax outright, the dead admin viewer is gone with its three deps.
   `ReportViewer.tsx:115` overrides only `a`; react‑markdown renders `img` for
   `https:`, protocol‑relative and same‑origin `src`. Reproduced on the real
   `JobView` and `ReadReport` (the share link, and the admin's only report view):
@@ -1009,7 +1013,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   produces images (directive invites links; charts are ChartSpec). Fix:
   `img: () => null` in the shared `MD` — element level, not `urlTransform`. Also:
   `apps/admin/src/components/ReportViewer.tsx` is imported by nothing — delete.
-- **M‑B1 · The dossier renders the first 48/14 of a store shared by ten agents,
+- ~~**M‑B1 · The dossier renders the first 48/14 of a store shared by ten agents,~~ **Closed `1fa5d31`** — `rankEvidence`: fetched → touched → referenced (`urlsIn` of the sections handed to the writer) → rest, the foreign tier diversity-first (3 pages / 8 snippets per host, then whatever remains — the cap decides order, never volume); `gather` collects the loop's URLs, the engine threads them per agent into both builders. **Original text:** The dossier renders the first 48/14 of a store shared by ten agents,
   in insertion order.** Snippet half is the production defect (above); page half
   is latent (binds when producers fetch as the prompt asks); the attacker crowd is
   the same mechanism from outside. Fix: OWN‑FIRST by URL (every result returned
@@ -1017,7 +1021,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   `current`/context JSON handed to the writer, then the rest — per‑domain cap in
   the foreign tier only; thread it into producer AND enricher builders. Do not
   raise 14/48 to hide the ordering.
-- **M‑B2 · Free calls and the flat iteration bound.** Real plan‑loops (above);
+- ~~**M‑B2 · Free calls and the flat iteration bound.**~~ **Closed `805b49a`** — consecutive-PLAN breaker (nudge + `forceTools` lifted on the 3rd, loop ends on the 4th, `stalled`, said in a note), `stalled && turnsUsed >= maxTurns → 'budget'`, `gatherStop` on the trace + a closing note, ONE plan note per turn, the same cached page returned in full at most twice, superseded plans stubbed. `maxIterations` unchanged. **Original text:** Real plan‑loops (above);
   the honest deal‑scout that spent 24/24 ends at the bound and is `stalled` =
   unreusable, so one flaky write re‑buys the job's most expensive loop ($1.19).
   Fix: consecutive‑PLAN breaker (≥3–4; honest max is 2 — a "free call" breaker
@@ -1029,7 +1033,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   note eviction (needs ≥6 plans/turn sustained; ≤~150 fit in 4,096 tokens) and
   the 12.6× request growth (smaller than the honest re‑planner at the same
   bound) — are P2.
-- **M‑C3 · The buyer's progress line.** `Searched: <query>` and every other note
+- ~~**M‑C3 · The buyer's progress line.**~~ **Closed `9850bdf`** — progress carries a `kind` (closed vocabulary) and, for a search only, `detail`; the API hands non-admins `{phase, kind, detail?, updatedAt}` (never `message`; detail clipped to 120); the SPA localizes the kind from a `Record<ProgressKind, Record<Lang,string>>` and shows a query quoted, as a query. **Original text:** `Searched: <query>` and every other note
   reach `JobView.tsx:76` raw: 17/17 English for a `language: es` buyer including
   the mode key, agent ids and section keys (`Writing (market_overview, …)`); an
   attacker's query lands verbatim and unbounded (a >400‑char query Brave 422s
@@ -1040,7 +1044,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   with its i18n; `detail` only for `searched`, clipped ~120 (real max 118);
   nothing for `plan`. Must cover the engine‑level emits too
   (`research-engine.ts:381/386/504/507/565/619/645`).
-- **M‑C5 · PDF `mdInline` double‑escapes every prose URL with a query string**
+- ~~**M‑C5 · PDF `mdInline` double‑escapes every prose URL with a query string**~~ **Closed `b0178ce`** — `esc(u)` → `u`; balanced parens and `mailto:` in the link rule; lists as RUNS inside a block (`<ol start=N>`); tables left to the P2 batch. **Original text:** double‑escapes every prose URL with a query string
   (`report-html.ts:123-124`: `esc(s)` then `esc(u)` on the captured, already
   escaped URL). Observed in BOTH real July reports (5 and 2 links); the PDF
   carries clickable `/URI` annotations (1,114), so the click sends a parameter
@@ -1049,7 +1053,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   one run‑on paragraph — split the block at the first list line (the finder's
   `<ol>` branch alone misses the real shape).
 - ~~**M‑D1 · A write that fails identically is retried 3 attempts × 8 dispatches
-  and the loop is re‑bought on every dispatch**~~ **Closed `(this commit)`.**
+  and the loop is re‑bought on every dispatch**~~ **Closed `6264887`.**
   Three changes, all in `packages/core`. (1) `Checkpoint.gatheredAgentIds`,
   written by `snapshot()` next to `doneAgentIds` from the same `gatherCompleted`
   rule (`done|budget` with turns > 0 — a loop cut off, or one that threw, is
@@ -1092,7 +1096,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   `minItems/maxItems/minimum/maximum` in `jsonSchemaToGemini` (`@google/genai`
   1.52 supports them) — 14 of ~17 Zod‑only Florida constraints reach the decoder.
   Do not touch approve (an approved job at dispatch 8 would finalize degraded).
-- **NEW · `chart-refiner` never sees the charts it refines.** It is a
+- ~~**NEW · `chart-refiner` never sees the charts it refines.**~~ **Closed `a68d656`** — `buildSynthesizerPrompt` takes `current` and renders it through `currentBlock`; the engine passes `context.current`. **Original text:** It is a
   `synthesizer` with `enriches: ['charts']`; `buildSynthesizerPrompt` has no
   `current` input and `contextFor()` removes owned keys — so on EVERY
   comprehensive run its "refine and complete" pass is written blind and
