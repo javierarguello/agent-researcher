@@ -82,6 +82,17 @@ export interface GatherInput {
   /** Records LLM and search spend as it happens, so a throw mid-loop cannot
    *  make the turns already paid for invisible. */
   spend?: CostSink;
+  /**
+   * Every URL THIS loop saw — each result a search returned to it, each page it
+   * fetched, each cached page it re-read. Added to as the loop runs (so a throw
+   * keeps what was seen), and what the write-up renders FIRST: the shared store
+   * is filled in insertion order by whichever agent ran first, and the dossier
+   * used to take the first 48 snippets / 14 pages of it — so every producer past
+   * the third wrote from other agents' evidence and never saw its own.
+   */
+  touched?: Set<string>;
+  /** Of those, the pages this loop FETCHED or re-read from the cache — its strongest claim. */
+  fetched?: Set<string>;
   model: ResolvedModel;
   system: string;
   messages: LlmMessage[];
@@ -229,6 +240,8 @@ function untrustedResult(r: SearchResult): SearchResult {
 
 export async function gather(input: GatherInput): Promise<GatherResult> {
   const { model, system, messages, maxTurns, evidence, onNote } = input;
+  const touched = input.touched ?? new Set<string>();
+  const fetched = input.fetched ?? new Set<string>();
   let plan: PlanStep[] = [];
   let turnsUsed = 0;
   let nudges = 0;
@@ -378,6 +391,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           const results = await searchWeb(query);
           searchFailures = 0;
           for (const r of results) {
+            if (r.url) touched.add(r.url);
             if (r.url && !evidence.seenUrls.has(r.url)) {
               evidence.seenUrls.add(r.url);
               evidence.sources.push(r);
@@ -418,6 +432,8 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
         }
         // Reuse a page already fetched by another agent — no budget spent.
         if (url && evidence.extractedUrls.has(url)) {
+          touched.add(url);
+          fetched.add(url);
           const reads = (cachedReads.get(url) ?? 0) + 1;
           cachedReads.set(url, reads);
           const cached = evidence.extracted.find((p) => p.url === url);
@@ -444,6 +460,10 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
         if (url && canExtractPages()) charge(searchCost(1, searchCostPerCall('extract')));
         const pages = await extractPages(url ? [url] : []);
         for (const p of pages) {
+          if (p.ok && p.content) {
+            touched.add(p.url);
+            fetched.add(p.url);
+          }
           if (p.ok && p.content && !evidence.extractedUrls.has(p.url)) {
             evidence.extractedUrls.add(p.url);
             evidence.extracted.push(p);

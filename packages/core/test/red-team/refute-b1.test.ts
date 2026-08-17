@@ -117,7 +117,7 @@ class Searcher implements LlmProvider {
 }
 
 describeMock('B1 refute · the SNIPPET half at production density (5 fresh results per query)', () => {
-  it('a wave-2 producer that searched 3× and fetched 1 page: its page renders, NONE of its 15 own results renders as [S] — the store head (wave-1) fills all 48', async () => {
+  it('a wave-2 producer that searched 3× and fetched 1 page: its page AND all 15 of its own results render, first (before the fix: NONE of the 15 — the store head, wave 1, filled all 48)', async () => {
     restore = __setExtraPages(LOTS);
     const model = new Searcher();
     __setProviderForTests('gemini-vertex', model);
@@ -143,11 +143,12 @@ describeMock('B1 refute · the SNIPPET half at production density (5 fresh resul
     console.log(`valuation: ${own.length} own search results, ${ownVisible} rendered as [S] in its own writer; page fetched: ${model.fetchedBy.get('VALUATION')?.length}, rendered as [P]: ${val.pages.length}`);
     // Its ONE fetched page reaches its writer (store < 14) …
     expect(val.pages).toEqual(model.fetchedBy.get('VALUATION'));
-    // … and NOT ONE of the 15 results its 3 paid searches returned does: the [S]
-    // block is 48 wave-1 URLs, insertion order, and wave 2 starts at index 60.
-    // Mutation that reds this: render the loop's OWN results first in buildDossier.
-    expect(ownVisible).toBe(0);
-    expect(val.snippets.every((u) => (model.searchedBy.get('MARKET') ?? []).includes(u) || (model.searchedBy.get('COMPETITION') ?? []).includes(u))).toBe(true);
+    // … and so do all 15 results its 3 paid searches returned, as [S1]..[S15];
+    // the remaining 33 slots go to wave 1's results. Mutation that reds this:
+    // render `evidence.slice(0, MAX_SNIPPETS)` in store order (drop `rankEvidence`).
+    expect(ownVisible).toBe(15);
+    expect(val.snippets.slice(0, 15).every((u) => own.includes(u))).toBe(true);
+    expect(val.snippets.slice(15).every((u) => (model.searchedBy.get('MARKET') ?? []).includes(u) || (model.searchedBy.get('COMPETITION') ?? []).includes(u))).toBe(true);
   });
 });
 

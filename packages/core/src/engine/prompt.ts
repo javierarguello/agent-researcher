@@ -154,11 +154,109 @@ export function stripFenceMarker(text: string): string {
  * read like an instruction from us. This is the front door. The handoff block below
  * is how one such page reaches agents that never fetched it.
  */
-function buildDossier(evidence: SearchResult[], extracted: ExtractedPage[]): string {
-  const snippets = evidence.length
-    ? evidence.slice(0, MAX_SNIPPETS).map((r, i) => `[S${i + 1}] ${r.title}\n    URL: ${r.url}\n    ${r.snippet}`).join('\n\n')
+/**
+ * Which of a shared store's evidence THIS writer gets to see.
+ *
+ * `touched` is what the writer's own research loop saw (results returned to it,
+ * pages it fetched or re-read); `referenced` is every URL in the sections it is
+ * handed to rewrite or build on (a shortlist's `sourceUrl`s, say). Both are
+ * optional: with neither, the store order stands.
+ */
+export interface EvidencePreference {
+  /** Pages this writer's loop fetched or re-read itself — first. */
+  fetched?: ReadonlySet<string>;
+  /** Everything its loop was shown, results included — second. A result URL a peer
+   *  fetched earlier is "touched" too, and store order would put that peer's page
+   *  ahead of the writer's own fetches; hence the split. */
+  touched?: ReadonlySet<string>;
+  referenced?: ReadonlySet<string>;
+}
+
+/**
+ * How many pages / snippets from ONE domain the FOREIGN tier may contribute.
+ *
+ * Only the third tier is capped: an honest scout keeps every listing it fetched
+ * from one marketplace, and the sections it is rewriting keep their sources. What
+ * the cap bounds is the evidence a writer never asked for — where a farm of pages
+ * from one host, fetched by a steered peer, used to fill everyone's dossier.
+ */
+const FOREIGN_PER_DOMAIN_PAGES = 3;
+const FOREIGN_PER_DOMAIN_SNIPPETS = 8;
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/** URLs that appear anywhere in a value — the sections a writer is handed. */
+export function urlsIn(value: unknown): Set<string> {
+  const out = new Set<string>();
+  const text = value === undefined ? '' : JSON.stringify(value);
+  // A URL in prose ends with the sentence's punctuation more often than not.
+  for (const m of text.matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) out.add(m[0].replace(/[.,;:!?]+$/, ''));
+  return out;
+}
+
+/**
+ * Own first, then referenced, then the rest — each tier in store order, the caps
+ * unchanged, the per-domain cap on the last tier only.
+ *
+ * The store is shared by every agent and filled in insertion order, and the
+ * dossier rendered its first 48 snippets / 14 pages. Measured on the two real
+ * July runs: wave 1 consumed the 48 in six searches, so every wave-2/3 producer —
+ * and the deal-scout building the shortlist — wrote blind to the results its own
+ * loop paid for (~22 marketplace listings, ~$0.22 of $0.88 search spend). From
+ * outside it is the same mechanism: one steered scout floods the store first and
+ * an honest peer's own fetched page is in the checkpoint but not in its prompt.
+ * "Most recent first" would not restore the refiner's listing pages (a cached
+ * hit does not re-append); the sections it is handed are how it finds them.
+ */
+export function rankEvidence<T extends { url: string }>(items: T[], max: number, perDomain: number, prefer?: EvidencePreference): T[] {
+  const fetched: T[] = [];
+  const touched: T[] = [];
+  const referenced: T[] = [];
+  const rest: T[] = [];
+  for (const it of items) {
+    if (prefer?.fetched?.has(it.url)) fetched.push(it);
+    else if (prefer?.touched?.has(it.url)) touched.push(it);
+    else if (prefer?.referenced?.has(it.url)) referenced.push(it);
+    else rest.push(it);
+  }
+  const out = [...fetched, ...touched, ...referenced].slice(0, max);
+  // The foreign tier, diversity first: up to `perDomain` per host in store order,
+  // then — only if slots remain — the rest of it in store order. The cap decides
+  // ORDER, never volume: a dossier is as full as it was, so a store that is
+  // legitimately 90% one marketplace still fills 48, while a farm of one host can
+  // no longer push every other host out of the first pass.
+  const perHost = new Map<string, number>();
+  const deferred: T[] = [];
+  for (const it of rest) {
+    if (out.length >= max) break;
+    const host = hostOf(it.url);
+    const n = perHost.get(host) ?? 0;
+    if (n >= perDomain) {
+      deferred.push(it);
+      continue;
+    }
+    perHost.set(host, n + 1);
+    out.push(it);
+  }
+  for (const it of deferred) {
+    if (out.length >= max) break;
+    out.push(it);
+  }
+  return out;
+}
+
+function buildDossier(evidence: SearchResult[], extracted: ExtractedPage[], prefer?: EvidencePreference): string {
+  const ranked = rankEvidence(evidence, MAX_SNIPPETS, FOREIGN_PER_DOMAIN_SNIPPETS, prefer);
+  const snippets = ranked.length
+    ? ranked.map((r, i) => `[S${i + 1}] ${r.title}\n    URL: ${r.url}\n    ${r.snippet}`).join('\n\n')
     : '(No search snippets were gathered.)';
-  const pages = extracted.filter((p) => p.ok && p.content).slice(0, MAX_PAGES);
+  const pages = rankEvidence(extracted.filter((p) => p.ok && p.content), MAX_PAGES, FOREIGN_PER_DOMAIN_PAGES, prefer);
   const fullPages = pages.length
     ? pages.map((p, i) => `[P${i + 1}] Full page content — ${p.url}\n${p.content}`).join('\n\n---\n\n')
     : '(No full pages were fetched.)';
@@ -387,15 +485,18 @@ export function buildProducerSynthPrompt(input: {
   handoffs?: Record<string, string>;
   /** Sections this agent already owns and will rewrite. Passed whole, never trimmed. */
   current?: Record<string, unknown>;
+  /** URLs this agent's own research loop saw / fetched — rendered first in the dossier. */
+  touched?: ReadonlySet<string>;
+  fetched?: ReadonlySet<string>;
   lang: Language;
   depthDirective?: string;
 }): string {
-  const { agent, brief, sections, evidence, extracted, context, lang, handoffs = {}, current = {} } = input;
+  const { agent, brief, sections, evidence, extracted, context, lang, handoffs = {}, current = {}, touched, fetched } = input;
   const depthDirective = input.depthDirective ?? DEFAULT_DEPTH_DIRECTIVE;
   const dossier =
     !evidence.length && !extracted.some((p) => p.ok && p.content)
       ? '(No web evidence was gathered. State this limitation in your sections; do not invent listings or figures.)'
-      : buildDossier(evidence, extracted);
+      : buildDossier(evidence, extracted, { fetched, touched, referenced: urlsIn({ current, context }) });
   return (
     `Write your assigned report sections as a single JSON object. ${agent.objective}\n\n` +
     briefBlock(brief) +
@@ -418,10 +519,13 @@ export function buildEnricherSynthPrompt(input: {
   current: Record<string, unknown>;
   evidence: SearchResult[];
   extracted: ExtractedPage[];
+  /** URLs this agent's own research loop saw / fetched — rendered first in the dossier. */
+  touched?: ReadonlySet<string>;
+  fetched?: ReadonlySet<string>;
   lang: Language;
   depthDirective?: string;
 }): string {
-  const { agent, brief, sections, current, evidence, extracted, lang } = input;
+  const { agent, brief, sections, current, evidence, extracted, lang, touched, fetched } = input;
   const depthDirective = input.depthDirective ?? DEFAULT_DEPTH_DIRECTIVE;
   return (
     `Improve and enrich the sections below with the newly-gathered evidence. ${agent.objective}\n\n` +
@@ -429,7 +533,7 @@ export function buildEnricherSynthPrompt(input: {
     `CURRENT VERSION of your sections (keep what is correct, fix gaps, add detail):\n"""\n` +
     `${JSON.stringify(current, null, 2)}\n"""\n\n` +
     `SECTION REQUIREMENTS:\n${sectionGuidance(sections)}\n\n` +
-    `EVIDENCE (original + your enrichment pass):\n${buildDossier(evidence, extracted)}\n\n` +
+    `EVIDENCE (original + your enrichment pass):\n${buildDossier(evidence, extracted, { fetched, touched, referenced: urlsIn(current) })}\n\n` +
     `${depthDirective} Your refined version must be clearly more detailed than the current one (unless depth ` +
     `is light).\n\n${MARKDOWN_DIRECTIVE}\n\n${languageDirective(lang)}\n\n` +
     `Return ONLY the improved JSON object for these sections — no preamble, no code fences.`

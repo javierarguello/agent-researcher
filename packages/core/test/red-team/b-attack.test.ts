@@ -115,7 +115,7 @@ function crowdFarm(): { lead: Page; farm: Page[]; urls: string[] } {
 }
 
 describe('F1 · a poisoned scout crowds a peer producer out of the shared evidence store', () => {
-  it('starves the peer of the honest page it fetched itself (crowded past MAX_PAGES=14)', async () => {
+  it('a poisoned scout that floods the store no longer starves the peer: the peer’s own fetched page renders FIRST in its dossier; the farm fills what is left (before the fix: crowded past MAX_PAGES=14)', async () => {
     const { lead, farm, urls } = crowdFarm();
     const floodPayload: Payload = {
       id: 'crowd-flood',
@@ -159,18 +159,23 @@ describe('F1 · a poisoned scout crowds a peer producer out of the shared eviden
     );
     expect(peerWrite, 'peer never reached a writing prompt').toBeTruthy();
     const dossier = peerWrite!.body;
-    // Pins current behaviour: the attacker pages ARE in the peer dossier, and the
-    // honest page (present in the store) is NOT — crowded past MAX_PAGES=14.
-    expect(dossier, 'attacker pages missing from the peer dossier').toMatch(/PZ-CROWD-PART-\d+/);
+    // Own-first: the honest page the peer fetched is in its dossier, as [P1].
+    // The attacker's farm still fills the remaining slots — evidence is evidence,
+    // and the per-domain cap decides order, not volume (with a second host in the
+    // store, its pages would come before the farm's fourth). Mutation that reds
+    // this: render `extracted.slice(0, MAX_PAGES)` in store order again (drop
+    // `rankEvidence`).
     expect(stored).toContain(HONEST_MARK);
-    expect(dossier.includes(HONEST_MARK), 'honest page reached the dossier — the crowd defect is gone').toBe(false);
+    expect(dossier).toContain(HONEST_MARK);
+    expect(dossier).toMatch(new RegExp(`\\[P1\\] Full page content — ${HONEST_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    expect((dossier.match(/PZ-CROWD-PART-\d+/g) ?? []).length).toBeGreaterThan(0);
+    expect((dossier.match(/\[P\d+\] Full page content/g) ?? []).length).toBeLessThanOrEqual(14);
   });
 
-  // DEFECT — fails today. `buildDossier` renders the FIRST 14 pages of the shared
-  // store in INSERTION order, so a scout that fetched 15+ attacker pages first buries
-  // the honest page a peer fetched itself. The desired invariant (a peer sees the
-  // evidence it paid to gather) is asserted here and does not hold today.
-  it.fails('a peer producer should see the honest page it fetched — today ~17 attacker pages bury it past MAX_PAGES=14', async () => {
+  // FIXED. `buildDossier` used to render the FIRST 14 pages of the shared store in
+  // INSERTION order, so a scout that fetched 15+ attacker pages first buried the
+  // honest page a peer fetched itself. A peer now sees the evidence it paid for.
+  it('a peer producer sees the honest page it fetched (before the fix ~17 attacker pages buried it past MAX_PAGES=14)', async () => {
     const { lead, farm, urls } = crowdFarm();
     const floodPayload: Payload = {
       id: 'crowd-flood-defect',
@@ -193,7 +198,7 @@ describe('F1 · a poisoned scout crowds a peer producer out of the shared eviden
     const peerWrite = mock.seen.find(
       (s: SeenPrompt) => s.kind === 'structured' && s.body.startsWith('Write your assigned report sections') && s.body.includes('PEER-HONEST'),
     )!;
-    expect(peerWrite.body).toContain(HONEST_MARK); // desired; false today → it.fails is green
+    expect(peerWrite.body).toContain(HONEST_MARK);
   });
 
   it('measures the attacker share of the buyer-facing Sources (all sources, unsliced)', async () => {

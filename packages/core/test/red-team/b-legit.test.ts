@@ -425,8 +425,8 @@ class FloridaHonest implements LlmProvider {
 }
 
 describeMock('3 · the dossier renders the FIRST 48 snippets / 14 pages of a SHARED store', () => {
-  it.fails(
-    'every Florida producer’s own fetched pages reach its own writing prompt — today: past 14 pages in the store, a fetch is paid for and never rendered to anyone',
+  it(
+    'every Florida producer’s own fetched pages and own search results reach its own writing prompt (before the fix: past 14 pages / 48 snippets in the store, a fetch or search was paid for and never rendered to the agent that made it)',
     { timeout: 60_000 },
     async () => {
       restore = __setExtraPages(HONEST_LOTS);
@@ -467,7 +467,10 @@ describeMock('3 · the dossier renders the FIRST 48 snippets / 14 pages of a SHA
       // Store totals, for the denominator: what the job bought vs what any writer can see.
       // eslint-disable-next-line no-console
       console.log(`store: ${out.checkpoint.extracted?.length ?? 0} pages, ${out.sources.length} sources; a dossier shows at most 14 / 48`);
+      // Mutation that reds this: render the store in insertion order (drop `rankEvidence`).
       expect(allVisible).toBe(true);
+      // …and the snippet half too: every own result URL is in the own dossier.
+      expect(rows.every((r) => r['own snippets'] === r['own snippets in own dossier'])).toBe(true);
     },
   );
 });

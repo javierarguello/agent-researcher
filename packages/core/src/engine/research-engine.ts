@@ -442,7 +442,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       // already paid for and still sitting in the shared store. Set only when
       // `gather` RETURNS with turns, so a failure inside the loop still re-runs it
       // and an empty pass gets one more go (C2).
-      const research = { done: false };
+      const research = { done: false, touched: new Set<string>(), fetched: new Set<string>() };
 
       // In-run retries with exponential backoff — keep trying the step.
       for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
@@ -694,7 +694,7 @@ async function runAgent(ctx: {
    *  attempt's spend is still known to the caller. */
   spend: CostSink;
   /** Cross-attempt state for THIS agent: has its research loop already run? */
-  research: { done: boolean };
+  research: { done: boolean; touched: Set<string>; fetched: Set<string> };
   /** What every finished agent reported, keyed by agent id. */
   handoffs: Record<string, string>;
   // Returns the slice only. Cost lives in the sink, read by the caller on BOTH
@@ -744,6 +744,8 @@ async function runAgent(ctx: {
       await note(`Researching (${owned.join(', ')}).`);
       const gres = await gather({
         spend: ctx.spend,
+        touched: ctx.research.touched,
+        fetched: ctx.research.fetched,
         model: gatherModel,
         system,
         messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, handoffs: context.handoffs, current: context.current, sites }) }],
@@ -780,6 +782,8 @@ async function runAgent(ctx: {
             current: pick(report, owned),
             evidence: evidence.sources,
             extracted: evidence.extracted,
+            touched: ctx.research.touched,
+            fetched: ctx.research.fetched,
             lang: language,
             depthDirective,
           })
@@ -792,6 +796,8 @@ async function runAgent(ctx: {
             context: context.sections,
             handoffs: context.handoffs,
             current: context.current,
+            touched: ctx.research.touched,
+            fetched: ctx.research.fetched,
             lang: language,
             depthDirective,
           });
