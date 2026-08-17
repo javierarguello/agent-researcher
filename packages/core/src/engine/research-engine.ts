@@ -793,7 +793,7 @@ async function runAgent(ctx: {
 
   // synthesizer — compose from upstream only.
   await note(`Composing (${owned.join(', ')}).`);
-  const text = buildSynthesizerPrompt({ agent, brief, sections, context: context.sections, handoffs: context.handoffs, lang: language, depthDirective });
+  const text = buildSynthesizerPrompt({ agent, brief, sections, context: context.sections, handoffs: context.handoffs, current: context.current, lang: language, depthDirective });
   const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
   return splitHandoff(sres.value as Record<string, unknown>);
 }

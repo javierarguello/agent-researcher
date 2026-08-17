@@ -35,7 +35,7 @@ afterEach(() => {
 // ============================================================================
 
 describe('refute A1 · the production caller: which Florida agents reach buildEnricherSynthPrompt', () => {
-  it('market-refiner and deep-dive-refiner take the enricher builder in both modes; chart-refiner (a synthesizer) never does — and never sees the current charts at all', async () => {
+  it('market-refiner and deep-dive-refiner take the enricher builder in both modes; chart-refiner (a synthesizer) never does — and now sees the current charts, whole and fenced', async () => {
     const florida = getTemplate('florida-business-for-sale')!;
     const CHART_SENTINEL = 'PZ-CHART-FROM-ANALYST';
     const MARKET_SENTINEL = 'PZ-MARKET-FROM-ANALYST';
@@ -82,19 +82,31 @@ describe('refute A1 · the production caller: which Florida agents reach buildEn
       expect(by('market-refiner')[0]).toContain(MARKET_SENTINEL);
       if (mode === 'comprehensive') {
         // chart-refiner is `role: 'synthesizer'` + `enriches: ['charts']`. It goes
-        // through buildSynthesizerPrompt, which has no `current` input, and
-        // contextFor() removes `charts` from its context because it OWNS it. So it
-        // rewrites the charts section without ever being shown the current charts.
+        // through buildSynthesizerPrompt, and contextFor() removes `charts` from
+        // its read-only context because it OWNS it. Before the fix the builder had
+        // no `current` input, so the "refine and complete the charts" pass was
+        // written without ever seeing the current charts, and its output replaced
+        // the analyst's wholesale on every comprehensive run.
         // Non-vacuous: the analyst DID write the sentinel (it is in its trace output)…
         const analyst = out.trace.agents.find((a) => a.id === 'chart-analyst')!;
         expect(JSON.stringify(analyst.output)).toContain(CHART_SENTINEL);
-        // …and the refiner's own output replaced it wholesale in the report.
+        // …and the refiner's own (mock) output replaces it in the report, as a
+        // rewrite does — which is exactly why it has to be SHOWN what it replaces.
         expect(JSON.stringify(out.report.charts)).not.toContain(CHART_SENTINEL);
         const chart = by('chart-refiner')[0]!;
         expect(chart).toMatch(/^Compose your assigned/);
-        expect(chart).not.toContain(CHART_SENTINEL);
-        expect(chart).not.toContain('CURRENT VERSION');
-        expect(chart).not.toContain('THE CURRENT VERSION OF YOUR OWN SECTIONS');
+        // Mutation that reds this: drop `current: context.current` from the
+        // synthesizer call in research-engine.ts, or `currentBlock(current)` from
+        // buildSynthesizerPrompt.
+        expect(chart).toContain('THE CURRENT VERSION OF YOUR OWN SECTIONS');
+        expect(chart).toContain(CHART_SENTINEL);
+        // …whole (the analyst's chart is there as JSON), and inside the fence.
+        const from = chart.indexOf('THE CURRENT VERSION OF YOUR OWN SECTIONS');
+        const next = [chart.indexOf('WHAT THE EARLIER STEPS REPORTED'), chart.indexOf('SECTIONS ALREADY PRODUCED')].filter((i) => i > from);
+        const block = chart.slice(from, Math.min(...next));
+        expect(block).toContain(`"title": "${CHART_SENTINEL}"`);
+        expect(block.split(SOURCE_FENCE).length - 1).toBe(2);
+        expect((chart.split(SOURCE_FENCE).length - 1) % 2).toBe(0);
         expect(enricherPrompts.map((p) => p.agent).sort()).toEqual(['deep-dive-refiner', 'market-refiner']);
       } else {
         expect(enricherPrompts.map((p) => p.agent).sort()).toEqual(['deep-dive-refiner', 'market-refiner']);

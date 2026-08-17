@@ -444,16 +444,28 @@ export function buildSynthesizerPrompt(input: {
   sections: ReportSection[];
   context: Record<string, unknown>;
   handoffs?: Record<string, string>;
+  /**
+   * Sections this agent already owns and will rewrite — a synthesizer that
+   * `enriches` a key produced upstream. Passed whole, never trimmed.
+   *
+   * It used to be absent, and the flagship's `chart-refiner` (a synthesizer with
+   * `enriches: ['charts']`) is why that mattered: `contextFor()` removes owned
+   * keys from the read-only context, so the "refine and complete the charts" pass
+   * was written without ever being shown the current charts, and its output
+   * replaced the chart-analyst's wholesale on every comprehensive run.
+   */
+  current?: Record<string, unknown>;
   lang: Language;
   depthDirective?: string;
 }): string {
-  const { agent, brief, sections, context, lang, handoffs = {} } = input;
+  const { agent, brief, sections, context, lang, handoffs = {}, current = {} } = input;
   const depthDirective = input.depthDirective ?? DEFAULT_DEPTH_DIRECTIVE;
   return (
     `Compose your assigned report sections as a single JSON object, based ONLY on the brief and the ` +
     `already-produced sections below. ${agent.objective}\n\n` +
     briefBlock(brief) +
     `YOUR SECTIONS (exact top-level JSON keys, matching the schema):\n${sectionGuidance(sections)}\n` +
+    currentBlock(current) +
     contextBlock(context, handoffs) +
     `\n\n${depthDirective}\n\n${MARKDOWN_DIRECTIVE}\n\n${languageDirective(lang)}\n\n` +
     `Do not introduce facts or figures absent from the context. Return ONLY the JSON object — no preamble, ` +
