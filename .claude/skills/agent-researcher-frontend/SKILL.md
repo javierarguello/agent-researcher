@@ -61,7 +61,7 @@ translation fall back to English. `manifest.lang` echoes the resolved language.
     },
     "ranges":   [{ "label": "Asking price", "minKey": "askingPriceMin", "maxKey": "askingPriceMax",
                    "min": 0, "max": 5000000, "step": 25000, "prefix": "$" }],  // render one slider
-    "advanced": ["keywords", "preferredSources", "instructions"],             // collapse these
+    "advanced": ["keywords"],                                                 // collapse these
     "hidden":   ["directives"]                                                // skip in the generic form
   },
   "directives": [                                       // structured preferences (localized, closed sets)
@@ -90,7 +90,6 @@ Walk `paramsSchema.properties`; pick a control per property (an `enum` wins):
 | `type: integer`/`number` | Number input (respect `minimum`/`maximum`) |
 | `type: array` (string items) | Tags input, free entry + `suggestions`, cap at `maxItems` / item `maxLength` |
 | `type: string` with `suggestions` | Autocomplete (type **or** pick) |
-| long `string` (e.g. `instructions`) | Textarea |
 | `type: string` | Text input (respect `maxLength`) |
 
 - **Seed** values from each property's `default`.
@@ -123,6 +122,26 @@ them, and do not offer a free-text alternative to a directive. That is the point
 them: a user says what to weigh, never how much the report must return.
 
 Reference implementation: `apps/admin/src/components/JsonSchemaForm.tsx` in the repo.
+
+### The user's own words — an input to the assist, never a param
+
+Offer a free-text box ("in your own words") if you like, but do NOT submit it as a
+param and do not expect a param for it: no model carries one, and nothing a user
+types ever reaches a research prompt. Send it to `POST /research/preflight` as
+`freeText` (≤ 2,000 chars) alongside `params`. It is moderated like any other free
+text, then the assisted layer proposes structured values from it — directive values
+from the manifest's vocabularies and a few `keywords` — returned as
+
+```jsonc
+"proposals":     { "directives": { "reasonForSale": ["owner_retiring"] }, "keywords": ["absentee owner"] },
+"proposedParams": { …params with corrections AND proposals applied, ready to submit… }
+```
+
+Show `proposals` as a diff using the manifest's labels (field label → option
+label; keywords as chips), let the user accept or decline, and submit
+`proposedParams` (or merge yourself) if they accept. A directive the user already
+set by hand is never overridden. Basic fields (industry, location, price bands…)
+are the user's to fill by hand; the text fills the advanced ones.
 
 ## Credits
 

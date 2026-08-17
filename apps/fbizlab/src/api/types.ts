@@ -38,7 +38,6 @@ export interface TemplateManifest {
   /** The param key directive values go under (present iff `directives` is). */
   directivesKey?: string;
   /** Which param carries the buyer's free-text instructions, if any. */
-  instructionsField?: string;
   /** ISO 4217 the figures in this model's reports are in. */
   currency?: string;
   /** What this model summarises on the report's snapshot. */

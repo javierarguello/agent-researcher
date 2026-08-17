@@ -152,7 +152,6 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     // one field differently (a textarea with a minimum, not a line input) and to
     // keep it out of anything that prints the request back — the PDF's mandate
     // table excluded the literal name `instructions`, which is Florida's.
-    ...(t.instructionsField ? { instructionsField: t.instructionsField } : {}),
     currency: t.currency ?? 'USD',
     ...(t.cover ? { cover: t.cover } : {}),
     // The cover's labels, resolved to the language this manifest is ACTUALLY in.

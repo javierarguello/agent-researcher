@@ -34,7 +34,6 @@ export const redTeamModel: ResearchTemplate<Record<string, unknown>> = {
     instructions: z.string().trim().max(2000).optional(),
     language: z.enum(['en', 'es']).default('en'),
   }),
-  instructionsField: 'instructions',
   sections: [
     {
       key: 'findings',

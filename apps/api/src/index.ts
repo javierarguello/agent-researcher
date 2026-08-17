@@ -1344,6 +1344,15 @@ app.post(
         properties: {
           template: { type: 'string', minLength: 1, maxLength: 128 },
           params: { type: 'object', description: 'Template-specific params.' },
+          freeText: {
+            type: 'string',
+            maxLength: 2000,
+            description:
+              'What the user wrote in their own words. Moderated like every other free text, then read by the ' +
+              'assisted layer to PROPOSE structured params — values from the model\'s directive vocabularies and ' +
+              'a few keywords — returned as `proposals` with `proposedParams` ready to submit if the user accepts. ' +
+              'It is never a param and never reaches a research prompt.',
+          },
           draftId: {
             type: 'string',
             maxLength: 64,
@@ -1386,6 +1395,7 @@ app.post(
     const lang = paramsLang(params);
     const tpl = getTemplate(validated.template)!;
     const mode = resolveMode(tpl.modes, params.mode);
+    const freeText = typeof (req.body as { freeText?: unknown }).freeText === 'string' ? (req.body as { freeText: string }).freeText.trim().slice(0, 2000) : '';
 
     // Which layers may run. Admins always get the assisted one.
     let assist: AssistState = config.validation.llm ? 'on' : 'off_disabled';
@@ -1424,7 +1434,9 @@ app.post(
       //    allowance above.
       //    Skipping it here is safe because /research moderates in full — and that
       //    is the call that actually spends credits.
-      const rej = await moderateParams(appId, userId, params, lang, { llm: assist === 'on' });
+      //    The buyer's free text is moderated with the params: it is the one
+      //    piece of their own words the assist will read.
+      const rej = await moderateParams(appId, userId, freeText ? { ...params, freeText } : params, lang, { llm: assist === 'on' });
       if (rej) return reply.code(rej.code).send(rej.body);
     }
 
@@ -1434,6 +1446,7 @@ app.post(
       lang,
       modeLabel: modeLabel(tpl, mode.key, lang),
       assist,
+      ...(freeText ? { freeText } : {}),
     });
 
     logEvent({ jobId: '-', appId, userId }, 'INFO', 'research.preflight', {
@@ -1441,6 +1454,7 @@ app.post(
       quality: outcome.quality,
       issues: outcome.issues.map((i) => i.code),
       corrections: outcome.corrections.map((c) => c.field),
+      ...(outcome.proposals ? { proposals: { directives: Object.keys(outcome.proposals.directives), keywords: outcome.proposals.keywords.length } } : {}),
       ...(outcome.usage ? { inputTokens: outcome.usage.inputTokens, outputTokens: outcome.usage.outputTokens } : {}),
     });
     if (outcome.usage) {

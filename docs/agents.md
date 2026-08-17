@@ -82,9 +82,8 @@ The chosen sites are also recorded in the agent's trace notes
   sites: ['bizbuysell.com', 'bizquest.com', 'loopnet.com', 'businessesforsale.com', …] }
 ```
 
-Use bare hostnames (no scheme, no `www.`). This is distinct from the client-facing
-`preferredSources` **param** some models expose (which rides in the brief); `sites`
-is fixed in the model's definition.
+Use bare hostnames (no scheme, no `www.`). `sites` is fixed in the model's
+definition; there is no client-facing param for it any more.
 
 ## Structured synthesis (`synthesize.ts`)
 
@@ -214,9 +213,12 @@ loop under-informed. The schema description now argues against exactly that shap
 Worth re-checking on a stronger model before assuming it is theoretical.
 
 The shared **system prompt** (`buildSystemPrompt`) is identical for every agent:
-the template `basePrompt` plus, if the template sets `instructionsField`, the
-client's instructions fenced as **lower-authority** input that cannot override the
-base rules. Per-agent `focus` rides in the user message.
+the template `basePrompt` plus the client's **structured directives** (a closed
+vocabulary the template declares — every word ours). There is deliberately no
+free-text block: the buyer's own words never reach a prompt. They fill the
+directives and the keywords through the preflight assist (`/research/preflight`
+with `freeText`), as proposals the buyer accepts. Per-agent `focus` rides in the
+user message.
 
 ## Per-agent trace
 

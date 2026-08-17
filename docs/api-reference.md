@@ -99,6 +99,19 @@ Errors:
 
 Rate limits and the credits gate are **skipped** when `APP_ENV=local`.
 
+### `POST /research/preflight` — review a request before generating  · user
+Same `template` + `params` as `POST /research`, plus optional `freeText` (≤ 2,000
+chars): what the user wrote in their own words. Runs moderation on params AND
+text, then a deterministic review (`summary`, `issues`) and — when the user could
+generate and has assisted reviews left — an assisted pass that proposes
+`corrections` (typo/format fixes on a whitelist of fields, `correctedParams`)
+and, from `freeText`, `proposals` (`{ directives, keywords }` — values from the
+model's own vocabularies and a few short keywords, `proposedParams`). Everything
+returned is either our copy or a value from a closed vocabulary; nothing the
+user typed and nothing the model wrote is echoed. **`freeText` is never a param
+and never reaches a research prompt** — a client that wants the user's words to
+count sends them here and submits what the user accepts.
+
 ### `GET /research` — list a user's jobs (report inbox)  · user
 Query: `limit` (1-100, default 50). Admin only: `userId`, `appId` (default to the
 token's). Returns newest-first summaries:

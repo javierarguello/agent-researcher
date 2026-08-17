@@ -14,7 +14,6 @@ e.g. `florida-business-for-sale`. It is a single, self-contained data structure
 | `agents` | The **agent workflow** that fills the sections (see [agents.md](agents.md)). |
 | `modes` | Per-mode cost/scope config for the public `mode` knob (optional). |
 | `buildBrief` | Turns validated (effective) params into the shared research brief. |
-| `instructionsField` | Optional param name carrying lower-authority client instructions. |
 
 Source of truth for the shapes: `packages/core/src/templates/types.ts`.
 

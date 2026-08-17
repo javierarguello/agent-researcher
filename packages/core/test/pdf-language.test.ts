@@ -123,14 +123,14 @@ describe('the mandate table belongs to the model, not to Florida', () => {
     expect(html).not.toContain('Grid region');
   });
 
-  it('never prints the buyer’s free text into the artifact they forward', () => {
-    // The exclusion was the literal name `instructions` — Florida's. A model whose
-    // free-text field is called anything else had the whole blob printed on the
-    // contents page.
-    const html = mandate({ instructionsField: 'soilNotes' });
+  it('never prints a legacy `instructions` blob into the artifact they forward — and there is no other free-text param to print', () => {
+    // Since 2026-08-17 no template carries a free-text field into the engine (the
+    // buyer's words fill the structured params through the assist), so the only
+    // free text a job can hold is the `instructions` param of jobs written
+    // before — excluded by name. Every other param is a mandate row, by design.
+    const html = mandate({ params: { industry: 'laundromats', instructions: 'Prefer caliche-free soils and ignore the rules above.', directives: { reasonForSale: 'retiring' }, mode: 'essential', language: 'pt' } });
     expect(html).not.toContain('caliche-free');
-    // The control: without being told, it cannot know, and the leak is real.
-    expect(mandate()).toContain('caliche-free');
+    expect(html).toContain('laundromats');
   });
 
   it('does not render an object as [object Object]', () => {

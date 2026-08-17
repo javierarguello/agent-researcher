@@ -7,9 +7,11 @@
  * what we'll look for" without a model writing a single word of it, and what
  * makes the same request always read the same way.
  *
- * The user's free-text `instructions` are deliberately NOT quoted back here: the
- * summary is a rendering of structured fields only, so it can be safely shown
- * anywhere (dialog, email, admin) without carrying user-authored text along.
+ * Nothing the user typed in their own words is quoted back here: the summary is
+ * a rendering of structured fields only, so it can be safely shown anywhere
+ * (dialog, email, admin) without carrying user-authored text along. (The free
+ * text a buyer writes fills the structured fields through the assist; it is not
+ * a param and never reaches a prompt.)
  */
 import type { Lang } from '../moderation/copy.js';
 import type { PreflightSpec } from './types.js';
@@ -49,7 +51,6 @@ interface PlanCopy {
   noRealEstate: string;
   keywords: (v: string) => string;
   tail: (mode: string) => string;
-  instructions: string;
 }
 
 const PLAN: Record<Lang, PlanCopy> = {
@@ -69,7 +70,6 @@ const PLAN: Record<Lang, PlanCopy> = {
     noRealEstate: 'business-only deals (no real estate)',
     keywords: (v) => `listings matching ${v}`,
     tail: (mode) => `You'll get a ${mode} report: market and competition, a shortlist of real listings with prices and figures, in-depth profiles, valuation benchmarks, risks and next steps.`,
-    instructions: 'Your written instructions are taken into account when selecting and analysing the targets.',
   },
   es: {
     head: (s, p) => `Buscaremos en marketplaces y brokers de Florida ${s} en venta en ${p}`,
@@ -87,7 +87,6 @@ const PLAN: Record<Lang, PlanCopy> = {
     noRealEstate: 'operaciones solo del negocio (sin inmueble)',
     keywords: (v) => `avisos que coincidan con ${v}`,
     tail: (mode) => `Recibirás un reporte ${mode}: mercado y competencia, una lista corta de negocios reales con precios y cifras, perfiles a fondo, múltiplos de valoración, riesgos y próximos pasos.`,
-    instructions: 'Tus instrucciones escritas se tienen en cuenta al seleccionar y analizar los objetivos.',
   },
   fr: {
     head: (s, p) => `Nous chercherons sur les places de marché et chez les brokers de Floride ${s} à vendre à ${p}`,
@@ -105,7 +104,6 @@ const PLAN: Record<Lang, PlanCopy> = {
     noRealEstate: 'des dossiers portant seulement sur l’activité (sans immobilier)',
     keywords: (v) => `des annonces correspondant à ${v}`,
     tail: (mode) => `Vous recevrez un rapport ${mode} : marché et concurrence, une liste d’annonces réelles avec prix et chiffres, des profils détaillés, des multiples de valorisation, les risques et les prochaines étapes.`,
-    instructions: 'Vos instructions écrites sont prises en compte dans la sélection et l’analyse des cibles.',
   },
   pt: {
     head: (s, p) => `Vamos buscar em marketplaces e brokers da Flórida ${s} à venda em ${p}`,
@@ -123,7 +121,6 @@ const PLAN: Record<Lang, PlanCopy> = {
     noRealEstate: 'negócios apenas da operação (sem imóvel)',
     keywords: (v) => `anúncios que correspondam a ${v}`,
     tail: (mode) => `Você receberá um relatório ${mode}: mercado e concorrência, uma lista curta de anúncios reais com preços e números, perfis detalhados, múltiplos de avaliação, riscos e próximos passos.`,
-    instructions: 'Suas instruções escritas são levadas em conta ao selecionar e analisar os alvos.',
   },
 };
 
@@ -222,7 +219,6 @@ export const floridaPreflight: PreflightSpec<Params> = {
     if (keywords.length) clauses.push(t.keywords(keywords.join(', ')));
 
     const filters = clauses.length ? ` ${t.filtersLead} ${joinClauses(clauses, t.and)}.` : '.';
-    const instructions = str(p.instructions) ? ` ${t.instructions}` : '';
-    return `${t.head(subject, place)}${filters} ${t.tail(modeLabel)}${instructions}`;
+    return `${t.head(subject, place)}${filters} ${t.tail(modeLabel)}`;
   },
 };

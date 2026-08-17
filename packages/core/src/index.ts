@@ -210,8 +210,8 @@ export { runPreflight } from './moderation/preflight.js';
 export type { PreflightOutcome, PreflightQuality } from './moderation/preflight.js';
 export { deterministicIssues, renderPlan, issueMessage, allowedIssueCodes } from './moderation/deterministic.js';
 export type { PreflightIssue } from './moderation/deterministic.js';
-export { enrichRequest, acceptCorrections, applyCorrections } from './moderation/enrich.js';
-export type { Correction, EnrichResult } from './moderation/enrich.js';
+export { enrichRequest, acceptCorrections, applyCorrections, proposeFromText, acceptProposals, applyProposals } from './moderation/enrich.js';
+export type { Correction, EnrichResult, Proposals } from './moderation/enrich.js';
 // Text hardening (unicode normalization for screening, similarity for corrections)
 export { screeningForms, similarity, sanitizeProposal, hasControlChars } from './util/text.js';
 

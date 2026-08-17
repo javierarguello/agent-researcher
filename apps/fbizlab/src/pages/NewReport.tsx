@@ -16,14 +16,15 @@ const T = {
     s1: 'What & where', s1h: "Define what you're hunting for.",
     s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
-    s4: 'Instructions for the analyst', s4h: "Free-form guidance for the analysts (lower authority than the model's base rules).",
+    s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences and keywords for you to confirm — the text itself is not part of the request.',
+    proposalsTitle: 'Suggested from your notes', applyProposals: 'Apply suggestions', kw: 'Keywords',
     sd: 'Your preferences', sdh: 'Optional. Tells the analysts what to weigh — it never shortens the dossier.', sdCap: 'pick up to',
     s5: 'Advanced', show: '+ Show', hide: '− Hide', step: 'Step', of: 'of', back: 'Back', next: 'Next',
     reportLanguage: 'Dossier language', reportLangHelp: 'The language the final dossier is written in.',
     f: { industry: 'Industry', location: 'Location', askingPriceMin: 'Asking price · Min', askingPriceMax: 'Asking price · Max', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', keywords: 'Keywords', preferredSources: 'Preferred sources' } as Record<string, string>,
     sba: 'SBA friendly', realEstate: 'Include real estate',
     optionalUseful: 'Optional but very useful', add: 'Add and press Enter',
-    industryWarn: 'No industry set — tell the analysts what to research in the Instructions below (at least 40 characters).', instrReq: 'Required — no industry set', charsToGo: 'more characters needed',
+    industryWarn: 'No industry set — add one, or at least one keyword under Advanced, so the analysts know what to hunt for.',
     summary: 'Summary', pickIndustry: 'Pick an industry', mode: 'Mode', language: 'Language',
     cost: 'Cost', credits: 'credits', generate: 'Generate dossier', delivered: 'Delivered in 2–8 min',
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
@@ -41,14 +42,15 @@ const T = {
     s1: 'Qué y dónde', s1h: 'Define qué estás buscando.',
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
-    s4: 'Instrucciones para el analista', s4h: 'Guía libre para los analistas (menor autoridad que las reglas base del modelo).',
+    s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias y palabras clave para que las confirmes — el texto en sí no forma parte del pedido.',
+    proposalsTitle: 'Sugerido a partir de tus notas', applyProposals: 'Aplicar sugerencias', kw: 'Palabras clave',
     sd: 'Tus preferencias', sdh: 'Opcional. Le dice a los analistas qué priorizar — nunca acorta el dossier.', sdCap: 'elige hasta',
     s5: 'Avanzado', show: '+ Mostrar', hide: '− Ocultar', step: 'Paso', of: 'de', back: 'Atrás', next: 'Siguiente',
     reportLanguage: 'Idioma del dossier', reportLangHelp: 'El idioma en que se escribe el dossier final.',
     f: { industry: 'Industria', location: 'Ubicación', askingPriceMin: 'Precio · Mín', askingPriceMax: 'Precio · Máx', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas' } as Record<string, string>,
     sba: 'Apto SBA', realEstate: 'Incluir inmueble',
     optionalUseful: 'Opcional pero muy útil', add: 'Escribe y presiona Enter',
-    industryWarn: 'Sin industria — dile a los analistas qué investigar en las Instrucciones abajo (al menos 40 caracteres).', instrReq: 'Requerido — sin industria', charsToGo: 'caracteres más',
+    industryWarn: 'Sin industria — indica una, o al menos una palabra clave en Avanzado, para que los analistas sepan qué buscar.',
     summary: 'Resumen', pickIndustry: 'Elige una industria', mode: 'Modo', language: 'Idioma',
     cost: 'Costo', credits: 'créditos', generate: 'Generar dossier', delivered: 'Listo en 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
@@ -66,14 +68,15 @@ const T = {
     s1: 'Quoi et où', s1h: 'Définissez ce que vous cherchez.',
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
-    s4: "Instructions pour l'analyste", s4h: "Consignes libres pour les analystes (autorité inférieure aux règles de base du modèle).",
+    s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences et en mots-clés que vous confirmez — le texte lui-même ne fait pas partie de la demande.',
+    proposalsTitle: 'Suggéré d’après vos notes', applyProposals: 'Appliquer les suggestions', kw: 'Mots-clés',
     sd: 'Vos préférences', sdh: 'Optionnel. Indique aux analystes quoi privilégier — cela ne raccourcit jamais le dossier.', sdCap: 'choisissez jusqu’à',
     s5: 'Avancé', show: '+ Afficher', hide: '− Masquer', step: 'Étape', of: 'de', back: 'Retour', next: 'Suivant',
     reportLanguage: 'Langue du dossier', reportLangHelp: 'La langue de rédaction du dossier final.',
     f: { industry: 'Secteur', location: 'Localisation', askingPriceMin: 'Prix · Min', askingPriceMax: 'Prix · Max', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', keywords: 'Mots-clés', preferredSources: 'Sources préférées' } as Record<string, string>,
     sba: 'Compatible SBA', realEstate: "Inclure l'immobilier",
     optionalUseful: 'Optionnel mais très utile', add: 'Saisissez et appuyez sur Entrée',
-    industryWarn: 'Aucun secteur — indiquez aux analystes quoi rechercher dans les Instructions ci-dessous (au moins 40 caractères).', instrReq: 'Requis — aucun secteur', charsToGo: 'caractères manquants',
+    industryWarn: 'Aucun secteur — indiquez-en un, ou au moins un mot-clé dans Avancé, pour que les analystes sachent quoi chercher.',
     summary: 'Résumé', pickIndustry: 'Choisissez un secteur', mode: 'Mode', language: 'Langue',
     cost: 'Coût', credits: 'crédits', generate: 'Générer le dossier', delivered: 'Livré en 2–8 min',
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
@@ -91,14 +94,15 @@ const T = {
     s1: 'O quê e onde', s1h: 'Defina o que você procura.',
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
-    s4: 'Instruções para o analista', s4h: 'Orientação livre para os analistas (autoridade menor que as regras base do modelo).',
+    s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências e palavras-chave para você confirmar — o texto em si não faz parte do pedido.',
+    proposalsTitle: 'Sugerido a partir das suas notas', applyProposals: 'Aplicar sugestões', kw: 'Palavras-chave',
     sd: 'Suas preferências', sdh: 'Opcional. Diz aos analistas o que priorizar — nunca encurta o dossiê.', sdCap: 'escolha até',
     s5: 'Avançado', show: '+ Mostrar', hide: '− Ocultar', step: 'Passo', of: 'de', back: 'Voltar', next: 'Próximo',
     reportLanguage: 'Idioma do dossiê', reportLangHelp: 'O idioma em que o dossiê final é escrito.',
     f: { industry: 'Setor', location: 'Localização', askingPriceMin: 'Preço · Mín', askingPriceMax: 'Preço · Máx', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas' } as Record<string, string>,
     sba: 'Compatível SBA', realEstate: 'Incluir imóvel',
     optionalUseful: 'Opcional mas muito útil', add: 'Digite e pressione Enter',
-    industryWarn: 'Sem setor — diga aos analistas o que pesquisar nas Instruções abaixo (ao menos 40 caracteres).', instrReq: 'Obrigatório — sem setor', charsToGo: 'caracteres a mais',
+    industryWarn: 'Sem setor — indique um, ou ao menos uma palavra-chave em Avançado, para que os analistas saibam o que buscar.',
     summary: 'Resumo', pickIndustry: 'Escolha um setor', mode: 'Modo', language: 'Idioma',
     cost: 'Custo', credits: 'créditos', generate: 'Gerar dossiê', delivered: 'Pronto em 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
@@ -141,8 +145,18 @@ function Tags({ value, onChange, suggestions, placeholder }: { value: string[]; 
 interface Prop { type?: string; enum?: string[]; maxLength?: number; default?: unknown; }
 type Schema = { properties?: Record<string, Prop>; required?: string[] };
 
-/** When no industry is given, instructions must be at least this long (mirrors the API). */
-const MIN_INSTR = 40;
+/** How much the "in your own words" box takes — the API reads at most this much. */
+const FREE_TEXT_MAX = 2000;
+/** Apply what the assist proposed on top of a params object — mirrors the API's `applyProposals`. */
+function mergeProposals(params: Props, proposals: { directives: Record<string, unknown>; keywords: string[] }, dirKey: string): Props {
+  const out: Props = { ...params };
+  if (Object.keys(proposals.directives).length) out[dirKey] = { ...((params[dirKey] as Record<string, unknown> | undefined) ?? {}), ...proposals.directives };
+  if (proposals.keywords.length) {
+    const have = ((params.keywords as unknown[]) ?? []).filter((k): k is string => typeof k === 'string');
+    out.keywords = [...have, ...proposals.keywords.filter((k) => !have.some((h) => h.toLowerCase() === k.toLowerCase()))];
+  }
+  return out;
+}
 /** On mobile the long form becomes a step-by-step wizard. */
 const WIZARD_STEPS = 4;
 
@@ -176,6 +190,11 @@ export function NewReport() {
   const [validatedKey, setValidatedKey] = useState<string | null>(null);
   // Whether the user keeps the proposed corrections (on by default, one click to drop).
   const [applyFixes, setApplyFixes] = useState(true);
+  // Whether the user keeps what the assist proposed from their notes (on by default, one click to drop).
+  const [applyProposals, setApplyProposals] = useState(true);
+  // What the user typed in their own words. NOT a param: it goes to the preflight,
+  // which reads it and proposes preferences and keywords; the job never sees it.
+  const [freeText, setFreeText] = useState('');
   // One widget for the dialog. Preflight and generate are two protected calls, and
   // a Turnstile token is single-use, so each one solves separately.
   const captcha = useRef<TurnstileHandle>(null);
@@ -246,17 +265,17 @@ export function NewReport() {
   /**
    * The fields this form lays out itself, in the manifest's order.
    *
-   * `mode`, `language`, the directives blob and the instructions field each have
-   * their own section; `hidden` and `advanced` are the manifest's own instructions
-   * about where things go. Everything left is a plain input, and it used to be
-   * Florida's six, written out as JSX.
+   * `mode`, `language` and the directives blob each have their own section;
+   * `hidden` and `advanced` are the manifest's own instructions about where
+   * things go. Everything left is a plain input, and it used to be Florida's six,
+   * written out as JSX. (The "in your own words" box is NOT a param — it feeds
+   * the preflight assist, which proposes params from it.)
    */
   const ownKeys = new Set(
     [
       model?.directivesKey ?? 'directives',
       'mode',
       'language',
-      model?.instructionsField ?? 'instructions',
       ...(ui?.hidden ?? []),
       ...(ui?.advanced ?? []),
     ].filter(Boolean),
@@ -267,19 +286,18 @@ export function NewReport() {
   /** Text-ish first (what & where), then the filters. Same split Florida had. */
   const primaryKeys = ordered.filter((k) => !isNumeric(k) && !isBoolean(k));
   const filterKeys = ordered.filter((k) => isNumeric(k) || isBoolean(k));
-  const advancedKeys = (ui?.advanced ?? []).filter((k) => props[k] && k !== (model?.instructionsField ?? 'instructions'));
+  const advancedKeys = (ui?.advanced ?? []).filter((k) => props[k]);
   /**
-   * The field the "say more in the instructions" warning hangs off.
+   * The field the "no subject" warning hangs off.
    *
    * It is the model's FIRST primary field — for this model, `industry` — rather
    * than the literal name, which is what made the rule Florida-specific.
    */
   const subjectKey = primaryKeys[0];
   const subject = String(params[primaryKeys[0] ?? ''] ?? '');
-  const instrText = ((params.instructions as string) ?? '').trim();
-  // Industry is optional; without it, instructions must carry enough context.
-  const needsInstr = !subject.trim();
-  const instrOk = !needsInstr || instrText.length >= MIN_INSTR;
+  const keywordCount = Array.isArray(params.keywords) ? (params.keywords as unknown[]).length : 0;
+  // Industry is optional; without it, at least one keyword is (mirrors the API).
+  const needsSubject = !subject.trim() && keywordCount === 0;
   const bal = balance.data?.balance;
   // Only one report may be in flight per user (until it finishes or fails).
   const hasLive = (stats.data?.inProgress ?? 0) >= 1;
@@ -361,7 +379,7 @@ export function NewReport() {
   };
   const paramsKey = JSON.stringify(cleanParams());
   const validated = validatedKey === paramsKey && pf != null; // already previewed these exact params
-  const canGo = instrOk && !hasLive && !blocked && !create.isPending && !preflight.isPending;
+  const canGo = !needsSubject && !hasLive && !blocked && !create.isPending && !preflight.isPending;
   const insufficient = typeof bal === 'number' && bal < cost;
   const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(params)); } catch { /* ignore */ } };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
@@ -405,7 +423,7 @@ export function NewReport() {
           </>
         )}
         {help(key) && <div className="desc">{help(key)}</div>}
-        {key === subjectKey && needsInstr && <div className="nr-warn">{t.industryWarn}</div>}
+        {key === subjectKey && needsSubject && <div className="nr-warn">{t.industryWarn}</div>}
       </div>
     );
   };
@@ -444,12 +462,14 @@ export function NewReport() {
   async function runPreflight() {
     setError(null);
     try {
-      const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams(), draftId: draftId(), captcha: await captcha.current?.getToken() });
-      const useful = (res.summary?.trim().length ?? 0) > 0 || res.issues.length > 0 || res.corrections.length > 0;
+      const text = freeText.trim().slice(0, FREE_TEXT_MAX);
+      const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams(), ...(text ? { freeText: text } : {}), draftId: draftId(), captcha: await captcha.current?.getToken() });
+      const useful = (res.summary?.trim().length ?? 0) > 0 || res.issues.length > 0 || res.corrections.length > 0 || !!res.proposals;
       if (useful) {
         setPf(res);
         setValidatedKey(paramsKey);
         setApplyFixes(res.corrections.length > 0); // proposed fixes are opt-out, not silent
+        setApplyProposals(!!res.proposals);
       } else await submit();
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
@@ -497,7 +517,12 @@ export function NewReport() {
   async function submit() {
     setError(null);
     try {
-      const params = applyFixes && pf?.correctedParams ? pf.correctedParams : cleanParams();
+      const base = applyFixes && pf?.correctedParams ? pf.correctedParams : cleanParams();
+      // The proposals ride on top of whichever base the user kept. When both are
+      // kept the API's `proposedParams` is exactly that; otherwise merge here.
+      const params = applyProposals && pf?.proposals
+        ? (applyFixes && pf.proposedParams ? pf.proposedParams : mergeProposals(base, pf.proposals, dirKey))
+        : base;
       const res = await create.mutateAsync({ template: model!.id, params, captcha: await captcha.current?.getToken() });
       clearDraft();
       clearDraftId(); // this report is done; the next one gets its own allowance
@@ -520,8 +545,6 @@ export function NewReport() {
     }
   }
 
-  const instrMax = props.instructions?.maxLength ?? 2000;
-  const instr = (params.instructions as string) ?? '';
 
   return (
     <div className="nr">
@@ -605,15 +628,13 @@ export function NewReport() {
               </section>
             )}
 
-            {/* 05 Instructions */}
+            {/* 05 In your own words — feeds the assist; never a param */}
             <section className="nr-sec" style={stepOf(3)}>
-              <SecHead n={directives.length ? '05' : '04'} title={needsInstr ? `${t.s4} *` : t.s4} hint={t.s4h} />
-              <textarea className="textarea" rows={6} maxLength={instrMax} placeholder={ph('instructions')} value={instr} onChange={(e) => set('instructions', e.target.value)} />
+              <SecHead n={directives.length ? '05' : '04'} title={t.s4} hint={t.s4h} />
+              <textarea className="textarea" rows={6} maxLength={FREE_TEXT_MAX} value={freeText} onChange={(e) => setFreeText(e.target.value)} data-testid="free-text" />
               <div className="between" style={{ marginTop: 6 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: needsInstr && !instrOk ? 'var(--risk)' : 'var(--muted)' }}>{needsInstr ? t.instrReq : t.optionalUseful}</span>
-                <span className="mono muted" style={{ fontSize: 10.5 }}>
-                  {needsInstr && !instrOk ? `${MIN_INSTR - instrText.length} ${t.charsToGo}` : `${instr.length} / ${instrMax}`}
-                </span>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>{t.optionalUseful}</span>
+                <span className="mono muted" style={{ fontSize: 10.5 }}>{freeText.length} / {FREE_TEXT_MAX}</span>
               </div>
             </section>
 
@@ -723,6 +744,28 @@ export function NewReport() {
                       <label className="checkcard" style={{ marginTop: 10 }}>
                         <input type="checkbox" checked={applyFixes} onChange={(e) => setApplyFixes(e.target.checked)} />
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{t.applyFixes}</div>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* What the assist read out of the user's own words — a diff to accept. */}
+                  {pf.proposals && (
+                    <div className="pf-suggest" data-testid="proposals">
+                      <div className="rev__k" style={{ marginBottom: 8 }}>{t.proposalsTitle}</div>
+                      <ul>
+                        {Object.entries(pf.proposals.directives).map(([k, v]) => {
+                          const field = directives.find((d) => d.key === k);
+                          const labelOf = (x: unknown) => field?.options?.find((o) => o.value === x)?.label ?? String(x);
+                          const shown = Array.isArray(v) ? v.map(labelOf).join(', ') : typeof v === 'boolean' ? (v ? t.yes : '—') : labelOf(v);
+                          return <li key={k}><span className="mono muted">{field?.label ?? k}: </span><b>{shown}</b></li>;
+                        })}
+                        {pf.proposals.keywords.length > 0 && (
+                          <li><span className="mono muted">{t.kw}: </span>{pf.proposals.keywords.map((k) => <span key={k} className="chip sel" style={{ marginRight: 6 }}>{k}</span>)}</li>
+                        )}
+                      </ul>
+                      <label className="checkcard" style={{ marginTop: 10 }}>
+                        <input type="checkbox" checked={applyProposals} onChange={(e) => setApplyProposals(e.target.checked)} />
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{t.applyProposals}</div>
                       </label>
                     </div>
                   )}

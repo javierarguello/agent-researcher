@@ -66,7 +66,7 @@ export async function renderJobPdf(job: ResearchJob, opts: { force?: boolean } =
   const generatedAt = job.finishedAt ?? job.updatedAt;
   const html = buildReportHtml({
     report: parsed.report, meta: parsed.meta, sections, title: job.title ?? undefined,
-    params: job.params, paramLabels, instructionsField: manifest?.instructionsField,
+    params: job.params, paramLabels,
     currency: manifest?.currency,
     cover: template?.cover,
     // From the MANIFEST, which resolves them to the language it is actually in —

@@ -11,7 +11,9 @@ checklist, growth playbook, financing, and next steps.
 - **Base prompt:** a senior FL M&A analyst with 7 non-negotiable rules (never
   fabricate listings/figures/URLs; every quantitative claim sourced; stay in
   Florida; be diligence-minded; cross-check; long-form; produce only assigned
-  sections as JSON). Client `instructions` are appended as **lower authority**.
+  sections as JSON). The client's structured **directives** are appended; the
+  buyer's free text never is (it fills the directives and keywords through the
+  preflight assist).
 
 ## Params (client input)
 
@@ -24,9 +26,7 @@ checklist, growth playbook, financing, and next steps.
 | `minRevenue`, `minCashFlow` | int? | Floors in USD. |
 | `sbaFriendly` | bool | Prefer SBA 7(a)-eligible deals (default false). |
 | `includeRealEstate` | bool? | Prefer deals with / without real estate. |
-| `preferredSources` | string[] | Marketplaces/brokers to prioritize (default `[]`). |
 | `directives` | object? | Structured buyer preferences — see below. |
-| `instructions` | string? | Lower-authority client guidance (the `instructionsField`). A **residual**: use `directives` for anything they cover. |
 | `language` | en \| es \| fr \| pt | Report language (default `en`; search stays English). |
 | `mode` | essential \| comprehensive | Cost/scope (default `essential`). See below. |
 

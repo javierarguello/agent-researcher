@@ -32,7 +32,6 @@ export interface BuildReportHtmlInput {
    * else had that whole blob printed into the artifact the buyer forwards.
    */
   paramLabels?: Record<string, string>;
-  instructionsField?: string;
   /** How this model summarises its findings on the cover (from the template). */
   cover?: CoverSpec;
   /**
@@ -573,7 +572,9 @@ export function buildReportHtml(input: BuildReportHtmlInput): string {
     ? Object.entries(mandate)
         .filter(([k, v]) => {
           if (v == null || v === '' || (Array.isArray(v) && v.length === 0)) return false;
-          if (k === 'mode' || k === 'language' || k === (input.instructionsField ?? 'instructions')) return false;
+          // `instructions` is a param jobs written before 2026-08-17 still carry; it
+          // was free text, never a mandate row.
+          if (k === 'mode' || k === 'language' || k === 'instructions') return false;
           // `directives` is an object with its own localized block in the manifest;
           // rendered here it printed literally "[object Object]".
           return typeof v !== 'object' || Array.isArray(v);

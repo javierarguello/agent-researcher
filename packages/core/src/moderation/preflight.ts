@@ -17,6 +17,7 @@
 import { deterministicIssues, issueMessage, renderPlan, type PreflightIssue } from './deterministic.js';
 import { enrichRequest, applyCorrections, type Correction } from './enrich.js';
 import { assistMessage, type AssistState, type Lang } from './copy.js';
+import { applyProposals, proposeFromText, type Proposals } from './enrich.js';
 import type { ResearchTemplate } from '../templates/types.js';
 
 export type PreflightQuality = 'ok' | 'broad' | 'ambiguous';
@@ -30,6 +31,15 @@ export interface PreflightOutcome {
   corrections: Correction[];
   /** The params with every proposed correction applied, ready to submit as-is. */
   correctedParams?: Record<string, unknown>;
+  /**
+   * What the buyer's own words (`freeText`) turned into: directive values from
+   * the template's vocabularies and a few keywords — PROPOSALS, shown as a diff,
+   * applied only if the buyer accepts. Present only when text was given and the
+   * assisted pass ran.
+   */
+  proposals?: Proposals;
+  /** `correctedParams` (or the params) with the proposals applied too. */
+  proposedParams?: Record<string, unknown>;
   /** Whether the assisted pass ran, and why not when it didn't. */
   assist: { state: AssistState; message?: string };
   /** Token usage + dollars of the assisted pass, for per-user metering. */
@@ -53,6 +63,8 @@ export async function runPreflight(input: {
   modeLabel: string;
   /** 'on' runs the assisted pass; any other state explains why it was skipped. */
   assist: AssistState;
+  /** What the buyer typed in their own words — read by the assist to propose params; never a param itself. */
+  freeText?: string;
 }): Promise<PreflightOutcome> {
   const { template, params, lang, modeLabel } = input;
 
@@ -67,6 +79,7 @@ export async function runPreflight(input: {
   if (input.assist !== 'on') return base;
 
   const enriched = await enrichRequest(template, params);
+  const proposed = input.freeText?.trim() ? await proposeFromText(template, params, input.freeText) : undefined;
 
   // Merge the model's codes into the deterministic findings (never duplicating one).
   const merged = [...issues];
@@ -79,14 +92,24 @@ export async function runPreflight(input: {
   // The summary is re-rendered from the CORRECTED params, so the user reads the
   // request as it would actually run — still without a word written by the model.
   const correctedParams = enriched.corrections.length ? applyCorrections(params, enriched.corrections) : undefined;
+  const proposals = proposed && (Object.keys(proposed.proposals.directives).length || proposed.proposals.keywords.length) ? proposed.proposals : undefined;
+  const proposedParams = proposals ? applyProposals(correctedParams ?? params, proposals, template.directives?.key ?? 'directives') : undefined;
+  const usage = [enriched.usage, proposed?.usage].filter(Boolean).reduce<PreflightOutcome['usage']>(
+    (acc, u) => (acc ? { inputTokens: acc.inputTokens + u!.inputTokens, outputTokens: acc.outputTokens + u!.outputTokens, usd: acc.usd + u!.usd } : u),
+    undefined,
+  );
 
   return {
-    summary: renderPlan(template, correctedParams ?? params, { lang, modeLabel }),
+    // The summary is rendered from the params as they would run if the buyer
+    // accepts everything — still without a word written by the model.
+    summary: renderPlan(template, proposedParams ?? correctedParams ?? params, { lang, modeLabel }),
     quality: worst(qualityFromIssues(merged), enriched.quality),
     issues: merged,
     corrections: enriched.corrections,
     ...(correctedParams ? { correctedParams } : {}),
+    ...(proposals ? { proposals } : {}),
+    ...(proposedParams ? { proposedParams } : {}),
     assist: { state: 'on' },
-    ...(enriched.usage ? { usage: enriched.usage } : {}),
+    ...(usage ? { usage } : {}),
   };
 }

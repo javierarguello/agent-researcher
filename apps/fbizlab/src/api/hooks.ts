@@ -57,13 +57,20 @@ export interface PreflightResult {
   corrections: PreflightCorrection[];
   /** The params with every proposed fix applied — submit these to accept them. */
   correctedParams?: Record<string, unknown>;
+  /**
+   * What the user's own words (`freeText`) turned into: directive values from
+   * the model's vocabularies and a few keywords. Proposals — the user accepts.
+   */
+  proposals?: { directives: Record<string, unknown>; keywords: string[] };
+  /** `correctedParams` (or the params) with the proposals applied too. */
+  proposedParams?: Record<string, unknown>;
   /** Whether the assisted (AI) layer ran, and why not when it didn't. */
   assist: { state: 'on' | 'off_disabled' | 'off_no_credits' | 'off_cooldown' | 'off_attempts'; message?: string };
 }
 /** Pre-flight review: moderation + a deterministic summary + an optional assisted pass. */
 export function usePreflight() {
   return useMutation({
-    mutationFn: ({ captcha, ...body }: { template: string; params: Record<string, unknown>; draftId?: string; captcha?: string }) =>
+    mutationFn: ({ captcha, ...body }: { template: string; params: Record<string, unknown>; freeText?: string; draftId?: string; captcha?: string }) =>
       api<PreflightResult>('/research/preflight', { method: 'POST', body: { ...body, ...captchaBody(captcha) } }),
   });
 }

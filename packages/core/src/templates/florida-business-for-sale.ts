@@ -13,8 +13,6 @@ import type { AgentSpec, DirectiveField, ReportSection, ResearchTemplate } from 
 // Bounded so a hostile client can't bloat the LLM prompt or the report cost:
 // every string is length-capped, every array item-capped, every number ceiling-capped.
 const PRICE_MAX = 1_000_000_000; // $1B ceiling — well above any lower-middle-market deal.
-/** When no industry is given, instructions must be at least this long for context. */
-export const MIN_INSTRUCTIONS_LEN = 40;
 
 /**
  * Structured directives — what a buyer can tell the analysts, as a closed
@@ -415,8 +413,6 @@ const paramsSchema = z.object({
   minCashFlow: z.number().int().nonnegative().max(PRICE_MAX).optional(),
   sbaFriendly: z.boolean().default(false),
   includeRealEstate: z.boolean().optional(),
-  preferredSources: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
-  instructions: z.string().trim().max(2000).optional(),
   // Built FROM `DIRECTIVE_FIELDS`, so what the manifest advertises and what the
   // API accepts are the same declaration. Strict: an unknown directive key is a
   // 400, not a silently ignored field.
@@ -426,17 +422,20 @@ const paramsSchema = z.object({
   mode: modeParamSchema,
 })
   // Industry is not strictly required — but if it's omitted, the analysts need
-  // enough written context to know what to hunt for, so `instructions` becomes
-  // required with a meaningful minimum length. Enforced here so the API (not just
-  // the web forms) rejects an empty, contextless request.
+  // SOMETHING to hunt for, so at least one keyword is. Enforced here so the API
+  // (not just the web forms) rejects an empty, contextless request.
+  //
+  // There used to be a free-text `instructions` param that stood in for the
+  // industry, and it went straight into every agent's system prompt (Javier,
+  // 2026-08-17: the buyer's free text never reaches the prompt — it only fills
+  // the structured params, through the preflight assist or by hand).
   .superRefine((v, ctx) => {
     const hasIndustry = !!v.industry && v.industry.trim().length > 0;
-    const instr = v.instructions?.trim() ?? '';
-    if (!hasIndustry && instr.length < MIN_INSTRUCTIONS_LEN) {
+    if (!hasIndustry && v.keywords.length === 0) {
       ctx.addIssue({
         code: 'custom',
-        path: ['instructions'],
-        message: `Specify an industry, or describe what to research in the instructions (at least ${MIN_INSTRUCTIONS_LEN} characters) so the analysts have enough context.`,
+        path: ['industry'],
+        message: 'Specify an industry, or at least one keyword, so the analysts know what to hunt for.',
       });
     }
   });
@@ -1008,10 +1007,10 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       params: { targetCount: 3 },
     },
   },
-  instructionsField: 'instructions',
-  // The structured half of "what the client wants". `instructions` stays as a
-  // narrow residual for the things no field covers; anything a buyer says often
-  // enough belongs here instead, where it cannot contradict a schema.
+  // The structured "what the client wants". Anything a buyer says often enough
+  // belongs here, where it cannot contradict a schema; what they type in their own
+  // words fills these fields (and `keywords`) through the preflight assist — it
+  // never reaches a prompt itself.
   directives: { key: 'directives', fields: DIRECTIVE_FIELDS },
   // Confirm-step review: deterministic summary + rules, and the whitelist the
   // assisted (LLM) pass may propose corrections for. See florida-preflight.ts.
@@ -1057,7 +1056,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       { label: 'Asking price', minKey: 'askingPriceMin', maxKey: 'askingPriceMax', min: 0, max: 5_000_000, step: 25_000, prefix: '$' },
     ],
     // Secondary inputs live in a collapsed "Advanced" section.
-    advanced: ['keywords', 'preferredSources', 'instructions'],
+    advanced: ['keywords'],
     // Directives are in `paramsSchema` (so the API validates them) but must not be
     // rendered by the generic form builder — a client that fell back to the JSON
     // Schema would draw a raw object editor. They have their own localized block
@@ -1091,12 +1090,6 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         help: 'Extra search keywords to bias the hunt.',
         suggestions: ['SBA', 'absentee owner', 'owner financing', 'real estate included', 'turnkey', 'established'],
       },
-      preferredSources: {
-        label: 'Preferred sources',
-        help: 'Marketplaces/brokers to prioritize (in addition to the defaults).',
-        suggestions: ['bizbuysell.com', 'bizquest.com', 'loopnet.com', 'businessesforsale.com', 'sunbeltnetwork.com'],
-      },
-      instructions: { label: 'Extra instructions', help: 'Anything the options above don’t cover. Guidance only — it can’t change what the report contains.' },
     },
   },
   // Spanish translations of the client-facing manifest strings (fallback: English).
@@ -1141,8 +1134,6 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         sbaFriendly: { label: 'Apto para SBA', help: 'Priorizar operaciones elegibles para financiamiento SBA 7(a).' },
         includeRealEstate: { label: 'Incluir inmueble', help: 'Preferir operaciones que incluyan inmueble comercial.' },
         keywords: { label: 'Palabras clave', help: 'Palabras clave adicionales para orientar la búsqueda.', suggestions: ['SBA', 'dueño ausente', 'financiación del vendedor', 'incluye inmueble', 'llave en mano', 'establecido'] },
-        preferredSources: { label: 'Fuentes preferidas', help: 'Marketplaces/brokers a priorizar (además de los predeterminados).' },
-        instructions: { label: 'Instrucciones adicionales', help: 'Lo que las opciones anteriores no cubran. Es orientación: no cambia el contenido del reporte.' },
       },
       ranges: { askingPriceMin: 'Precio pedido' },
       // The cover's own vocabulary. These words used to live in BOTH renderers'
@@ -1215,8 +1206,6 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         sbaFriendly: { label: 'Éligible SBA', help: 'Prioriser les opérations éligibles au financement SBA 7(a).' },
         includeRealEstate: { label: 'Inclure l’immobilier', help: 'Préférer les opérations incluant l’immobilier commercial.' },
         keywords: { label: 'Mots-clés', help: 'Mots-clés supplémentaires pour orienter la recherche.', suggestions: ['SBA', 'propriétaire absent', 'crédit vendeur', 'immobilier inclus', 'clé en main', 'établi'] },
-        preferredSources: { label: 'Sources privilégiées', help: 'Places de marché / courtiers à prioriser (en plus de ceux par défaut).' },
-        instructions: { label: 'Instructions supplémentaires', help: 'Ce que les options ci-dessus ne couvrent pas. C’est une orientation : cela ne change pas le contenu du rapport.' },
       },
       ranges: { askingPriceMin: 'Prix demandé' },
       cover: {
@@ -1286,8 +1275,6 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         sbaFriendly: { label: 'Elegível ao SBA', help: 'Priorizar operações elegíveis a financiamento SBA 7(a).' },
         includeRealEstate: { label: 'Incluir imóvel', help: 'Preferir operações que incluam imóvel comercial.' },
         keywords: { label: 'Palavras-chave', help: 'Palavras-chave adicionais para orientar a busca.', suggestions: ['SBA', 'dono ausente', 'financiamento do vendedor', 'imóvel incluído', 'chave na mão', 'estabelecido'] },
-        preferredSources: { label: 'Fontes preferidas', help: 'Marketplaces/corretores a priorizar (além dos padrão).' },
-        instructions: { label: 'Instruções adicionais', help: 'O que as opções acima não cobrem. É orientação: não muda o conteúdo do relatório.' },
       },
       ranges: { askingPriceMin: 'Preço pedido' },
       cover: {
@@ -1332,7 +1319,6 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
     if (p.sbaFriendly) lines.push('Prioritize deals likely eligible for SBA 7(a) financing.');
     if (p.includeRealEstate === true) lines.push('Prefer deals that include commercial real estate.');
     if (p.includeRealEstate === false) lines.push('Prefer asset/business-only deals (real estate not required).');
-    if (p.preferredSources.length) lines.push(`Prioritize these marketplaces/brokers: ${p.preferredSources.join(', ')}.`);
     // targetCount is injected internally by the mode config (not a public param).
     const targetCount = Number((p as Record<string, unknown>).targetCount ?? 5);
     lines.push(`Profile the top ${targetCount} matching listings in depth.`);

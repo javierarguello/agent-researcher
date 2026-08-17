@@ -250,8 +250,6 @@ export interface ResearchTemplate<TParams = unknown> {
   modes?: Partial<Record<ReportMode, ModeConfig>>;
   /** Turn validated params into a concise research brief (the goal). */
   buildBrief: (params: TParams) => string;
-  /** Optional params field carrying lower-authority client instructions. */
-  instructionsField?: string;
   /**
    * Structured directives this model accepts, as a closed per-field vocabulary.
    * The values live inside `paramsSchema` under `directives.key` — build that part
@@ -436,8 +434,6 @@ export interface TemplateManifest {
   directives?: DirectiveManifestField[];
   /** The param key directive values go under (present iff `directives` is). */
   directivesKey?: string;
-  /** Which param carries the buyer's free-text instructions, if any. */
-  instructionsField?: string;
   /** ISO 4217 the figures in this model's reports are in. */
   currency?: string;
   /** What this model summarises on the report's snapshot. */

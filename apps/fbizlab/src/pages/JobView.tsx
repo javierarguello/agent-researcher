@@ -163,7 +163,8 @@ function RequestParams({ params, manifest, lang, creditsSpent }: { params: Recor
    */
   const fields = manifest?.paramsUi?.fields ?? {};
   const label = (k: string) => fields[k]?.label ?? l[k] ?? k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
-  const instrKey = manifest?.instructionsField ?? 'instructions';
+  // Jobs written before 2026-08-17 carry a free-text `instructions` param; newer ones do not.
+  const instrKey = 'instructions';
   const ownRows = new Set(['mode', 'language', instrKey, manifest?.directivesKey ?? 'directives', ...(manifest?.paramsUi?.hidden ?? [])]);
   // A declared range renders as ONE row, the way the form collects it.
   const ranges = manifest?.paramsUi?.ranges ?? [];
@@ -184,7 +185,7 @@ function RequestParams({ params, manifest, lang, creditsSpent }: { params: Recor
     if (Array.isArray(v)) { if (v.length) rows.push([label(k), v.join(', ')]); continue; }
     rows.push([label(k), typeof v === 'number' ? (money(v) ?? String(v)) : String(v)]);
   }
-  const instructions = typeof p[manifest?.instructionsField ?? 'instructions'] === 'string' ? (p[manifest?.instructionsField ?? 'instructions'] as string) : '';
+  const instructions = typeof p[instrKey] === 'string' ? (p[instrKey] as string) : '';
 
   if (!rows.length && !instructions) return null;
   return (
