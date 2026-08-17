@@ -37,6 +37,7 @@ import { gatherCompleted } from '../src/engine/gather.js';
 import { runResearch, type Checkpoint } from '../src/engine/research-engine.js';
 import { compactModel } from './fixtures/compact-model.js';
 import { installMockProvider, MockLlmProvider } from './mocks/llm.js';
+import { config } from '../src/config.js';
 
 const params = () => compactModel.paramsSchema.parse({}) as Record<string, unknown>;
 
@@ -295,7 +296,10 @@ describe('a re-dispatch does not re-download pages this job already has', () => 
       return base2(opts);
     };
 
-    const resume: Checkpoint = { ...first.checkpoint, doneAgentIds: [], report: {} };
+    // `gatheredAgentIds` cleared too: with it, the scout would not run a loop at
+    // all (see "a re-dispatch does not re-buy a finished loop" below) and this
+    // test would pass without the cache ever being asked.
+    const resume: Checkpoint = { ...first.checkpoint, doneAgentIds: [], gatheredAgentIds: [], report: {} };
     await runResearch({ template: compactModel, params: params(), jobId: 'w7', generatedAt: 't', resume });
 
     // A page fetch is the most expensive call in the loop. Carrying only `sources`
@@ -311,5 +315,170 @@ describe('a re-dispatch does not re-download pages this job already has', () => 
     const out = await runResearch({ template: compactModel, params: params(), jobId: 'w8', generatedAt: 't', resume });
     // It is written after every agent, so unbounded growth is a real cost of its own.
     expect(out.checkpoint.extracted!.length).toBeLessThanOrEqual(60);
+  });
+});
+
+// --- Across dispatches (M-D1) ---------------------------------------------------
+//
+// The tests above are one dispatch. Production has eight, and until M-D1 each of
+// them re-bought the loop: `research.done` was a per-dispatch local, so a write
+// that failed on dispatch 1 was re-researched from scratch on dispatches 2..8 —
+// the checkpoint carried the pages but not "this agent's loop finished". And a
+// write that failed the SAME way each time was retried on all eight, because
+// nothing told a deterministic failure from a transient one.
+
+/** A provider whose scout WRITE answers `text` on every call (never repairs). */
+function scoutWrites(text: string): MockLlmProvider {
+  const mock = installMockProvider();
+  const base = mock.generate.bind(mock);
+  mock.generate = async (opts) => {
+    if (opts.responseSchema && WRITES_FINDINGS(opts.responseSchema)) {
+      return { text, toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+    }
+    return base(opts);
+  };
+  return mock;
+}
+
+/** A provider whose scout WRITE throws — a provider error, not a validation one. */
+function scoutWriteThrows(): MockLlmProvider {
+  const mock = installMockProvider();
+  const base = mock.generate.bind(mock);
+  mock.generate = async (opts) => {
+    if (opts.responseSchema && WRITES_FINDINGS(opts.responseSchema)) throw new Error('503 UNAVAILABLE');
+    return base(opts);
+  };
+  return mock;
+}
+
+/** One production-shaped dispatch: not the finalize pass (dispatches 1..7 are not). */
+const dispatch = (jobId: string, resume?: Checkpoint) =>
+  runResearch({ template: compactModel, params: params(), jobId, generatedAt: 't', finalize: false, ...(resume ? { resume } : {}) });
+
+describe('a re-dispatch does not re-buy a finished loop', () => {
+  it('carries "this agent’s loop finished" in the checkpoint and writes from that evidence on the next dispatch', async () => {
+    scoutWrites('not json');
+    const first = await dispatch('x1');
+    expect(first.trace.status).toBe('incomplete');
+    expect(first.trace.agents.find((a) => a.id === 'scout')!.status).toBe('failed');
+    expect(web.searches).toBeGreaterThan(0);
+    // The loop finished (`gatherCompleted`) even though the write did not — that
+    // is what the checkpoint now says, next to the pages the loop bought.
+    expect(first.checkpoint.gatheredAgentIds).toEqual(['scout']);
+
+    web.searches = 0;
+    scoutWrites('not json');
+    const second = await dispatch('x1', first.checkpoint);
+    const scout = second.trace.agents.find((a) => a.id === 'scout')!;
+    // Not one search: the write reads what dispatch 1 bought. Mutation that reds
+    // it: `research = { done: gathered.has(agent.id) }` → `{ done: false }` in
+    // research-engine.ts (the loop runs again: searches > 0, "Researching" note).
+    expect(web.searches).toBe(0);
+    expect(scout.notes.join('\n')).toMatch(/Reusing evidence already gathered/);
+    expect(scout.notes.join('\n')).not.toMatch(/Researching \(/);
+    expect(scout.turnsUsed).toBe(first.trace.agents.find((a) => a.id === 'scout')!.turnsUsed); // the row keeps the loop it wrote from
+  });
+
+  it('a checkpoint from before the field existed resumes exactly as it did: the loop runs again (an addition is a migration)', async () => {
+    scoutWrites('not json');
+    const first = await dispatch('x2');
+    // What a job held or re-dispatched across the deploy resumes from — no
+    // `gatheredAgentIds`, no `writeFailures`. Written out as a literal so the
+    // fixture cannot silently grow the fields.
+    const old: Checkpoint = {
+      report: first.checkpoint.report,
+      sources: first.checkpoint.sources,
+      extracted: first.checkpoint.extracted,
+      doneAgentIds: first.checkpoint.doneAgentIds,
+      handoffs: first.checkpoint.handoffs,
+      degraded: first.checkpoint.degraded,
+      agentTraces: first.checkpoint.agentTraces,
+      cost: first.checkpoint.cost,
+    };
+    expect(old).not.toHaveProperty('gatheredAgentIds');
+    expect(old).not.toHaveProperty('writeFailures');
+
+    web.searches = 0;
+    scoutWrites('not json');
+    const second = await dispatch('x2', old);
+    // Today's behaviour for yesterday's checkpoint: no claim about the loop, so the
+    // loop is bought (a re-fetch is a cache miss, not a wrong answer)…
+    expect(web.searches).toBeGreaterThan(0);
+    expect(second.trace.agents.find((a) => a.id === 'scout')!.notes.join('\n')).toMatch(/Researching \(/);
+    // …and no signature to compare against, so this dispatch is the FIRST time the
+    // failure is seen: it is retried, not given up on.
+    expect(second.trace.status).toBe('incomplete');
+    expect(second.checkpoint.writeFailures?.scout?.dispatches).toBe(1);
+    expect(second.checkpoint.gatheredAgentIds).toEqual(['scout']); // and it is carried from here on
+  });
+});
+
+describe('a write that fails the same way on two dispatches is given up on', () => {
+  it('the second identical failure ends the job: the section degrades, the warning names the repeated failure, no third dispatch is asked for', async () => {
+    scoutWrites('not json');
+    const first = await dispatch('s1');
+    expect(first.trace.status).toBe('incomplete');
+    expect(first.checkpoint.writeFailures).toEqual({ scout: { signature: 'json:Unexpected token', dispatches: 1 } });
+
+    scoutWrites('still not json'); // a different excerpt, the same failure
+    const second = await dispatch('s1', first.checkpoint);
+    // In-dispatch attempts as ever (×2 in the test env, ×3 in production)…
+    expect(second.trace.agents.find((a) => a.id === 'scout')!.attempts).toBe(config.workflow.agentMaxAttempts);
+    // …but not a third dispatch: with the scout given up on and the advisor
+    // waiting on it, nothing is retryable, so the engine finishes NOW — advisor
+    // best-effort, findings lost — instead of returning `incomplete` six more
+    // times. Mutation that reds it: `REPEATED_WRITE_FAILURE_DISPATCHES = 2` → 3.
+    expect(second.trace.status).toBe('completed');
+    expect(second.checkpoint.writeFailures?.scout).toEqual({ signature: 'json:Unexpected token', dispatches: 2 });
+    expect(second.meta.sections).toEqual([{ key: 'findings', status: 'lost' }]);
+    expect(second.trace.agents.find((a) => a.id === 'advisor')!.status).toBe('ok');
+    expect(second.trace.warnings?.join('\n')).toMatch(
+      /Degraded \[findings\] from agent "scout" after exhausting retries\/re-dispatches: the write failed the same way on 2 dispatches \[json:Unexpected token\]: .*Model did not return valid JSON/,
+    );
+    // And a dispatch that somehow resumes from here (an approval, say) does not run
+    // the scout at all: no calls of its own, its row is the checkpoint's.
+    const mock = scoutWrites('not json');
+    const third = await dispatch('s1', second.checkpoint);
+    expect(third.trace.status).toBe('completed');
+    expect(third.trace.agents.find((a) => a.id === 'scout')!.notes).toEqual([]);
+    expect(mock.calls).toBe(0);
+  });
+
+  it('a transient failure has no signature: it is retried on every dispatch, as before', async () => {
+    scoutWriteThrows();
+    const first = await dispatch('t1');
+    expect(first.trace.status).toBe('incomplete');
+    expect(first.trace.agents.find((a) => a.id === 'scout')!.error).toMatch(/503/);
+    // Nothing to compare next time: a 5xx says nothing about what the model does
+    // with this evidence. Mutation that reds it: the attempt loop's catch in
+    // research-engine.ts recording every failure as `lastWriteFailure`, not only a
+    // `StructuredOutputError` (the second dispatch would then finish, degraded).
+    expect(first.checkpoint.writeFailures).toEqual({});
+
+    scoutWriteThrows();
+    const second = await dispatch('t1', first.checkpoint);
+    expect(second.trace.status).toBe('incomplete'); // still worth a third dispatch
+    expect(second.checkpoint.writeFailures).toEqual({});
+    expect(second.trace.agents.find((a) => a.id === 'scout')!.attempts).toBe(config.workflow.agentMaxAttempts);
+  });
+
+  it('a DIFFERENT failure starts the count over: JSON on one dispatch, schema on the next, and the job is still retried', async () => {
+    scoutWrites('not json');
+    const first = await dispatch('d1');
+    expect(first.checkpoint.writeFailures?.scout).toEqual({ signature: 'json:Unexpected token', dispatches: 1 });
+
+    // Valid JSON, wrong shape: `findings` (and the handoff the producer schema asks
+    // for) missing entirely.
+    scoutWrites('{"nothing": true}');
+    const second = await dispatch('d1', first.checkpoint);
+    expect(second.trace.status).toBe('incomplete');
+    expect(second.checkpoint.writeFailures?.scout).toEqual({ signature: 'schema:_handoff:invalid_type,findings:invalid_type', dispatches: 1 });
+
+    // The same schema failure again → that is the second dispatch on THIS signature.
+    scoutWrites('{"nothing": false}');
+    const third = await dispatch('d1', second.checkpoint);
+    expect(third.trace.status).toBe('completed');
+    expect(third.checkpoint.writeFailures?.scout).toEqual({ signature: 'schema:_handoff:invalid_type,findings:invalid_type', dispatches: 2 });
+    expect(third.meta.sections).toEqual([{ key: 'findings', status: 'lost' }]);
   });
 });

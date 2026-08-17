@@ -1048,8 +1048,35 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   `u`, one token. Also real: a numbered list attached to a prose line prints as
   one run‑on paragraph — split the block at the first list line (the finder's
   `<ol>` branch alone misses the real shape).
-- **M‑D1 · A write that fails identically is retried 3 attempts × 8 dispatches
-  and the loop is re‑bought on every dispatch** (`research = { done: false }` is
+- ~~**M‑D1 · A write that fails identically is retried 3 attempts × 8 dispatches
+  and the loop is re‑bought on every dispatch**~~ **Closed `(this commit)`.**
+  Three changes, all in `packages/core`. (1) `Checkpoint.gatheredAgentIds`,
+  written by `snapshot()` next to `doneAgentIds` from the same `gatherCompleted`
+  rule (`done|budget` with turns > 0 — a loop cut off, or one that threw, is
+  still re‑run) and restored into `research.done`, so a re‑dispatch writes from
+  the pages/sources the checkpoint already carries; the trace row keeps the
+  reused loop's `turnsUsed`/`gatherStop` instead of showing a write from 0 turns;
+  a checkpoint without the field resumes exactly as before (pinned with a literal
+  fixture lacking it). (2) `synthesizeStructured` throws a `StructuredOutputError`
+  carrying a signature — schema: sorted unique `path:code` with array indices
+  collapsed to `*` (`schema:findings.listings.*.askingPrice:invalid_type`); JSON:
+  the parser's kind with position and excerpt stripped (`json:Unterminated string
+  in JSON`) — and `Checkpoint.writeFailures[agentId] = { signature, dispatches }`
+  counts consecutive dispatches ending on the same one; at 2 the agent is not run
+  again on any later dispatch (approved or not), and when nothing pending is
+  retryable — not exhausted, and not waiting on an exhausted step — the engine
+  runs the deferred steps best‑effort and finalizes in THAT dispatch (`lost` +
+  a warning naming the repeated failure) instead of returning `incomplete` six
+  more times; a 5xx or a different signature retries as before; the ×3
+  in‑dispatch attempts stay (REFUTE‑D1's repair‑obeying model loses nothing).
+  (3) `jsonSchemaToGemini` forwards `minItems`/`maxItems` (int64 strings) and
+  `minimum`/`maximum`; `minLength`/`maxLength`/`pattern` are typed in
+  `@google/genai` 1.52 but absent from its own list of what structured output
+  honours (`responseJsonSchema` doc), so they stay Zod's alone. Mock tier: the
+  write‑breaker page now costs 2 dispatches × attempts × 2 writes and one loop
+  (was 8 × attempts × 2 and eight loops); the held‑then‑approved run buys zero
+  loop calls. `approveHold` untouched, as decided.
+  Original finding (`research = { done: false }` is
   a per‑dispatch local, `research-engine.ts:439`; `Checkpoint` has
   `doneAgentIds` but no gathered set); dispatches 2–7 are the failing agent
   alone; then `held`, and `approveHold` resets `attempts` and uncaps. Under the

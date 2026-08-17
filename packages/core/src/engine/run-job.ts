@@ -8,7 +8,12 @@
  * Tasks re-dispatches with backoff. A checkpoint persists completed steps, so a
  * re-dispatch RESUMES (runs only the missing steps) rather than restarting. After
  * `config.workflow.maxJobAttempts` dispatches it finalizes, degrading whatever
- * still failed (logged + flagged as a WARNING on the job) and delivering the rest.
+ * still failed (logged + flagged as a WARNING on the job) and delivering the rest
+ * — or earlier, when the engine finds nothing left that a re-dispatch could still
+ * finish (every unfinished step failed the same way on two dispatches, or waits on
+ * one that did): then it finalizes on its own and returns 'completed', so this
+ * file never sees an 'incomplete' that would only be re-dispatched into the same
+ * failure (M-D1).
  */
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';

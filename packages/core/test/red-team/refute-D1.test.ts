@@ -22,6 +22,8 @@ import { setKeyEverywhere, type Payload } from '../fixtures/poisoned-web.js';
 import { ObedientMockProvider } from '../mocks/obedient-llm.js';
 import { redTeamModel } from '../fixtures/red-team-model.js';
 import { runResearch } from '../../src/engine/research-engine.js';
+import { jsonFailureSignature, schemaFailureSignature } from '../../src/engine/synthesize.js';
+import { z } from 'zod';
 import { __setProviderForTests } from '../../src/llm/models.js';
 import { config } from '../../src/config.js';
 import type { GenerateOptions, GenerateResult } from '../../src/llm/provider.js';
@@ -102,15 +104,20 @@ async function run(mock: ObedientMockProvider) {
 }
 
 describe('refute D1', () => {
-  it('1 · the finder DEFECT test, flipped: 9 writes total (8 for the two failing producers) vs the ≤4 asserted; scout attempts 2 vs the 1 asserted', async () => {
+  it('1 · the finder DEFECT test, flipped: 9 writes total (8 for the two failing producers) vs the ≤4 asserted; scout attempts 2 vs the 1 asserted — still true after the fix, by design', async () => {
     const mock = new ObedientMockProvider([WRITE_BREAKER]);
     restore = poison([WRITE_BREAKER]);
     const out = await run(mock);
     const writes = mock.seen.filter((s) => s.kind === 'structured').length;
     expect(writes).toBe(2 * 2 * config.workflow.agentMaxAttempts + 1); // 9 in the test env
     expect(out.trace.agents.find((a) => a.id === 'scout')?.attempts).toBe(config.workflow.agentMaxAttempts);
-    // So the it.fails fails for the STATED reason (writes 8 > 4, attempts 2 ≠ 1),
-    // and would flip to passing only if the engine stopped after write+repair.
+    // So the it.fails failed for the STATED reason (writes 8 > 4, attempts 2 ≠ 1).
+    // The M-D1 fix keeps this number ON PURPOSE: the in-dispatch attempts stay
+    // (test 2 below is why — a model that honours the repair message loses nothing
+    // and pays +1), and what is bounded is the DISPATCHES: the same signature on
+    // two of them and the agent is not run on a third. That is asserted in
+    // d-attack ("a write that fails identically on two dispatches…"); this pin
+    // stays as the record that ×3 was kept, not overlooked.
   });
 
   it('2 · same page, a model that honours OUR repair message: +1 write per failing agent, no lost section, one attempt, one dispatch — the ×24 needs the model to ignore an explicit unfenced instruction on every one of 24 tries', async () => {
@@ -137,7 +144,7 @@ describe('refute D1', () => {
     console.log(`repair-obeying model: writes ${mock.writes} vs control ${baseWrites}; sections lost: ${(out.meta.sections ?? []).length}`);
   });
 
-  it('3 · fix (2) as written ("identical strings") would not catch the truncation variant: JSON.parse errors carry a position', () => {
+  it('3 · fix (2) as written ("identical strings") would not catch the truncation variant: JSON.parse errors carry a position — the signature that shipped strips it, and keys Zod failures on path + code, not the message', () => {
     const s = JSON.stringify({ overview: 'x'.repeat(200), listings: [{ name: 'a', askingPrice: 1 }] });
     const msg = (cut: number) => {
       try {
@@ -151,7 +158,31 @@ describe('refute D1', () => {
     // thinking length varies) → different error strings.
     expect(msg(150)).not.toBe(msg(160));
     expect(msg(150)).toMatch(/position 150/);
+    // What the engine compares across dispatches instead: the parser's error KIND.
+    // Both cuts are one failure. (Mutation that reds it: drop the `at position`
+    // strip in `jsonFailureSignature`.)
+    expect(jsonFailureSignature(msg(150))).toBe('json:Unterminated string in JSON');
+    expect(jsonFailureSignature(msg(160))).toBe(jsonFailureSignature(msg(150)));
+    // …and the excerpt: "not json" vs "still not json" is the same non-answer.
+    expect(jsonFailureSignature("Unexpected token 'o', \"not json\" is not valid JSON")).toBe('json:Unexpected token');
+    expect(jsonFailureSignature("Unexpected token 's', \"still not json\" is not valid JSON")).toBe('json:Unexpected token');
+
     // Zod's messages, on the other hand, are identical for ANY value that violates
-    // the same constraint — 81 or 95 chars, an empty or… well, empty array.
+    // the same constraint — 81 or 95 chars, an empty or… well, empty array — so
+    // string equality is too blunt there. The signature keys on PATH + CODE:
+    // "too long, at labels" is one failure whichever label and however long, but a
+    // wrong TYPE at the same path is a different one — and array indices collapse,
+    // so an invalid price in listing 3 and in listing 5 are the same failure too.
+    const label = z.object({ labels: z.array(z.string().max(80)) });
+    const sig = (v: unknown) => schemaFailureSignature(label.safeParse(v).error!.issues);
+    expect(sig({ labels: ['x'.repeat(82)] })).toBe('schema:labels.*:too_big');
+    expect(sig({ labels: ['ok', 'x'.repeat(95)] })).toBe(sig({ labels: ['x'.repeat(82)] }));
+    expect(sig({ labels: [12] })).toBe('schema:labels.*:invalid_type');
+    expect(sig({ labels: [12] })).not.toBe(sig({ labels: ['x'.repeat(82)] }));
+    // Several issues: sorted and de-duplicated, so the order Zod reports them in and
+    // how many rows carried the same fault do not make two signatures out of one.
+    const listing = z.object({ listings: z.array(z.object({ askingPrice: z.number().nullable() })), risks: z.array(z.string()).min(1) });
+    const both = schemaFailureSignature(listing.safeParse({ listings: [{ askingPrice: 'a' }, { askingPrice: 'b' }], risks: [] }).error!.issues);
+    expect(both).toBe('schema:listings.*.askingPrice:invalid_type,risks:too_small');
   });
 });

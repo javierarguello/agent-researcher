@@ -260,6 +260,22 @@ export function jsonSchemaToGemini(
   }
   if (nullable) out.nullable = true;
 
+  // Cardinality and range, so the DECODER enforces them and not only Zod after
+  // the fact. Without these, `z.array(...).min(1)` and `z.number().min(0)` — what
+  // the Florida sections lean on for `risks`, `metrics`, `keyFindings`, `periods`
+  // — reached the model as plain arrays and numbers, and "this listing has no
+  // risks; report an empty list" was a schema-valid answer for Gemini and an
+  // invalid one for us: a repair round, then a retry, then a re-dispatch (M-D1).
+  // `minItems`/`maxItems` are int64 strings in `@google/genai`'s `Schema`.
+  // `minLength`/`maxLength`/`pattern` are typed too but NOT forwarded: the SDK's
+  // own list of what structured output honours (`responseJsonSchema` in
+  // genai.d.ts) names these four and not the string ones, and a bound the decoder
+  // ignores is a bound we would wrongly believe in. Zod still enforces them.
+  if (typeof base.minItems === 'number') out.minItems = String(base.minItems);
+  if (typeof base.maxItems === 'number') out.maxItems = String(base.maxItems);
+  if (typeof base.minimum === 'number') out.minimum = base.minimum;
+  if (typeof base.maximum === 'number') out.maximum = base.maximum;
+
   if (base.properties && typeof base.properties === 'object') {
     out.properties = Object.fromEntries(
       Object.entries(base.properties as Record<string, JsonSchemaNode>).map(([k, v]) => [

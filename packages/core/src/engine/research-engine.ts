@@ -26,7 +26,7 @@ import { degradedSectionNote } from '../jobs/report-copy.js';
 import type { ProgressKind } from '../jobs/types.js';
 import { normalizeSectionStatuses, type SectionStatus } from './section-status.js';
 import { createEvidence, gather, gatherCompleted, type Evidence, type GatherStop } from './gather.js';
-import { synthesizeStructured } from './synthesize.js';
+import { StructuredOutputError, synthesizeStructured } from './synthesize.js';
 import {
   buildAgentKickoff,
   buildEnricherSynthPrompt,
@@ -175,6 +175,41 @@ export interface JobTrace {
   finishedAt?: string;
 }
 
+/** One agent's last write failure that carried a signature — see `Checkpoint.writeFailures`. */
+export interface WriteFailure {
+  signature: string;
+  /** Consecutive dispatches that ended on this signature (1 = first time seen). */
+  dispatches: number;
+}
+
+/**
+ * Dispatches on which the SAME write failure ends an agent before it is given up
+ * on. Two: the first says what the model does with this evidence, the second says
+ * it will keep doing it — a third dispatch would buy the same 3 × 2 writes for the
+ * same section, and so would the fourth through the eighth.
+ */
+export const REPEATED_WRITE_FAILURE_DISPATCHES = 2;
+
+/** Whether an agent's write has failed the same way on enough dispatches to stop retrying it. */
+export function writeFailureExhausted(failure: WriteFailure | undefined): boolean {
+  return (failure?.dispatches ?? 0) >= REPEATED_WRITE_FAILURE_DISPATCHES;
+}
+
+/**
+ * The record to persist for an agent whose dispatch ended in `err`: the same
+ * signature again → one more dispatch on it; a new signature → the count starts
+ * over; no validation failure at all (`undefined`: a provider error, a ceiling)
+ * → nothing to compare against next time, so the record is dropped. The caller
+ * decides what counts as a validation failure — only a `StructuredOutputError`
+ * carries a signature; anything else says nothing about the model and the
+ * evidence.
+ */
+export function writeFailureAfter(prior: WriteFailure | undefined, err: StructuredOutputError | undefined): WriteFailure | undefined {
+  if (!err) return undefined;
+  const dispatches = prior?.signature === err.signature ? prior.dispatches + 1 : 1;
+  return { signature: err.signature, dispatches };
+}
+
 /** Resumable checkpoint of a run (persisted so a re-dispatch continues, not restarts). */
 export interface Checkpoint {
   report: Record<string, unknown>;
@@ -192,6 +227,25 @@ export interface Checkpoint {
   extracted?: ExtractedPage[];
   /** Agent ids already completed — skipped on resume. */
   doneAgentIds: string[];
+  /**
+   * Producers whose research loop FINISHED (`gatherCompleted`: it stopped asking
+   * for tools or spent its allowance, and bought something) — including the ones
+   * whose WRITE then failed. Restored so a re-dispatch writes from the evidence
+   * carried in `extracted`/`sources` instead of buying the loop again: `research.
+   * done` was a per-dispatch local, so a write that failed identically re-bought
+   * its loop on every one of the eight dispatches (M-D1). Absent on checkpoints
+   * written before it existed — those resume as they always did, loop and all.
+   */
+  gatheredAgentIds?: string[];
+  /**
+   * The last VALIDATION failure of each agent's write, by agent id: what failed
+   * (`StructuredOutputError.signature`) and on how many consecutive dispatches it
+   * failed that way. Two is the bound: an agent whose write fails the same way on
+   * two dispatches is not retried on a third — its section degrades as if the
+   * retries were exhausted, because they are. A provider error (no signature) or a
+   * different signature starts the count over. See `writeFailureAfter`.
+   */
+  writeFailures?: Record<string, WriteFailure>;
   /** What each finished agent reported to the steps after it, by agent id. */
   handoffs?: Record<string, string>;
   /** Section statuses so far — see `ReportMeta.sections`. */
@@ -293,6 +347,14 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // predecessors already did.
   const handoffs: Record<string, string> = { ...(input.resume?.handoffs ?? {}) };
   const done = new Set<string>(input.resume?.doneAgentIds ?? []);
+  // Producers whose loop finished on an earlier dispatch. Their evidence is the
+  // `sources`/`extracted` seeded below; a resumed attempt writes from that.
+  const gathered = new Set<string>(input.resume?.gatheredAgentIds ?? []);
+  // The last signed write failure per agent, carried across dispatches. An agent
+  // whose entry says "exhausted" is not run again on any later dispatch, approved
+  // or not: it degrades with the rest of the unfinished steps.
+  const writeFailures: Record<string, WriteFailure> = { ...(input.resume?.writeFailures ?? {}) };
+  const exhausted = (agentId: string) => writeFailureExhausted(writeFailures[agentId]);
   const warnings: string[] = [];
   const counter = { turns: 0 };
   const finalize = input.finalize ?? true;
@@ -365,10 +427,12 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     sources: evidence.sources,
     extracted: evidence.extracted.slice(-CHECKPOINT_MAX_PAGES),
     doneAgentIds: [...done],
+    gatheredAgentIds: [...gathered],
     handoffs,
     degraded,
     agentTraces: slimAgents(),
     cost: trace.cost,
+    writeFailures,
   });
 
   // Checkpoint writes are last-writer-wins in storage, and a wave finishes several
@@ -393,144 +457,227 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
 
   await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents (${done.size} already done).`, 'starting');
 
-  for (const [w, wave] of waves.entries()) {
-    const todo = wave.filter((a) => !done.has(a.id));
-    if (!todo.length) continue;
-    await emit('planning', `Wave ${w + 1}/${waves.length}: ${todo.map((a) => a.id).join(', ')}.`, 'wave');
-    await runPool(todo, config.llm.maxConcurrentAgents, async (agent) => {
-      const at: AgentTrace = {
-        id: agent.id,
-        role: agent.role,
-        wave: w + 1,
-        produces: agent.produces ?? [],
-        enriches: agent.enriches ?? [],
-        model: agent.model ?? config.llm.defaultSynthModel,
-        ...(agent.role === 'producer' ? { gatherModel: agent.gatherModel ?? config.llm.defaultGatherModel } : {}),
-        status: 'running',
-        turnsUsed: 0,
-        attempts: 0,
-        cost: emptyCost(),
-        notes: [],
-        startedAt: new Date().toISOString(),
-      };
-      // An agent running now SUPERSEDES whatever the checkpoint said about it —
-      // it was `failed` or `pending` last dispatch, which is why it is running
-      // again. Replacing in place (rather than appending) keeps the trace one
-      // entry per agent, in DAG order: a resumed job must not show an agent twice,
-      // once failed and once ok.
-      const prior = trace.agents.findIndex((a) => a.id === agent.id);
-      if (prior >= 0) {
-        // Carry the replaced row's spend forward. `trace.cost` already includes it
-        // (via `resume.cost`), so dropping it here would leave the job total larger
-        // than the sum of its agents, with the difference attributed to nobody —
-        // and the money in question is a failed agent's, the interesting kind.
-        at.cost = trace.agents[prior]!.cost ?? emptyCost();
-        trace.agents[prior] = at;
-      } else trace.agents.push(at);
+  // One pass over the DAG. `bestEffort` is the finalize semantics: an agent whose
+  // dependency never finished runs anyway, on whatever context exists. It is a
+  // function because a dispatch can decide, AFTER its retrying pass, that there is
+  // nothing left worth a re-dispatch — and then runs the deferred steps right here
+  // rather than paying another dispatch to reach the same conclusion.
+  const runWaves = async (bestEffort: boolean) => {
+    for (const [w, wave] of waves.entries()) {
+      // Not done, and not given up on: an agent whose write failed the same way on
+      // two dispatches is not run a third time — it degrades below with the rest.
+      const todo = wave.filter((a) => !done.has(a.id) && !exhausted(a.id));
+      if (!todo.length) continue;
+      await emit('planning', `Wave ${w + 1}/${waves.length}: ${todo.map((a) => a.id).join(', ')}.`, 'wave');
+      await runPool(todo, config.llm.maxConcurrentAgents, async (agent) => {
+        const at: AgentTrace = {
+          id: agent.id,
+          role: agent.role,
+          wave: w + 1,
+          produces: agent.produces ?? [],
+          enriches: agent.enriches ?? [],
+          model: agent.model ?? config.llm.defaultSynthModel,
+          ...(agent.role === 'producer' ? { gatherModel: agent.gatherModel ?? config.llm.defaultGatherModel } : {}),
+          status: 'running',
+          turnsUsed: 0,
+          attempts: 0,
+          cost: emptyCost(),
+          notes: [],
+          startedAt: new Date().toISOString(),
+        };
+        // An agent running now SUPERSEDES whatever the checkpoint said about it —
+        // it was `failed` or `pending` last dispatch, which is why it is running
+        // again. Replacing in place (rather than appending) keeps the trace one
+        // entry per agent, in DAG order: a resumed job must not show an agent twice,
+        // once failed and once ok.
+        const prior = trace.agents.findIndex((a) => a.id === agent.id);
+        if (prior >= 0) {
+          // Carry the replaced row's spend forward. `trace.cost` already includes it
+          // (via `resume.cost`), so dropping it here would leave the job total larger
+          // than the sum of its agents, with the difference attributed to nobody —
+          // and the money in question is a failed agent's, the interesting kind.
+          at.cost = trace.agents[prior]!.cost ?? emptyCost();
+          // …and its loop, for the same reason: an agent resuming on evidence it
+          // gathered last dispatch (`gatheredAgentIds`) runs no loop now, and a row
+          // saying "0 turns, no stop" would describe a write from nothing. A loop
+          // that does run again overwrites both.
+          at.turnsUsed = trace.agents[prior]!.turnsUsed ?? 0;
+          if (trace.agents[prior]!.gatherStop) at.gatherStop = trace.agents[prior]!.gatherStop;
+          trace.agents[prior] = at;
+        } else trace.agents.push(at);
 
-      // While retries remain, defer an agent whose dependency hasn't completed —
-      // it runs once its deps succeed (a later re-dispatch), never on stale context.
-      // On the finalize pass there's no future retry, so run it best-effort with
-      // whatever context exists (a failed dep just means missing context).
-      const deps = depsOf(agent, producers);
-      const depsReady = [...deps].every((d) => done.has(d) || !byId.has(d));
-      if (!finalize && !depsReady) {
-        at.status = 'pending';
+        // While retries remain, defer an agent whose dependency hasn't completed —
+        // it runs once its deps succeed (a later re-dispatch), never on stale context.
+        // On the finalize pass there's no future retry, so run it best-effort with
+        // whatever context exists (a failed dep just means missing context).
+        const deps = depsOf(agent, producers);
+        const depsReady = [...deps].every((d) => done.has(d) || !byId.has(d));
+        if (!bestEffort && !depsReady) {
+          at.status = 'pending';
+          at.finishedAt = new Date().toISOString();
+          return;
+        }
+
+        // Whether THIS agent has already bought its evidence — in this dispatch, or
+        // in an earlier one (`gatheredAgentIds`, carried by the checkpoint).
+        //
+        // The retry loop wraps both halves of an agent — the research loop and the
+        // structured write — so a write that failed used to re-buy the whole loop:
+        // fresh searches, fresh page fetches, fresh tokens, for evidence that was
+        // already paid for and still sitting in the shared store. Set only when
+        // `gather` RETURNS with turns, so a failure inside the loop still re-runs it
+        // and an empty pass gets one more go (C2). Restored from the checkpoint for
+        // the same reason: the evidence a finished loop bought is in the store this
+        // dispatch was seeded from, and a re-dispatch after a failed write used to
+        // buy it all again — eight times over (M-D1).
+        const research = { done: gathered.has(agent.id), touched: new Set<string>(), fetched: new Set<string>() };
+        // The last VALIDATION failure any attempt of this dispatch ended on, if one
+        // did — what the signature bookkeeping below compares across dispatches. A
+        // provider error or the ceiling leaves it alone: they say nothing about what
+        // the model does with this evidence.
+        let lastWriteFailure: StructuredOutputError | undefined;
+        let succeeded = false;
+
+        // In-run retries with exponential backoff — keep trying the step.
+        for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
+          // Checked before every attempt, including the first: once the job has spent
+          // its ceiling there is nothing to retry INTO. This is the guard that makes
+          // 3 attempts × 8 dispatches a bounded number of dollars rather than a
+          // bounded number of tries.
+          const budget = jobSpend.budget();
+          if (budget.exceeded) {
+            const err = new BudgetExceededError(budget.spentUsd, budget.limitUsd ?? 0);
+            at.status = 'failed';
+            // `message` here, `detail` in the note. Not because of degraded sections —
+            // those carry our localized note, never this — but because `emit` below
+            // lands in `job.progress.message`, which the API hands to the buyer raw.
+            // The figures stay in the note, which is admin-side.
+            at.error = err.message;
+            at.notes.push(`${new Date().toISOString()} ${err.detail}`);
+            trace.budgetExceeded = true;
+            await emit(agent.id, err.message, 'ceiling');
+            break;
+          }
+          at.attempts = attempt;
+          // One sink per attempt, read on BOTH the success and the failure path: a
+          // failed attempt still ran its whole research loop and its synthesis calls,
+          // and a job that retries to exhaustion is the most expensive kind there is.
+          const spend = jobSpend.child();
+          let ok = false;
+          let failure: Error | undefined;
+          try {
+            const { slice, handoff } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend, research, handoffs });
+            Object.assign(report, slice);
+            if (handoff) handoffs[agent.id] = handoff;
+            at.status = 'ok';
+            at.output = slice;
+            done.add(agent.id);
+            ok = true;
+            succeeded = true;
+          } catch (err) {
+            at.status = 'failed';
+            at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
+            failure = err as Error;
+            if (err instanceof StructuredOutputError) lastWriteFailure = err;
+          } finally {
+            // In `finally`, not duplicated across try/catch: the invariant is "an
+            // attempt is charged, whatever became of it" — a later early return or
+            // `continue` cannot silently stop charging.
+            at.cost = addCost(at.cost, spend.total());
+            // Read, not accumulated: `spend` is a child of `jobSpend`, so every call
+            // it recorded is already in the job total. Adding it again here is exactly
+            // the double-count the single-accumulator rule exists to prevent.
+            trace.cost = jobSpend.total();
+          }
+          if (ok) break;
+          // A ceiling reached mid-attempt ends the agent now. Retrying would just
+          // re-enter the guard above, after another backoff.
+          if (failure instanceof BudgetExceededError) {
+            trace.budgetExceeded = true;
+            break;
+          }
+
+          // Backoff happens AFTER the charge is booked, not inside the catch. Siblings
+          // run concurrently and checkpoint while this agent sleeps; a save during the
+          // backoff would otherwise persist a total missing this attempt's spend, and
+          // a process that dies in that window loses it for good.
+          if (attempt < config.workflow.agentMaxAttempts) {
+            const backoff = backoffMs(attempt);
+            at.notes.push(`${new Date().toISOString()} retry ${attempt} after: ${failure?.message}`);
+            await emit(agent.id, `Retry ${attempt}/${config.workflow.agentMaxAttempts - 1} after error; backing off ${Math.round(backoff)}ms.`, 'retry');
+            await sleep(backoff);
+          } else {
+            await emit(agent.id, `Failed after ${attempt} attempts: ${failure?.message}`, 'failed');
+          }
+        }
+        // A loop that finished stays finished: whatever happened to the write, the
+        // next dispatch must not buy this evidence again.
+        if (research.done) gathered.add(agent.id);
+        // The cross-dispatch record. Kept only for a validation failure; a success,
+        // a provider error or the ceiling clears it (see `writeFailureAfter`). An
+        // agent that never got an attempt (the ceiling was already spent) said
+        // nothing new, so its record is left as it was.
+        if (at.attempts === 0) {
+          // nothing ran; nothing to record
+        } else if (succeeded) delete writeFailures[agent.id];
+        else {
+          const next = writeFailureAfter(writeFailures[agent.id], lastWriteFailure);
+          if (!next) delete writeFailures[agent.id];
+          else {
+            writeFailures[agent.id] = next;
+            if (writeFailureExhausted(next)) {
+              at.notes.push(
+                `${new Date().toISOString()} write failed the same way on ${next.dispatches} dispatches (${next.signature}); ` +
+                  `not retrying this step on a later dispatch.`,
+              );
+              await emit(agent.id, `Failed the same way on ${next.dispatches} dispatches; giving up on this step.`, 'failed');
+            }
+          }
+        }
+        at.durationMs = Date.now() - Date.parse(at.startedAt);
         at.finishedAt = new Date().toISOString();
-        return;
-      }
+        // Save after every outcome, not only on success: the checkpoint is the only
+        // carrier of cost across dispatches, so a dispatch where nothing succeeds must
+        // still persist what it spent. Everything in the snapshot is idempotent.
+        await saveCheckpoint();
+      });
+      await persistTrace();
+    }
+  };
 
-      // Whether THIS agent has already bought its evidence in this dispatch.
-      //
-      // The retry loop wraps both halves of an agent — the research loop and the
-      // structured write — so a write that failed used to re-buy the whole loop:
-      // fresh searches, fresh page fetches, fresh tokens, for evidence that was
-      // already paid for and still sitting in the shared store. Set only when
-      // `gather` RETURNS with turns, so a failure inside the loop still re-runs it
-      // and an empty pass gets one more go (C2).
-      const research = { done: false, touched: new Set<string>(), fetched: new Set<string>() };
+  await runWaves(finalize);
 
-      // In-run retries with exponential backoff — keep trying the step.
-      for (let attempt = 1; attempt <= config.workflow.agentMaxAttempts; attempt++) {
-        // Checked before every attempt, including the first: once the job has spent
-        // its ceiling there is nothing to retry INTO. This is the guard that makes
-        // 3 attempts × 8 dispatches a bounded number of dollars rather than a
-        // bounded number of tries.
-        const budget = jobSpend.budget();
-        if (budget.exceeded) {
-          const err = new BudgetExceededError(budget.spentUsd, budget.limitUsd ?? 0);
-          at.status = 'failed';
-          // `message` here, `detail` in the note. Not because of degraded sections —
-          // those carry our localized note, never this — but because `emit` below
-          // lands in `job.progress.message`, which the API hands to the buyer raw.
-          // The figures stay in the note, which is admin-side.
-          at.error = err.message;
-          at.notes.push(`${new Date().toISOString()} ${err.detail}`);
-          trace.budgetExceeded = true;
-          await emit(agent.id, err.message, 'ceiling');
-          break;
-        }
-        at.attempts = attempt;
-        // One sink per attempt, read on BOTH the success and the failure path: a
-        // failed attempt still ran its whole research loop and its synthesis calls,
-        // and a job that retries to exhaustion is the most expensive kind there is.
-        const spend = jobSpend.child();
-        let ok = false;
-        let failure: Error | undefined;
-        try {
-          const { slice, handoff } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend, research, handoffs });
-          Object.assign(report, slice);
-          if (handoff) handoffs[agent.id] = handoff;
-          at.status = 'ok';
-          at.output = slice;
-          done.add(agent.id);
-          ok = true;
-        } catch (err) {
-          at.status = 'failed';
-          at.error = (err as Error).stack ?? (err as Error).message ?? String(err);
-          failure = err as Error;
-        } finally {
-          // In `finally`, not duplicated across try/catch: the invariant is "an
-          // attempt is charged, whatever became of it" — a later early return or
-          // `continue` cannot silently stop charging.
-          at.cost = addCost(at.cost, spend.total());
-          // Read, not accumulated: `spend` is a child of `jobSpend`, so every call
-          // it recorded is already in the job total. Adding it again here is exactly
-          // the double-count the single-accumulator rule exists to prevent.
-          trace.cost = jobSpend.total();
-        }
-        if (ok) break;
-        // A ceiling reached mid-attempt ends the agent now. Retrying would just
-        // re-enter the guard above, after another backoff.
-        if (failure instanceof BudgetExceededError) {
-          trace.budgetExceeded = true;
-          break;
-        }
+  const pendingAgents = () => effTemplate.agents.filter((a) => !done.has(a.id));
 
-        // Backoff happens AFTER the charge is booked, not inside the catch. Siblings
-        // run concurrently and checkpoint while this agent sleeps; a save during the
-        // backoff would otherwise persist a total missing this attempt's spend, and
-        // a process that dies in that window loses it for good.
-        if (attempt < config.workflow.agentMaxAttempts) {
-          const backoff = backoffMs(attempt);
-          at.notes.push(`${new Date().toISOString()} retry ${attempt} after: ${failure?.message}`);
-          await emit(agent.id, `Retry ${attempt}/${config.workflow.agentMaxAttempts - 1} after error; backing off ${Math.round(backoff)}ms.`, 'retry');
-          await sleep(backoff);
-        } else {
-          await emit(agent.id, `Failed after ${attempt} attempts: ${failure?.message}`, 'failed');
+  // Whether a re-dispatch could still finish anything. Every unfinished agent is
+  // either given up on (its write failed the same way twice), or blocked behind
+  // one that is — transitively: an agent is retryable only if it is not exhausted
+  // AND each dependency it has is done or itself retryable. When nothing is, the
+  // remaining dispatches would each wake up, run no agent, and return
+  // `incomplete` again until `maxJobAttempts` finalized — so finalize NOW: run
+  // the deferred steps best-effort, degrade the rest, deliver the report.
+  const retryable = (): AgentSpec[] => {
+    const set = new Set(pendingAgents().filter((a) => !exhausted(a.id)).map((a) => a.id));
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const id of set) {
+        const deps = depsOf(byId.get(id)!, producers);
+        if ([...deps].some((d) => byId.has(d) && !done.has(d) && !set.has(d))) {
+          set.delete(id);
+          changed = true;
         }
       }
-      at.durationMs = Date.now() - Date.parse(at.startedAt);
-      at.finishedAt = new Date().toISOString();
-      // Save after every outcome, not only on success: the checkpoint is the only
-      // carrier of cost across dispatches, so a dispatch where nothing succeeds must
-      // still persist what it spent. Everything in the snapshot is idempotent.
-      await saveCheckpoint();
-    });
-    await persistTrace();
+    }
+    return effTemplate.agents.filter((a) => set.has(a.id));
+  };
+  let finalizing = finalize;
+  if (!finalizing && pendingAgents().length && !jobSpend.budget().exceeded && !retryable().length) {
+    finalizing = true;
+    await emit('planning', 'No unfinished step can still be retried; finishing the report now.', 'assembling');
+    await runWaves(true);
   }
 
-  const pending = effTemplate.agents.filter((a) => !done.has(a.id));
+  const pending = pendingAgents();
 
   const makeMeta = (): ReportMeta => ({
     title: template.name,
@@ -570,7 +717,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   // Not finalizing yet → return 'incomplete' so a re-dispatch resumes the rest.
-  if (pending.length && !finalize) {
+  if (pending.length && !finalizing) {
     trace.status = 'incomplete';
     trace.durationMs = Date.now() - Date.parse(trace.startedAt);
     trace.finishedAt = new Date().toISOString();
@@ -602,7 +749,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   for (const agent of pending) {
-    const reason = agentReason(trace, agent.id);
+    const reason = agentReason(trace, agent.id, writeFailures[agent.id]);
     // The placeholder the BUYER reads is ours and localized; the internal reason
     // goes to `warnings` (admin-side) on the next line, never into the report.
     const lost = ownedKeys(agent).filter((key) => !delivered.has(key));
@@ -676,9 +823,15 @@ function backoffMs(attempt: number): number {
 }
 
 /** Why an agent didn't complete — its last error, or a pending dependency. */
-function agentReason(trace: JobTrace, agentId: string): string {
+function agentReason(trace: JobTrace, agentId: string, failure?: WriteFailure): string {
   const at = trace.agents.find((a) => a.id === agentId);
-  if (at?.error) return (at.error.split('\n')[0] ?? '').slice(0, 300);
+  const error = at?.error ? (at.error.split('\n')[0] ?? '').slice(0, 300) : undefined;
+  // Given up on, not merely out of retries: the admin reading this warning should
+  // see that the same write failed the same way twice, and what "the same way" was.
+  if (failure && writeFailureExhausted(failure)) {
+    return `the write failed the same way on ${failure.dispatches} dispatches [${failure.signature}]: ${error ?? '(no error recorded)'}`;
+  }
+  if (error) return error;
   return 'a dependency did not complete';
 }
 
@@ -699,7 +852,7 @@ async function runAgent(ctx: {
   /** Every paid call inside this agent writes here as it happens, so a failed
    *  attempt's spend is still known to the caller. */
   spend: CostSink;
-  /** Cross-attempt state for THIS agent: has its research loop already run? */
+  /** Cross-attempt (and, via the checkpoint, cross-dispatch) state for THIS agent: has its research loop already run? */
   research: { done: boolean; touched: Set<string>; fetched: Set<string> };
   /** What every finished agent reported, keyed by agent id. */
   handoffs: Record<string, string>;

@@ -25,6 +25,51 @@ export interface SynthesizeStructuredInput<T> {
   spend?: CostSink;
 }
 
+/**
+ * A structured write that failed VALIDATION — the model answered, and what it
+ * answered was not the schema (or was not JSON). Distinct from a provider error
+ * (a 5xx, a timeout) because the two mean different things to a retry: a provider
+ * blip is transient; a model that returns the same invalid shape on the same
+ * evidence will do it again, and the engine uses `signature` to notice.
+ *
+ * The signature is WHAT failed, not what the model said about it:
+ *   - schema: every Zod issue's path + code (`findings.risks:too_small`), sorted
+ *     and de-duplicated, array indices collapsed to `*` — the message strings
+ *     carry no value ("<=80 characters" reads the same for 82 and 95), so two
+ *     honest near-misses at different lengths ARE the same failure, and an
+ *     invalid type in listing 3 vs listing 5 is too;
+ *   - JSON: the parser's error kind with the position and the excerpt stripped
+ *     (two truncations at different lengths are one failure).
+ */
+export class StructuredOutputError extends Error {
+  readonly signature: string;
+  constructor(message: string, signature: string) {
+    super(message);
+    this.name = 'StructuredOutputError';
+    this.signature = signature;
+  }
+}
+
+/** Longest signature persisted — a schema with hundreds of issues still yields one line. */
+const MAX_SIGNATURE_CHARS = 1000;
+
+/** `schema:` + sorted unique `path:code` pairs, array indices collapsed to `*`. */
+export function schemaFailureSignature(issues: ReadonlyArray<{ path: PropertyKey[]; code: string }>): string {
+  const keys = new Set(
+    issues.map((i) => `${i.path.map((seg) => (typeof seg === 'number' ? '*' : String(seg))).join('.') || '(root)'}:${i.code}`),
+  );
+  return `schema:${[...keys].sort().join(',')}`.slice(0, MAX_SIGNATURE_CHARS);
+}
+
+/** `json:` + the parser's error kind, without the position or the offending excerpt. */
+export function jsonFailureSignature(message: string): string {
+  const kind = message
+    .replace(/ at position \d+[\s\S]*$/, '')
+    .replace(/^Unexpected token\b[\s\S]*$/, 'Unexpected token')
+    .trim();
+  return `json:${kind}`.slice(0, MAX_SIGNATURE_CHARS);
+}
+
 export interface StructuredResult<T> {
   // No `cost` here, deliberately. Spend goes to the sink as it happens, and every
   // call this function makes is billed whether or not it ever returns — so a
@@ -63,7 +108,10 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
-      if (attempt === 1) throw new Error(`Model did not return valid JSON: ${(err as Error).message}`);
+      if (attempt === 1) {
+        const message = (err as Error).message;
+        throw new StructuredOutputError(`Model did not return valid JSON: ${message}`, jsonFailureSignature(message));
+      }
       messages.push({ role: 'model', text: res.text });
       messages.push({ role: 'user', text: `That was not valid JSON (${(err as Error).message}). Return ONLY the JSON object.` });
       continue;
@@ -74,7 +122,7 @@ export async function synthesizeStructured<T>(input: SynthesizeStructuredInput<T
 
     if (attempt === 1) {
       const issues = result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
-      throw new Error(`Structured output failed schema validation: ${issues}`);
+      throw new StructuredOutputError(`Structured output failed schema validation: ${issues}`, schemaFailureSignature(result.error.issues));
     }
     const issues = result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
     messages.push({ role: 'model', text: res.text });
