@@ -60,9 +60,13 @@ describe('a job parked for a decision', () => {
     expect(screen.getByText(/en revisión/i)).toBeTruthy();
   });
 
-  it('shows the paused message the engine wrote', () => {
-    show({ status: 'held', progress: { phase: 'held', message: 'Paused for review.' }, summary: null });
-    expect(screen.getByText(/paused for review/i)).toBeTruthy();
+  it('shows the paused line in the buyer’s language from the KIND the API hands it — the engine’s own sentence never reaches this page', () => {
+    // Mutation that reds this: render `job.progress.message` again (the API no
+    // longer sends it to a buyer, so the line would simply vanish).
+    show({ status: 'held', progress: { phase: 'held', kind: 'held', updatedAt: 't' }, summary: null });
+    expect(screen.getByText(/paused while we review it/i)).toBeTruthy();
+    show({ status: 'held', progress: { phase: 'held', kind: 'held', updatedAt: 't' }, summary: null }, 'es');
+    expect(screen.getByText(/en pausa mientras lo revisamos/i)).toBeTruthy();
   });
 
   it('counts a held job as live, so the page keeps polling', async () => {

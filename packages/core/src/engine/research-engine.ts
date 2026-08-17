@@ -23,6 +23,7 @@ import {
   type ResearchTemplate,
 } from '../templates/types.js';
 import { degradedSectionNote } from '../jobs/report-copy.js';
+import type { ProgressKind } from '../jobs/types.js';
 import { normalizeSectionStatuses, type SectionStatus } from './section-status.js';
 import { createEvidence, gather, gatherCompleted, type Evidence, type GatherStop } from './gather.js';
 import { synthesizeStructured } from './synthesize.js';
@@ -49,7 +50,12 @@ const HANDOFF_KEY = '_handoff';
 export interface ResearchProgress {
   /** Agent id, or a lifecycle phase ('planning' | 'assembling' | 'done'). */
   phase: string;
+  /** The engine's English sentence — for the trace and the admin. */
   message: string;
+  /** What kind of step this is — what a client localizes. */
+  kind: ProgressKind;
+  /** The one variable a client may show (a `searched` query). */
+  detail?: string;
   turnsUsed: number;
   sourcesFound: number;
 }
@@ -348,8 +354,8 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   };
   let fatalError: string | undefined;
 
-  const emit = async (phase: string, message: string) =>
-    onProgress?.({ phase, message, turnsUsed: counter.turns, sourcesFound: evidence.sources.length });
+  const emit = async (phase: string, message: string, kind: ProgressKind, detail?: string) =>
+    onProgress?.({ phase, message, kind, ...(detail ? { detail } : {}), turnsUsed: counter.turns, sourcesFound: evidence.sources.length });
   const persistTrace = async () => onTrace?.(trace);
   // Slim agent traces for the checkpoint: drop `output` (already in `report`) and
   // `notes` to keep checkpoint.json small; keep status/cost/timing for the summary.
@@ -385,12 +391,12 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     return queued;
   };
 
-  await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents (${done.size} already done).`);
+  await emit('planning', `Starting workflow [${mode.key}]: ${effTemplate.agents.length} agents (${done.size} already done).`, 'starting');
 
   for (const [w, wave] of waves.entries()) {
     const todo = wave.filter((a) => !done.has(a.id));
     if (!todo.length) continue;
-    await emit('planning', `Wave ${w + 1}/${waves.length}: ${todo.map((a) => a.id).join(', ')}.`);
+    await emit('planning', `Wave ${w + 1}/${waves.length}: ${todo.map((a) => a.id).join(', ')}.`, 'wave');
     await runPool(todo, config.llm.maxConcurrentAgents, async (agent) => {
       const at: AgentTrace = {
         id: agent.id,
@@ -461,7 +467,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
           at.error = err.message;
           at.notes.push(`${new Date().toISOString()} ${err.detail}`);
           trace.budgetExceeded = true;
-          await emit(agent.id, err.message);
+          await emit(agent.id, err.message, 'ceiling');
           break;
         }
         at.attempts = attempt;
@@ -508,10 +514,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         if (attempt < config.workflow.agentMaxAttempts) {
           const backoff = backoffMs(attempt);
           at.notes.push(`${new Date().toISOString()} retry ${attempt} after: ${failure?.message}`);
-          await emit(agent.id, `Retry ${attempt}/${config.workflow.agentMaxAttempts - 1} after error; backing off ${Math.round(backoff)}ms.`);
+          await emit(agent.id, `Retry ${attempt}/${config.workflow.agentMaxAttempts - 1} after error; backing off ${Math.round(backoff)}ms.`, 'retry');
           await sleep(backoff);
         } else {
-          await emit(agent.id, `Failed after ${attempt} attempts: ${failure?.message}`);
+          await emit(agent.id, `Failed after ${attempt} attempts: ${failure?.message}`, 'failed');
         }
       }
       at.durationMs = Date.now() - Date.parse(at.startedAt);
@@ -559,7 +565,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     trace.durationMs = Date.now() - Date.parse(trace.startedAt);
     trace.finishedAt = new Date().toISOString();
     await persistTrace();
-    await emit('held', `Held at the cost ceiling with ${pending.length} step(s) unfinished — awaiting review.`);
+    await emit('held', `Held at the cost ceiling with ${pending.length} step(s) unfinished — awaiting review.`, 'held');
     return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint };
   }
 
@@ -569,7 +575,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     trace.durationMs = Date.now() - Date.parse(trace.startedAt);
     trace.finishedAt = new Date().toISOString();
     await persistTrace();
-    await emit('incomplete', `Incomplete: ${pending.length} step(s) still pending — will resume.`);
+    await emit('incomplete', `Incomplete: ${pending.length} step(s) still pending — will resume.`, 'incomplete');
     return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint };
   }
 
@@ -623,7 +629,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   // Derived sections (e.g. sources) — deterministic, filled last.
-  await emit('assembling', 'Assembling report.');
+  await emit('assembling', 'Assembling report.', 'assembling');
   for (const section of effTemplate.sections) {
     if (section.derived && section.derive) {
       try {
@@ -649,7 +655,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   trace.finishedAt = new Date().toISOString();
   await persistTrace();
 
-  await emit(failed ? 'failed' : 'done', failed ? `Report failed: ${reason}` : 'Report complete.');
+  await emit(failed ? 'failed' : 'done', failed ? `Report failed: ${reason}` : 'Report complete.', failed ? 'failed' : 'done');
   return {
     report: parsed.success ? parsed.data : report,
     meta: makeMeta(),
@@ -688,7 +694,7 @@ async function runAgent(ctx: {
   evidence: Evidence;
   report: Record<string, unknown>;
   counter: { turns: number };
-  emit: (phase: string, message: string) => Promise<void> | undefined;
+  emit: (phase: string, message: string, kind: ProgressKind, detail?: string) => Promise<void> | undefined;
   trace: AgentTrace;
   /** Every paid call inside this agent writes here as it happens, so a failed
    *  attempt's spend is still known to the caller. */
@@ -725,23 +731,23 @@ async function runAgent(ctx: {
   const synthModel = resolveModel(agent.model ?? config.llm.defaultSynthModel);
   const context = contextFor(template, agent, report, ctx.handoffs);
 
-  const note = (m: string) => {
+  const note = (m: string, kind: ProgressKind = 'researching', detail?: string) => {
     if (trace.notes.length < MAX_NOTES) trace.notes.push(`${new Date().toISOString()} ${m}`);
-    return ctx.emit(agent.id, m);
+    return ctx.emit(agent.id, m, kind, detail);
   };
 
   if (agent.role === 'producer') {
     const gatherModel: ResolvedModel = resolveModel(agent.gatherModel ?? config.llm.defaultGatherModel);
     const budget = Math.max(2, Math.round((agent.researchBudget ?? config.search.maxTurns) * depth.budgetScale));
     const sites = effectiveSites(template, agent);
-    if (sites.length) await note(`Suggested sources (additive): ${sites.join(', ')}.`);
+    if (sites.length) await note(`Suggested sources (additive): ${sites.join(', ')}.`, 'researching');
     // A retry after a failed WRITE reuses what the last attempt bought. The
     // evidence store is shared and still holds it; re-running the loop would not
     // recover anything, it would go and buy more of the same.
     if (ctx.research.done) {
-      await note(`Reusing evidence already gathered (${evidence.sources.length} sources, ${evidence.extracted.length} pages).`);
+      await note(`Reusing evidence already gathered (${evidence.sources.length} sources, ${evidence.extracted.length} pages).`, 'reusing');
     } else {
-      await note(`Researching (${owned.join(', ')}).`);
+      await note(`Researching (${owned.join(', ')}).`, 'researching');
       const gres = await gather({
         spend: ctx.spend,
         touched: ctx.research.touched,
@@ -751,7 +757,7 @@ async function runAgent(ctx: {
         messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, handoffs: context.handoffs, current: context.current, sites }) }],
         maxTurns: budget,
         evidence,
-        onNote: (m) => note(m),
+        onNote: (m, kind, detail) => note(m, kind, detail),
       });
       counter.turns += gres.turns;
       trace.turnsUsed = gres.turns;
@@ -771,7 +777,7 @@ async function runAgent(ctx: {
     const costBudget = ctx.spend.budget();
     if (costBudget.exceeded) throw new BudgetExceededError(costBudget.spentUsd, costBudget.limitUsd ?? 0);
 
-    await note(`Writing (${owned.join(', ')}).`);
+    await note(`Writing (${owned.join(', ')}).`, 'writing');
     const enrichesOnly = (agent.enriches ?? []).filter((k) => k in report);
     const text =
       enrichesOnly.length === owned.length && enrichesOnly.length > 0
@@ -806,7 +812,7 @@ async function runAgent(ctx: {
   }
 
   // synthesizer — compose from upstream only.
-  await note(`Composing (${owned.join(', ')}).`);
+  await note(`Composing (${owned.join(', ')}).`, 'composing');
   const text = buildSynthesizerPrompt({ agent, brief, sections, context: context.sections, handoffs: context.handoffs, current: context.current, lang: language, depthDirective });
   const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
   return splitHandoff(sres.value as Record<string, unknown>);

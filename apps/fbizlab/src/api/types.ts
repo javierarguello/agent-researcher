@@ -67,14 +67,30 @@ export interface JobListItem {
   status: JobStatus;
   mode?: string | null;
   creditsSpent?: number | null;
-  progress?: { phase: string; message: string } | null;
+  progress?: { phase: string; kind?: ProgressKind; detail?: string } | null;
   cost: Cost | null;
   createdAt: string;
   updatedAt: string;
   finishedAt: string | null;
 }
 
-export interface JobProgress { phase: string; message: string; turnsUsed: number; sourcesFound: number; updatedAt: string; }
+/**
+ * What kind of step the engine is on — the closed vocabulary the live line is
+ * localized from (mirrors `ProgressKind` in the core). The engine's own English
+ * `message` never reaches this client: it names internal section keys and can
+ * carry a web page's words through the model's next search query.
+ */
+export type ProgressKind =
+  | 'starting' | 'wave' | 'researching' | 'reusing' | 'plan' | 'searched' | 'search_failed' | 'fetched' | 'cached'
+  | 'stopped' | 'ceiling' | 'writing' | 'composing' | 'retry' | 'failed' | 'assembling' | 'done' | 'held' | 'incomplete';
+export interface JobProgress {
+  phase: string;
+  /** Absent on jobs written before the field existed — the phase alone is shown then. */
+  kind?: ProgressKind;
+  /** Only for `searched`: the query, clipped by the API. Shown quoted, as a query. */
+  detail?: string;
+  updatedAt: string;
+}
 export interface JobSummary {
   durationMs?: number;
   sourcesFound?: number;

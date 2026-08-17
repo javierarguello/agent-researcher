@@ -240,14 +240,22 @@ describe('a job held for budget, decided over the API', () => {
     // spent." under a live spinner — for the whole queue wait, on the buyer's page.
     const jobId = await heldJob();
     const paused = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
-    // Non-vacuous by construction: the held job really was showing that line.
-    expect(paused.json().progress?.message ?? '').toMatch(/pausa|paused/i);
+    // Non-vacuous by construction: the held job really was showing that line —
+    // to the buyer as the KIND (the client localizes it), to the admin as the
+    // sentence too.
+    expect(paused.json().progress?.kind).toBe('held');
+    expect(paused.json().progress?.message).toBeUndefined();
+    const adminView = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(adminToken) });
+    expect(adminView.json().progress?.message ?? '').toMatch(/pausa|paused/i);
+    expect(adminView.json().progress?.kind).toBe('held');
 
     await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) });
 
     const running = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(buyerToken) });
     expect(running.json().status).toBe('queued');
-    expect(running.json().progress?.message ?? '').not.toMatch(/pausa|paused/i);
+    expect(running.json().progress?.kind ?? null).not.toBe('held');
+    const runningAdmin = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(adminToken) });
+    expect(runningAdmin.json().progress?.message ?? '').not.toMatch(/pausa|paused/i);
   });
 
   it('tells the buyer their credits came back, in their language', { timeout: RUN_TIMEOUT }, async () => {

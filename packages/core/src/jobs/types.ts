@@ -68,12 +68,63 @@ export interface JobFile {
   size?: number;
 }
 
+/**
+ * What KIND of thing the engine just did — the closed vocabulary a client
+ * localizes the live progress line from.
+ *
+ * `message` is the engine's own English sentence and is for the admin's trace.
+ * It used to be the only thing a buyer's screen had, so a Spanish buyer read
+ * `Writing (market_overview, competitive_landscape).` — English, internal section
+ * keys — and a page could put its own sentence there through the model's next
+ * search query, unbounded. A client renders `kind` in the buyer's language and
+ * shows `detail` only where it is the buyer's own research happening (the query
+ * of a `searched`), clipped and quoted.
+ */
+export type ProgressKind =
+  | 'starting'
+  | 'wave'
+  | 'researching'
+  | 'reusing'
+  | 'plan'
+  | 'searched'
+  | 'search_failed'
+  | 'fetched'
+  | 'cached'
+  | 'stopped'
+  | 'ceiling'
+  | 'writing'
+  | 'composing'
+  | 'retry'
+  | 'failed'
+  | 'assembling'
+  | 'done'
+  | 'held'
+  | 'incomplete';
+
+/** How much of a `searched` detail a client is handed. Real honest queries: p90 90 chars, max 118. */
+export const PROGRESS_DETAIL_MAX = 120;
+
 export interface JobProgress {
   phase: string;
+  /** The engine's English sentence — admin's, not the buyer's. */
   message: string;
+  /** Absent on documents written before the field existed: a client shows the phase alone. */
+  kind?: ProgressKind;
+  /** The one variable a client may show — the query of a `searched`, clipped. */
+  detail?: string;
   turnsUsed: number;
   sourcesFound: number;
   updatedAt: string;
+}
+
+/**
+ * The buyer-facing shape of a progress line — what the API hands a non-admin.
+ * No `message`: the engine's sentence names internal keys and carries the
+ * model's own words. `detail` only for `searched`, clipped.
+ */
+export function clientProgress(p: JobProgress): { phase: string; kind?: ProgressKind; detail?: string; updatedAt: string } {
+  const detail = p.kind === 'searched' && p.detail ? p.detail.slice(0, PROGRESS_DETAIL_MAX) : undefined;
+  return { phase: p.phase, ...(p.kind ? { kind: p.kind } : {}), ...(detail ? { detail } : {}), updatedAt: p.updatedAt };
 }
 
 /** Compact, denormalized job summary for dashboards (heavy detail stays in trace.json). */

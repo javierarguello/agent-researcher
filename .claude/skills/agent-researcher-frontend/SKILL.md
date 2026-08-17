@@ -141,9 +141,16 @@ Reference implementation: `apps/admin/src/components/JsonSchemaForm.tsx` in the 
    params.)
 2. `GET /research/:jobId` → `{ status, progress, cost, summary, error, … }`. Poll
    while `status` is `queued`/`running`/`incomplete` (~3s). `progress` (`phase`,
-   `message`, `sourcesFound`, `turnsUsed`) drives a live view — map `progress.phase`
-   to `manifest.steps[]` for a friendly **step label + description** (never show the
-   raw id).
+   `kind`, `detail?`, `updatedAt`) drives a live view — map `progress.phase` to
+   `manifest.steps[]` for a friendly **step label + description** (never show the
+   raw id), and render `kind` (a closed vocabulary: `starting`, `wave`,
+   `researching`, `reusing`, `plan`, `searched`, `search_failed`, `fetched`,
+   `cached`, `stopped`, `ceiling`, `writing`, `composing`, `retry`, `failed`,
+   `assembling`, `done`, `held`, `incomplete`) in the reader's language. `detail`
+   arrives ONLY with `searched` (the query, clipped): show it quoted, as a query,
+   never as a sentence from you — it is model output written after reading web
+   pages. There is no `message` for a non-admin caller; a job written before
+   `kind` existed carries none — show the step label alone.
 3. On `status:"completed"` the response adds `files[]` = `{ name, contentType,
    size, url, expiresAt }` with short-lived signed download URLs. `summary` has
    per-agent timing, any `warnings`, and `sections[]` = `{ key, status }` for every

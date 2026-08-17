@@ -5,6 +5,7 @@ import { downloadFile } from '../api/client';
 import { ReportViewer } from '../components/ReportViewer';
 import { DownloadPdf } from '../components/DownloadPdf';
 import { shortDate } from '../lib/format';
+import { progressLine } from '../lib/progress-copy';
 import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
 
 const T = {
@@ -73,7 +74,12 @@ export function JobView() {
             <span style={{ fontWeight: 700 }}>{step?.label ?? t.working}</span>
           </div>
           {step?.description && <p className="soft" style={{ fontSize: 14, margin: '6px 0 0' }}>{step.description}</p>}
-          {job.progress?.message && <p className="muted mono" style={{ fontSize: 12, marginTop: 6 }}>{job.progress.message}</p>}
+          {(() => {
+            // The engine's English sentence never reaches this client; the API hands
+            // it the KIND of step (and a search's query), rendered in the UI language.
+            const line = progressLine(job.progress, lang);
+            return line ? <p className="muted mono" style={{ fontSize: 12, marginTop: 6 }}>{line}</p> : null;
+          })()}
         </div>
       )}
 

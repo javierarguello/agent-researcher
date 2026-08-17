@@ -115,6 +115,7 @@ import {
   type RateLimitEntry,
   type LedgerEntryType,
   type JobStatus,
+  clientProgress,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
@@ -1489,7 +1490,7 @@ app.get(
         mode: j.mode ?? ((j.params as Record<string, unknown>)?.mode as string | undefined) ?? null,
         creditsSpent: j.creditsSpent ?? null,
         // Client-facing progress so the inbox can show the live step (no internals).
-        progress: j.progress ? { phase: j.progress.phase, message: j.progress.message } : null,
+        progress: j.progress ? (isAdmin ? { phase: j.progress.phase, message: j.progress.message, kind: j.progress.kind ?? null } : clientProgress(j.progress)) : null,
         // Cost is internal — only admins see it.
         ...(isAdmin ? { cost: j.cost ?? null } : {}),
         createdAt: j.createdAt,
@@ -1526,14 +1527,14 @@ app.get(
     }
 
     // Non-admin callers get only client-facing info — no cost, turns, tokens, or
-    // per-agent internals. Progress keeps the current phase + message; summary
+    // per-agent internals. Progress: the buyer gets the phase, the KIND of step
+    // and, for a search, the query — never `message`, which is the engine's
+    // English sentence: it names internal section keys and carries the model's
+    // own words (a page can put a sentence there through the next query, so the
+    // detail is clipped and the client shows it quoted, as a query). Summary
     // keeps only what a client should see (whether the report was degraded).
     const isAdmin = req.auth!.role === 'admin';
-    const progress = job.progress
-      ? isAdmin
-        ? job.progress
-        : { phase: job.progress.phase, message: job.progress.message, updatedAt: job.progress.updatedAt }
-      : null;
+    const progress = job.progress ? (isAdmin ? job.progress : clientProgress(job.progress)) : null;
     const s = job.summary;
     const summary = s
       ? isAdmin

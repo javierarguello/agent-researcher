@@ -124,19 +124,20 @@ describe('C-legit · odd-but-honest values in the viewer', () => {
   });
 });
 
-describe('C-legit · the live progress line (JobView.tsx:76)', () => {
-  it('shows the phase label from the manifest in the buyer’s language AND the engine’s raw message — the middle ground already exists: the phase is localized, the message is not', () => {
-    // Mutation that reds this: remove `{job.progress?.message && …}` at JobView.tsx:76 (the naive "hide it" fix).
-    showJob({ status: 'running', progress: { phase: 'research', message: 'Searched: lavanderías en venta Miami-Dade' } }, 'es');
+describe('C-legit · the live progress line (JobView.tsx)', () => {
+  it('shows the phase label from the manifest in the buyer’s language AND the search the model is running, quoted, as a query — the buyer still sees the research happening', () => {
+    // Mutation that reds this: drop the `progressLine(...)` render in JobView (the naive "hide it" fix).
+    showJob({ status: 'running', progress: { phase: 'research', kind: 'searched', detail: 'lavanderías en venta Miami-Dade', updatedAt: 't' } }, 'es');
     expect(screen.getByText('Investigando el mercado')).toBeTruthy();
-    expect(screen.getByText('Searched: lavanderías en venta Miami-Dade')).toBeTruthy();
+    expect(screen.getByText('Buscando “lavanderías en venta Miami-Dade”')).toBeTruthy();
   });
 
-  it.fails('what a Spanish buyer actually gets from the engine today is `Writing (market_overview, competitive_landscape).` — English, with internal section keys (gather.ts:306, research-engine.ts:764)', () => {
-    // The string is exactly what research-engine.ts:764 emits for the Florida
-    // model; JobView prints it verbatim. A buyer-facing line in the buyer's
-    // language would not contain our schema keys.
-    showJob({ status: 'running', progress: { phase: 'research', message: 'Writing (market_overview, competitive_landscape).' } }, 'es');
+  it('a Spanish buyer gets Spanish: the API hands this page the KIND (`writing`), never `Writing (market_overview, competitive_landscape).` — before the fix the engine’s English sentence with our schema keys was printed verbatim', () => {
+    showJob({ status: 'running', progress: { phase: 'research', kind: 'writing', updatedAt: 't' } }, 'es');
+    expect(screen.getByText('Redactando esta sección.')).toBeTruthy();
     expect(screen.queryByText(/market_overview/)).toBeNull();
+    // …and a document written before `kind` existed shows the phase alone, no English.
+    showJob({ status: 'running', progress: { phase: 'research', updatedAt: 't' } }, 'es');
+    expect(screen.queryByText(/Searched|Writing|Researching/)).toBeNull();
   });
 });

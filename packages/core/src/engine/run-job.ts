@@ -312,7 +312,8 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         // rule makes the retry re-buy the whole loop. A dashboard line the buyer
         // may never look at must not cost a second round of searches.
         await setProgress(input.jobId, {
-          phase: p.phase, message: p.message, turnsUsed: p.turnsUsed, sourcesFound: p.sourcesFound,
+          phase: p.phase, message: p.message, kind: p.kind, ...(p.detail ? { detail: p.detail } : {}),
+          turnsUsed: p.turnsUsed, sourcesFound: p.sourcesFound,
           updatedAt: new Date().toISOString(),
         }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       },
@@ -396,7 +397,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
           return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
         }
         await setProgress(input.jobId, {
-          phase: 'held', message: heldNotice(output.language),
+          phase: 'held', message: heldNotice(output.language), kind: 'held',
           turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
         }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
         log.error('job.held', {
@@ -411,7 +412,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         message: 'Some steps failed; will retry on re-dispatch.',
       });
       await setProgress(input.jobId, {
-        phase: 'incomplete', message: `Partial (attempt ${attempts}); retrying pending steps.`,
+        phase: 'incomplete', message: `Partial (attempt ${attempts}); retrying pending steps.`, kind: 'incomplete',
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
       }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'incomplete' };
@@ -438,7 +439,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
       }
       await setProgress(input.jobId, {
-        phase: 'held', message: heldNotice(output.language),
+        phase: 'held', message: heldNotice(output.language), kind: 'held',
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
       }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       log.error('job.held', {

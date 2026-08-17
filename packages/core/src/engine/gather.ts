@@ -10,6 +10,7 @@ import { stripFenceMarker } from './prompt.js';
 import { llmCost, searchCost, type Cost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage, ToolCall, ToolSchema } from '../llm/provider.js';
+import type { ProgressKind } from '../jobs/types.js';
 import { canExtractPages, extractPages, searchWeb, searchCostPerCall, type ExtractedPage, type SearchResult } from '../tools/web-search.js';
 
 type PlanStep = { task: string; status: 'pending' | 'doing' | 'done' | 'dropped' };
@@ -98,8 +99,12 @@ export interface GatherInput {
   messages: LlmMessage[];
   maxTurns: number;
   evidence: Evidence;
-  /** Called with a short progress note after each tool step. */
-  onNote?: (note: string) => void | Promise<void>;
+  /**
+   * Called with a short progress note after each tool step — the English
+   * sentence for the trace, its KIND for a client to localize, and the one
+   * variable a client may show (the query of a `searched`).
+   */
+  onNote?: (note: string, kind: ProgressKind, detail?: string) => void | Promise<void>;
 }
 
 /**
@@ -249,7 +254,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   // failure — and whatever it spent before that still has to be visible.
   const charge = (c: Cost) => input.spend?.add(c);
   const maxIterations = maxTurns * 2 + 6;
-  const note = async (m: string) => onNote?.(m);
+  const note = async (m: string, kind: ProgressKind, detail?: string) => onNote?.(m, kind, detail);
   /**
    * Consecutive failing searches, and the point at which we stop paying for more.
    *
@@ -279,7 +284,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     // useful to whoever runs next. The caller checks the same budget and decides
     // whether this agent can still afford to write.
     if (input.spend?.budget().exceeded) {
-      await note('Stopping research: the job reached its cost ceiling.');
+      await note('Stopping research: the job reached its cost ceiling.', 'ceiling');
       stop = 'ceiling';
       break;
     }
@@ -318,7 +323,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       // again. Nothing it can plan will change without a search; end the loop
       // rather than pay for the rest of the iterations. `stalled`, not `done`: it
       // was cut off, and with no turn spent there is nothing to reuse anyway.
-      await note(`Stopping research: ${planOnlyTurns} plan updates in a row with no search or fetch.`);
+      await note(`Stopping research: ${planOnlyTurns} plan updates in a row with no search or fetch.`, 'stopped');
       break;
     }
 
@@ -358,7 +363,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
         // actually needs from the 300 an agent keeps.
         if (!planNoted) {
           planNoted = true;
-          await note(`Plan updated (${plan.length} steps).`);
+          await note(`Plan updated (${plan.length} steps).`, 'plan');
         }
       } else if (call.name === 'web_search') {
         const query = String((call.args as any).query ?? '').trim();
@@ -409,13 +414,13 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
               response: { query, results: results.map(untrustedResult), turnsLeft: maxTurns - turnsUsed },
             },
           });
-          await note(`Searched: ${query}`);
+          await note(`Searched: ${query}`, 'searched', query);
         } catch (error) {
           searchFailures += 1;
           // Into the TRACE, which is what an admin reads to decide about a job.
           // This was the most expensive silently-swallowed catch in the job path:
           // charged, failed, and invisible.
-          await note(`Search failed (${searchFailures}/${MAX_SEARCH_FAILURES}): ${query} — ${(error as Error).message}`);
+          await note(`Search failed (${searchFailures}/${MAX_SEARCH_FAILURES}): ${query} — ${(error as Error).message}`, 'search_failed');
           messages.push({
             role: 'tool',
             toolResult: { name: call.name, response: { query, error: (error as Error).message, results: [] } },
@@ -448,7 +453,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
               },
             },
           });
-          await note(reads > MAX_SAME_URL_CACHED_READS ? `Declined to re-send a page already returned twice.` : `Reused cached page.`);
+          await note(reads > MAX_SAME_URL_CACHED_READS ? `Declined to re-send a page already returned twice.` : `Reused cached page.`, 'cached');
           continue;
         }
         // The turn is spent either way — that is the budget guard, and it is
@@ -479,7 +484,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
             },
           },
         });
-        await note(`Fetched ${pages.filter((p) => p.ok).length} page(s).`);
+        await note(`Fetched ${pages.filter((p) => p.ok).length} page(s).`, 'fetched');
       } else {
         messages.push({ role: 'tool', toolResult: { name: call.name, response: { error: `Unknown tool: ${call.name}` } } });
       }
@@ -495,6 +500,6 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   // Say why it ended. Two real agent-runs reached the iteration bound with zero
   // searches and nothing in the trace said so; an admin reading it could not tell
   // a section written from research from one written from none.
-  await note(`Research loop ended: ${stop} (${turnsUsed}/${maxTurns} turns).`);
+  await note(`Research loop ended: ${stop} (${turnsUsed}/${maxTurns} turns).`, 'stopped');
   return { turns: turnsUsed, stop };
 }

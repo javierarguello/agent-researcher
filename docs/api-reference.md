@@ -111,8 +111,9 @@ token's). Returns newest-first summaries:
 Ownership: admins read any job; a regular user only their own (same `appId` +
 email), else `403`. `404` if unknown. **Non-admin callers get only client-facing
 fields** — no `cost`, token/turn counts, or per-agent internals; `progress` keeps
-`phase`+`message`, `summary` keeps only `warnings`/`sections`/`notice`. Admins see
-everything. (Same for the `cost` field in `GET /research`.)
+`phase`+`kind` (+`detail` for a search), never the engine's `message`; `summary`
+keeps only `sections`/`notice`. Admins see everything. (Same for the `cost` field
+in `GET /research`.)
 
 While `queued`/`running`/`failed`:
 ```jsonc
@@ -120,8 +121,14 @@ While `queued`/`running`/`failed`:
   "title": "Laundromats for Sale — Miami-Dade",
   "shortDescription": "Buy-side research on laundromats under $500k.",
   "status": "running",
-  "progress": { "phase": "deal-scout", "message": "Searched: …",
-                "turnsUsed": 20, "sourcesFound": 73, "updatedAt": "…" },
+  // Non-admin shape. `kind` is a closed vocabulary (starting, wave, researching,
+  // reusing, plan, searched, search_failed, fetched, cached, stopped, ceiling,
+  // writing, composing, retry, failed, assembling, done, held, incomplete) — render
+  // it in the buyer's language; `detail` comes ONLY with `searched` (the query,
+  // clipped to 120 chars) — show it quoted, as a query, never as a sentence.
+  // Admins additionally get `message` (the engine's English line), `turnsUsed`,
+  // `sourcesFound`. Old jobs may carry no `kind`: show the phase alone.
+  "progress": { "phase": "deal-scout", "kind": "searched", "detail": "laundromats for sale Hialeah", "updatedAt": "…" },
   // Map `progress.phase` → a localized label + description via the model
   // manifest's `steps` (GET /templates/:id) to explain the current phase.
   "cost": { "usd": 1.42, "llmUsd": 1.10, "searchUsd": 0.32,
