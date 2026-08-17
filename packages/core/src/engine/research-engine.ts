@@ -915,10 +915,18 @@ async function runAgent(ctx: {
       await note(`Reusing evidence already gathered (${evidence.sources.length} sources, ${evidence.extracted.length} pages).`, 'reusing');
     } else {
       await note(`Researching (${owned.join(', ')}).`, 'researching');
+      // Turns are counted as they are charged (like cost), not when the loop
+      // returns: a loop that throws still spent them, and the progress line's
+      // turn count used to lag a whole loop behind.
+      const turnsBefore = trace.turnsUsed;
       const gres = await gather({
         spend: ctx.spend,
         touched: ctx.research.touched,
         fetched: ctx.research.fetched,
+        onTurn: () => {
+          counter.turns += 1;
+          trace.turnsUsed += 1;
+        },
         model: gatherModel,
         system,
         messages: [{ role: 'user', text: buildAgentKickoff({ agent, brief, sections, maxTurns: budget, handoffs: context.handoffs, current: context.current, sites }) }],
@@ -926,8 +934,10 @@ async function runAgent(ctx: {
         evidence,
         onNote: (m, kind, detail) => note(m, kind, detail),
       });
-      counter.turns += gres.turns;
-      trace.turnsUsed = gres.turns;
+      // `gres.turns` and what `onTurn` counted agree by construction; the loop's
+      // own figure is the one kept for the row (a retried agent's row starts from
+      // the carried value and this pass adds to it).
+      trace.turnsUsed = turnsBefore + gres.turns;
       trace.gatherStop = gres.stop;
       // Only a FINISHED pass may be reused (Javier, 2026-07-31: a retry takes what
       // is finished, never something half-done). `gatherCompleted` is the whole

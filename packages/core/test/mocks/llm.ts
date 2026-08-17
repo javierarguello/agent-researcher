@@ -85,10 +85,16 @@ export function sampleFromSchema(root: Node, node: Node = root, depth = 0, prose
     case 'boolean':
       return true;
     case 'string':
-    default:
+    default: {
       // `prose` lets a measurement generate realistically LONG sections; the
-      // default keeps every other test's fixtures small and fast.
-      return prose;
+      // default keeps every other test's fixtures small and fast. Cut to the
+      // schema's `maxLength` when it has one: a fixture that ignored it failed the
+      // chart-analyst's write on `description.max(500)`, lost `charts`, reported the
+      // run `completed`, and inflated the flagship's write-size denominator with
+      // eight failed calls (M-D3).
+      const max = typeof node.maxLength === 'number' ? node.maxLength : undefined;
+      return max !== undefined && prose.length > max ? prose.slice(0, max) : prose;
+    }
   }
 }
 

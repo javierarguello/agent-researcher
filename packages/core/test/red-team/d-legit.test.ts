@@ -507,7 +507,7 @@ describe('3 · what an honest run pays for ONE flaky provider call', () => {
     expect(out.trace.cost.usd).toBeCloseTo(b.usd, 6); // the failed call returned no usage
   });
 
-  it('a 503 in the LOOP (after the first search): the whole loop re-runs — +3 calls, +1 search re-bought (+$0.016), and the trace UNDER-COUNTS: turnsUsed 4 while searchCalls is 5', async () => {
+  it('a 503 in the LOOP (after the first search): the whole loop re-runs — +3 calls, +1 search re-bought (+$0.016), and the trace counts the thrown loop’s turn too: turnsUsed 5 = searchCalls 5 (before the fix: 4)', async () => {
     const b = await baseline();
     // The scout's third loop call: after plan and one search — one turn already paid.
     let loopCalls = 0;
@@ -525,13 +525,14 @@ describe('3 · what an honest run pays for ONE flaky provider call', () => {
     expect(out.trace.cost.searchCalls).toBe(b.searchCalls + 1);
     expect(flaky.calls).toBe(b.calls + 3); // the thrown call + plan + search re-sent
     expect(out.trace.cost.usd - b.usd).toBeCloseTo(0.016 + 2 * (200 * 0.3 + 80 * 2.5) / 1e6, 4);
-    // …but `turnsUsed` — the number the buyer's progress line, the job summary and
-    // the admin's per-agent row show — is `counter.turns += gres.turns` AFTER the
-    // loop returns, so a loop that threw contributes 0. The scout is billed 3
-    // searchCalls and shows 2 turns. Money right, count wrong (what we STORE).
+    // …and `turnsUsed` — the number the job summary and the admin's per-agent row
+    // show — is counted as each turn is CHARGED, like the cost, so the thrown loop's
+    // turn is in it too: 3 searchCalls, 3 turns. It used to be added only when
+    // `gather` returned (2 turns shown for 3 billed). Mutation that reds this: drop
+    // the `onTurn` callback and add `gres.turns` after the loop again.
     expect(scout.cost.searchCalls).toBe(3);
-    expect(scout.turnsUsed).toBe(2);
-    expect(out.turnsUsed).toBe(b.turns); // 4, not 5
+    expect(scout.turnsUsed).toBe(3);
+    expect(out.turnsUsed).toBe(b.turns + 1); // 5, like searchCalls
   });
 
   it('a diligent agent on budget 10 that re-plans every step and re-opens 6 cached listings ends STALLED at 26 iterations — the honest scenario', async () => {

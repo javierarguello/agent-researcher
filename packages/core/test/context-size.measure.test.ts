@@ -104,6 +104,12 @@ describe.skipIf(process.env.MEASURE !== '1')('how much text each agent receives 
     }) as Record<string, unknown>;
     const out = await runResearch({ template, params, jobId: 'measure', generatedAt: 't' });
     expect(out.trace.status).toBe('completed');
+    // …and WHOLE. This run used to lose `charts` (the fixture's prose ignored the
+    // chart schema's `maxLength`, both chart agents failed their writes) and the
+    // "completed" here hid it — along with 417k chars of failed calls in the
+    // write-size total everyone cited. Mutation that reds this: ignore `maxLength`
+    // in `sampleFromSchema` again.
+    expect(out.meta.sections ?? []).toEqual([]);
 
     const rows = [...provider.writes].sort((a, b) => b.totalChars - a.totalChars);
     console.log('\n=== WRITE CALLS — input size per agent (sorted) ===');

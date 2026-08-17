@@ -105,6 +105,14 @@ export interface GatherInput {
    * variable a client may show (the query of a `searched`).
    */
   onNote?: (note: string, kind: ProgressKind, detail?: string) => void | Promise<void>;
+  /**
+   * Called each time a turn is CHARGED — before the search or fetch is made, like
+   * the cost. The caller used to add `gres.turns` after the loop returned, so a
+   * loop that threw left its turns uncounted (`searchCalls` 5, `turnsUsed` 4 in
+   * the summary) and the live progress line's turn count lagged a whole loop
+   * behind on every honest run.
+   */
+  onTurn?: () => void;
 }
 
 /**
@@ -244,7 +252,7 @@ function untrustedResult(r: SearchResult): SearchResult {
 }
 
 export async function gather(input: GatherInput): Promise<GatherResult> {
-  const { model, system, messages, maxTurns, evidence, onNote } = input;
+  const { model, system, messages, maxTurns, evidence, onNote, onTurn } = input;
   const touched = input.touched ?? new Set<string>();
   const fetched = input.fetched ?? new Set<string>();
   let plan: PlanStep[] = [];
@@ -393,6 +401,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           continue;
         }
         turnsUsed += 1;
+        onTurn?.();
         charge(searchCost(1, searchCostPerCall('search')));
         try {
           const results = await searchWeb(query);
@@ -464,6 +473,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
         // reaches a backend, so counting either would invent a call (`searchCalls`
         // is billed backend calls) on top of inventing spend.
         turnsUsed += 1;
+        onTurn?.();
         if (url && canExtractPages()) charge(searchCost(1, searchCostPerCall('extract')));
         const pages = await extractPages(url ? [url] : []);
         for (const p of pages) {

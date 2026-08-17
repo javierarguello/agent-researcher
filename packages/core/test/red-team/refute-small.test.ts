@@ -75,7 +75,7 @@ describe('B3 · forged tool-result JSON inside page content', () => {
 // M-D3 · the stock measure fixture loses `charts` and reports `completed`.
 // ---------------------------------------------------------------------------
 describe('D3 · context-size.measure fixture', () => {
-  it('a 1,600-char PROSE in every string fails chart.description.max(500): chart-analyst fails, charts is LOST, status is still completed', { timeout: 120_000 }, async () => {
+  it('a 1,600-char PROSE in every string is CUT to each string’s maxLength by the sampler: the chart-analyst writes valid charts, nothing is lost (before the fix: description.max(500) failed, charts LOST, status still completed)', { timeout: 120_000 }, async () => {
     const template = getTemplate('florida-business-for-sale')!;
     const PROSE = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor. '.repeat(20);
     expect(PROSE.length).toBe(1600);
@@ -104,16 +104,14 @@ describe('D3 · context-size.measure fixture', () => {
     __setProviderForTests('ollama', provider);
     const params = template.paramsSchema.parse({ industry: 'laundromats', location: 'Miami-Dade County, FL', mode: 'comprehensive' }) as Record<string, unknown>;
     const out = await runResearch({ template, params, jobId: 'refute-d3', generatedAt: 't' });
-    // What the stock test asserts — and passes.
     expect(out.trace.status).toBe('completed');
-    // What it does not look at.
+    // Mutation that reds this: ignore `maxLength` in `sampleFromSchema` again.
     const chart = out.trace.agents.find((a) => a.id === 'chart-analyst')!;
-    expect(chart.status).toBe('failed');
-    expect(chart.error ?? '').toMatch(/500|Too big|too_big|description/i);
-    expect(out.meta.sections?.map((s) => s.key)).toContain('charts');
-    // Repair round doubles each attempt: 2 × AGENT_MAX_ATTEMPTS calls billed on a deterministic schema failure.
-    expect(chartCalls).toBeGreaterThanOrEqual(4);
-    console.log(`D3: structured calls ${structured}, chart-analyst calls ${chartCalls}, meta.sections=${JSON.stringify(out.meta.sections)}, error=${chart.error}`);
+    expect(chart.status).toBe('ok');
+    expect(out.meta.sections ?? []).toEqual([]);
+    // One write per chart agent, no repair rounds.
+    expect(chartCalls).toBe(2);
+    console.log(`D3: structured calls ${structured}, chart-analyst calls ${chartCalls}, meta.sections=${JSON.stringify(out.meta.sections)}`);
   });
 });
 
@@ -122,7 +120,7 @@ describe('D3 · context-size.measure fixture', () => {
 // progress line lags a whole loop even on an honest run (worse than the throw case).
 // ---------------------------------------------------------------------------
 describe('D2 · turnsUsed accounting', () => {
-  it('every "Searched:"/"Fetched" progress event of the FIRST producer carries turnsUsed 0 — the count lands only after the loop returns', async () => {
+  it('the "Searched:"/"Fetched" progress events of the FIRST producer carry a RISING turnsUsed — counted as charged (before the fix every one carried 0; the count landed only after the loop returned)', async () => {
     const { installObedientProvider } = await import('../mocks/obedient-llm.js');
     const { redTeamModel } = await import('../fixtures/red-team-model.js');
     installObedientProvider([]);
@@ -137,7 +135,9 @@ describe('D2 · turnsUsed accounting', () => {
     const scout = out.trace.agents.find((a) => a.id === 'scout')!;
     const during = events.filter((e) => e.phase === 'scout' && /^(Searched:|Fetched|Reused)/.test(e.message));
     expect(during.length).toBeGreaterThan(0);
-    expect(during.every((e) => e.turnsUsed === 0)).toBe(true);
+    // Mutation that reds this: count turns after `gather` returns again.
+    expect(during.some((e) => e.turnsUsed > 0)).toBe(true);
+    expect(during.at(-1)!.turnsUsed).toBe(scout.turnsUsed);
     expect(scout.turnsUsed).toBeGreaterThan(0);
     const writing = events.find((e) => e.phase === 'scout' && e.message.startsWith('Writing'))!;
     expect(writing.turnsUsed).toBe(scout.turnsUsed);
