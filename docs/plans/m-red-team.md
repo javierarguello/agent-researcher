@@ -194,8 +194,9 @@ The ceiling bounds the bill, not the waste inside it.
    `ae9826b`, C5 PDF `b0178ce`, chart-refiner `a68d656`, B2 loop `805b49a`, B1
    own-first dossier `1fa5d31`, C3 progress `9850bdf`, D1 write-failure multiplier
    `6264887` (962 tests). Each revert-verified; the tests that pinned the old
-   behaviour now assert the new one and say what the old was. **The P2 batch is
-   open** (deep-review.md § "M step 2 › Downgraded").
+   behaviour now assert the new one and say what the old was. **The P2 batch
+   shipped the same day** — `49e71aa` (A1, A3, A4, tables), `f74f7b0` (C2, C4, C6),
+   `72d2777` (D2, D3). Open: A2 only, gated on frontier-tier evidence.
 3. Ollama tier — used inline where the model was the mechanism (A2 variants
    0/12, A1 marker echo 0/3, A-legit imperatives 10 vs 9, B-legit handoffs); a
    frontier-tier pass is what would move A2 (and D1's trigger) either way.

@@ -979,7 +979,9 @@ rest pin the guards and the measurements. Mock tier throughout, Ollama
 
 **Status 2026-08-17 (end of day): all seven P1 clusters CLOSED** — `ae9826b`
 (C1), `b0178ce` (C5), `a68d656` (chart-refiner), `805b49a` (B2), `1fa5d31` (B1),
-`9850bdf` (C3), `6264887` (D1); 962 tests green. The P2 batch below is open.
+`9850bdf` (C3), `6264887` (D1) — **and the P2 batch too** — `49e71aa`, `f74f7b0`,
+`72d2777`; 962 tests green. **M is done** except A2 (FENCE_RE near-misses), which
+waits for frontier-tier evidence that a surviving variant changes obedience.
 
 **Verdict per surface, after refutation:** A fence — held (one unfenced path,
 P2); B loop — broken for RESOURCES, held for injection; C render — broken (one
@@ -1104,7 +1106,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   model‑independent; pinned in `refute-A1.test.ts`. Fix: `currentBlock(current)`
   in the synthesizer builder.
 
-### Downgraded — P2, batch when convenient
+### Downgraded — P2 — **batch CLOSED 2026-08-17**: `49e71aa` (A1, A3, A4, C5 tables), `f74f7b0` (C2, C4, C6), `72d2777` (D2, D3). Only A2 stays open, gated on frontier-tier evidence.
 
 - **M‑A1** enricher block: `untrusted()` + the `currentBlock` preamble in
   `buildEnricherSynthPrompt`; shrink guard as an admin NOTE only (dedup, sold
