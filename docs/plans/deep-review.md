@@ -42,9 +42,9 @@ round.
 
 ### Still open, highest first
 
-- **M — the red team against the engine's own prompts.** Its first finding (the
-  handoff/dossier/brief injection chain) came from an agent pointed at something
-  else, which is the argument for running the group properly. Planned with `fable`.
+- ~~**M — the red team against the engine's own prompts.**~~ **Run 2026-08-17**
+  (eight finders, nine refuters, `fable`). Seven P1 clusters confirmed, in fix
+  order at the end of this file ("M step 2"); fixes not yet shipped.
 - **K — the moderation pre-screen**, parked for your decision: refocus on evasion,
   or keep patching. The failure is structural, not a missing case.
 - **The catalog rule, what is LEFT of the second half.** Numbers and currency are
@@ -632,7 +632,7 @@ make it fail — a recommendation without that is not real):
 
 ---
 
-## M · Red-team the engine's own prompts — FIRST FINDING FIXED, REST NOT YET RUN
+## M · Red-team the engine's own prompts — RUN 2026-08-17, see "M step 2" at the end of this file
 
 **The handoff injection is closed** (2026-08-03). An attacker-controlled page was
 fetched by one producer, that producer's `_handoff` repeated the instruction, and
@@ -966,3 +966,157 @@ round 5, which is the whole argument for running the round.
   which sections degraded or how.
 - Three earlier commit messages overstate their test counts (616→612, 619→615,
   623→621): the parenthesised total includes skips.
+
+## M step 2 — the red team ran (2026-08-17)
+
+Runbook and harness: `m-red-team.md`; the raw finder and refuter reports are in
+`m-red-team-reports/` (eight finders A–D × attacker/legit, then nine refuters, one
+per cluster, told to refute by default). Tests: `packages/core/test/red-team/`,
+`apps/fbizlab/test/red-team-*.tsx`, `apps/admin/test/red-team-*.tsx` — the
+`it.fails` cases are the defects, red against today's code by construction; the
+rest pin the guards and the measurements. Mock tier throughout, Ollama
+(qwen2.5:3b) only where the model IS the mechanism, small N, stated as such.
+
+**Verdict per surface, after refutation:** A fence — held (one unfenced path,
+P2); B loop — broken for RESOURCES, held for injection; C render — broken (one
+P1 exfil path, the rest hygiene); D cost — held by accident (the ceiling is 5–15×
+away from any honest run and no page reaches it; the retry multiplier is real,
+its trigger unproven on the production provider).
+
+Two things the refuters found that the finders had not, both verified on the
+real July traces (`out/*/trace.json`) rather than the fixtures:
+
+- **The bound that matters is `MAX_SNIPPETS=48`, not `MAX_PAGES=14`.** The
+  store never reached 14 pages in production (8–11); it reached 174–199 sources,
+  and wave 1 consumes the 48 in six searches — so every wave‑2/3 producer, and
+  the deal‑scout building the shortlist, wrote blind to the search results their
+  own loops paid for (~22 marketplace results; ~$0.22 of $0.88 search spend).
+- **`forceTools` at zero turns is Gemini `mode: ANY`**, so a producer with
+  nothing to search cannot answer without a tool call and re‑plans to the
+  `2·budget+6` bound: deep‑dive‑refiner 26/26 = 22 plans + 4 cached + 0 searches
+  ($0.38, 572k input tokens, the "pro pass" written from no new research);
+  risk‑analyst 16/16, 0 turns. The nudge branch is dead under Gemini. Nothing
+  records it: `GatherStop` reaches no note or field.
+
+### Confirmed — P1, in fix order
+
+- **M‑C1 · A Markdown image is a tracking beacon in the web report.**
+  `ReportViewer.tsx:115` overrides only `a`; react‑markdown renders `img` for
+  `https:`, protocol‑relative and same‑origin `src`. Reproduced on the real
+  `JobView` and `ReadReport` (the share link, and the admin's only report view):
+  one GET per open from the reader's IP, URL attacker‑fixed (the brief only if
+  the model is also steered to interpolate it). PDF draws none; no honest input
+  produces images (directive invites links; charts are ChartSpec). Fix:
+  `img: () => null` in the shared `MD` — element level, not `urlTransform`. Also:
+  `apps/admin/src/components/ReportViewer.tsx` is imported by nothing — delete.
+- **M‑B1 · The dossier renders the first 48/14 of a store shared by ten agents,
+  in insertion order.** Snippet half is the production defect (above); page half
+  is latent (binds when producers fetch as the prompt asks); the attacker crowd is
+  the same mechanism from outside. Fix: OWN‑FIRST by URL (every result returned
+  to THIS loop, every fetch, every cached hit), then URLs present in the
+  `current`/context JSON handed to the writer, then the rest — per‑domain cap in
+  the foreign tier only; thread it into producer AND enricher builders. Do not
+  raise 14/48 to hide the ordering.
+- **M‑B2 · Free calls and the flat iteration bound.** Real plan‑loops (above);
+  the honest deal‑scout that spent 24/24 ends at the bound and is `stalled` =
+  unreusable, so one flaky write re‑buys the job's most expensive loop ($1.19).
+  Fix: consecutive‑PLAN breaker (≥3–4; honest max is 2 — a "free call" breaker
+  would cut the real refiner's `P c P c P F`), and it must break the loop or lift
+  `forceTools` (a "stop planning" tool result is unactionable under mode ANY);
+  `stalled && turnsUsed >= maxTurns → 'budget'`; record `GatherStop` in a note;
+  coalesce plan notes (1/turn); STUB superseded plan results (Gemini rejects a
+  `functionCall` without its response) rather than delete. The attack halves —
+  note eviction (needs ≥6 plans/turn sustained; ≤~150 fit in 4,096 tokens) and
+  the 12.6× request growth (smaller than the honest re‑planner at the same
+  bound) — are P2.
+- **M‑C3 · The buyer's progress line.** `Searched: <query>` and every other note
+  reach `JobView.tsx:76` raw: 17/17 English for a `language: es` buyer including
+  the mode key, agent ids and section keys (`Writing (market_overview, …)`); an
+  attacker's query lands verbatim and unbounded (a >400‑char query Brave 422s
+  still lands whole via `Search failed (1/3): …`); 64/156 lines in a real run are
+  `Plan updated` noise. Buyer polls every 3 s; a `Searched:` line dwells median
+  3 s, p90 8–15 s. Fix: structured progress `{phase, kind, detail}`; the API
+  sends non‑admins that (raw `message` admin‑only); JobView localizes `kind`
+  with its i18n; `detail` only for `searched`, clipped ~120 (real max 118);
+  nothing for `plan`. Must cover the engine‑level emits too
+  (`research-engine.ts:381/386/504/507/565/619/645`).
+- **M‑C5 · PDF `mdInline` double‑escapes every prose URL with a query string**
+  (`report-html.ts:123-124`: `esc(s)` then `esc(u)` on the captured, already
+  escaped URL). Observed in BOTH real July reports (5 and 2 links); the PDF
+  carries clickable `/URI` annotations (1,114), so the click sends a parameter
+  named `amp;localeTypeId`; the same URL in Sources is correct. Fix: `esc(u)` →
+  `u`, one token. Also real: a numbered list attached to a prose line prints as
+  one run‑on paragraph — split the block at the first list line (the finder's
+  `<ol>` branch alone misses the real shape).
+- **M‑D1 · A write that fails identically is retried 3 attempts × 8 dispatches
+  and the loop is re‑bought on every dispatch** (`research = { done: false }` is
+  a per‑dispatch local, `research-engine.ts:439`; `Checkpoint` has
+  `doneAgentIds` but no gathered set); dispatches 2–7 are the failing agent
+  alone; then `held`, and `approveHold` resets `attempts` and uncaps. Under the
+  finder's premise: $19–31 → held at dispatch 5–8. But the premise — the model
+  returns the SAME invalid value after our repair message (ours, unfenced, path +
+  constraint) — is unproven on Gemini: constrained decoding closes the type case,
+  the repair fixes `.min(n)`, and 26 pro writes in the July traces show 0
+  schema/JSON failures; realistic price +$0.2–0.8/job. Fix: persist
+  `gatheredAgentIds` next to `doneAgentIds` (no conflict with the C2 rule); a
+  per‑agent failure SIGNATURE (issue path + code / parse kind without position)
+  that stops RE‑DISPATCH when it repeats (kills ×8, keeps ×3 — Zod messages carry
+  no value, so string equality is both too blunt and too narrow); forward
+  `minItems/maxItems/minimum/maximum` in `jsonSchemaToGemini` (`@google/genai`
+  1.52 supports them) — 14 of ~17 Zod‑only Florida constraints reach the decoder.
+  Do not touch approve (an approved job at dispatch 8 would finalize degraded).
+- **NEW · `chart-refiner` never sees the charts it refines.** It is a
+  `synthesizer` with `enriches: ['charts']`; `buildSynthesizerPrompt` has no
+  `current` input and `contextFor()` removes owned keys — so on EVERY
+  comprehensive run its "refine and complete" pass is written blind and
+  `Object.assign` replaces the chart‑analyst's charts wholesale. Deterministic,
+  model‑independent; pinned in `refute-A1.test.ts`. Fix: `currentBlock(current)`
+  in the synthesizer builder.
+
+### Downgraded — P2, batch when convenient
+
+- **M‑A1** enricher block: `untrusted()` + the `currentBlock` preamble in
+  `buildEnricherSynthPrompt`; shrink guard as an admin NOTE only (dedup, sold
+  listings and "drop misleading charts" are legitimate shrinks). Inversion needs
+  a model that copies our delimiter (0/3 live); real traces never shrank.
+- **M‑A2** FENCE_RE near‑misses: 29 survive; no differential in obedience at
+  N=12; the class is unbounded and the two proposed regexes disagree on 14/29
+  (one adds bracket‑swallowing false positives). Not now; gated on frontier‑tier
+  evidence. If done: the tight one, plus `.`/`/`/`－`; no fixed‑point loop (a
+  no‑op).
+- **M‑A3** trim cuts at a char count (`$538` for $538,138): cut at the last
+  `,`/`}`, `… [cut]`; note wording from `notes.length`; `Array.from` slice for
+  handoffs + "under 1,500 characters" in the description.
+- **M‑A4** `stripFenceMarker` on model‑role pushes (`synthesize.ts`, `gather.ts`).
+- **M‑C2** Sources: `hostname — label`, clipped ~160 code points at RENDER only
+  (report.json stays faithful); the `[{title,url}]` Markdown path exists only in
+  fixtures — a docs/`templates:check` note that derived sources must be `{items}`.
+- **M‑C4** `safeHref` (`https?`, `mailto:`) at the six raw sites, unsafe → text
+  (also fixes the `tel:` `href=""` dead link). Measured: `javascript:` with
+  `_blank noreferrer` opens about:blank, script does not run; `data:` no tab.
+  Real reports: 0 mailto/tel, 11 `http://` (so `https?`, not `https`).
+- **M‑C5 rest / M‑C6** balanced‑paren URL regex; `mailto:` in the PDF regex;
+  "no tables" in the directive (0 tables in real reports); email `esc()`s the
+  headline instead of stripping `&` (HTML body only; subject/text keep it).
+- **M‑D2** `turnsUsed` counted after `gather` returns → under‑count on a throw
+  and `progress.turnsUsed` lags a whole loop on every honest run; report turns
+  from inside `gather` as charged.
+- **M‑D3** `context-size.measure.test.ts` PROSE violates chart `.max(500)`,
+  loses `charts`, reports `completed`, and inflates the flagship write
+  denominator (794k → honest 538k). Sampler honours `maxLength`; assert
+  `meta.sections` empty.
+- **Ceiling (product):** Florida declares no per‑mode `maxCostUsd` → $20 both;
+  honest comprehensive ≈ $2.6 est. / $3.9 real (July, pre‑C4), essential ≈ $1.3;
+  essential is ~51% of the cost at 28% of the credits (D1 stands).
+
+### Refuted
+- **M‑B3** forged tool‑result JSON inside page content: it arrives as a string
+  leaf at `pages[0].content` beside a truthful top‑level `turnsLeft`, in both
+  providers — not the same structural position. `site:` capture was the
+  fixture's `boost`.
+
+### Decided, not measured further
+- The buyer's `instructions` textarea never reaches the prompt (Javier,
+  2026‑08‑17): it populates the directives ("Your preferences") and optionally
+  `keywords`; `preferredSources` is removed from the SPA and the backend;
+  `instructionsField` and the "ADDITIONAL CLIENT INSTRUCTIONS" block go. Queued.

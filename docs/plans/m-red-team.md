@@ -186,7 +186,16 @@ The ceiling bounds the bill, not the waste inside it.
    - Every obeyed payload reaches the report and the handoffs, as expected: the
      schema constrains SHAPE, not values. Whether that is damage is § C's question
      (renderers), now measurable.
-2. Mock-tier pairs A–D in parallel; refute; fix what is architectural.
-3. Ollama tier on the survivors and on B/D specifically (the model IS the
-   mechanism there).
-4. Write up.
+2. ~~Mock-tier pairs A–D in parallel; refute.~~ **Done 2026-08-17** — eight
+   finders, nine refuters; consolidated verdicts in `deep-review.md § "M step 2"`,
+   raw reports in `m-red-team-reports/`, tests in `packages/core/test/red-team/`
+   and `apps/*/test/red-team-*.tsx` (935 tests green, the `it.fails` are the
+   defects). Fixes: **not yet shipped** — seven P1 clusters, in order: C1 img
+   beacon, B1 own-first dossier, B2 plan breaker + stalled→budget + record stop,
+   C3 structured/localized progress, C5 PDF double-escape + list split, D1
+   gatheredAgentIds + failure signature + Gemini schema forwarding, chart-refiner
+   `current`. Then the P2 batch.
+3. Ollama tier — used inline where the model was the mechanism (A2 variants
+   0/12, A1 marker echo 0/3, A-legit imperatives 10 vs 9, B-legit handoffs); a
+   frontier-tier pass is what would move A2 (and D1's trigger) either way.
+4. Write up — done (deep-review.md).
