@@ -18,13 +18,20 @@
  */
 import type { ExtractedPage, SearchResult } from '../../src/tools/web-search.js';
 
-interface Page {
+export interface Page {
   url: string;
   title: string;
   snippet: string;
   content: string;
   /** Extra terms that should match this page beyond its title/snippet. */
   tags: string[];
+  /**
+   * Added to the term-overlap score. The honest corpus never sets it; the poisoned
+   * corpus (`poisoned-web.ts`) uses it so an attacker page ranks where a real
+   * SEO-optimised attacker page would — first — without having to guess which
+   * words the model will search for.
+   */
+  boost?: number;
 }
 
 const PAGES: Page[] = [
@@ -195,7 +202,31 @@ function terms(text: string): string[] {
 /** Overlap between the query's terms and everything we know about a page. */
 function score(query: string, page: Page): number {
   const haystack = `${page.title} ${page.snippet} ${page.tags.join(' ')}`.toLowerCase();
-  return terms(query).reduce((n, t) => (haystack.includes(t) ? n + 1 : n), 0);
+  return terms(query).reduce((n, t) => (haystack.includes(t) ? n + 1 : n), page.boost ?? 0);
+}
+
+/**
+ * Pages a test adds on top of the honest corpus — the poisoned web lives here.
+ *
+ * Kept OUT of `PAGES` so the honest corpus stays honest for every other test:
+ * `FAKE_WEB_PAGES` (what "only real evidence" assertions compare against) is built
+ * from `PAGES` alone, and an attacker page must never be mistaken for evidence.
+ * Searched and extractable exactly like the corpus; extras win ties, which is
+ * where a boosted page lands anyway.
+ */
+let extraPages: Page[] = [];
+
+/** Test-only: replace the extra pages. Returns a restore function. */
+export function __setExtraPages(pages: Page[]): () => void {
+  const previous = extraPages;
+  extraPages = pages;
+  return () => {
+    extraPages = previous;
+  };
+}
+
+function allPages(): Page[] {
+  return extraPages.length ? [...extraPages, ...PAGES] : PAGES;
 }
 
 /**
@@ -219,7 +250,7 @@ export function canExtractPages(): boolean {
  * which is what a real search backend does too.
  */
 export async function searchWeb(query: string): Promise<SearchResult[]> {
-  const ranked = PAGES.map((page) => ({ page, s: score(query, page) }))
+  const ranked = allPages().map((page) => ({ page, s: score(query, page) }))
     .sort((a, b) => b.s - a.s)
     .filter((r, i) => r.s > 0 || i < 3)
     .slice(0, 5);
@@ -232,7 +263,7 @@ export async function searchWeb(query: string): Promise<SearchResult[]> {
  */
 export async function extractPages(urls: string[]): Promise<ExtractedPage[]> {
   return urls.map((url) => {
-    const page = PAGES.find((p) => p.url === url);
+    const page = allPages().find((p) => p.url === url);
     return page
       ? { url, ok: true, content: page.content }
       : { url, ok: false, content: '', error: 'Not found (this URL is not in the fixture corpus).' };
