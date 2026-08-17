@@ -122,6 +122,11 @@ export function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
 /** Minimal, SAFE Markdown → HTML (escape first, then a few inline/block rules). */
 function mdInline(s: string): string {
   let out = esc(s);
+  // An image is not a thing a report renders — the web viewer drops the element
+  // (see ReportViewer's `MD`) and this renderer never emitted one. Without this
+  // line the link rule below turned `![alt](url)` into `!` + a link labelled by
+  // the alt text: a click-beacon dressed as a "verified photo".
+  out = out.replace(/!\[[^\]]*\]\([^\s)]*\)/g, '');
   out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, t, u) => `<a href="${esc(u)}">${t}</a>`);
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');

@@ -49,18 +49,19 @@ describe('C-attack · Markdown images are a tracking beacon in the buyer’s rep
     { key: 'recommendation', title: 'Recommendation' },
   ];
 
-  it.fails('DEFECT · overview / risks / nextStep: 3 <img src="https://beacon.attacker.test/…"> render — one GET per open, from the buyer’s IP', () => {
+  it('FIXED · overview / risks / nextStep: no <img> renders — before the fix, 3 did, one GET per open from the buyer’s IP (mutation: drop `img` from `MD`)', () => {
     const { container } = render(<ReportViewer report={report} sections={sections} meta={{}} lang="en" />);
     // The render worked — the honest half of the sentence is on screen…
     expect(screen.getByText(/Two laundromats match/)).toBeTruthy();
     // …and so is the beacon. `img` is react-markdown's default element; the
     // default `urlTransform` allows `https:` for `src` exactly as it does for `href`.
     const imgs = Array.from(container.querySelectorAll('img'));
-    // Measured today: 3 (overview, risks[0], nextStep), every src === BEACON.
+    // Measured before the fix: 3 (overview, risks[0], nextStep), every src === BEACON.
     expect(imgs.map((i) => i.getAttribute('src'))).toEqual([]);
+    expect(container.innerHTML).not.toContain('beacon.attacker.test');
   });
 
-  it.fails('DEFECT · a DealCard prose field (Florida `deep_dives[].overview`) renders the same <img>', () => {
+  it('FIXED · a DealCard prose field (Florida `deep_dives[].overview`) renders no <img> either', () => {
     const { container } = render(
       <ReportViewer
         report={{ deep_dives: [{ business: 'Bubbles Express', askingPrice: 365000, overview: `Absentee-run. ${IMG_MD}`, sourceUrl: 'https://x.test' }] }}
@@ -71,7 +72,7 @@ describe('C-attack · Markdown images are a tracking beacon in the buyer’s rep
       />,
     );
     expect(screen.getByText(/Absentee-run/)).toBeTruthy();
-    // Measured today: one <img>, src === BEACON, inside `.rv-deal .prose`.
+    // Measured before the fix: one <img>, src === BEACON, inside `.rv-deal .prose`.
     expect(Array.from(container.querySelectorAll('.rv-deal img')).map((i) => i.getAttribute('src'))).toEqual([]);
   });
 });

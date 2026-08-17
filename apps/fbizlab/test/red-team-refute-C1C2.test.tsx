@@ -77,27 +77,28 @@ function showReadReport() {
 const beaconSrcs = (c: HTMLElement) => [...c.querySelectorAll('img')].map((i) => i.getAttribute('src')).filter((s) => s === BEACON);
 
 describe('C1 · the <img> on the PRODUCTION pages, not a bare viewer', () => {
-  it.fails('JobView (buyer, /app/jobs/:id): a completed Florida-shaped report renders 2 <img src=BEACON> (market prose + deep-dive card)', () => {
+  it('JobView (buyer, /app/jobs/:id): a completed Florida-shaped report renders NO <img src=BEACON> — before the fix, 2 (market prose + deep-dive card)', () => {
     const { container } = showJobView();
     expect(screen.getByText(/Two laundromats match/)).toBeTruthy();
     expect(screen.getByText(/Absentee-run/)).toBeTruthy();
-    // Measured today: 2. Wanted: 0.
-    console.log('C1 JobView beacon <img> count:', beaconSrcs(container).length);
+    // Measured before the fix: 2.
     expect(beaconSrcs(container)).toEqual([]);
+    expect(container.querySelectorAll('img').length).toBe(0);
   });
 
-  it.fails('ReadReport (share link / admin "View report in the app", /report/:id?rt=): same 2 <img src=BEACON>', async () => {
+  it('ReadReport (share link / admin "View report in the app", /report/:id?rt=): no <img> either — before the fix, the same 2', async () => {
     const { container } = showReadReport();
     await waitFor(() => expect(screen.getByText(/Two laundromats match/)).toBeTruthy());
-    console.log('C1 ReadReport beacon <img> count:', beaconSrcs(container).length);
     expect(beaconSrcs(container)).toEqual([]);
+    expect(container.querySelectorAll('img').length).toBe(0);
   });
 
-  it('CONTROL · a protocol-relative and a same-origin image src also pass react-markdown’s default urlTransform (no colon → "relative")', () => {
+  it('a protocol-relative and a same-origin image src pass react-markdown’s default urlTransform (no colon → "relative") — which is why the fix is at the ELEMENT, not the URL', () => {
+    // Mutation that reds it: replace `img: () => null` with a `urlTransform` that
+    // only refuses `https:` — these two come back.
     const { container } = render(<ReportViewer report={{ m: { text: 'x ![a](//beacon.attacker.test/p.gif) ![b](/api/leak.gif)' } }} sections={[{ key: 'm', title: 'M' }]} lang="en" />);
-    const srcs = [...container.querySelectorAll('img')].map((i) => i.getAttribute('src'));
-    console.log('C1 relative-form srcs:', srcs);
-    expect(srcs).toEqual(['//beacon.attacker.test/p.gif', '/api/leak.gif']);
+    expect(container.querySelectorAll('img').length).toBe(0);
+    expect(container.innerHTML).not.toContain('leak.gif');
   });
 });
 

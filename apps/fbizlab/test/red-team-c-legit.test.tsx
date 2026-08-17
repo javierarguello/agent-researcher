@@ -84,13 +84,12 @@ describe('C-legit · prose links in the viewer — what react-markdown’s defau
 });
 
 describe('C-legit · images in prose (ReportViewer.tsx:115 overrides only `a`)', () => {
-  it('a Markdown image DOES render as <img> today — but no honest input produces one: MARKDOWN_DIRECTIVE asks for links, the honest corpus and the mock write none, charts are `ChartSpec` objects drawn by recharts, never Markdown images', () => {
-    // This pins the CURRENT behaviour so the fix (strip `img`) has a red→green
-    // test to flip; the legit-lens claim is that stripping loses nothing today.
-    // Mutation that reds this: add `disallowedElements={['img']}` (i.e. the fix).
+  it('a Markdown image renders NOTHING — and no honest input produces one: MARKDOWN_DIRECTIVE asks for links, the honest corpus and the mock write none, charts are `ChartSpec` objects drawn by recharts, never Markdown images', () => {
+    // The legit-lens claim: stripping images loses nothing a report has today.
+    // Mutation that reds this: remove `img: () => null` from `MD`.
     const { container } = prose('Floor plan: ![plan](https://example-marketplace.test/plan.png)');
-    const img = container.querySelector('img');
-    expect(img?.getAttribute('src')).toBe('https://example-marketplace.test/plan.png');
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).toContain('Floor plan:');
   });
 
   it('charts arrive as ChartSpec objects and render through recharts, not <img> — an image strip does not touch them', () => {

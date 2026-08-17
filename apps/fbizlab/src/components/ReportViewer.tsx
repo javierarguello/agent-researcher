@@ -112,7 +112,24 @@ function ChartSpecRender({ spec, f }: { spec: ChartSpec; f: NumFmt }) {
   );
 }
 
-const MD = { a: (p: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...p} target="_blank" rel="noopener noreferrer" /> };
+/**
+ * The Markdown elements a report may render. `a` opens in a new tab; `img`
+ * renders NOTHING.
+ *
+ * Images are dropped at the element level on purpose. react-markdown's default
+ * `urlTransform` lets an `https:`, protocol-relative or same-origin `src`
+ * through, and a report field is model output written after reading web pages —
+ * so `![photo](https://attacker/p.gif?…)` in any prose field was a tracking
+ * beacon that fired from the reader's IP on every open of the report, the shared
+ * read link and the admin's view. Nothing honest is lost: the engine's directive
+ * asks for links, charts are structured `ChartSpec`s, and the PDF has never
+ * drawn an image. If a model ever needs pictures, that is an allowlisted asset
+ * pipeline, not Markdown.
+ */
+const MD = {
+  a: (p: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...p} target="_blank" rel="noopener noreferrer" />,
+  img: () => null,
+};
 const Prose = ({ md }: { md: string }) => <div className="prose"><Markdown remarkPlugins={[remarkGfm]} components={MD}>{md}</Markdown></div>;
 
 /** A row of coral-accented stat tiles: { value, label }. */

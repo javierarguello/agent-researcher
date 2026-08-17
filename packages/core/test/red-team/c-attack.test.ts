@@ -38,17 +38,15 @@ const pdf = (report: Record<string, unknown>, sections: Array<{ key: string; tit
 
 // ── The PDF: images ─────────────────────────────────────────────────────────
 describe('C-attack · PDF — Markdown images (report-html.ts:123 mdInline)', () => {
-  it('SOUND · no <img> is ever emitted, so Chromium (network on, waitUntil:load) has nothing to fetch — but the beacon survives as a LINK', () => {
-    // Mutation that reds it: add an image rule to `mdInline`
-    // (`out.replace(/!\[([^\]]*)\]\((https?:[^\s)]+)\)/g, '<img src="$2" alt="$1">')`).
+  it('SOUND · no <img> is ever emitted, and an image is not a link either — `![alt](url)` renders as nothing', () => {
+    // Mutation that reds it: delete the image-strip line in `mdInline`, and the
+    // beacon comes back as `!` + <a href=beacon>alt</a> — a click-beacon labelled
+    // as a photo, which is what this renderer emitted before the fix.
     const html = pdf({ findings: { overview: `Two match. ${IMG_MD}`, listings: [], risks: [`Lease. ${IMG_MD}`] } }, [{ key: 'findings', title: 'Findings' }]);
     expect(html).toContain('Two match.'); // rendered
     expect(html).not.toMatch(/<img\b/i);
-    // Measured: `![alt](url)` falls through the LINK rule as `!` + <a>. What the
-    // buyer sees in the PDF is "!Bubbles Express verified photo" underlined — a
-    // click-beacon labelled as a photo. Recorded here so nobody re-measures it;
-    // it is the same class as any https link the model writes into prose.
-    expect(html).toContain(`!<a href="https://beacon.attacker.test/p.gif?ref=PZ-IMG&amp;amp;report=REPORT-ID">Bubbles Express verified photo</a>`);
+    expect(html).not.toContain('beacon.attacker.test');
+    expect(html).not.toContain('verified photo');
   });
 });
 
