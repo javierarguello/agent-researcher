@@ -32,6 +32,11 @@ function t(copy: Copy, lang: unknown, vars: Record<string, string> = {}): string
   return out;
 }
 
+/** The three characters that are markup in an HTML body — escaped, so the text survives whole. */
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function shell(appName: string, heading: string, body: string, cta: { label: string; url: string }, footer: string, linkLine: string, notice?: string): string {
   // Between the body and the button, so it is read on the way to the report
   // rather than under it. Tinted and ruled, because the whole point is that it
@@ -180,16 +185,20 @@ export function reportReadyTemplate(appName: string, reportTitle: string, url: s
   // why the shell around it has to match — an English frame around a French title
   // was the most visible half-translation we shipped.
   const title = reportTitle?.trim() || t(READY_TITLE_FALLBACK, lang);
-  const v = { app: appName, url, title: title.replace(/[<>&]/g, '') };
-  // Stripped like the title: the notice is our own copy, but it lands in a raw
-  // template literal, and the rule in this file is that nothing reaches the markup
-  // unchecked.
-  const note = notice?.trim().replace(/[<>&]/g, '') || undefined;
+  // ESCAPED into the HTML, not stripped: "Bed & Breakfast inns for sale" is an
+  // ordinary headline (it is written by the model from the buyer's own industry
+  // text), and stripping the `&` sent "Bed  Breakfast" in the body under a subject
+  // that still said "Bed & Breakfast". The subject and the text part take the
+  // title raw — there is no markup there to protect.
+  const v = { app: appName, url, title: escHtml(title) };
+  // The notice is our own copy, but it lands in a raw template literal, and the
+  // rule in this file is that nothing reaches the markup unchecked.
+  const note = notice?.trim() ? escHtml(notice.trim()) : undefined;
   return {
     subject: t(READY_SUBJECT, lang, { ...v, title }),
     html: shell(appName, t(READY_HEADING, lang, v), t(READY_BODY, lang, v),
       { label: t(READY_CTA, lang, v), url }, t(READY_FOOTER, lang, v), t(LINK_LINE, lang), note),
-    text: [t(READY_TEXT, lang, { ...v, title }), note, t(READY_TEXT_FOOT, lang)].filter(Boolean).join('\n\n'),
+    text: [t(READY_TEXT, lang, { ...v, title }), notice?.trim() || undefined, t(READY_TEXT_FOOT, lang)].filter(Boolean).join('\n\n'),
   };
 }
 

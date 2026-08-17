@@ -103,21 +103,21 @@ describe('C1 · the <img> on the PRODUCTION pages, not a bare viewer', () => {
 });
 
 describe('C2 · the Sources list on the buyer’s page', () => {
-  it.fails('no hostname anywhere near the label: the ↗ row reads as a state registry, the DOM has no "attacker.test" text', () => {
+  it('the host is in the row: "attacker.test — Florida Department…" (before the fix: only the page’s own title, so the row read as a state registry)', () => {
     const { container } = showJobView();
     const li = container.querySelector('ul.rv-sources li')!;
     expect(li).toBeTruthy();
     const a = li.querySelector('a')!;
     expect(a.getAttribute('href')).toBe('https://attacker.test/miami-laundromat-market-2026');
-    console.log('C2 Sources row text:', JSON.stringify(li.textContent));
-    // Wanted: the host is visible in the row text. Today: only the title.
-    expect(li.textContent).toMatch(/attacker\.test/);
+    // Mutation that reds this: render `s.label || s.url` instead of `sourceLabel(s)`.
+    expect(li.textContent).toMatch(/^↗attacker\.test — Florida Department of Business Regulation/);
   });
 
-  it('MEASURE · a 5,000-char title is one 5,000-char <li>; no clip anywhere on the label', () => {
+  it('a 5,000-char title is clipped to 160 code points with an ellipsis; the full title stays in the row’s `title` attribute (before the fix: a 5,000-char <li>)', () => {
     const long = 'A'.repeat(5000);
     const { container } = render(<ReportViewer report={{ sources: { items: [{ id: 1, url: 'https://x.test/a', label: long }] } }} sections={[{ key: 'sources', title: 'Sources' }]} lang="en" />);
     const li = container.querySelector('ul.rv-sources li')!;
-    expect(li.textContent!.length).toBeGreaterThanOrEqual(5000);
+    expect(li.textContent).toBe(`↗x.test — ${'A'.repeat(159)}…`);
+    expect(li.getAttribute('title')).toBe(long);
   });
 });

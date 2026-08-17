@@ -50,9 +50,10 @@ describe('C-legit · prose links in the viewer — what react-markdown’s defau
   it('a `javascript:` PROSE link is neutralised WITHOUT any allowlist of ours — C-attack’s prose-link claim is refuted here; the raw `href={…}` sites are the real ones', () => {
     // Mutation that reds this: pass `urlTransform={(u) => u}` to <Markdown> in Prose.
     const { container } = prose('Click [here](javascript:alert(1)) for the listing.');
-    const [a] = links(container);
-    expect(a?.text).toBe('here');
-    expect(a?.href ?? '').not.toMatch(/^javascript:/i);
+    // No anchor at all now (`proseUrl` + the `a` component render the text); the
+    // sentence still reads whole.
+    expect(links(container)).toEqual([]);
+    expect(container.textContent).toContain('Click here for the listing.');
   });
 
   it('a `mailto:` broker link SURVIVES in the viewer (react-markdown allows mailto) — an `https`-only allowlist copied from the PDF would kill it', () => {
@@ -61,13 +62,9 @@ describe('C-legit · prose links in the viewer — what react-markdown’s defau
     expect(links(container)).toEqual([{ text: 'the listing broker', href: 'mailto:broker@example-brokerage.test' }]);
   });
 
-  it.fails('a `tel:` broker number becomes a DEAD link today: the buyer sees blue underlined text with `href=""` (react-markdown safeProtocol excludes tel)', () => {
+  it('a `tel:` broker number is a working link (before the fix: react-markdown’s default set excluded tel, so the buyer saw blue underlined text with `href=""`; mutation: drop `tel:` from `proseUrl`)', () => {
     const { container } = prose('Call [the broker](tel:+13055550123) to schedule a walkthrough.');
-    const [a] = links(container);
-    // Observed today: text "the broker" is rendered as <a href=""> — looks like a
-    // link, goes nowhere. Either a working tel: link or plain text would be honest.
-    console.log('C-legit F-viewer-tel:', a);
-    expect(a?.href).toBe('tel:+13055550123');
+    expect(links(container)).toEqual([{ text: 'the broker', href: 'tel:+13055550123' }]);
   });
 
   it('http://, ports, IDN hosts and parenthesised Wikipedia paths all survive in the viewer (the PDF cuts the last one — see core c-legit F2)', () => {

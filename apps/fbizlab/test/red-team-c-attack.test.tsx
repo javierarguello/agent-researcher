@@ -96,7 +96,7 @@ describe('C-attack · raw HTML in prose', () => {
 });
 
 describe('C-attack · raw hrefs with no protocol allowlist', () => {
-  it.fails('DEFECT · DealCard `sourceUrl` = javascript: becomes <a href="javascript:…">source ↗</a> (ReportViewer.tsx:220)', () => {
+  it('FIXED · DealCard `sourceUrl` = javascript: renders NO "source ↗" anchor at all (before the fix: <a href="javascript:…">; mutation: `href={url}` instead of `safeHref(url)`)', () => {
     render(
       <ReportViewer
         report={{ shortlist: [{ business: 'Coral Clean', askingPrice: 410000, sourceUrl: JS_URL }] }}
@@ -107,13 +107,14 @@ describe('C-attack · raw hrefs with no protocol allowlist', () => {
       />,
     );
     expect(screen.getByText('Coral Clean')).toBeTruthy();
-    const a = screen.getByText(/source ↗/).closest('a')!;
-    // What a buyer clicks: the "source ↗" link under the deal card.
-    // Measured today: href === 'javascript:void(document.title="PZ-JS")'.
-    expect(a.getAttribute('href')).not.toMatch(/^\s*javascript:/i);
+    // What a buyer clicked: the "source ↗" link under the deal card. Measured
+    // before the fix: href === 'javascript:void(document.title="PZ-JS")'. Now the
+    // card has no source link — nothing to click.
+    expect(screen.queryByText(/source ↗/)).toBeNull();
+    expect(document.querySelector('a[href^="javascript:"]')).toBeNull();
   });
 
-  it.fails('DEFECT · Sources list `items[].url` (search-result URL) = data:/javascript: becomes the ↗ link (ReportViewer.tsx:230)', () => {
+  it('FIXED · Sources list `items[].url` = data:/javascript: renders the row as TEXT, no anchor (before the fix: the ↗ link carried the URL)', () => {
     const { container } = render(
       <ReportViewer
         report={{ sources: { items: [{ id: 1, url: JS_URL, label: 'Coral Clean listing' }, { id: 2, url: DATA_URL, label: 'Registry' }] } }}
@@ -122,13 +123,15 @@ describe('C-attack · raw hrefs with no protocol allowlist', () => {
         lang="en"
       />,
     );
-    const hrefs = Array.from(container.querySelectorAll('ul.rv-sources a')).map((a) => a.getAttribute('href'));
-    expect(hrefs).toHaveLength(2); // the render worked
-    // Measured today: ['javascript:void(document.title="PZ-JS")', 'data:text/html,<script>…</script>'].
-    expect(hrefs.filter((h) => /^\s*(javascript|data|vbscript):/i.test(h ?? ''))).toEqual([]);
+    const rows = Array.from(container.querySelectorAll('ul.rv-sources li'));
+    expect(rows).toHaveLength(2); // the render worked, both rows are there…
+    expect(rows.map((r) => r.textContent)).toEqual(['↗Coral Clean listing', '↗Registry']);
+    // …and neither is a link. Measured before the fix: two anchors carrying
+    // 'javascript:void(document.title="PZ-JS")' and 'data:text/html,<script>…</script>'.
+    expect(container.querySelectorAll('ul.rv-sources a')).toHaveLength(0);
   });
 
-  it.fails('DEFECT · community mention `m.url` = javascript: becomes the "↗ source" link (ReportViewer.tsx:321)', () => {
+  it('FIXED · community mention `m.url` = javascript: renders no "↗ source" anchor (before the fix: the link carried it)', () => {
     render(
       <ReportViewer
         report={{ community: { overview: 'Mixed.', mentions: [{ platform: 'Reddit', url: JS_URL, topic: 'Wash World', summary: 'Owner is responsive.', sentiment: 'positive' }] } }}
@@ -137,13 +140,14 @@ describe('C-attack · raw hrefs with no protocol allowlist', () => {
         lang="en"
       />,
     );
-    const a = screen.getByText(/↗ source/).closest('a')!;
-    expect(a.getAttribute('href')).not.toMatch(/^\s*javascript:/i);
+    expect(screen.getByText('Wash World')).toBeTruthy();
+    expect(screen.queryByText(/↗ source/)).toBeNull();
+    expect(document.querySelector('a[href^="javascript:"]')).toBeNull();
   });
 
-  it('SOUND · a javascript: link inside prose is neutralised by react-markdown’s default urlTransform (href="")', () => {
-    // Pins the library default. Mutation that reds it: pass `urlTransform={(u) => u}`
-    // to <Markdown> in `Prose` — the href comes back as the javascript: URL.
+  it('SOUND · a javascript: link inside prose is neutralised — `proseUrl` returns no href and the `a` component renders the text alone (before: react-markdown’s default gave `href=""`, a dead anchor)', () => {
+    // Mutation that reds it: pass `urlTransform={(u) => u}` to <Markdown> in
+    // `Prose` — the href comes back as the javascript: URL.
     render(
       <ReportViewer
         report={{ findings: { overview: `See [the canonical listing](${JS_URL}) for details.` } }}
@@ -152,8 +156,9 @@ describe('C-attack · raw hrefs with no protocol allowlist', () => {
         lang="en"
       />,
     );
-    const a = screen.getByText('the canonical listing').closest('a')!;
-    expect(a.getAttribute('href') ?? '').not.toMatch(/javascript:/i);
+    expect(screen.getByText(/the canonical listing/)).toBeTruthy();
+    expect(screen.getByText(/the canonical listing/).closest('a')).toBeNull();
+    expect(document.querySelector('a[href^="javascript:"]')).toBeNull();
   });
 });
 

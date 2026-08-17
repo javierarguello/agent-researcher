@@ -1,4 +1,5 @@
 import Markdown from 'react-markdown';
+import { proseUrl, safeHref, sourceLabel } from '../lib/safe-href';
 import remarkGfm from 'remark-gfm';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
@@ -127,10 +128,12 @@ function ChartSpecRender({ spec, f }: { spec: ChartSpec; f: NumFmt }) {
  * pipeline, not Markdown.
  */
 const MD = {
-  a: (p: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...p} target="_blank" rel="noopener noreferrer" />,
+  // A link with no href left after `proseUrl` (an unsafe scheme) is its text, not a
+  // dead anchor styled as a live one.
+  a: (p: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (p.href ? <a {...p} target="_blank" rel="noopener noreferrer" /> : <>{p.children}</>),
   img: () => null,
 };
-const Prose = ({ md }: { md: string }) => <div className="prose"><Markdown remarkPlugins={[remarkGfm]} components={MD}>{md}</Markdown></div>;
+const Prose = ({ md }: { md: string }) => <div className="prose"><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{md}</Markdown></div>;
 
 /** A row of coral-accented stat tiles: { value, label }. */
 function Tiles({ items }: { items: Array<{ value: string; label: string }> }) {
@@ -231,10 +234,10 @@ function DealCard({ d, l, f, cover, coverLabels }: { d: Obj; l: Record<string, s
           <div className="rv-flabel">{humanizeKey('risks')}</div>
           {(d.risks as unknown[]).every(isRisk)
             ? <RiskList items={d.risks as Risk[]} />
-            : <ul className="rv-bullets">{(d.risks as string[]).map((r, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{r}</Markdown></li>)}</ul>}
+            : <ul className="rv-bullets">{(d.risks as string[]).map((r, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{r}</Markdown></li>)}</ul>}
         </div>
       )}
-      {url && <a className="mono accent" style={{ fontSize: 11, display: 'inline-block', marginTop: 10 }} href={url} target="_blank" rel="noreferrer">source ↗</a>}
+      {safeHref(url) && <a className="mono accent" style={{ fontSize: 11, display: 'inline-block', marginTop: 10 }} href={safeHref(url)!} target="_blank" rel="noreferrer">source ↗</a>}
     </div>
   );
 }
@@ -244,7 +247,9 @@ interface Source { url: string; label?: string; id?: number }
 const isSourceList = (v: unknown): v is { items: Source[] } => !!v && typeof v === 'object' && Array.isArray((v as { items?: unknown }).items) && typeof ((v as { items: Source[] }).items[0]?.url) === 'string';
 function SourceList({ items }: { items: Source[] }) {
   return <ul className="rv-sources">{items.map((s, i) => (
-    <li key={i}><a href={s.url} target="_blank" rel="noreferrer"><span className="rv-src-arrow">↗</span>{s.label || s.url}</a></li>
+    <li key={i} title={s.label || s.url}>{safeHref(s.url)
+      ? <a href={safeHref(s.url)!} target="_blank" rel="noreferrer"><span className="rv-src-arrow">↗</span>{sourceLabel(s)}</a>
+      : <span><span className="rv-src-arrow">↗</span>{sourceLabel(s)}</span>}</li>
   ))}</ul>;
 }
 
@@ -255,7 +260,7 @@ function Checklist({ categories }: { categories: Array<{ category: string; items
     <div key={i}>
       <div className="rv-flabel">{c.category}</div>
       <ul className="rv-check">{c.items.map((it, j) => (
-        <li key={j}><span className="rv-checkbox" /><span><Markdown remarkPlugins={[remarkGfm]} components={MD}>{it}</Markdown></span></li>
+        <li key={j}><span className="rv-checkbox" /><span><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{it}</Markdown></span></li>
       ))}</ul>
     </div>
   ))}</div>;
@@ -335,7 +340,7 @@ function CommunitySentiment({ v, l }: { v: { overview?: string; mentions: Mentio
               )}
             </div>
             {m.summary && <Prose md={m.summary} />}
-            {m.url && <a className="mono accent" style={{ fontSize: 11, display: 'inline-block', marginTop: 10 }} href={m.url} target="_blank" rel="noreferrer">↗ source</a>}
+            {safeHref(m.url) && <a className="mono accent" style={{ fontSize: 11, display: 'inline-block', marginTop: 10 }} href={safeHref(m.url)!} target="_blank" rel="noreferrer">↗ source</a>}
           </div>
         ))}</div>
       )}
@@ -355,7 +360,7 @@ function Value({ v, k, l, f }: { v: unknown; k?: string; l: Record<string, strin
     if (v.every(isRisk)) return <RiskList items={v as Risk[]} />;
     if (v.every(isMetric)) return <MetricTiles items={v as Metric[]} />;
     if (isTransactions(v)) return <TransactionsTable rows={v} l={l} f={f} />;
-    if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD}>{x as string}</Markdown></li>)}</ul>;
+    if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{x as string}</Markdown></li>)}</ul>;
     return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="rv-card"><ObjectFields o={x as Obj} l={l} f={f} /></div>)}</div>;
   }
   if (typeof v === 'object') {

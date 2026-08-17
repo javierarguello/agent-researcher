@@ -167,6 +167,10 @@ verticals while still accepting anything.
   (lifecycle phases + every agent), localized. Map a job's `progress.phase` (from
   `GET /research/:jobId`) to a step to show a friendly label + description instead
   of a raw id, and render a stepper from the list.
+- **Sources** — a derived `sources` section must be `{ items: [{ id, url, label }] }`
+  (the shape both renderers recognise as a source list); a bare `[{title,url}]`
+  array renders as generic fields, its titles as Markdown. A row prints
+  `host — label`, the label clipped, and links only `http(s)`/`mailto:` URLs.
 - **Report viewer** — `GET /research/:jobId/report` returns the parsed
   `{ meta, report }`. `report` is keyed by section; render each in `sections`
   order. A value is either **Markdown** (render styled, links in a new tab),

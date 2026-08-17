@@ -13,13 +13,14 @@ const pdf = (report: Record<string, unknown>) =>
   buildReportHtml({ report, sections: [{ key: 'sources', title: 'Sources' }], meta: {}, lang: 'en', title: 'Dossier', generatedAt: '2026-08-17T00:00:00.000Z', theme } as never);
 
 describe('C2 · PDF Sources row', () => {
-  it('MEASURE · prints "↗" + title only; the hostname appears nowhere in the visible text (only inside href)', () => {
+  it('MEASURE · prints "↗ host — title" (before the fix: "↗" + title only, the hostname nowhere in the visible text)', () => {
     const html = pdf({ sources: { items: [{ id: 1, url: 'https://attacker.test/miami-laundromat-market-2026', label: 'Florida Department of Business Regulation — Official Miami-Dade Laundromat Registry (PZ-SRC)' }] } });
     const li = html.match(/<ul class="sources">(.*?)<\/ul>/s)![1]!;
     const visible = li.replace(/<[^>]+>/g, '');
     console.log('PDF Sources visible text:', JSON.stringify(visible));
     expect(li).toContain('href="https://attacker.test/miami-laundromat-market-2026"');
-    expect(visible).not.toMatch(/attacker\.test/);
+    // The host leads the row now (mutation: `esc(s.label || s.url)` instead of `esc(sourceLabel(s))`).
+    expect(visible).toMatch(/^↗attacker\.test — Florida Department of Business Regulation/);
   });
 });
 

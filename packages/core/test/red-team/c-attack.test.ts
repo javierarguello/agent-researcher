@@ -52,26 +52,27 @@ describe('C-attack · PDF — Markdown images (report-html.ts:123 mdInline)', ()
 
 // ── The PDF: raw hrefs ─────────────────────────────────────────────────────
 describe('C-attack · PDF — raw hrefs with no protocol allowlist (report-html.ts:252, 289, 314 — `esc()` only)', () => {
-  it.fails('DEFECT · deal card `sourceUrl` = javascript: is printed as <a href="javascript:…">source ↗</a> (report-html.ts:314)', () => {
+  it('FIXED · deal card `sourceUrl` = javascript: prints NO source link (before the fix: `<a class="mono srclink" href="javascript:void(document.title=&quot;PZ-JS&quot;)" …>source ↗</a>`; mutation: `esc(d.sourceUrl)` instead of `safeHref`)', () => {
     const html = pdf({ shortlist: [{ business: 'Coral Clean', askingPrice: 410000, sourceUrl: JS_URL }] }, [{ key: 'shortlist', title: 'Shortlist' }], true);
     expect(html).toContain('Coral Clean'); // the deal card rendered
-    // Measured today: `<a class="mono srclink" href="javascript:void(document.title=&quot;PZ-JS&quot;)" …>source ↗</a>`.
     expect(html).not.toMatch(/href="\s*javascript:/i);
+    expect(html).not.toContain('class="mono srclink"');
   });
 
-  it.fails('DEFECT · Sources `items[].url` (a SEARCH-RESULT url) = javascript:/data: is printed as the ↗ link (report-html.ts:252)', () => {
+  it('FIXED · Sources `items[].url` = javascript:/data: prints the row as TEXT, no anchor (before the fix: two ↗ links carrying them)', () => {
     const html = pdf({ sources: { items: [{ id: 1, url: JS_URL, label: 'Coral Clean listing' }, { id: 2, url: DATA_URL, label: 'Registry' }] } }, [{ key: 'sources', title: 'Sources' }]);
     expect(html).toContain('Coral Clean listing');
-    const hrefs = [...html.matchAll(/<ul class="sources">[\s\S]*?<\/ul>/g)].flatMap((m) => [...m[0].matchAll(/href="([^"]*)"/g)].map((x) => x[1]));
-    expect(hrefs).toHaveLength(2); // rendered
-    // Measured today: ['javascript:void(document.title=&quot;PZ-JS&quot;)', 'data:text/html,&lt;script&gt;…'].
-    expect(hrefs.filter((h) => /^\s*(javascript|data|vbscript):/i.test(h ?? ''))).toEqual([]);
+    expect(html).toContain('Registry');
+    const list = html.match(/<ul class="sources">[\s\S]*?<\/ul>/)![0];
+    expect([...list.matchAll(/href="([^"]*)"/g)]).toHaveLength(0);
+    expect(list.match(/<li>/g)).toHaveLength(2);
   });
 
-  it.fails('DEFECT · community mention `m.url` = javascript: is printed as the "↗ source" link (report-html.ts:289)', () => {
+  it('FIXED · community mention `m.url` = javascript: prints no "↗ source" link (before the fix: it carried it)', () => {
     const html = pdf({ community: { overview: 'Mixed.', mentions: [{ platform: 'Reddit', url: JS_URL, topic: 'Wash World', summary: 'Owner is responsive.', sentiment: 'positive' }] } }, [{ key: 'community', title: 'Community' }]);
     expect(html).toContain('Owner is responsive.');
     expect(html).not.toMatch(/href="\s*javascript:/i);
+    expect(html).not.toContain('class="mono srclink"');
   });
 
   it('SOUND · a javascript: link inside PROSE is not a link at all — `mdInline` allows https?:// only (report-html.ts:125)', () => {

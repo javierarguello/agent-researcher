@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { ReportViewer } from '../src/components/ReportViewer';
 
+const SAFE_URL = 'https://listing.example/coral-clean';
 const JS_URL = 'javascript:document.write("<h1 id=pw>PWNED</h1>")';
 const cover = { from: ['shortlist'], nameKey: 'business', tiles: [{ labelKey: 'asking', field: 'askingPrice' }] };
 
@@ -23,9 +24,9 @@ describe('refute C4 · every raw-href site opens a NEW, opener-less context — 
     const { container } = render(
       <ReportViewer
         report={{
-          shortlist: [{ business: 'Coral Clean', askingPrice: 410000, sourceUrl: JS_URL }],
-          sources: { items: [{ id: 1, url: JS_URL, label: 'Coral Clean listing' }] },
-          community: { overview: 'Mixed.', mentions: [{ platform: 'Reddit', url: JS_URL, topic: 'x', summary: 'y', sentiment: 'positive' }] },
+          shortlist: [{ business: 'Coral Clean', askingPrice: 410000, sourceUrl: SAFE_URL }],
+          sources: { items: [{ id: 1, url: SAFE_URL, label: 'Coral Clean listing' }] },
+          community: { overview: 'Mixed.', mentions: [{ platform: 'Reddit', url: SAFE_URL, topic: 'x', summary: 'y', sentiment: 'positive' }] },
         }}
         sections={[{ key: 'shortlist', title: 'Shortlist' }, { key: 'sources', title: 'Sources' }, { key: 'community', title: 'Community' }]}
         meta={{}}
@@ -33,8 +34,8 @@ describe('refute C4 · every raw-href site opens a NEW, opener-less context — 
         cover={cover}
       />,
     );
-    const raw = [...container.querySelectorAll('a')].filter((a) => (a.getAttribute('href') ?? '').startsWith('javascript:'));
-    expect(raw).toHaveLength(3); // the three sites rendered the attacker's href (C4 as found)
+    const raw = [...container.querySelectorAll('a')].filter((a) => a.getAttribute('href') === SAFE_URL);
+    expect(raw).toHaveLength(3); // the three sites, with an https URL (an unsafe one now renders no anchor — see red-team-c-attack)
     for (const a of raw) {
       expect(a.getAttribute('target')).toBe('_blank');
       expect(a.getAttribute('rel') ?? '').toMatch(/\bnoreferrer\b/);

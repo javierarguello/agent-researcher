@@ -297,8 +297,53 @@ function chartSpecHtml(spec: ChartSpec, t: PdfTheme, f: NumFmt): string {
   const table = series.length ? `<table class="ptable"><thead>${head}</thead><tbody>${body}</tbody></table>` : '';
   return `<div class="card">${header}${chart}${table}</div>`;
 }
+/**
+ * A URL a report may LINK to: `http(s)` and `mailto:`. Anything else — the
+ * `javascript:`/`data:` a model can be talked into writing as a `sourceUrl` —
+ * is rendered as its label, no anchor. Prose links were already held to this by
+ * `mdInline`; the three raw \`href\`s (deal card, community mention, Sources)
+ * were not.
+ */
+export function safeHref(url: unknown): string | null {
+  return typeof url === 'string' && /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
+}
+
+/** How much of a source's name a row shows before it is cut. Real listing titles: ≤130. */
+const SOURCE_LABEL_MAX = 160;
+
+/**
+ * What a Sources row says: the HOST, then the page's own title, clipped.
+ *
+ * The title is whatever the page's author put in `<title>`; the M red team's
+ * page called itself "Florida Department of Business Regulation — Official
+ * Registry" and, with no host shown and no length bound, that is exactly what
+ * the row said. The host is the one thing about a source its author does not
+ * choose.
+ */
+export function sourceLabel(s: { url: string; label?: string }): string {
+  const label = (s.label ?? '').trim();
+  let host = '';
+  try {
+    host = new URL(s.url).hostname.replace(/^www\./, '');
+  } catch {
+    host = '';
+  }
+  const chars = Array.from(label);
+  const clipped = chars.length > SOURCE_LABEL_MAX ? `${chars.slice(0, SOURCE_LABEL_MAX - 1).join('')}…` : label;
+  if (!clipped) return host || s.url;
+  return host && clipped.toLowerCase() !== host ? `${host} — ${clipped}` : clipped;
+}
+
 function sourceListHtml(items: Source[], t: PdfTheme): string {
-  return `<ul class="sources">${items.map((s) => `<li><a href="${esc(s.url)}"><span class="arw" style="color:${t.colors.accent}">↗</span>${esc(s.label || s.url)}</a></li>`).join('')}</ul>`;
+  return `<ul class="sources">${items
+    .map((s) => {
+      const href = safeHref(s.url);
+      const label = esc(sourceLabel(s));
+      return href
+        ? `<li><a href="${esc(href)}"><span class="arw" style="color:${t.colors.accent}">↗</span>${label}</a></li>`
+        : `<li><span class="arw" style="color:${t.colors.accent}">↗</span>${label}</li>`;
+    })
+    .join('')}</ul>`;
 }
 function checklistHtml(categories: Array<{ category: string; items: string[] }>, t: PdfTheme): string {
   return categories
@@ -335,7 +380,7 @@ function sentimentHtml(v: { overview?: string; mentions: Mention[] }, l: Record<
   const cards = mentions
     .map((m) => {
       const sc = S[m.sentiment ?? 'neutral'] ?? t.colors.muted;
-      const src = m.url ? `<a class="mono srclink" href="${esc(m.url)}" style="color:${t.colors.accent}">↗ ${esc(l.source)}</a>` : '';
+      const src = safeHref(m.url) ? `<a class="mono srclink" href="${esc(safeHref(m.url))}" style="color:${t.colors.accent}">↗ ${esc(l.source)}</a>` : '';
       return `<div class="mention"><div class="mention-head"><span class="dot" style="background:${sc}"></span><span class="mono plat">${esc(m.platform ?? '')}</span>${m.topic ? `<span class="topic">${esc(m.topic)}</span>` : ''}</div>${m.summary ? `<div class="mention-body">${mdInline(m.summary)}</div>` : ''}${src}</div>`;
     })
     .join('');
@@ -360,7 +405,7 @@ function dealCardHtml(d: Obj, l: Record<string, string>, t: PdfTheme, f: NumFmt,
     ? `<div class="field"><div class="flabel">${esc(humanizeKey('risks'))}</div>${(d.risks as unknown[]).every(isRisk) ? riskRows(d.risks as Risk[], t) : `<ul class="bullets">${(d.risks as string[]).map((r) => `<li>${mdInline(r)}</li>`).join('')}</ul>`}</div>`
     : '';
   const loc = typeof d.location === 'string' ? `<div class="mono muted dloc">${esc(d.location)}</div>` : '';
-  const url = typeof d.sourceUrl === 'string' ? `<a class="mono srclink" href="${esc(d.sourceUrl)}" style="color:${t.colors.accent}">${esc(l.source)} ↗</a>` : '';
+  const url = safeHref(d.sourceUrl) ? `<a class="mono srclink" href="${esc(safeHref(d.sourceUrl))}" style="color:${t.colors.accent}">${esc(l.source)} ↗</a>` : '';
   return `<div class="deal"><div class="dealname">${esc(String(d[cover?.nameKey ?? 'name'] ?? ''))}</div>${loc}${tileHtml}${prose}${risks}${url}</div>`;
 }
 

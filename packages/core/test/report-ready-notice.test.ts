@@ -99,7 +99,8 @@ describe('the ready mail says when the dossier is incomplete', () => {
     for (const lang of LANGS) {
       const m = mail(lang, 'One section <script>alert(1)</script> & more');
       expect(m.html, lang).not.toMatch(/<script>/);
-      expect(m.html, lang).toContain('One section scriptalert(1)/script  more');
+      // Escaped, not stripped: the text survives whole and the markup does not.
+      expect(m.html, lang).toContain('One section &lt;script&gt;alert(1)&lt;/script&gt; &amp; more');
     }
   });
 });

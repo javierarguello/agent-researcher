@@ -191,7 +191,7 @@ describe('C-legit · the progress line a Spanish buyer watches (research-engine.
 });
 
 describe('C-legit · the ready email — a legit headline with an ampersand', () => {
-  it.fails('"Bed & Breakfast" arrives as "Bed  Breakfast" in the HTML body — `&` is DELETED instead of escaped (email/templates.ts:183)', () => {
+  it('"Bed & Breakfast" arrives as "Bed &amp; Breakfast" in the HTML body — escaped, not deleted (before the fix: "Bed  Breakfast"; mutation: `.replace(/[<>&]/g, \'\')` again)', () => {
     const mail = reportReadyTemplate('FBizLab', 'Bed & Breakfast inns for sale — Key West, FL', 'https://app.example/r/1', 'en');
     // The subject keeps the `&`; the HTML body loses it. Same title, two spellings.
     expect(mail.subject).toContain('Bed & Breakfast');

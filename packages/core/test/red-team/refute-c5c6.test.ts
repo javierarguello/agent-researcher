@@ -74,11 +74,12 @@ describe('refute C5 · what the list rule must NOT catch', () => {
 });
 
 describe('refute C6 · the ready email and `&`', () => {
-  it('only the HTML body loses the `&`; subject AND plain-text part keep it (three renderings of one title, two spellings)', () => {
+  it('subject, plain text AND the HTML body agree on the `&` (before the fix the body alone lost it)', () => {
     const mail = reportReadyTemplate('FBizLab', 'Bed & Breakfast inns for sale — Key West, FL', 'https://app.example/r/1', 'en');
     expect(mail.subject).toContain('Bed & Breakfast');
     expect(mail.text).toContain('Bed & Breakfast');
     // Mutation that reds this: escape instead of strip at templates.ts:183 (the fix).
-    expect(mail.html).toContain('<strong>Bed  Breakfast inns for sale — Key West, FL</strong>');
+    // Three renderings of one title, ONE spelling now.
+    expect(mail.html).toContain('<strong>Bed &amp; Breakfast inns for sale — Key West, FL</strong>');
   });
 });
