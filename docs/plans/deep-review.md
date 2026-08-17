@@ -977,8 +977,8 @@ per cluster, told to refute by default). Tests: `packages/core/test/red-team/`,
 rest pin the guards and the measurements. Mock tier throughout, Ollama
 (qwen2.5:3b) only where the model IS the mechanism, small N, stated as such.
 
-**Status 2026-08-17 (end of day): all seven P1 clusters CLOSED** — `ae9826b`
-(C1), `b0178ce` (C5), `a68d656` (chart-refiner), `805b49a` (B2), `1fa5d31` (B1),
+**Status 2026-08-17 (end of day): all seven P1 clusters CLOSED** — `73a4e79`
+(C1), `245811f` (C5), `a68d656` (chart-refiner), `f013cfe` (B2), `1fa5d31` (B1),
 `9850bdf` (C3), `6264887` (D1) — **and the P2 batch too** — `49e71aa`, `f74f7b0`,
 `72d2777`; 962 tests green. **M is done** except A2 (FENCE_RE near-misses), which
 waits for frontier-tier evidence that a surviving variant changes obedience.
@@ -1006,7 +1006,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
 
 ### Confirmed — P1, in fix order
 
-- ~~**M‑C1 · A Markdown image is a tracking beacon in the web report.**~~ **Closed `ae9826b`** — `img: () => null` in the shared `MD` (element level, so protocol-relative and same-origin srcs die too), the PDF strips image syntax outright, the dead admin viewer is gone with its three deps.
+- ~~**M‑C1 · A Markdown image is a tracking beacon in the web report.**~~ **Closed `73a4e79`** — `img: () => null` in the shared `MD` (element level, so protocol-relative and same-origin srcs die too), the PDF strips image syntax outright, the dead admin viewer is gone with its three deps.
   `ReportViewer.tsx:115` overrides only `a`; react‑markdown renders `img` for
   `https:`, protocol‑relative and same‑origin `src`. Reproduced on the real
   `JobView` and `ReadReport` (the share link, and the admin's only report view):
@@ -1023,7 +1023,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   `current`/context JSON handed to the writer, then the rest — per‑domain cap in
   the foreign tier only; thread it into producer AND enricher builders. Do not
   raise 14/48 to hide the ordering.
-- ~~**M‑B2 · Free calls and the flat iteration bound.**~~ **Closed `805b49a`** — consecutive-PLAN breaker (nudge + `forceTools` lifted on the 3rd, loop ends on the 4th, `stalled`, said in a note), `stalled && turnsUsed >= maxTurns → 'budget'`, `gatherStop` on the trace + a closing note, ONE plan note per turn, the same cached page returned in full at most twice, superseded plans stubbed. `maxIterations` unchanged. **Original text:** Real plan‑loops (above);
+- ~~**M‑B2 · Free calls and the flat iteration bound.**~~ **Closed `f013cfe`** — consecutive-PLAN breaker (nudge + `forceTools` lifted on the 3rd, loop ends on the 4th, `stalled`, said in a note), `stalled && turnsUsed >= maxTurns → 'budget'`, `gatherStop` on the trace + a closing note, ONE plan note per turn, the same cached page returned in full at most twice, superseded plans stubbed. `maxIterations` unchanged. **Original text:** Real plan‑loops (above);
   the honest deal‑scout that spent 24/24 ends at the bound and is `stalled` =
   unreusable, so one flaky write re‑buys the job's most expensive loop ($1.19).
   Fix: consecutive‑PLAN breaker (≥3–4; honest max is 2 — a "free call" breaker
@@ -1046,7 +1046,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   with its i18n; `detail` only for `searched`, clipped ~120 (real max 118);
   nothing for `plan`. Must cover the engine‑level emits too
   (`research-engine.ts:381/386/504/507/565/619/645`).
-- ~~**M‑C5 · PDF `mdInline` double‑escapes every prose URL with a query string**~~ **Closed `b0178ce`** — `esc(u)` → `u`; balanced parens and `mailto:` in the link rule; lists as RUNS inside a block (`<ol start=N>`); tables left to the P2 batch. **Original text:** double‑escapes every prose URL with a query string
+- ~~**M‑C5 · PDF `mdInline` double‑escapes every prose URL with a query string**~~ **Closed `245811f`** — `esc(u)` → `u`; balanced parens and `mailto:` in the link rule; lists as RUNS inside a block (`<ol start=N>`); tables left to the P2 batch. **Original text:** double‑escapes every prose URL with a query string
   (`report-html.ts:123-124`: `esc(s)` then `esc(u)` on the captured, already
   escaped URL). Observed in BOTH real July reports (5 and 2 links); the PDF
   carries clickable `/URI` annotations (1,114), so the click sends a parameter

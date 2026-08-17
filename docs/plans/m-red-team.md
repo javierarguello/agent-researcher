@@ -191,7 +191,7 @@ The ceiling bounds the bill, not the waste inside it.
    raw reports in `m-red-team-reports/`, tests in `packages/core/test/red-team/`
    and `apps/*/test/red-team-*.tsx` (935 tests green, the `it.fails` are the
    defects). Fixes: **all seven P1 clusters shipped 2026-08-17** — C1 img beacon
-   `ae9826b`, C5 PDF `b0178ce`, chart-refiner `a68d656`, B2 loop `805b49a`, B1
+   `73a4e79`, C5 PDF `245811f`, chart-refiner `a68d656`, B2 loop `f013cfe`, B1
    own-first dossier `1fa5d31`, C3 progress `9850bdf`, D1 write-failure multiplier
    `6264887` (962 tests). Each revert-verified; the tests that pinned the old
    behaviour now assert the new one and say what the old was. **The P2 batch
