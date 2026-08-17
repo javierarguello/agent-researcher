@@ -201,7 +201,7 @@ async function replay(seq: string, maxTurns: number): Promise<GatherResult & { i
 }
 
 describe('refute B2 · today’s gather on the real sequences', () => {
-  it('the real deal-scout (24 P + 24 paid + 6 cached = 54 = its bound) ends `stalled` at 24/24 — spent allowance, not reusable', async () => {
+  it('the real deal-scout (24 P + 24 paid + 6 cached = 54 = its bound) ends `budget` at 24/24 — spent allowance, reusable (before the fix: `stalled`, and a flaky write re-bought it)', async () => {
     restore = __setExtraPages(LOTS);
     // The literal order from out/local-4837f6e3 (P plan, S search, F fetch, c cached re-read).
     const real = 'PSPFFFPSPFFFPccSPFPSPSPcPFPcPSPPSPcPSPSPSPPSPPcSPSSPSS';
@@ -209,10 +209,85 @@ describe('refute B2 · today’s gather on the real sequences', () => {
     const r = await replay(real, 24);
     expect(r.iterations).toBe(54);
     expect(r.turns).toBe(24);
-    expect(r.stop).toBe('stalled');
+    // Mutation that reds this: drop `if (stop === 'stalled' && turnsUsed >= maxTurns) stop = 'budget'`
+    // at the end of gather() → stop 'stalled', gatherCompleted false.
+    expect(r.stop).toBe('budget');
+    expect(gatherCompleted(r)).toBe(true);
+  });
+
+  it('the two real plan-loops end at the breaker, not at the bound: deep-dive-refiner (PcPcPcPc + 18 P, was 26/26 with 0 searches) and risk-analyst (16 P, was 16/16) — ended after 4 plan-only turns, `stalled`, and the trace says why', async () => {
+    restore = __setExtraPages(LOTS);
+    // The literal orders from out/local-aa4b3edf. Both loops sat at exactly 2·budget+6
+    // iterations having searched nothing; under Gemini's mode ANY the model could not
+    // answer without a tool call, so re-planning was the only move it had.
+    for (const [seq, budget, name] of [['PcPcPcPc' + 'P'.repeat(18), 10, 'deep-dive-refiner'], ['P'.repeat(16), 5, 'risk-analyst']] as const) {
+      const notes: string[] = [];
+      const evidence = createEvidence();
+      evidence.extractedUrls.add(LOTS[0]!.url);
+      evidence.extracted.push({ url: LOTS[0]!.url, ok: true, content: LOTS[0]!.content });
+      const p = new Replay(seq);
+      __setProviderForTests('gemini-vertex', p);
+      __setProviderForTests('ollama', p);
+      const r = await gather({ model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }], maxTurns: budget, evidence, onNote: (n) => { notes.push(n); } });
+      const bound = 2 * budget + 6;
+      // Mutation that reds this: raise PLAN_TURNS_LIMIT past the bound (or drop the break).
+      expect(p.calls, `${name}: iterations`).toBeLessThan(bound);
+      expect(p.calls, `${name}: iterations`).toBeLessThanOrEqual(seq.indexOf('PPPP') + 4);
+      expect(r.turns).toBe(0);
+      expect(r.stop).toBe('stalled');
+      expect(notes.some((n) => /Stopping research: 4 plan updates in a row/.test(n)), `${name}: the stop is said`).toBe(true);
+      expect(notes.at(-1)).toMatch(/^Research loop ended: stalled \(0\/\d+ turns\)/);
+      // The nudge came first: on the third plan-only turn the plan result said stop planning.
+      expect(notes.filter((n) => n.startsWith('Plan updated')).length).toBeLessThanOrEqual(seq.indexOf('PPPP') + 4);
+    }
+  });
+
+  it('after three plan-only turns the next call is NOT forced to call a tool — under Gemini mode ANY that was the only way out of a plan-loop the loop itself offered none for', async () => {
+    restore = __setExtraPages(LOTS);
+    class Forced extends Replay {
+      readonly forced: Array<boolean | undefined> = [];
+      override async generate(opts: GenerateOptions): Promise<GenerateResult> {
+        if (opts.tools?.length) this.forced.push(opts.forceTools);
+        return super.generate(opts);
+      }
+    }
+    const p = new Forced('PPP');
+    __setProviderForTests('gemini-vertex', p);
+    __setProviderForTests('ollama', p);
+    const r = await gather({ model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }], maxTurns: 5, evidence: createEvidence() });
+    // Calls 1-3 planned (forced: nothing bought yet); call 4 is free to answer in
+    // prose, and the model says "Ready to write". Mutation that reds this: keep
+    // `forceTools: turnsUsed === 0` without the plan-turn clause.
+    expect(p.forced.slice(0, 3)).toEqual([true, true, true]);
+    expect(p.forced[3]).toBe(false);
+    expect(r.turns).toBe(0);
+    // …and a plan-only exit with nothing bought is not research done (turns 0).
     expect(gatherCompleted(r)).toBe(false);
-    // Mutation that reds this: at loop exit `if (stop === 'stalled' && turnsUsed >= maxTurns) stop = 'budget'`
-    // → stop 'budget', gatherCompleted true (the proposed fix; this pin flips with it).
+  });
+
+  it('only the LATEST plan travels in full: earlier update_plan calls keep their place in the conversation with their steps stubbed (Gemini needs the call/response pair; the model needs one plan)', async () => {
+    restore = __setExtraPages(LOTS);
+    class Watch extends Replay {
+      fullPlansPerCall: number[] = [];
+      override async generate(opts: GenerateOptions): Promise<GenerateResult> {
+        if (opts.tools?.length) {
+          const plans = opts.messages.flatMap((m) => (m.role === 'model' ? m.toolCalls ?? [] : [])).filter((c) => c.name === 'update_plan');
+          this.fullPlansPerCall.push(plans.filter((c) => Array.isArray((c.args as { steps?: unknown }).steps) && ((c.args as { steps: unknown[] }).steps.length > 0)).length);
+          // Every plan call is still THERE — only its steps are replaced.
+          expect(plans.every((c) => 'steps' in c.args)).toBe(true);
+        }
+        return super.generate(opts);
+      }
+    }
+    const p = new Watch('PSPSPSPS');
+    __setProviderForTests('gemini-vertex', p);
+    __setProviderForTests('ollama', p);
+    await gather({ model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }], maxTurns: 6, evidence: createEvidence() });
+    // From the third call on there is more than one plan in the history and
+    // exactly one still carries its steps. Mutation that reds this: drop
+    // `trimOldPlans(messages)` before the call.
+    expect(p.fullPlansPerCall.slice(2).every((n) => n === 1)).toBe(true);
+    expect(p.fullPlansPerCall.length).toBeGreaterThan(4);
   });
 
   it('the honest refiner (P c P c P F P) ends `done` today with 1 turn — and would have been cut at call 4 by a ≥4 consecutive-FREE-call breaker; a consecutive-PLAN breaker leaves it alone (max 1 plan in a row)', async () => {

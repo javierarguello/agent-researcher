@@ -24,7 +24,7 @@ import {
 } from '../templates/types.js';
 import { degradedSectionNote } from '../jobs/report-copy.js';
 import { normalizeSectionStatuses, type SectionStatus } from './section-status.js';
-import { createEvidence, gather, gatherCompleted, type Evidence } from './gather.js';
+import { createEvidence, gather, gatherCompleted, type Evidence, type GatherStop } from './gather.js';
 import { synthesizeStructured } from './synthesize.js';
 import {
   buildAgentKickoff,
@@ -106,6 +106,13 @@ export interface AgentTrace {
   gatherModel?: string;
   status: 'running' | 'ok' | 'failed' | 'pending';
   turnsUsed: number;
+  /**
+   * Why the research loop ended (producers only; the last attempt's). `done` and
+   * `budget` are finished passes; `ceiling` and `stalled` were cut off. Recorded
+   * because two real agent-runs reached the iteration bound with ZERO searches
+   * and nothing in the trace said so.
+   */
+  gatherStop?: GatherStop;
   /** How many times this agent was attempted this run (in-run retries). */
   attempts: number;
   /** Wall-clock time the agent took (ms), when finished. */
@@ -746,6 +753,7 @@ async function runAgent(ctx: {
       });
       counter.turns += gres.turns;
       trace.turnsUsed = gres.turns;
+      trace.gatherStop = gres.stop;
       // Only a FINISHED pass may be reused (Javier, 2026-07-31: a retry takes what
       // is finished, never something half-done). `gatherCompleted` is the whole
       // rule: the agent stopped asking for tools, or spent its full allowance, and

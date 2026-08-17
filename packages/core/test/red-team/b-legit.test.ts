@@ -201,27 +201,30 @@ describeMock('1 · a diligent researcher against the iteration bound (2·budget 
     // number a consecutive-free-call breaker (the fix that does not touch the
     // iteration cap) has to tolerate. plan-spam alternates free calls forever.
     expect(Math.max(...rows.map((r) => r['max free run'] as number))).toBe(3);
-    // A cross-checking scout that spent ALL 24 turns is still classed unfinished: it
-    // ran out of iterations before it could say "ready", so the retry re-buys it.
-    expect(rows.find((r) => r.agent === 'deal-scout' && r.mode === 'comprehensive' && r.persona === 'revise+cross-check')).toMatchObject({ 'turns spent': 24, 'turns lost': 0, stop: 'stalled', reusable: false });
+    // A cross-checking scout that spent ALL 24 turns FINISHED its research: it ran
+    // out of iterations before it could say "ready", and used to be classed
+    // `stalled` (unreusable — a flaky write re-bought the loop). It is the real
+    // July deal-scout's sequence. Mutation that reds this: drop the
+    // `stalled && turnsUsed >= maxTurns → 'budget'` line at the end of gather().
+    expect(rows.find((r) => r.agent === 'deal-scout' && r.mode === 'comprehensive' && r.persona === 'revise+cross-check')).toMatchObject({ 'turns spent': 24, 'turns lost': 0, stop: 'budget', reusable: true });
     expect(rows.filter((r) => r.persona === 'doing→done' && r.stop === 'stalled').length).toBeGreaterThan(0);
   });
 
-  it('the headroom for free calls is 4, whatever the budget: revise once per result and cross-check 4 pages fits, 5 does not', async () => {
-    // Pins today's arithmetic (1 initial plan + B tool calls + B revisions + 1 stop
-    // = 2B+2, against a cap of 2B+6). Revert-verify: change `+ 6` in gather.ts to
-    // `+ 5` and the first assertion goes red.
+  it('a revise-once-per-result researcher that cross-checks 5 pages runs out of iterations with its allowance SPENT — and that now counts as finished (before the fix: `stalled`, unreusable; 4 re-reads fit, 5 did not)', async () => {
+    // The iteration arithmetic is unchanged (1 initial plan + B tool calls + B
+    // revisions + 1 stop = 2B+2 against 2B+6, so four free calls of headroom); what
+    // changed is what a loop that hits the bound with NO budget left is called.
     for (const budget of [8, 24]) {
       const model = new DiligentResearcher(budget, { style: 'revise', rereadEvery: 0 });
       // Force exactly r cached re-reads by re-reading after the last fetch.
       const fits = await withRereads(budget, 4);
-      const stalls = await withRereads(budget, 5);
+      const spent = await withRereads(budget, 5);
       expect(fits.res.stop, `budget ${budget}, 4 rereads`).toBe('budget');
       expect(fits.res.turns).toBe(budget);
-      expect(stalls.res.stop, `budget ${budget}, 5 rereads`).toBe('stalled');
-      // …having spent the whole allowance: the same evidence, classed unfinished.
-      expect(stalls.res.turns).toBe(budget);
-      expect(gatherCompleted(stalls.res)).toBe(false);
+      // Mutation that reds this: drop the `stalled && turnsUsed >= maxTurns` line.
+      expect(spent.res.stop, `budget ${budget}, 5 rereads`).toBe('budget');
+      expect(spent.res.turns).toBe(budget);
+      expect(gatherCompleted(spent.res)).toBe(true);
       void model;
     }
   });

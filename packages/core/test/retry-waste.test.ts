@@ -159,23 +159,30 @@ describe('but a retry after a failed SEARCH still researches', () => {
 describe('a retry only reuses research that FINISHED', () => {
   it('re-researches when the last loop never actually concluded', async () => {
     // Javier, 2026-07-31: a retry takes what is FINISHED, never something half
-    // done. An agent that kept calling tools until the loop ran out of iterations
-    // never decided it had enough — treating that as "already researched" freezes
-    // a half-built dossier in place for every later attempt.
+    // done. An agent that was cut off with budget LEFT never decided it had
+    // enough — treating that as "already researched" freezes a half-built dossier
+    // in place for every later attempt.
     //
+    // The shape here: one search, then plan updates forever. The plan breaker
+    // ends that loop after four plan-only turns, `stalled`, with budget unspent.
     // (The cost ceiling is the other unfinished ending, and it is unreachable from
     // here by design: a ceiling stop ends the job rather than retrying into it.)
     const mock = installMockProvider();
     const base = mock.generate.bind(mock);
     let writes = 0;
+    let searched = false;
 
     mock.generate = async (opts) => {
-      // Never stops asking for tools → the loop ends by exhausting its iterations.
       if (opts.tools?.length) {
+        if (!searched) {
+          searched = true;
+          return { text: '', usage: { inputTokens: 1, outputTokens: 1 }, toolCalls: [{ id: 's', name: 'web_search', args: { query: 'once' } }] };
+        }
+        // …then never stops planning → cut off by the breaker, budget left.
         return {
           text: '',
           usage: { inputTokens: 1, outputTokens: 1 },
-          toolCalls: [{ id: 's', name: 'web_search', args: { query: 'again' } }],
+          toolCalls: [{ id: 'p', name: 'update_plan', args: { steps: [{ task: 'again', status: 'doing' }] } }],
         };
       }
       if (opts.responseSchema && WRITES_FINDINGS(opts.responseSchema) && writes < 2) {
@@ -193,6 +200,45 @@ describe('a retry only reuses research that FINISHED', () => {
     expect(notes).not.toMatch(/reusing evidence already gathered/i);
     // Two passes, so it genuinely went back out rather than reusing an unfinished one.
     expect(notes.match(/Researching/g)?.length).toBe(2);
+    expect(scout.gatherStop).toBe('stalled');
+  });
+
+  it('reuses a loop that spent its whole allowance and then ran out of iterations — nothing was half done', async () => {
+    // The real July deal-scout: 24 paid turns, 24 plan updates and 6 cached
+    // re-reads = exactly 2·budget+6 iterations, never a spare one to say "ready".
+    // Every turn it could buy, it bought; a re-run buys the same allowance again.
+    // That loop used to be classed `stalled` — one flaky write re-bought the job's
+    // most expensive research. Cut off with budget LEFT (the test above) is the
+    // half-done case; cut off with the budget SPENT is finished.
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    let writes = 0;
+
+    mock.generate = async (opts) => {
+      // Never stops asking for tools → spends the allowance, then hits the bound.
+      if (opts.tools?.length) {
+        return {
+          text: '',
+          usage: { inputTokens: 1, outputTokens: 1 },
+          toolCalls: [{ id: 's', name: 'web_search', args: { query: 'again' } }],
+        };
+      }
+      if (opts.responseSchema && WRITES_FINDINGS(opts.responseSchema) && writes < 2) {
+        writes += 1;
+        return { text: 'not json', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+      return base(opts);
+    };
+
+    const out = await runResearch({ template: compactModel, params: params(), jobId: 'w9b', generatedAt: 't' });
+
+    const scout = out.trace.agents.find((a) => a.id === 'scout')!;
+    expect(scout.attempts).toBe(2);
+    expect(scout.gatherStop).toBe('budget');
+    const notes = scout.notes.join(' ');
+    // Mutation that reds this: drop `if (stop === 'stalled' && turnsUsed >= maxTurns) stop = 'budget'`.
+    expect(notes).toMatch(/reusing evidence already gathered/i);
+    expect(notes.match(/Researching/g)?.length).toBe(1);
   });
 
   it('reports how the loop ended, so the caller can tell the two apart', async () => {

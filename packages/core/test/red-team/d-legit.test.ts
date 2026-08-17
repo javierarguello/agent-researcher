@@ -424,9 +424,13 @@ describe('2 · Florida comprehensive, honest & diligent — the denominator', ()
     console.table([{ 'loop calls': loop.length, turns: out.turnsUsed, 'loop chars': k(loopChars), 'est loop $': usd(estimateUsd(p.seen, 'pro').loop), 'stalled producers': table.filter((r) => r['at bound']).length }]);
     // Measured today (a property test below says what SHOULD hold):
     expect(table.filter((r) => r['at bound']).length).toBe(8);
-    expect(out.turnsUsed).toBe(79);
-    // …and nothing in the trace says so: `GatherStop` never reaches a note or a field.
-    for (const a of out.trace.agents) expect(`${a.notes.join('\n')}\n${a.error ?? ''}`).not.toMatch(/stall|iteration/i);
+    expect(out.turnsUsed).toBe(78);
+    // …and the trace now SAYS so: `GatherStop` reaches a note and a field on every
+    // producer (mutation: drop `trace.gatherStop = gres.stop` / the closing note).
+    for (const a of out.trace.agents.filter((x) => x.role === 'producer')) {
+      expect(a.gatherStop, a.id).toBeDefined();
+      expect(a.notes.some((n) => n.includes(`Research loop ended: ${a.gatherStop}`)), a.id).toBe(true);
+    }
   });
 
   it.fails('PROPERTY (fails today): an honest producer that re-plans once per step and re-reads ≤ 6 cached pages spends its whole budget and concludes — today deal-scout gets 22/24, valuation & deep-dive-refiner 7/10, and none of the eight says "Ready to write"', async () => {
@@ -577,12 +581,14 @@ describe('3 · what an honest run pays for ONE flaky provider call', () => {
     expect(out.trace.status).toBe('completed');
     const scout = out.trace.agents.find((a) => a.id === 'scout')!;
     expect(scout.attempts).toBe(2);
-    expect(scout.notes.join('\n')).not.toMatch(/Reusing evidence/);
-    // What the buyer's job paid: 18 search/fetch turns for a 10-turn budget — the
-    // retry stalls too (26 more iterations: its own pages are cached now, so only
-    // the searches spend), and the retry's evidence is again "unfinished".
-    expect(out.turnsUsed).toBe(18);
-    expect(out.trace.cost.searchCalls).toBe(18);
+    // The loop spent its whole allowance and ran out of iterations — that FINISHED
+    // its research, so the retry after the 503 reuses it. Before the fix this was
+    // `stalled` → not reusable → 18 search/fetch turns billed for a 10-turn budget
+    // (the retry stalled again). Mutation that reds this: drop the
+    // `stalled && turnsUsed >= maxTurns → 'budget'` line at the end of gather().
+    expect(scout.notes.join('\n')).toMatch(/Reusing evidence/);
+    expect(out.turnsUsed).toBe(10);
+    expect(out.trace.cost.searchCalls).toBe(10);
     // The same agent with the same 503 but a loop that CONCLUDED (no re-opens: 22
     // iterations, stops with "Ready to write") pays 10. That delta — 10 turns —
     // is the price of `stalled` today, and it is charged to an honest, diligent
@@ -680,7 +686,7 @@ describe('5 · the $20 ceiling vs an honest comprehensive job vs the harness wor
     expect(20 / (0.39 * 5)).toBeGreaterThan(10);
   });
 
-  it('plan-spam obeyed by deal-scout alone: +1.45M loop chars ≈ +$0.16 est. = 0.8% of the ceiling (the honest re-planner already sits at its 54-iteration bound); by ALL 10 producers: +3.53M chars ≈ +$0.46 = 2.3%, and turns collapse 79→12 — the report completes either way', async () => {
+  it('plan-spam obeyed by deal-scout alone or by ALL 10 producers adds < 2% / < 5% of the ceiling — before the loop fixes +1.45M chars (+$0.16, 0.8%) and +3.53M (+$0.46, 2.3%) with turns collapsing 79→12; now the same-URL cap and plan stubbing make it cost about nothing — the report completes either way', async () => {
     // Honest control (same diligent script, honest web).
     const ctl = new HonestDiligentProvider(florida, { replan: true, fullBudget: true });
     install(ctl);

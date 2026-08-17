@@ -342,7 +342,7 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
 // --- 2. Stalled loop + failing write ------------------------------------------
 
 describe('D2 · plan-spam + write-breaker: a stalled loop is not reusable, so every attempt re-buys it', () => {
-  it('measured: 40 loop calls in one dispatch (2 attempts × the 20-call stalled loop) plus 4 failed writes for the scout', async () => {
+  it('measured: the plan-spam loop is re-bought per attempt (it was 2 × 20 = 40 loop calls; the same-URL cached-read cap now stops re-sending the page, the instruction leaves the context, and the loop ends in 17) plus 4 failed writes for the scout', async () => {
     const both = [payload('plan-spam'), WRITE_BREAKER];
     const mock = install(both);
     restore = poison(['plan-spam'], [WRITE_BREAKER]);
@@ -352,15 +352,16 @@ describe('D2 · plan-spam + write-breaker: a stalled loop is not reusable, so ev
     const scout = out.trace.agents.find((a) => a.id === 'scout')!;
     expect(scout.status).toBe('failed');
     expect(scout.attempts).toBe(config.workflow.agentMaxAttempts);
-    // B-attack's number, taken as given: one plan-spam loop is ~20 calls and ends
-    // `stalled` (2·budget+6 iterations). Stalled → `gatherCompleted` is false →
-    // `research.done` stays false → attempt 2 runs the whole loop again. Both
-    // producers do it (the refiner has budget 2 → 10 iterations).
-    // 20 is the harness's plan-spam number (one pass, both producers, ends `stalled`).
-    expect(m.loop).toBe(config.workflow.agentMaxAttempts * 20);
-    // Every loop call is the whole conversation, re-sent, growing by 30 plan steps
-    // and one cached page per iteration.
-    expect(m.loopChars).toBeGreaterThan(150_000);
+    // Before the loop fixes: one plan-spam loop was ~20 calls (2·budget+6 iterations
+    // for both producers) and ended `stalled` → not reusable → attempt 2 ran the
+    // whole loop again = 40. Now the third cached re-read of the same page returns
+    // a stub instead of the body, `trimOldPages` stubs the two earlier copies, so
+    // the page's instruction is no longer in the conversation and the obedient
+    // model falls back to its default script and stops: 17 loop calls across
+    // both attempts and both producers, and the plan echoes are stubbed too.
+    expect(m.loop).toBeLessThan(config.workflow.agentMaxAttempts * 20);
+    expect(m.loop).toBe(17);
+    expect(m.loopChars).toBeLessThan(150_000);
     expect(scout.notes.some((n) => /retry 1 after: .*schema validation/.test(n))).toBe(true);
     // eslint-disable-next-line no-console
     console.log(`plan-spam+write-breaker: ${m.loop} loop calls / ${m.loopChars} chars, ${m.structured} writes, $${m.usd.toFixed(4)}`);
@@ -372,20 +373,32 @@ describe('D2 · plan-spam + write-breaker: a stalled loop is not reusable, so ev
 describe('D3 · the ceiling turns the waste into a HELD job', () => {
   it('measured: a ceiling the control finishes under parks the poisoned run as `held` — credits consumed, admin queue', async () => {
     const base = await control();
-    // A ceiling with 25% headroom over what this model normally costs. (At flash
-    // rates and this model's dossier the mock's bill is mostly search calls, so the
-    // poisoned run is only ~1.36× control here; the flagship's ratio is in the report.)
-    const ceiling = base.m.usd * 1.25;
+    // A ceiling BETWEEN what this model normally costs and what the poisoned run
+    // costs uncapped: the control finishes under it, the poisoned run does not.
+    // Write-breaker alone: with the loop fixes, plan-spam ends the loop EARLY
+    // (fewer searches), so plan-spam + write-breaker is now cheaper than the
+    // control at mock rates; the write-breaker's repair rounds and retries are
+    // what carry a poisoned run past a ceiling.
+    const uncapped = await (async () => {
+      const mock = install([WRITE_BREAKER]);
+      restore = poison([], [WRITE_BREAKER]);
+      const r = await run(mock, { costCeilingUsd: null });
+      restore();
+      restore = undefined;
+      return r;
+    })();
+    expect(uncapped.m.usd).toBeGreaterThan(base.m.usd);
+    const ceiling = (base.m.usd + uncapped.m.usd) / 2;
     const ok = await (async () => {
       const mock = install([]);
       return run(mock, { costCeilingUsd: ceiling });
     })();
     expect(ok.m.status).toBe('completed');
 
-    const mock = install([payload('plan-spam'), WRITE_BREAKER]);
-    restore = poison(['plan-spam'], [WRITE_BREAKER]);
+    const mock = install([WRITE_BREAKER]);
+    restore = poison([], [WRITE_BREAKER]);
     const { out, m, progress } = await run(mock, { costCeilingUsd: ceiling });
-    row(`plan-spam + write-breaker @ ceiling $${ceiling.toFixed(4)}`, m);
+    row(`write-breaker @ ceiling $${ceiling.toFixed(4)}`, m);
     expect(m.status).toBe('held');
     expect(out.trace.budgetExceeded).toBe(true);
     // Not degraded, not failed: parked. Every job that reads this page needs a person.
@@ -402,7 +415,7 @@ describe('D3 · the ceiling turns the waste into a HELD job', () => {
     expect(approved.m.status).toBe('completed');
     expect(approved.out.meta.sections).toEqual([{ key: 'findings', status: 'lost' }]);
     const again = mock.ledger.slice(before);
-    expect(again.filter((l) => l.kind === 'loop').length).toBeGreaterThanOrEqual(20); // the stalled loop, per attempt, again
+    expect(again.filter((l) => l.kind === 'loop').length).toBeGreaterThan(0); // the loop, again
     expect(again.filter((l) => l.kind === 'structured').length).toBeGreaterThanOrEqual(2 * config.workflow.agentMaxAttempts);
   });
 });

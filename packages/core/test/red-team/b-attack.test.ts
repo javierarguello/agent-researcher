@@ -260,7 +260,7 @@ describe('F2 · a page floods the per-agent trace notes and evicts the real ones
   // slots with "Plan updated" spam and fires the progress callback 400 times. The
   // desired invariants — the admin still sees the real "Writing" note, the buyer
   // is not flooded — are asserted here and do not hold today.
-  it.fails('the real notes should survive a page emitting 400 update_plan calls — today 300/300 slots are spam and 400 progress lines fire', async () => {
+  it('the real notes survive a page emitting 400 update_plan calls in one turn — ONE "Plan updated" note per model turn (before the fix: 300/300 slots were spam and 400 progress lines fired)', async () => {
     let fired = false;
     const floodPayload: Payload = {
       id: 'note-flood',
@@ -292,8 +292,11 @@ describe('F2 · a page floods the per-agent trace notes and evicts the real ones
     // eslint-disable-next-line no-console
     console.log(`F2 stored notes: ${scout.notes.length} (Plan-updated: ${planNotes}); progress lines: ${progress.length} (Plan-updated: ${planProgress})`);
 
-    // Desired invariants — FALSE today, so this it.fails is green:
+    // Mutation that reds this: note on every `update_plan` call again (drop the
+    // `planNoted` latch in gather.ts) — 400 notes, "Writing" evicted, 400 lines.
     expect(scout.notes.some((n) => n.includes('Writing')), 'admin lost the "Writing" note').toBe(true);
+    // The default script's own opening plan, plus ONE for the flood turn.
+    expect(planNotes).toBe(2);
     expect(planProgress, 'buyer progress channel flooded').toBeLessThan(50);
   });
 

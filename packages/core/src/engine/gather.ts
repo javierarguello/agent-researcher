@@ -9,7 +9,7 @@ import { config } from '../config.js';
 import { stripFenceMarker } from './prompt.js';
 import { llmCost, searchCost, type Cost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
-import type { LlmMessage, ToolSchema } from '../llm/provider.js';
+import type { LlmMessage, ToolCall, ToolSchema } from '../llm/provider.js';
 import { canExtractPages, extractPages, searchWeb, searchCostPerCall, type ExtractedPage, type SearchResult } from '../tools/web-search.js';
 
 type PlanStep = { task: string; status: 'pending' | 'doing' | 'done' | 'dropped' };
@@ -152,6 +152,64 @@ function trimOldPages(messages: LlmMessage[]): void {
   }
 }
 
+/**
+ * How many model turns in a row may consist ONLY of `update_plan` before the loop
+ * intervenes — and how many more before it ends.
+ *
+ * Measured on the two real July traces (Gemini 2.5 Flash): the honest model
+ * re-plans about once per step, at most TWO plan-only turns in a row across
+ * eighteen honest agent-runs. The two pathological runs were the deep-dive-refiner
+ * (22 plans + 4 cached re-reads + 0 searches, ended only by `maxIterations`, $0.38,
+ * its "pro pass" written from no new research) and the risk-analyst (16 plans, 0
+ * turns). What made them possible: `forceTools` at zero turns is Gemini's
+ * function-calling mode ANY, so a producer with nothing to search literally could
+ * not answer without a tool call — the iteration bound was its only exit, and the
+ * "you have not gathered any evidence" nudge never ran. So at PLAN_TURNS_BEFORE_NUDGE
+ * the plan result says stop planning AND the next call is no longer forced (the
+ * model may now say it is ready); at PLAN_TURNS_LIMIT the loop ends. A page that
+ * asks for forty plan updates ends in four iterations instead of 2·budget+6.
+ */
+const PLAN_TURNS_BEFORE_NUDGE = 3;
+const PLAN_TURNS_LIMIT = 4;
+
+/**
+ * How many times the SAME cached page is returned in full to one loop.
+ *
+ * The honest deep-dive-refiner re-reads pages the scout fetched — four distinct
+ * ones in the real trace, and re-checking a figure on the same page once is
+ * ordinary. Past that the body is not sent again: the text is already in the
+ * conversation twice and in the shared evidence the write-up renders. This is what
+ * bounds a page that alternates a free plan update with a free re-read of itself
+ * (each iteration re-sending the whole conversation) — the loop still runs, but it
+ * stops growing.
+ */
+const MAX_SAME_URL_CACHED_READS = 2;
+
+const CACHED_STUB = '[Already returned to you twice in this loop — it is in your evidence and in the write-up. Do not fetch it again.]';
+
+/**
+ * Stub the arguments of every `update_plan` call except the latest.
+ *
+ * Mutates in place, like `trimOldPages`, and for the same reason: every model turn
+ * stays in `messages` for every later turn, and a plan is the model's scratchpad —
+ * a thirty-step list re-sent on each of fifty iterations was the other half of a
+ * loop whose requests grew 12× within the iteration bound. Only the LATEST plan
+ * is what the model reasons from. The call itself stays (Gemini rejects a
+ * `functionCall` without its `functionResponse`); only its `steps` are replaced.
+ */
+function trimOldPlans(messages: LlmMessage[]): void {
+  const planCalls: ToolCall[] = [];
+  for (const m of messages) {
+    if (m.role !== 'model') continue;
+    for (const c of m.toolCalls ?? []) if (c.name === 'update_plan') planCalls.push(c);
+  }
+  for (const c of planCalls.slice(0, Math.max(0, planCalls.length - 1))) {
+    if (Array.isArray((c.args as { steps?: unknown }).steps)) {
+      c.args = { steps: [], superseded: 'replaced by a later plan' };
+    }
+  }
+}
+
 /** Run one budgeted research loop, appending to the shared evidence. Spend goes to `input.spend`. */
 /**
  * A search result as the research loop may see it.
@@ -194,6 +252,10 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
    */
   let searchFailures = 0;
   const MAX_SEARCH_FAILURES = 3;
+  /** Model turns in a row that carried only `update_plan` calls. */
+  let planOnlyTurns = 0;
+  /** Full-text returns per cached URL, this loop. */
+  const cachedReads = new Map<string, number>();
   // Assume the worst until the loop ends for a reason: an unexpected exit is a
   // half-finished pass, and a half-finished pass must not be handed to a retry as
   // if it were research already done.
@@ -209,14 +271,20 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       break;
     }
     // Immediately before the call, so the bound is exact: at most KEEP_FULL_PAGES
-    // page bodies travel in any single request, however long the loop runs.
+    // page bodies and ONE full plan travel in any single request, however long
+    // the loop runs.
     trimOldPages(messages);
+    trimOldPlans(messages);
 
     const res = await model.provider.generate({
       system,
       messages,
       tools: RESEARCH_TOOLS,
-      forceTools: turnsUsed === 0, // force real research before it can stop
+      // Force real research before it can stop — but not once it has planned
+      // three turns in a row without searching: under Gemini's mode ANY the model
+      // cannot answer without a tool call, and the honest way out of a plan-loop
+      // is to let it say it is ready (or to end the loop, below).
+      forceTools: turnsUsed === 0 && planOnlyTurns < PLAN_TURNS_BEFORE_NUDGE,
       model: model.model,
       // A research turn emits a plan or a query — nothing long. Without these two
       // it could emit up to the model default on every one of `2×budget+6` turns,
@@ -229,6 +297,17 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     if (res.usage) charge(llmCost(res.usage.inputTokens, res.usage.outputTokens, model.inPerM, model.outPerM));
 
     messages.push({ role: 'model', text: res.text, toolCalls: res.toolCalls });
+
+    const planOnly = res.toolCalls.length > 0 && res.toolCalls.every((c) => c.name === 'update_plan');
+    planOnlyTurns = planOnly ? planOnlyTurns + 1 : 0;
+    if (planOnlyTurns >= PLAN_TURNS_LIMIT) {
+      // The nudge below was delivered on the previous turn and the model planned
+      // again. Nothing it can plan will change without a search; end the loop
+      // rather than pay for the rest of the iterations. `stalled`, not `done`: it
+      // was cut off, and with no turn spent there is nothing to reuse anyway.
+      await note(`Stopping research: ${planOnlyTurns} plan updates in a row with no search or fetch.`);
+      break;
+    }
 
     if (res.toolCalls.length === 0) {
       if (turnsUsed === 0 && nudges < 2) {
@@ -247,14 +326,27 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       break;
     }
 
+    let planNoted = false;
     for (const call of res.toolCalls) {
       if (call.name === 'update_plan') {
         plan = Array.isArray((call.args as any).steps) ? ((call.args as any).steps as PlanStep[]) : plan;
-        messages.push({
-          role: 'tool',
-          toolResult: { name: call.name, response: { ok: true, turnsLeft: Math.max(0, maxTurns - turnsUsed) } },
-        });
-        await note(`Plan updated (${plan.length} steps).`);
+        const response: Record<string, unknown> = { ok: true, turnsLeft: Math.max(0, maxTurns - turnsUsed) };
+        if (planOnly && planOnlyTurns >= PLAN_TURNS_BEFORE_NUDGE) {
+          response.stopPlanning = true;
+          response.message =
+            `You have updated the plan ${planOnlyTurns} turns in a row without searching or fetching. ` +
+            `Do not call update_plan again: either web_search / fetch_page now, or stop calling tools and say you are ready to write.`;
+        }
+        messages.push({ role: 'tool', toolResult: { name: call.name, response } });
+        // One note per model turn, however many plan calls it carried: the note
+        // is what the buyer's progress line and the admin's trace see, and a turn
+        // that carried a hundred plan updates used to be a hundred progress
+        // writes and a hundred trace lines — enough to evict the notes an admin
+        // actually needs from the 300 an agent keeps.
+        if (!planNoted) {
+          planNoted = true;
+          await note(`Plan updated (${plan.length} steps).`);
+        }
       } else if (call.name === 'web_search') {
         const query = String((call.args as any).query ?? '').trim();
         if (turnsUsed >= maxTurns) {
@@ -326,18 +418,21 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
         }
         // Reuse a page already fetched by another agent — no budget spent.
         if (url && evidence.extractedUrls.has(url)) {
+          const reads = (cachedReads.get(url) ?? 0) + 1;
+          cachedReads.set(url, reads);
           const cached = evidence.extracted.find((p) => p.url === url);
+          const content = reads > MAX_SAME_URL_CACHED_READS ? CACHED_STUB : stripFenceMarker(cached?.content ?? '');
           messages.push({
             role: 'tool',
             toolResult: {
               name: call.name,
               response: {
-                pages: [{ url, ok: true, content: stripFenceMarker(cached?.content ?? ''), cached: true }],
+                pages: [{ url, ok: true, content, cached: true }],
                 turnsLeft: maxTurns - turnsUsed,
               },
             },
           });
-          await note(`Reused cached page.`);
+          await note(reads > MAX_SAME_URL_CACHED_READS ? `Declined to re-send a page already returned twice.` : `Reused cached page.`);
           continue;
         }
         // The turn is spent either way — that is the budget guard, and it is
@@ -371,5 +466,15 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     }
   }
 
+  // A loop that spent its whole allowance and then ran out of iterations before
+  // it could say "ready" FINISHED its research — the honest deal-scout in the real
+  // July trace did exactly this (24 paid turns + 24 plans + 6 cached re-reads = the
+  // bound), and was classed unfinished, so one flaky write afterwards re-bought the
+  // job's most expensive loop. Only a loop cut off with budget LEFT is half-done.
+  if (stop === 'stalled' && turnsUsed >= maxTurns) stop = 'budget';
+  // Say why it ended. Two real agent-runs reached the iteration bound with zero
+  // searches and nothing in the trace said so; an admin reading it could not tell
+  // a section written from research from one written from none.
+  await note(`Research loop ended: ${stop} (${turnsUsed}/${maxTurns} turns).`);
   return { turns: turnsUsed, stop };
 }
