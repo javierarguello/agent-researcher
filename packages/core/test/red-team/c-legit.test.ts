@@ -49,29 +49,26 @@ function hrefs(html: string): string[] {
 }
 
 describe('C-legit · PDF prose links — what an honest citation loses in `mdInline` (report-html.ts:123-125)', () => {
-  it.fails('a listing URL with a query string is DOUBLE-ESCAPED: the browser reads `?utm=x&amp;ref=y` (report-html.ts:124-125 escapes, then escapes the captured URL again)', () => {
+  it('a listing URL with a query string is escaped ONCE (it used to be double-escaped: the browser read `?utm=x&amp;ref=y`; mutation: `href="${esc(u)}"` in mdInline)', () => {
     // A real BizBuySell / LoopNet listing URL carries tracking params. The
     // directive tells the model to cite "the actual URLs from the evidence".
     const url = 'https://www.bizbuysell.com/Business-Opportunity/laundromat-miami/2201234/?utm_source=search&ref=list';
     const html = pdf(`Asking $450,000 per [the listing](${url}).`);
     const [href] = hrefs(html);
-    // Observed today: `https://…?utm_source=search&amp;ref=list` — after the
-    // browser decodes ONE level, the query is `utm_source=search&amp;ref=list`.
-    console.log('C-legit F-pdf-amp href as the browser reads it:', href);
+    // Observed before the fix: `https://…?utm_source=search&amp;ref=list` — after
+    // the browser decoded ONE level, the query was `utm_source=search&amp;ref=list`.
     expect(href).toBe(url);
   });
 
-  it.fails('a Wikipedia-style URL with parentheses is CUT at the first `)`: the buyer’s link 404s (report-html.ts:125 `[^\\s)]+`)', () => {
+  it('a Wikipedia-style URL with one level of balanced parentheses is kept whole (it used to be cut at the first `)`; mutation: `[^\\s)]+` as the URL class)', () => {
     const url = 'https://en.wikipedia.org/wiki/Hialeah,_Florida_(city)';
     const html = pdf(`Hialeah's population grew per [the city profile](${url}).`);
     const [href] = hrefs(html);
-    console.log('C-legit F-pdf-paren href:', href);
     expect(href).toBe(url);
   });
 
-  it.fails('a `mailto:` broker contact is a link in the web viewer and LITERAL BRACKETS in the PDF (report-html.ts:125 allows `https?` only; react-markdown allows mailto)', () => {
+  it('a `mailto:` broker contact is a link in the PDF as it is in the web viewer (it used to print as literal brackets; mutation: drop `|mailto:` from the mdInline regex)', () => {
     const html = pdf('Contact [the listing broker](mailto:broker@example-brokerage.test) to request the CIM.');
-    console.log('C-legit F-pdf-mailto rendered:', html.match(/Contact [^<]{0,120}/)?.[0]);
     expect(hrefs(html)).toContain('mailto:broker@example-brokerage.test');
   });
 
@@ -89,10 +86,9 @@ describe('C-legit · PDF prose links — what an honest citation loses in `mdInl
 });
 
 describe('C-legit · PDF prose blocks — the directive invites Markdown the PDF cannot draw (prompt.ts:50-54 vs report-html.ts:131-146)', () => {
-  it.fails('a NUMBERED list — explicitly invited by MARKDOWN_DIRECTIVE ("bullet/numbered lists") — is flattened into one paragraph in the PDF', () => {
+  it('a NUMBERED list — explicitly invited by MARKDOWN_DIRECTIVE ("bullet/numbered lists") — renders as <ol> (it used to flatten into one paragraph; mutation: drop the NUMBERED_LINE branch)', () => {
     const html = pdf('Three steps:\n\n1. Request the CIM.\n2. Verify the lease to 2031.\n3. Confirm SBA eligibility.');
-    // Observed today: `<p>1. Request the CIM. 2. Verify the lease to 2031. 3. Confirm SBA eligibility.</p>`
-    console.log('C-legit F-pdf-ol rendered:', html.match(/<p>1\. [^<]*<\/p>/)?.[0]);
+    // Observed before the fix: `<p>1. Request the CIM. 2. Verify the lease to 2031. 3. Confirm SBA eligibility.</p>`
     expect(html).toMatch(/<ol>\s*<li>Request the CIM\./);
   });
 

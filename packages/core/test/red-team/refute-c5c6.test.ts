@@ -27,7 +27,7 @@ const hrefs = (html: string) =>
   [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]!.replace(/&amp;/g, '&').replace(/&quot;/g, '"')).filter((h) => !h.startsWith('#'));
 
 describe('refute C5 · the same real URL, cited in prose and listed in Sources, in ONE PDF', () => {
-  it.fails('prose citation and Sources entry point at the SAME address (today: prose href carries `&amp;`, Sources is exact — the PDF disagrees with itself)', () => {
+  it('prose citation and Sources entry point at the SAME address (before the fix the prose href carried `&amp;` and Sources was exact — the PDF disagreed with itself)', () => {
     const html = pdf(
       {
         market_overview: { overview: `El condado tiene 2,7 M de habitantes según [Miami-Dade Matters](${REAL_URL}).` },
@@ -35,13 +35,10 @@ describe('refute C5 · the same real URL, cited in prose and listed in Sources, 
       },
       [{ key: 'market_overview', title: 'Mercado' }, { key: 'sources', title: 'Fuentes' }],
     );
-    const all = hrefs(html);
-    const inSources = all.filter((h) => h === REAL_URL);
-    const inProse = all.filter((h) => h.startsWith(REAL_URL.split('?')[0]!) && h !== REAL_URL);
-    console.log('refute-C5 prose href:', inProse[0], '| Sources href:', inSources[0]);
-    expect(inSources).toHaveLength(1);
-    // Mutation that greens this: `esc(u)` → `u` at report-html.ts:124 (u is already escaped text).
-    expect(inProse).toHaveLength(0);
+    const all = hrefs(html).filter((h) => h.startsWith(REAL_URL.split('?')[0]!));
+    // Two hrefs — the prose citation and the Sources row — and both are the real address.
+    // Mutation that reds this: `href="${esc(u)}"` in mdInline (the double escape).
+    expect(all).toEqual([REAL_URL, REAL_URL]);
   });
 
   it('a URL with ONE query param (`?v=…`) is unaffected — the defect needs `&`, i.e. two or more params', () => {
@@ -52,18 +49,27 @@ describe('refute C5 · the same real URL, cited in prose and listed in Sources, 
 });
 
 describe('refute C5 · numbered lists in the shape the model ACTUALLY writes', () => {
-  it.fails('list lines attached to a prose line (`Esto implicaría:\\n1. …`) — flattened today; NOTE the finder’s `lines.every(ol)` branch would NOT fix this shape either (first line is prose): the fix must split the block at the first list line', () => {
+  it('list lines attached to a prose line (`Esto implicaría:\\n1. …`) — the shape the model writes — render as a paragraph followed by an <ol> (a whole-block `lines.every(ol)` branch would NOT have fixed this; mutation: require the whole block to be list lines)', () => {
     const md = "Esto implicaría:\n1.  Comprar el negocio por su ubicación.\n2.  Deshacerse del equipo antiguo.\n3.  Invertir capital nuevo.";
     const html = pdf({ f: { overview: md } }, [{ key: 'f', title: 'F' }]);
-    console.log('refute-C5 ol rendered:', html.match(/<p>Esto[^<]*/)?.[0]);
-    expect(html).toMatch(/<ol>\s*<li>Comprar/);
+    expect(html).toContain('<p>Esto implicaría:</p><ol><li>Comprar el negocio por su ubicación.</li><li>Deshacerse del equipo antiguo.</li><li>Invertir capital nuevo.</li></ol>');
   });
 
-  it('blank-line-separated numbered items (`\\n\\n1.  **X:** …`) survive as numbered PARAGRAPHS — the number is kept as text (legible, just unindented)', () => {
+  it('blank-line-separated numbered items (`\\n\\n1.  **X:** …`) keep their NUMBERS: each becomes its own <ol> starting where the model numbered it (mutation: drop the `start` attribute and the second item prints as 1.)', () => {
     const md = 'Intro.\n\n1.  **Alto Costo:** barrera.\n\n2.  **Ubicación:** escasa.';
     const html = pdf({ f: { overview: md } }, [{ key: 'f', title: 'F' }]);
-    expect(html).toContain('<p>1.  <strong>Alto Costo:</strong> barrera.</p>');
-    expect(html).toContain('<p>2.  <strong>Ubicación:</strong> escasa.</p>');
+    expect(html).toContain('<ol><li><strong>Alto Costo:</strong> barrera.</li></ol>');
+    expect(html).toContain('<ol start="2"><li><strong>Ubicación:</strong> escasa.</li></ol>');
+  });
+});
+
+describe('refute C5 · what the list rule must NOT catch', () => {
+  it('a sentence that opens with a year (`2024. Revenue grew…`) is prose, not item 2024 of a list; a `-` bullet run after prose is a <ul> (mutation: `\\d+` instead of `\\d{1,2}` in NUMBERED_LINE)', () => {
+    const md = 'Revenue by year:\n2024. Revenue grew 12% on the prior year.\n2023. Flat.\n- utilities up 19%\n- rent unchanged';
+    const html = pdf({ f: { overview: md } }, [{ key: 'f', title: 'F' }]);
+    // `<ol class="toc">` is the PDF's own table of contents; a prose list has no class.
+    expect(html).not.toMatch(/<ol(?: start="\d+")?>/);
+    expect(html).toContain('<p>Revenue by year: 2024. Revenue grew 12% on the prior year. 2023. Flat.</p><ul><li>utilities up 19%</li><li>rent unchanged</li></ul>');
   });
 });
 

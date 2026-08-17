@@ -127,12 +127,37 @@ function mdInline(s: string): string {
   // line the link rule below turned `![alt](url)` into `!` + a link labelled by
   // the alt text: a click-beacon dressed as a "verified photo".
   out = out.replace(/!\[[^\]]*\]\([^\s)]*\)/g, '');
-  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, t, u) => `<a href="${esc(u)}">${t}</a>`);
+  // `u` is ALREADY escaped — `esc(s)` ran on the whole string first — so it goes
+  // into the attribute as is. It used to be escaped a second time, which turned
+  // every `&amp;` into `&amp;amp;`: in both real July reports, every prose
+  // citation of a URL with two or more query parameters carried it, the PDF's
+  // link annotation carried it, and a click sent a parameter named `amp;ref`
+  // while the same URL in the Sources list (escaped once) was right. The URL may
+  // hold one level of balanced parentheses (`…/Hialeah,_Florida_(city)`) and may
+  // be a `mailto:` — the same set the web viewer's Markdown allows, so the two
+  // artifacts agree on what is a link.
+  out = out.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)(?:[^\s()]|\([^\s()]*\))+)\)/g, (_m, t, u) => `<a href="${u}">${t}</a>`);
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
   return out;
 }
+
+const BULLET_LINE = /^\s*[-*]\s+/;
+/** `1. ` / `2) ` — one or two digits, so a sentence opening with a year is not a list. */
+const NUMBERED_LINE = /^\s*(\d{1,2})[.)]\s+/;
+
+/**
+ * Block-level Markdown: headings, bullet lists, numbered lists, paragraphs.
+ *
+ * Lists are recognised as RUNS of list lines inside a block, not only as blocks
+ * made entirely of them. The shape the model actually writes — measured in the
+ * real reports — is a prose line followed directly by its items
+ * (`Esto implicaría:\n1. …\n2. …`), and that used to flatten into one run-on
+ * paragraph: "1. Request the CIM. 2. Verify the lease. 3. …". A numbered run that
+ * starts past 1 keeps its number (`<ol start="2">`), so items the model separated
+ * with blank lines still count up instead of each restarting at 1.
+ */
 function mdToHtml(md: string): string {
   const blocks = String(md ?? '').trim().split(/\n{2,}/);
   return blocks
@@ -141,11 +166,30 @@ function mdToHtml(md: string): string {
       // Markdown headings (### Foo) → a styled sub-heading (never show the #s).
       const h = lines[0]?.match(/^\s*(#{1,6})\s+(.*)$/);
       if (h && lines.length === 1) return `<div class="mdh">${mdInline(h[2] ?? '')}</div>`;
-      if (lines.every((l) => /^\s*[-*]\s+/.test(l))) {
-        return `<ul>${lines.map((l) => `<li>${mdInline(l.replace(/^\s*[-*]\s+/, ''))}</li>`).join('')}</ul>`;
+      const out: string[] = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i]!;
+        if (BULLET_LINE.test(line)) {
+          const items: string[] = [];
+          while (i < lines.length && BULLET_LINE.test(lines[i]!)) items.push(lines[i++]!.replace(BULLET_LINE, ''));
+          out.push(`<ul>${items.map((it) => `<li>${mdInline(it)}</li>`).join('')}</ul>`);
+          continue;
+        }
+        const numbered = line.match(NUMBERED_LINE);
+        if (numbered) {
+          const start = Number(numbered[1]);
+          const items: string[] = [];
+          while (i < lines.length && NUMBERED_LINE.test(lines[i]!)) items.push(lines[i++]!.replace(NUMBERED_LINE, ''));
+          out.push(`<ol${start === 1 ? '' : ` start="${start}"`}>${items.map((it) => `<li>${mdInline(it)}</li>`).join('')}</ol>`);
+          continue;
+        }
+        const para: string[] = [];
+        // Strip any stray leading heading markers on a mixed block.
+        while (i < lines.length && !BULLET_LINE.test(lines[i]!) && !NUMBERED_LINE.test(lines[i]!)) para.push(lines[i++]!.replace(/^\s*#{1,6}\s+/, ''));
+        out.push(`<p>${mdInline(para.join(' '))}</p>`);
       }
-      // Strip any stray leading heading markers on a mixed block.
-      return `<p>${mdInline(lines.map((l) => l.replace(/^\s*#{1,6}\s+/, '')).join(' '))}</p>`;
+      return out.join('');
     })
     .join('');
 }
