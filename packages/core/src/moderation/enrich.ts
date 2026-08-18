@@ -251,6 +251,28 @@ export function applyCorrections(
 export interface Proposals {
   directives: Record<string, unknown>;
   keywords: string[];
+  /**
+   * Field key → the buyer's OWN words that justify the pick, verbatim.
+   *
+   * A field with no entry here is one the model inferred rather than read, and the
+   * client shows it unticked. Measured against a real model, 9 of 10 realistic
+   * notes got a value in ALL 7 directive fields — twice contradicting the note —
+   * because the only rule was one sentence of prompt, and the gate below checked
+   * the vocabulary and nothing else (round 7, R7-9).
+   *
+   * A quote is not proof the pick is RIGHT (a quote can be read backwards: "que se
+   * maneje sola" was returned for `owner_operator`). It is what lets the buyer
+   * check: the client prints it next to the value.
+   */
+  quotes?: Record<string, string>;
+  /**
+   * Empty BASICS the text names outright — text fields the template declares as
+   * `fillable`, never numbers. Kept apart from `directives` because they define
+   * the scope of the search rather than a preference within it: they are always
+   * shown unticked, they require a verbatim quote, and `applyProposals` leaves
+   * them alone unless asked.
+   */
+  basics?: Record<string, string>;
 }
 
 export interface ProposeResult {
@@ -259,6 +281,37 @@ export interface ProposeResult {
 }
 
 const NO_PROPOSALS: ProposeResult = { proposals: { directives: {}, keywords: [] } };
+
+/** How much of a quote is kept for display. Long enough to be a phrase, not a paragraph. */
+const QUOTE_MAX_LEN = 140;
+/** Shorter than this and a "quote" matches almost any text by accident. */
+const QUOTE_MIN_LEN = 3;
+
+/** Case- and whitespace-insensitive: a model re-types a quote, it does not copy bytes. */
+const flatten = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * The buyer's words, if these really are the buyer's words.
+ *
+ * Returns the quote (clipped) only when it appears VERBATIM in what they typed.
+ * Anything else — a paraphrase, a summary, an empty string, a quote the model
+ * invented to justify itself — is not evidence, and the field is marked inferred.
+ */
+function verbatim(text: string, quote: unknown): string | undefined {
+  if (typeof quote !== 'string') return undefined;
+  const q = quote.trim().slice(0, QUOTE_MAX_LEN);
+  if (q.length < QUOTE_MIN_LEN) return undefined;
+  return flatten(text).includes(flatten(q)) ? q : undefined;
+}
+
+/** A model answer per field: `{value, quote}` today, a bare value from an older answer. */
+function valueAndQuote(raw: unknown): { value: unknown; quote?: unknown } {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'value' in (raw as Record<string, unknown>)) {
+    const o = raw as { value: unknown; quote?: unknown };
+    return { value: o.value, quote: o.quote };
+  }
+  return { value: raw };
+}
 
 /** How many keywords one pass may add, and how long each may be (the Florida schema's own bound is 80). */
 const MAX_PROPOSED_KEYWORDS = 8;
@@ -378,9 +431,11 @@ function hasKeywordsField(template: ResearchTemplate<any>): boolean {
 export function acceptProposals(
   template: ResearchTemplate<any>,
   params: Record<string, unknown>,
-  raw: { directives?: Record<string, unknown>; keywords?: unknown[] } | undefined,
+  raw: { directives?: Record<string, unknown>; keywords?: unknown[]; basics?: Record<string, unknown> } | undefined,
+  freeText = '',
 ): Proposals {
   const out: Proposals = { directives: {}, keywords: [] };
+  const quotes: Record<string, string> = {};
   const spec = template.directives;
   const dirKey = spec?.key ?? 'directives';
   const current = (params[dirKey] as Record<string, unknown> | undefined) ?? {};
@@ -388,22 +443,55 @@ export function acceptProposals(
   const rawDirectives = raw?.directives && typeof raw.directives === 'object' && !Array.isArray(raw.directives) ? raw.directives : {};
   for (const f of spec?.fields ?? []) {
     if (current[f.key] !== undefined) continue; // the buyer chose; not ours to change
-    const v = rawDirectives[f.key];
+    const { value: v, quote } = valueAndQuote(rawDirectives[f.key]);
     if (v === undefined || v === null) continue;
+    // The quote does not gate the PROPOSAL — an honest read of "que se maneje sola"
+    // as `absentee` has no literal quote, and dropping it would lose the good half
+    // of the feature. It gates the DEFAULT: a field the buyer's words do not
+    // contain is shown to them unticked.
+    const said = verbatim(freeText, quote);
+    const keep = (val: unknown) => {
+      out.directives[f.key] = val;
+      if (said) quotes[f.key] = said;
+    };
     if (f.kind === 'boolean') {
-      if (typeof v === 'boolean') out.directives[f.key] = v;
+      if (typeof v === 'boolean') keep(v);
       continue;
     }
     const values = new Set(f.values ?? []);
     if (f.kind === 'single') {
-      if (typeof v === 'string' && values.has(v)) out.directives[f.key] = v;
+      if (typeof v === 'string' && values.has(v)) keep(v);
       continue;
     }
     if (Array.isArray(v)) {
       const picked = [...new Set(v.filter((x): x is string => typeof x === 'string' && values.has(x)))].slice(0, f.maxSelected ?? values.size);
-      if (picked.length) out.directives[f.key] = picked;
+      if (picked.length) keep(picked);
     }
   }
+
+  // BASICS: a param the buyer left empty that their own words name outright. These
+  // define what is searched at all, so the bar is higher than for a directive —
+  // the field must be declared `fillable`, the value must survive the correction
+  // sanitizer, and the quote is REQUIRED, not just informative. The client shows
+  // each one unticked; nothing here is applied unless the buyer says so.
+  const rawBasics = raw?.basics && typeof raw.basics === 'object' && !Array.isArray(raw.basics) ? raw.basics : {};
+  const basics: Record<string, string> = {};
+  for (const f of template.preflight?.fillable ?? []) {
+    if (String(params[f.field] ?? '').trim()) continue; // not empty: theirs, untouched
+    const { value: v, quote } = valueAndQuote(rawBasics[f.field]);
+    if (typeof v !== 'string') continue;
+    const said = verbatim(freeText, quote);
+    if (!said) continue;
+    // Measured on the RAW value, like a correction: one that does not fit is
+    // refused, never trimmed into one that does.
+    if (v.trim().length > f.maxLength) continue;
+    const value = sanitizeProposal(v, f.maxLength);
+    if (!value) continue;
+    if (!template.paramsSchema.safeParse({ ...params, [f.field]: value }).success) continue;
+    basics[f.field] = value;
+    quotes[f.field] = said;
+  }
+  if (Object.keys(basics).length) out.basics = basics;
 
   if (hasKeywordsField(template)) {
     const have = new Set(((params.keywords as unknown[]) ?? []).filter((k): k is string => typeof k === 'string').map((k) => k.toLowerCase()));
@@ -429,15 +517,32 @@ export function acceptProposals(
     const candidate = applyProposals(params, out, dirKey);
     if (!template.paramsSchema.safeParse(candidate).success) return { directives: {}, keywords: [] };
   }
+  // Only for what survived the gate above.
+  const kept = Object.fromEntries(Object.entries(quotes).filter(([k]) => k in out.directives || k in (out.basics ?? {})));
+  if (Object.keys(kept).length) out.quotes = kept;
   return out;
 }
 
-/** Apply proposals to a params object (used when the buyer accepts them). */
-export function applyProposals(params: Record<string, unknown>, proposals: Proposals, dirKey = 'directives'): Record<string, unknown> {
+/**
+ * Apply proposals to a params object (used when the buyer accepts them).
+ *
+ * `basics` are OPT-IN and left out by default. The API's `proposedParams` is what a
+ * client submits when it accepts everything, and a client that predates basics
+ * would then fill a buyer's location from a row it never rendered. A field that
+ * defines the scope of the search is never applied by a caller that does not know
+ * it exists.
+ */
+export function applyProposals(
+  params: Record<string, unknown>,
+  proposals: Proposals,
+  dirKey = 'directives',
+  opts: { basics?: boolean } = {},
+): Record<string, unknown> {
   const out = { ...params };
   if (Object.keys(proposals.directives).length) {
     out[dirKey] = { ...((params[dirKey] as Record<string, unknown> | undefined) ?? {}), ...proposals.directives };
   }
+  if (opts.basics) for (const [k, v] of Object.entries(proposals.basics ?? {})) out[k] = v;
   if (proposals.keywords.length) {
     const have = ((params.keywords as unknown[]) ?? []).filter((k): k is string => typeof k === 'string');
     out.keywords = [...have, ...proposals.keywords.filter((k) => !have.some((h) => h.toLowerCase() === k.toLowerCase()))];

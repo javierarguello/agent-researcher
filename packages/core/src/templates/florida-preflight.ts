@@ -142,6 +142,13 @@ export const floridaPreflight: PreflightSpec<Params> = {
     { field: 'industry', maxLength: 120 },
   ],
 
+  // The one basic the buyer's own words may FILL, and only when they left it
+  // empty: "una lavandería en Hialeah" with the location field blank was a dossier
+  // about the whole state, bought with the answer sitting two centimetres above the
+  // button. Text only — a number read out of a sentence ("máximo 500k") is a digit
+  // the buyer cannot check at a glance, and `askingPriceMax` stays by hand.
+  fillable: [{ field: 'location', maxLength: 200 }],
+
   rules: [
     {
       code: 'missing_subject',

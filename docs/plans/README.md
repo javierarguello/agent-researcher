@@ -20,3 +20,5 @@ The convention, so items stay useful rather than decaying into a wish list:
 | File | What it covers |
 | --- | --- |
 | [abuse-and-cost.md](abuse-and-cost.md) | Findings from the July 2026 adversarial review of the limits, quota and token-spend surface. |
+| [deep-review.md](deep-review.md) | The rolling adversarial review of the engine, money, tenancy and prompts (rounds 1-7). |
+| [product-backlog.md](product-backlog.md) | Things to build, as opposed to things that are broken. |

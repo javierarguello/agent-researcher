@@ -305,6 +305,17 @@ export interface PreflightSpec<TParams = unknown> {
    */
   correctable?: Array<{ field: string; maxLength: number }>;
   /**
+   * Params the buyer's OWN WORDS may fill when they are empty — the "in your own
+   * words" box naming a place the form left blank. Text fields only, and each is
+   * shown to the buyer as its own confirmation, unticked, next to the words that
+   * justify it: unlike a directive (a preference inside the search) a basic
+   * defines what is searched at all, so it is never applied on inference and never
+   * by a client that does not render it. A field with a value already is the
+   * buyer's; `correctable` is the only thing that may touch that, and only as a
+   * spelling fix.
+   */
+  fillable?: Array<{ field: string; maxLength: number }>;
+  /**
    * Deterministic findings: a predicate over validated params → an issue code.
    * Runs with no model and no I/O, so it always executes.
    */
