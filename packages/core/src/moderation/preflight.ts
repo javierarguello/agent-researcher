@@ -92,7 +92,8 @@ export async function runPreflight(input: {
   // The summary is re-rendered from the CORRECTED params, so the user reads the
   // request as it would actually run — still without a word written by the model.
   const correctedParams = enriched.corrections.length ? applyCorrections(params, enriched.corrections) : undefined;
-  const proposals = proposed && (Object.keys(proposed.proposals.directives).length || proposed.proposals.keywords.length) ? proposed.proposals : undefined;
+  const p = proposed?.proposals;
+  const proposals = p && (Object.keys(p.directives).length || p.keywords.length || Object.keys(p.basics ?? {}).length) ? p : undefined;
   const proposedParams = proposals ? applyProposals(correctedParams ?? params, proposals, template.directives?.key ?? 'directives') : undefined;
   const usage = [enriched.usage, proposed?.usage].filter(Boolean).reduce<PreflightOutcome['usage']>(
     (acc, u) => (acc ? { inputTokens: acc.inputTokens + u!.inputTokens, outputTokens: acc.outputTokens + u!.outputTokens, usd: acc.usd + u!.usd } : u),
@@ -100,9 +101,13 @@ export async function runPreflight(input: {
   );
 
   return {
-    // The summary is rendered from the params as they would run if the buyer
-    // accepts everything — still without a word written by the model.
-    summary: renderPlan(template, proposedParams ?? correctedParams ?? params, { lang, modeLabel }),
+    // The summary is the request as the buyer TYPED it (with their typos fixed, an
+    // opt-out), never with the proposals folded in. Proposals are opt-in per field
+    // now, so a summary rendered from `proposedParams` described a request the buyer
+    // may well decline — it read as "this is what we will research" while listing
+    // preferences they had not accepted yet (round 7, R7-9 / R7-25). What the
+    // proposals would add is shown beside them, as a diff, where it can be ticked.
+    summary: renderPlan(template, correctedParams ?? params, { lang, modeLabel }),
     quality: worst(qualityFromIssues(merged), enriched.quality),
     issues: merged,
     corrections: enriched.corrections,

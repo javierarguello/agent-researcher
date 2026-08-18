@@ -60,8 +60,18 @@ export interface PreflightResult {
   /**
    * What the user's own words (`freeText`) turned into: directive values from
    * the model's vocabularies and a few keywords. Proposals — the user accepts.
+   *
+   * `quotes` is the buyer's OWN words behind each pick, verified verbatim by the
+   * API. A field with no quote was inferred, not read, and this client shows it
+   * unticked; `basics` (an empty `location` their text names) is always unticked
+   * and never rides `proposedParams`.
    */
-  proposals?: { directives: Record<string, unknown>; keywords: string[] };
+  proposals?: {
+    directives: Record<string, unknown>;
+    keywords: string[];
+    quotes?: Record<string, string>;
+    basics?: Record<string, string>;
+  };
   /** `correctedParams` (or the params) with the proposals applied too. */
   proposedParams?: Record<string, unknown>;
   /** Whether the assisted (AI) layer ran, and why not when it didn't. */

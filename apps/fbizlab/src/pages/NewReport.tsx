@@ -16,8 +16,8 @@ const T = {
     s1: 'What & where', s1h: "Define what you're hunting for.",
     s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
-    s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences and keywords for you to confirm — the text itself is not part of the request.',
-    proposalsTitle: 'Suggested from your notes', applyProposals: 'Apply suggestions', kw: 'Keywords',
+    s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences and keywords for you to confirm — the text itself is not part of the request. It does not set the price, the location or the filters: those stay yours, above.',
+    proposalsTitle: 'Suggested from your notes', proposalsHint: 'Tick what you recognise. Anything we inferred rather than read comes unticked.', applyProposals: 'Apply suggestions', kw: 'Keywords', basicsTitle: 'From your notes, for a field you left empty',
     sd: 'Your preferences', sdh: 'Optional. Tells the analysts what to weigh — it never shortens the dossier.', sdCap: 'pick up to',
     s5: 'Advanced', show: '+ Show', hide: '− Hide', step: 'Step', of: 'of', back: 'Back', next: 'Next',
     reportLanguage: 'Dossier language', reportLangHelp: 'The language the final dossier is written in.',
@@ -42,8 +42,8 @@ const T = {
     s1: 'Qué y dónde', s1h: 'Define qué estás buscando.',
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
-    s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias y palabras clave para que las confirmes — el texto en sí no forma parte del pedido.',
-    proposalsTitle: 'Sugerido a partir de tus notas', applyProposals: 'Aplicar sugerencias', kw: 'Palabras clave',
+    s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias y palabras clave para que las confirmes — el texto en sí no forma parte del pedido. No define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
+    proposalsTitle: 'Sugerido a partir de tus notas', proposalsHint: 'Marca lo que reconozcas. Lo que dedujimos en vez de leer viene sin marcar.', applyProposals: 'Aplicar sugerencias', kw: 'Palabras clave', basicsTitle: 'De tus notas, para un campo que dejaste vacío',
     sd: 'Tus preferencias', sdh: 'Opcional. Le dice a los analistas qué priorizar — nunca acorta el dossier.', sdCap: 'elige hasta',
     s5: 'Avanzado', show: '+ Mostrar', hide: '− Ocultar', step: 'Paso', of: 'de', back: 'Atrás', next: 'Siguiente',
     reportLanguage: 'Idioma del dossier', reportLangHelp: 'El idioma en que se escribe el dossier final.',
@@ -68,8 +68,8 @@ const T = {
     s1: 'Quoi et où', s1h: 'Définissez ce que vous cherchez.',
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
-    s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences et en mots-clés que vous confirmez — le texte lui-même ne fait pas partie de la demande.',
-    proposalsTitle: 'Suggéré d’après vos notes', applyProposals: 'Appliquer les suggestions', kw: 'Mots-clés',
+    s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences et en mots-clés que vous confirmez — le texte lui-même ne fait pas partie de la demande. Il ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
+    proposalsTitle: 'Suggéré d’après vos notes', proposalsHint: 'Cochez ce que vous reconnaissez. Ce que nous avons déduit plutôt que lu arrive décoché.', applyProposals: 'Appliquer les suggestions', kw: 'Mots-clés', basicsTitle: 'D’après vos notes, pour un champ laissé vide',
     sd: 'Vos préférences', sdh: 'Optionnel. Indique aux analystes quoi privilégier — cela ne raccourcit jamais le dossier.', sdCap: 'choisissez jusqu’à',
     s5: 'Avancé', show: '+ Afficher', hide: '− Masquer', step: 'Étape', of: 'de', back: 'Retour', next: 'Suivant',
     reportLanguage: 'Langue du dossier', reportLangHelp: 'La langue de rédaction du dossier final.',
@@ -94,8 +94,8 @@ const T = {
     s1: 'O quê e onde', s1h: 'Defina o que você procura.',
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
-    s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências e palavras-chave para você confirmar — o texto em si não faz parte do pedido.',
-    proposalsTitle: 'Sugerido a partir das suas notas', applyProposals: 'Aplicar sugestões', kw: 'Palavras-chave',
+    s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências e palavras-chave para você confirmar — o texto em si não faz parte do pedido. Ele não define preço, localização nem filtros: isso continua com você, acima.',
+    proposalsTitle: 'Sugerido a partir das suas notas', proposalsHint: 'Marque o que você reconhecer. O que deduzimos em vez de ler vem desmarcado.', applyProposals: 'Aplicar sugestões', kw: 'Palavras-chave', basicsTitle: 'Das suas notas, para um campo que você deixou vazio',
     sd: 'Suas preferências', sdh: 'Opcional. Diz aos analistas o que priorizar — nunca encurta o dossiê.', sdCap: 'escolha até',
     s5: 'Avançado', show: '+ Mostrar', hide: '− Ocultar', step: 'Passo', of: 'de', back: 'Voltar', next: 'Próximo',
     reportLanguage: 'Idioma do dossiê', reportLangHelp: 'O idioma em que o dossiê final é escrito.',
@@ -147,14 +147,46 @@ type Schema = { properties?: Record<string, Prop>; required?: string[] };
 
 /** How much the "in your own words" box takes — the API reads at most this much. */
 const FREE_TEXT_MAX = 2000;
+type Proposals = { directives: Record<string, unknown>; keywords: string[]; quotes?: Record<string, string>; basics?: Record<string, string> };
+
+/**
+ * What starts ticked.
+ *
+ * A directive the API could quote — the buyer's own words, verified verbatim on the
+ * server — is theirs; one we inferred is shown but not applied unless they say so.
+ * A BASIC is never pre-ticked whatever the quote says: it decides what gets
+ * searched at all, and the form is where that is chosen.
+ */
+function defaultAccepted(proposals: Proposals | undefined): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  if (!proposals) return out;
+  for (const k of Object.keys(proposals.directives)) out[k] = !!proposals.quotes?.[k];
+  if (proposals.keywords.length) out.keywords = true;
+  for (const f of Object.keys(proposals.basics ?? {})) out[`basic:${f}`] = false;
+  return out;
+}
+
+/** The subset the buyer ticked. */
+function pickAccepted(proposals: Proposals, accepted: Record<string, boolean>): Proposals {
+  return {
+    directives: Object.fromEntries(Object.entries(proposals.directives).filter(([k]) => accepted[k])),
+    keywords: accepted.keywords ? proposals.keywords : [],
+    basics: Object.fromEntries(Object.entries(proposals.basics ?? {}).filter(([f]) => accepted[`basic:${f}`])),
+  };
+}
+
 /** Apply what the assist proposed on top of a params object — mirrors the API's `applyProposals`. */
-function mergeProposals(params: Props, proposals: { directives: Record<string, unknown>; keywords: string[] }, dirKey: string): Props {
+function mergeProposals(params: Props, proposals: Proposals, dirKey: string): Props {
   const out: Props = { ...params };
   if (Object.keys(proposals.directives).length) out[dirKey] = { ...((params[dirKey] as Record<string, unknown> | undefined) ?? {}), ...proposals.directives };
   if (proposals.keywords.length) {
     const have = ((params.keywords as unknown[]) ?? []).filter((k): k is string => typeof k === 'string');
     out.keywords = [...have, ...proposals.keywords.filter((k) => !have.some((h) => h.toLowerCase() === k.toLowerCase()))];
   }
+  // A basic FILLS a field the buyer left empty — only the ones they ticked, and
+  // never through the API's `proposedParams`, which a client older than this one
+  // would submit without ever having rendered the row.
+  for (const [f, v] of Object.entries(proposals.basics ?? {})) out[f] = v;
   return out;
 }
 /** On mobile the long form becomes a step-by-step wizard. */
@@ -191,7 +223,18 @@ export function NewReport() {
   // Whether the user keeps the proposed corrections (on by default, one click to drop).
   const [applyFixes, setApplyFixes] = useState(true);
   // Whether the user keeps what the assist proposed from their notes (on by default, one click to drop).
-  const [applyProposals, setApplyProposals] = useState(true);
+  /**
+   * Which proposals the buyer accepted, by key: a directive field key, `keywords`,
+   * or `basic:<field>`.
+   *
+   * It used to be ONE pre-ticked checkbox for the whole block. Against a real model
+   * 9 of 10 realistic notes produced a value in all seven directive fields — twice
+   * the opposite of what the note said — so "apply suggestions" meant accepting a
+   * page of preferences the buyer never expressed, and declining meant losing the
+   * two that were right (round 7, R7-9). Defaults are set from the QUOTES the API
+   * verified: what the buyer actually wrote is ticked, what was inferred is not.
+   */
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   // What the user typed in their own words. NOT a param: it goes to the preflight,
   // which reads it and proposes preferences and keywords; the job never sees it.
   const [freeText, setFreeText] = useState('');
@@ -476,14 +519,14 @@ export function NewReport() {
         setPf(res);
         setValidatedKey(paramsKey);
         setApplyFixes(res.corrections.length > 0); // proposed fixes are opt-out, not silent
-        setApplyProposals(!!res.proposals);
+        setAccepted(defaultAccepted(res.proposals));
       } else {
         // Nothing to review — but the PREVIOUS review may still be in state, and
         // submitting with it would apply proposals derived from text this request no
         // longer carries. Passed explicitly: `setPf(null)` does not land before the
         // call below reads it.
         setPf(null);
-        setApplyProposals(false);
+        setAccepted({});
         await submit(null);
       }
     } catch (err) {
@@ -533,10 +576,13 @@ export function NewReport() {
     setError(null);
     try {
       const base = applyFixes && review?.correctedParams ? review.correctedParams : cleanParams();
-      // The proposals ride on top of whichever base the user kept. When both are
-      // kept the API's `proposedParams` is exactly that; otherwise merge here.
-      const params = applyProposals && review?.proposals
-        ? (applyFixes && review.proposedParams ? review.proposedParams : mergeProposals(base, review.proposals, dirKey))
+      // The proposals ride on top of whichever base the user kept — the ones they
+      // TICKED, merged here. `proposedParams` (the API's everything-applied variant)
+      // is no longer used: with per-field acceptance it is only ever right by
+      // coincidence, and it does not carry basics at all.
+      const chosen = review?.proposals ? pickAccepted(review.proposals, accepted) : undefined;
+      const params = chosen && (Object.keys(chosen.directives).length || chosen.keywords.length || Object.keys(chosen.basics ?? {}).length)
+        ? mergeProposals(base, chosen, dirKey)
         : base;
       const res = await create.mutateAsync({ template: model!.id, params, captcha: await captcha.current?.getToken() });
       clearDraft();
@@ -767,21 +813,77 @@ export function NewReport() {
                   {pf.proposals && (
                     <div className="pf-suggest" data-testid="proposals">
                       <div className="rev__k" style={{ marginBottom: 8 }}>{t.proposalsTitle}</div>
-                      <ul>
+                      <p className="soft" style={{ fontSize: 12.5, margin: '0 0 10px' }}>{t.proposalsHint}</p>
+                      {/* One row, one decision — and the buyer's own words next to
+                          each, so a value read backwards out of a real sentence
+                          ("que se maneje sola" → owner-operator) is visible rather
+                          than hidden behind a single "apply suggestions" tick. */}
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                         {Object.entries(pf.proposals.directives).map(([k, v]) => {
                           const field = directives.find((d) => d.key === k);
                           const labelOf = (x: unknown) => field?.options?.find((o) => o.value === x)?.label ?? String(x);
                           const shown = Array.isArray(v) ? v.map(labelOf).join(', ') : typeof v === 'boolean' ? (v ? t.yes : '—') : labelOf(v);
-                          return <li key={k}><span className="mono muted">{field?.label ?? k}: </span><b>{shown}</b></li>;
+                          const quote = pf.proposals!.quotes?.[k];
+                          return (
+                            <li key={k} style={{ marginBottom: 6 }}>
+                              <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                                <input
+                                  type="checkbox"
+                                  data-testid={`accept-${k}`}
+                                  checked={!!accepted[k]}
+                                  onChange={(e) => setAccepted((a) => ({ ...a, [k]: e.target.checked }))}
+                                />
+                                <span>
+                                  <span className="mono muted">{field?.label ?? k}: </span><b>{shown}</b>
+                                  {quote && <span className="soft" style={{ fontSize: 12.5 }}> — «{quote}»</span>}
+                                </span>
+                              </label>
+                            </li>
+                          );
                         })}
                         {pf.proposals.keywords.length > 0 && (
-                          <li><span className="mono muted">{t.kw}: </span>{pf.proposals.keywords.map((k) => <span key={k} className="chip sel" style={{ marginRight: 6 }}>{k}</span>)}</li>
+                          <li style={{ marginBottom: 6 }}>
+                            <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                              <input
+                                type="checkbox"
+                                data-testid="accept-keywords"
+                                checked={!!accepted.keywords}
+                                onChange={(e) => setAccepted((a) => ({ ...a, keywords: e.target.checked }))}
+                              />
+                              <span>
+                                <span className="mono muted">{t.kw}: </span>
+                                {pf.proposals.keywords.map((k) => <span key={k} className="chip sel" style={{ marginRight: 6 }}>{k}</span>)}
+                              </span>
+                            </label>
+                          </li>
                         )}
                       </ul>
-                      <label className="checkcard" style={{ marginTop: 10 }}>
-                        <input type="checkbox" checked={applyProposals} onChange={(e) => setApplyProposals(e.target.checked)} />
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{t.applyProposals}</div>
-                      </label>
+                      {/* A BASIC is a field the buyer left empty and their own words
+                          name — the scope of the search, so it is its own block and
+                          starts unticked however clear the quote is. */}
+                      {Object.keys(pf.proposals.basics ?? {}).length > 0 && (
+                        <>
+                          <div className="rev__k" style={{ margin: '12px 0 8px' }}>{t.basicsTitle}</div>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                            {Object.entries(pf.proposals.basics ?? {}).map(([f, v]) => (
+                              <li key={f} style={{ marginBottom: 6 }}>
+                                <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                                  <input
+                                    type="checkbox"
+                                    data-testid={`accept-basic-${f}`}
+                                    checked={!!accepted[`basic:${f}`]}
+                                    onChange={(e) => setAccepted((a) => ({ ...a, [`basic:${f}`]: e.target.checked }))}
+                                  />
+                                  <span>
+                                    <span className="mono muted">{t.f[f] ?? f}: </span><b>{v}</b>
+                                    {pf.proposals!.quotes?.[f] && <span className="soft" style={{ fontSize: 12.5 }}> — «{pf.proposals!.quotes![f]}»</span>}
+                                  </span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
                     </div>
                   )}
 

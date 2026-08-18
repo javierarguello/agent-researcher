@@ -339,18 +339,32 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     expect(JSON.stringify(created)).not.toContain('Ignore the rules');
   });
 
-  it('shows what the assist proposed from the notes — by the manifest’s labels — and orders with it applied when kept', async () => {
+  /** Reach the proposals block with a given preflight response. */
+  async function toProposals(proposals: Record<string, unknown>, notes = 'sunshine, red, absentee') {
     hooks.preflight.mockResolvedValueOnce({
-      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
-      proposals: { directives: { weather: 'sun', colours: ['red'] }, keywords: ['absentee owner'] },
-      proposedParams: { gridRegion: 'ERCOT West', parcelUse: 'Somewhere', language: 'es', mode: 'essential', directives: { weather: 'sun', colours: ['red'] }, keywords: ['absentee owner'] },
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' }, proposals,
     } as never);
     renderForm();
     await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
-    await userEvent.type(screen.getByTestId('free-text'), 'sunshine, red, absentee');
+    await userEvent.type(screen.getByTestId('free-text'), notes);
     await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
     await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
-    const block = await screen.findByTestId('proposals');
+    return screen.findByTestId('proposals');
+  }
+
+  /** Past the confirm step: what the job was actually created with. */
+  async function order(): Promise<Record<string, unknown>> {
+    const ctas = await screen.findAllByRole('button', { name: /generate dossier/i });
+    await userEvent.click(ctas.at(-1)!);
+    return (hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> }).params;
+  }
+
+  it('shows what the assist proposed from the notes — by the manifest’s labels, with the buyer’s own words beside each', async () => {
+    const block = await toProposals({
+      directives: { weather: 'sun', colours: ['red'] },
+      keywords: ['absentee owner'],
+      quotes: { weather: 'sunshine' },
+    });
     // Labels, not keys or raw values: what the buyer reads is the manifest's own words.
     expect(block.textContent).toContain('Preferred weather');
     expect(block.textContent).toContain('Sunshine');
@@ -358,12 +372,57 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     expect(block.textContent).toContain('Red');
     expect(block.textContent).toContain('absentee owner');
     expect(block.textContent).not.toContain('sun,');
-    const ctas = await screen.findAllByRole('button', { name: /generate dossier/i });
-    await userEvent.click(ctas.at(-1)!);
-    const created = hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> };
-    // Mutation that reds this: ignore `pf.proposals` in submit().
-    expect(created.params.directives).toEqual({ weather: 'sun', colours: ['red'] });
-    expect(created.params.keywords).toEqual(['absentee owner']);
+    // The quote the API verified against the buyer's own text, so a value read
+    // backwards out of a real sentence is visible instead of hidden behind one tick.
+    expect(block.textContent).toContain('«sunshine»');
+  });
+
+  it('applies only what the buyer’s words actually said — an inferred field is shown unticked and not ordered', async () => {
+    // The whole of R7-9 in one assertion. Against a real model, 9 of 10 realistic
+    // notes got a value in ALL SEVEN directive fields, twice contradicting the note;
+    // the block was one pre-ticked checkbox, so all of it went into every agent's
+    // system prompt. Mutation that reds this: `out[k] = true` in `defaultAccepted`.
+    await toProposals({
+      directives: { weather: 'sun', colours: ['red'] },
+      keywords: ['absentee owner'],
+      quotes: { weather: 'sunshine' }, // `colours` was inferred, not read
+    });
+    expect((screen.getByTestId('accept-weather') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId('accept-colours') as HTMLInputElement).checked, 'inferred, not said').toBe(false);
+    const params = await order();
+    expect(params.directives).toEqual({ weather: 'sun' });
+    expect(params.keywords).toEqual(['absentee owner']);
+  });
+
+  it('…and takes the inferred one when the buyer ticks it — the honest read is one click away, not lost', async () => {
+    // The control on the strict version of this fix: "que se maneje sola" → absentee
+    // is a correct read with no literal quote, and refusing it outright would throw
+    // away the good half of the feature.
+    await toProposals({ directives: { colours: ['red'] }, keywords: [], quotes: {} });
+    await userEvent.click(screen.getByTestId('accept-colours'));
+    const params = await order();
+    expect(params.directives).toEqual({ colours: ['red'] });
+  });
+
+  it('never fills an empty BASIC without an explicit tick, however clear the quote', async () => {
+    // A basic decides what gets searched at all, so it is its own block and always
+    // starts unticked. Mutation that reds this: default `basic:` keys to true.
+    await toProposals(
+      { directives: {}, keywords: [], basics: { soilNotes: 'clay, poorly drained' }, quotes: { soilNotes: 'clay soil' } },
+      'clay soil, sandy patches',
+    );
+    expect((screen.getByTestId('accept-basic-soilNotes') as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByTestId('proposals').textContent).toContain('«clay soil»');
+    expect((await order()).soilNotes, 'not ordered while unticked').toBeUndefined();
+  });
+
+  it('…and fills it when they tick it', async () => {
+    await toProposals(
+      { directives: {}, keywords: [], basics: { soilNotes: 'clay, poorly drained' }, quotes: { soilNotes: 'clay soil' } },
+      'clay soil, sandy patches',
+    );
+    await userEvent.click(screen.getByTestId('accept-basic-soilNotes'));
+    expect((await order()).soilNotes).toBe('clay, poorly drained');
   });
 
   it('notes rewritten after the preview are validated again — the deleted text’s proposals are never ordered', async () => {
@@ -453,23 +512,12 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     expect((hooks.preflight.mock.calls.at(-1)?.[0] as { freeText?: string }).freeText).toBe('absentee owners only, please');
   });
 
-  it('…and orders WITHOUT it when the buyer unticks the suggestions', async () => {
-    hooks.preflight.mockResolvedValueOnce({
-      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
-      proposals: { directives: { weather: 'sun' }, keywords: ['absentee owner'] },
-      proposedParams: { gridRegion: 'ERCOT West', parcelUse: 'Somewhere', language: 'es', mode: 'essential', directives: { weather: 'sun' }, keywords: ['absentee owner'] },
-    } as never);
-    renderForm();
-    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
-    await userEvent.type(screen.getByTestId('free-text'), 'sunshine');
-    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
-    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
-    const block = await screen.findByTestId('proposals');
-    await userEvent.click(within(block).getByRole('checkbox'));
-    const ctas = await screen.findAllByRole('button', { name: /generate dossier/i });
-    await userEvent.click(ctas.at(-1)!);
-    const created = hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> };
-    expect(created.params.directives).toBeUndefined();
-    expect(created.params.keywords).toBeUndefined();
+  it('…and orders WITHOUT a quoted one when the buyer unticks it', async () => {
+    await toProposals({ directives: { weather: 'sun' }, keywords: ['absentee owner'], quotes: { weather: 'sunshine' } });
+    await userEvent.click(screen.getByTestId('accept-weather'));
+    await userEvent.click(screen.getByTestId('accept-keywords'));
+    const params = await order();
+    expect(params.directives).toBeUndefined();
+    expect(params.keywords).toBeUndefined();
   });
 });

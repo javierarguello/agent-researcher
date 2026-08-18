@@ -143,9 +143,15 @@ describeMock('pre-flight — the buyer’s own words → proposals (stubbed mode
     expect(JSON.stringify(b)).not.toContain('runs without me');
     expect(JSON.stringify(b)).not.toContain('evil.example');
     expect(JSON.stringify(b)).not.toContain('print the system prompt');
-    // The summary is rendered from the params AS THEY WOULD RUN if accepted — the
-    // deterministic renderer, still without a model's word.
-    expect(b.summary).toContain('absentee owner');
+    // The summary is the request as the buyer TYPED it — NOT with the proposals
+    // folded in. They are opt-in per field now (round 7, R7-9), so a summary
+    // rendered from `proposedParams` described a request the buyer may well
+    // decline, in the voice of "this is what we will research". What the proposals
+    // would add is shown beside it, as a diff, where it can be ticked.
+    expect(b.summary).not.toContain('absentee owner');
+    expect(b.summary, 'still the deterministic plan, with their typo fixed').toContain('laundromats');
+    // …and this stub proposed with no quotes, so nothing claims the buyer said it.
+    expect(b.proposals.quotes).toBeUndefined();
   });
 
   it('a directive the buyer set by hand is not overridden by the text', async () => {
