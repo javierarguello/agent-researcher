@@ -68,6 +68,20 @@ describe('a partial delivery says which parts', () => {
     expect(screen.getByText('shallow')).toBeTruthy();
   });
 
+  it('does not call a rebuilt section a shallow one', async () => {
+    // `reconstructed` means the producer never delivered the section and an
+    // enricher wrote it on the finalize pass. A binary lost/shallow render told
+    // the admin it was "written and delivered, but the step that deepens it never
+    // finished" — the opposite (round 7, R7-1), and the wrong refund call.
+    state.sections = [{ key: 'charts', status: 'reconstructed' }];
+    show();
+
+    await waitFor(() => expect(screen.getByText('charts')).toBeTruthy());
+    expect(screen.getByText('rebuilt')).toBeTruthy();
+    expect(screen.queryByText('shallow')).toBeNull();
+    expect(screen.getByText(/an enricher wrote it on the finalize pass/i)).toBeTruthy();
+  });
+
   it('shows nothing for a clean job', async () => {
     // The control: a panel that is always there is furniture, and an admin stops
     // reading it.

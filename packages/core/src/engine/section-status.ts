@@ -22,13 +22,25 @@
  * why the coercion lives here, in one place, and is called at every read.
  */
 
-/** One section that did not come out whole, and in what way. */
+/**
+ * One section that did not come out whole, and in what way.
+ *
+ *   - `lost` — nothing wrote it; the body is a placeholder and both renderers
+ *     suppress it.
+ *   - `unenriched` — a producer wrote it and the pass that deepens it never
+ *     finished. Real content, less depth than the tier bought.
+ *   - `reconstructed` — the producer never delivered it and an ENRICHER wrote it
+ *     anyway (finalize-in-place runs the deferred steps best-effort). The body
+ *     stays — an enricher with other finished dependencies writes from real
+ *     sections — but nothing researched this section directly, so it must never
+ *     borrow `unenriched`'s "researched and written… sourced as usual" copy.
+ */
 export interface SectionStatus {
   key: string;
-  status: 'lost' | 'unenriched';
+  status: 'lost' | 'unenriched' | 'reconstructed';
 }
 
-const KNOWN = new Set(['lost', 'unenriched']);
+const KNOWN = new Set(['lost', 'unenriched', 'reconstructed']);
 
 /**
  * Read section statuses out of anything a store may hold, in priority order —
@@ -46,7 +58,7 @@ const KNOWN = new Set(['lost', 'unenriched']);
 export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
   const out: SectionStatus[] = [];
   const seen = new Set<string>();
-  const push = (key: string, status: 'lost' | 'unenriched'): void => {
+  const push = (key: string, status: SectionStatus['status']): void => {
     if (!key || seen.has(key)) return;
     seen.add(key);
     out.push({ key, status });
@@ -59,7 +71,7 @@ export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
       } else if (entry && typeof entry === 'object') {
         const { key, status } = entry as { key?: unknown; status?: unknown };
         if (typeof key !== 'string') continue;
-        push(key, typeof status === 'string' && KNOWN.has(status) ? (status as 'lost' | 'unenriched') : 'lost');
+        push(key, typeof status === 'string' && KNOWN.has(status) ? (status as SectionStatus['status']) : 'lost');
       }
     }
   }

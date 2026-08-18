@@ -151,7 +151,7 @@ export interface JobSummary {
   notice?: string;
   /** Sections filled with a degraded placeholder (an agent failed). */
   /** Sections that did not come out whole — see `ReportMeta.sections`. */
-  sections?: Array<{ key: string; status: 'lost' | 'unenriched' }>;
+  sections?: Array<{ key: string; status: 'lost' | 'unenriched' | 'reconstructed' }>;
   /** Per-agent failures (message only; full stack is in trace.json). */
   agentErrors?: Array<{ agentId: string; error: string }>;
 }

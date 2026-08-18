@@ -35,6 +35,19 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+
+/**
+ * One row per section state. A binary lost/shallow render called a
+ * `reconstructed` section "written and delivered, but the step that deepens it
+ * never finished" — the opposite of what happened (round 7, R7-1). An unknown
+ * status falls through to its own text rather than borrowing the friendliest one.
+ */
+const SECTION_STATE: Record<string, { label: string; color: string; detail: string }> = {
+  lost: { label: 'lost', color: 'orange', detail: 'nothing wrote it — the body is a placeholder and both renderers suppress it' },
+  unenriched: { label: 'shallow', color: 'yellow', detail: 'written and delivered, but the step that deepens it never finished' },
+  reconstructed: { label: 'rebuilt', color: 'orange', detail: 'its producer never delivered it; an enricher wrote it on the finalize pass, from the rest of the report' },
+};
+
 export function JobDetail() {
   const { jobId = '' } = useParams();
   const navigate = useNavigate();
@@ -333,19 +346,15 @@ export function JobDetail() {
           which parts, or whether the buyer lost a section or just got a shallower
           one. Those are different conversations with the customer. */}
       {s?.sections && s.sections.length > 0 && (
-        <Alert color={s.sections.some((x) => x.status === 'lost') ? 'orange' : 'yellow'} title="Sections that did not come out whole">
+        <Alert color={s.sections.some((x) => x.status !== 'unenriched') ? 'orange' : 'yellow'} title="Sections that did not come out whole">
           <Stack gap={4}>
             {s.sections.map((x) => (
               <Group key={x.key} gap="xs">
-                <Badge size="sm" color={x.status === 'lost' ? 'orange' : 'yellow'} variant="light">
-                  {x.status === 'lost' ? 'lost' : 'shallow'}
+                <Badge size="sm" color={SECTION_STATE[x.status]?.color ?? 'orange'} variant="light">
+                  {SECTION_STATE[x.status]?.label ?? x.status}
                 </Badge>
                 <Mono size="sm">{x.key}</Mono>
-                <Text size="sm" c="dimmed">
-                  {x.status === 'lost'
-                    ? 'nothing wrote it — the body is a placeholder and both renderers suppress it'
-                    : 'written and delivered, but the step that deepens it never finished'}
-                </Text>
+                <Text size="sm" c="dimmed">{SECTION_STATE[x.status]?.detail ?? 'unknown status — read the engine trace'}</Text>
               </Group>
             ))}
           </Stack>

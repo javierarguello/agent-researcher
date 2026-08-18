@@ -16,15 +16,15 @@
 
 export interface SectionStatus {
   key: string;
-  status: 'lost' | 'unenriched';
+  status: 'lost' | 'unenriched' | 'reconstructed';
 }
 
-const KNOWN = new Set(['lost', 'unenriched']);
+const KNOWN = new Set(['lost', 'unenriched', 'reconstructed']);
 
 export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
   const out: SectionStatus[] = [];
   const seen = new Set<string>();
-  const push = (key: string, status: 'lost' | 'unenriched'): void => {
+  const push = (key: string, status: SectionStatus['status']): void => {
     if (!key || seen.has(key)) return;
     seen.add(key);
     out.push({ key, status });
@@ -37,7 +37,7 @@ export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
       } else if (entry && typeof entry === 'object') {
         const { key, status } = entry as { key?: unknown; status?: unknown };
         if (typeof key !== 'string') continue;
-        push(key, typeof status === 'string' && KNOWN.has(status) ? (status as 'lost' | 'unenriched') : 'lost');
+        push(key, typeof status === 'string' && KNOWN.has(status) ? (status as SectionStatus['status']) : 'lost');
       }
     }
   }

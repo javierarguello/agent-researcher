@@ -84,6 +84,9 @@ export interface ReportMeta {
    *   - `unenriched` — a producer wrote it and a refiner meant to deepen it never
    *     finished. The content is real and MUST still be rendered; what the buyer
    *     got is less depth than the tier they paid for.
+   *   - `reconstructed` — no producer delivered it and an enricher wrote it anyway
+   *     on the finalize pass. Also rendered, and also NOT `unenriched`: nothing
+   *     researched this section directly (round 7, R7-1).
    *
    * This replaced `degradedSections`, a list of strings that could only say "lost"
    * — so `unenriched` was invisible: an admin warning and nothing else, and a
@@ -91,7 +94,7 @@ export interface ReportMeta {
    * at full price, with the buyer never told.
    *
    * NOT the manifest's `sections` (key + title, every section, for rendering).
-   * This one carries only what went wrong, and `status` leaves room for a third
+   * This one carries only what went wrong, and `status` leaves room for another
    * state without another parallel list to keep in step.
    */
   sections?: SectionStatus[];
@@ -756,35 +759,63 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // and, the other way round, a still-pending producer overwrote the real content a
   // refiner had just delivered. Either way the job completed green with a
   // placeholder where the work had been.
+  //
+  // `delivered` is what a PRODUCER finished — not `ownedKeys`, which folds
+  // `enriches` in. An enricher's key is a rewrite of someone else's section, and
+  // on the finalize pass an enricher whose producer was given up on runs anyway,
+  // best-effort, with `current = {}`: it writes the section out of whatever
+  // context exists. Counting that as delivered labelled the result `unenriched`,
+  // whose buyer copy says the section "was researched and written… complete and
+  // sourced as usual" — false in every clause (round 7, R7-1).
+  //
+  // So it is its own state. The body STAYS: an enricher with other finished
+  // dependencies (chart-refiner depends on three agents, one of which produces
+  // `charts`) writes from real sections, and blanking that would throw away work
+  // the buyer paid for. Only the label changes, and it says what happened.
   const delivered = new Set<string>();
   for (const agent of effTemplate.agents) {
-    if (done.has(agent.id)) for (const key of ownedKeys(agent)) delivered.add(key);
+    if (done.has(agent.id)) for (const key of agent.produces ?? []) delivered.add(key);
   }
+  const rebuilt = new Set<string>();
+  for (const agent of effTemplate.agents) {
+    if (!done.has(agent.id)) continue;
+    // Nothing to keep if the enricher's write left the key empty — that is `lost`.
+    for (const key of agent.enriches ?? []) if (!delivered.has(key) && report[key] !== undefined) rebuilt.add(key);
+  }
+
+  // Severity, so a re-dispatch's statuses (carried in `degraded`) are upgraded and
+  // never downgraded: a section nobody wrote is not merely shallow, and one only an
+  // enricher wrote is not merely shallow either.
+  const RANK: Record<SectionStatus['status'], number> = { unenriched: 0, reconstructed: 1, lost: 2 };
+  const mark = (key: string, status: SectionStatus['status']): void => {
+    const at = degraded.findIndex((d) => d.key === key);
+    if (at === -1) degraded.push({ key, status });
+    else if (RANK[status] > RANK[degraded[at]!.status]) degraded[at]!.status = status;
+  };
 
   for (const agent of pending) {
     const reason = agentReason(trace, agent.id, writeFailures[agent.id]);
     // The placeholder the BUYER reads is ours and localized; the internal reason
     // goes to `warnings` (admin-side) on the next line, never into the report.
-    const lost = ownedKeys(agent).filter((key) => !delivered.has(key));
+    const lost = ownedKeys(agent).filter((key) => !delivered.has(key) && !rebuilt.has(key));
     for (const key of lost) {
       report[key] = degradedValue(effTemplate, key, degradedSectionNote(language));
-      const at = degraded.findIndex((d) => d.key === key);
-      // `lost` wins over `unenriched`: a section nobody wrote is not merely shallow.
-      if (at === -1) degraded.push({ key, status: 'lost' });
-      else degraded[at]!.status = 'lost';
+      mark(key, 'lost');
     }
+    // A key an enricher wrote without its producer: real text, honestly labelled.
+    const reconstructed = ownedKeys(agent).filter((key) => rebuilt.has(key));
+    for (const key of reconstructed) mark(key, 'reconstructed');
     // Still worth a warning even when nothing was lost: a step that never finished
     // is a step the admin should see, and "kept" says the section survived it.
     const kept = ownedKeys(agent).filter((key) => delivered.has(key));
     // …and now it says it to the BUYER too. A kept key means the section exists and
     // this step did not run on it — for a refiner, exactly the depth the tier was
     // sold on. The body stays; only the label is added.
-    for (const key of kept) {
-      if (!degraded.some((d) => d.key === key)) degraded.push({ key, status: 'unenriched' });
-    }
+    for (const key of kept) mark(key, 'unenriched');
     warnings.push(
       `Degraded [${lost.join(', ') || 'none'}] from agent "${agent.id}" after exhausting retries/re-dispatches: ${reason}` +
-        (kept.length ? ` (kept, already written: ${kept.join(', ')})` : ''),
+        (kept.length ? ` (kept, already written: ${kept.join(', ')})` : '') +
+        (reconstructed.length ? ` (rebuilt by a later pass: ${reconstructed.join(', ')})` : ''),
     );
   }
 

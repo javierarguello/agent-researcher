@@ -17,7 +17,7 @@ export interface LegacyShapeCase {
   why: string;
   /** Positional args, exactly as the renderers pass them. */
   args: unknown[];
-  expected: Array<{ key: string; status: 'lost' | 'unenriched' }>;
+  expected: Array<{ key: string; status: 'lost' | 'unenriched' | 'reconstructed' }>;
 }
 
 export const LEGACY_SHAPES: LegacyShapeCase[] = [
@@ -40,6 +40,11 @@ export const LEGACY_SHAPES: LegacyShapeCase[] = [
     why: 'an entry with no status at all predates the field and meant lost',
     args: [[{ key: 'verdict' }]],
     expected: [{ key: 'verdict', status: 'lost' }],
+  },
+  {
+    why: 'reconstructed passes through — a body an enricher wrote must not be suppressed',
+    args: [[{ key: 'charts', status: 'reconstructed' }]],
+    expected: [{ key: 'charts', status: 'reconstructed' }],
   },
   {
     why: 'a status this build does not know coerces to lost, never to a rendered body',

@@ -62,6 +62,26 @@ describe('a report written before the rename', () => {
   });
 });
 
+describe('a reconstructed section keeps its body and its own line', () => {
+  // The section no producer ever wrote (round 7, R7-1). Borrowing the
+  // `unenriched` line here tells the buyer it "was researched and written" —
+  // which is the one thing that did not happen — and suppressing it throws away
+  // what the enricher did build from the rest of the dossier.
+  const meta = { sections: [{ key: 'market', status: 'reconstructed' }] };
+
+  it('renders the body', () => {
+    render(<ReportViewer report={report} sections={sections} meta={meta} lang="en" />);
+    expect(screen.getByText(/grew 12% year over year/i)).toBeTruthy();
+    expect(screen.queryByText(/could not complete this section/i)).toBeNull();
+  });
+
+  it('does not claim the section was researched', () => {
+    render(<ReportViewer report={report} sections={sections} meta={meta} lang="en" />);
+    expect(screen.queryByText(/pass that adds extra depth/i)).toBeNull();
+    expect(screen.getByText(/step that researches this section did not finish/i)).toBeTruthy();
+  });
+});
+
 describe('an unenriched section keeps its body on screen', () => {
   // Suppressing both statuses in this component left every suite green: no test
   // anywhere passed `unenriched` to a renderer, and the only behaviour the status

@@ -24,6 +24,7 @@ import { sectionsNotice } from '../src/jobs/report-copy.js';
 import { normalizeSectionStatuses } from '../src/engine/section-status.js';
 import { LEGACY_SHAPES } from './fixtures/legacy-section-shapes.js';
 import type { ResearchTemplate } from '../src/templates/types.js';
+import type { Checkpoint } from '../src/engine/research-engine.js';
 
 /** A producer and a refiner that deepens the producer's section in place. */
 const tpl: ResearchTemplate<Record<string, unknown>> = {
@@ -247,5 +248,109 @@ describe('what the renderers do with data written before this shape existed', ()
       resume: { report: {}, sources: [], doneAgentIds: [], degraded: ['extra'] as never },
     } as never);
     expect(out.meta.sections).toContainEqual({ key: 'extra', status: 'lost' });
+  });
+});
+
+// --- A section only an enricher ever wrote (R7-1) -----------------------------
+//
+// `unenriched` promises the buyer something specific: *a producer wrote this and
+// the depth pass did not run*. Its copy says so in every language — "researched
+// and written… complete and sourced as usual".
+//
+// With finalize-in-place, the second dispatch of a deterministic write failure
+// runs the deferred steps best-effort — so an EXHAUSTED producer's enricher runs
+// with `current = {}`, writes the section out of nothing, and `delivered` counted
+// a done agent's `enriches` key, so the label said `unenriched`. Every clause of
+// that copy was false: nothing researched it, the depth pass is the only thing
+// that ran, and the body is sourced from nothing. Reproduced in review round 7
+// (G2-break F1); all three flagship pairs reach it (charts, market_overview,
+// deep_dives).
+describe('a section its producer never wrote and an enricher did', () => {
+  const dispatch = (jobId: string, resume?: Checkpoint) =>
+    runResearch({ template: tpl, params: {}, jobId, generatedAt: 't', finalize: false, ...(resume ? { resume } : {}) });
+
+  /** Producer exhausted on two dispatches; the refiner's own write is valid. */
+  const twoDispatches = async (jobId: string) => {
+    failingOn('base');
+    const first = await dispatch(jobId);
+    expect(first.trace.status, 'the premise: dispatch 1 asks to be resumed').toBe('incomplete');
+    expect(first.checkpoint.writeFailures?.producer?.dispatches).toBe(1);
+    failingOn('base');
+    const second = await dispatch(jobId, first.checkpoint);
+    // The premise of the whole case: the producer is given up on, nothing is
+    // retryable, so the engine finalizes HERE and the refiner runs best-effort.
+    expect(second.trace.status).toBe('completed');
+    expect(second.trace.agents.find((a) => a.id === 'refiner')!.status).toBe('ok');
+    return second;
+  };
+
+  it('is not labelled unenriched — no producer ever researched it', async () => {
+    const out = await twoDispatches('r7-1a');
+    const byKey = Object.fromEntries((out.meta.sections ?? []).map((x) => [x.key, x.status]));
+    expect(byKey.base).toBe('reconstructed');
+  });
+
+  it('keeps the body: the enricher may have built it from real upstream sections', async () => {
+    // The control on the naive fix (mark it `lost`). `chart-refiner` depends on
+    // three agents and only one of them produces `charts`, so with the analyst
+    // exhausted it still writes from the refined deep-dives and valuations that
+    // ARE in the report. Blanking that would throw away real, paid-for work.
+    const out = await twoDispatches('r7-1b');
+    expect(JSON.stringify(out.report.base)).toContain('REAL base');
+  });
+
+  it('tells the admin which agent never delivered it', async () => {
+    const out = await twoDispatches('r7-1c');
+    expect(out.trace.warnings?.join('\n')).toMatch(/rebuilt by a later pass: base/);
+  });
+
+  it('still says unenriched when a producer DID write the section', async () => {
+    // The control the other way: the ordinary shallow case must not be relabelled.
+    failingOn('extra', 'base'); // the refiner fails; its producer wrote `base`
+    const out = await runResearch({ template: tpl, params: {}, jobId: 'r7-1d', generatedAt: 't' });
+    const byKey = Object.fromEntries((out.meta.sections ?? []).map((x) => [x.key, x.status]));
+    expect(byKey.base).toBe('unenriched');
+  });
+});
+
+describe('the notice for a reconstructed section', () => {
+  it('does not claim it was researched and written', () => {
+    const notice = sectionsNotice('en', [{ status: 'reconstructed' }]);
+    expect(notice).not.toMatch(/researched and written/i);
+    expect(notice).not.toMatch(/sourced as usual/i);
+    expect(notice).toMatch(/did not finish/i);
+  });
+
+  it('counts separately from the other two, in every language', () => {
+    const all = sectionsNotice('en', [{ status: 'lost' }, { status: 'unenriched' }, { status: 'reconstructed' }]);
+    expect(all).toMatch(/could not be completed/i); // lost
+    expect(all).toMatch(/researched and written/i); // unenriched
+    for (const lang of ['en', 'es', 'fr', 'pt']) {
+      expect(sectionsNotice(lang, [{ status: 'reconstructed' }]), lang).not.toBe('');
+      expect(sectionsNotice(lang, [{ status: 'reconstructed' }]), lang).not.toBe(sectionsNotice(lang, [{ status: 'unenriched' }]));
+    }
+  });
+});
+
+describe('a reconstructed section in the PDF', () => {
+  const call = async (statuses: unknown) => {
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    return buildReportHtml({
+      report: { market: { text: 'Laundromat demand in Miami-Dade grew 12% year over year.' } },
+      sections: [{ key: 'market', title: 'Market' }],
+      meta: { sections: statuses },
+      lang: 'en',
+      theme: getPdfTheme('fbizlab'),
+    } as never);
+  };
+
+  it('keeps the body and says the research step behind it never finished', async () => {
+    const html = await call([{ key: 'market', status: 'reconstructed' }]);
+    expect(html, 'the enricher’s work').toContain('grew 12% year over year');
+    // The line BESIDE the section, not the cover notice: `/did not finish/` alone
+    // is satisfied by the cover, so deleting the per-section line left 0 red.
+    expect(html).toMatch(/researches this section did not finish/i);
+    expect(html, 'the unenriched line would claim it was researched').not.toMatch(/pass that adds extra depth/i);
   });
 });

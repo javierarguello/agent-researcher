@@ -97,7 +97,7 @@ export interface JobSummary {
    *  report's language. The raw diagnostics never reach this client. */
   notice?: string;
   /** Sections that did not come out whole. `lost` → the body is suppressed. */
-  sections?: Array<{ key: string; status: 'lost' | 'unenriched' }>;
+  sections?: Array<{ key: string; status: 'lost' | 'unenriched' | 'reconstructed' }>;
 }
 /** `url` is a relative API path fetched WITH the session token (no shareable link). */
 export interface JobFileSigned { name: string; contentType: string; size: number | null; url: string; }

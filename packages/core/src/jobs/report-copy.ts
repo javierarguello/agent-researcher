@@ -90,6 +90,31 @@ const SHALLOW_MANY: Copy = {
 };
 
 /**
+ * A section no producer ever researched, written by the pass that was meant to
+ * DEEPEN it (the producer was given up on and the finalize pass runs the deferred
+ * steps best-effort).
+ *
+ * It must not borrow the `unenriched` sentence: that one says the section "was
+ * researched and written… complete and sourced as usual", which is exactly what
+ * did not happen here. What is true in every case — with real upstream sections
+ * to work from or without — is that the step which researches it never finished
+ * and a later pass wrote it anyway.
+ */
+const REBUILT_ONE: Copy = {
+  en: 'For one section of this dossier the step that researches it did not finish, and a later step wrote the section from the rest of the dossier. Read it as less directly sourced than the others.',
+  es: 'En una sección de este dossier la etapa que la investiga no llegó a completarse, y una etapa posterior la redactó a partir del resto del dossier. Tómala como menos documentada que las demás.',
+  fr: 'Pour une section de ce dossier, l’étape qui la recherche n’a pas abouti, et une étape ultérieure l’a rédigée à partir du reste du dossier. Considérez-la comme moins directement sourcée que les autres.',
+  pt: 'Em uma seção deste dossiê a etapa que a pesquisa não foi concluída, e uma etapa posterior a redigiu a partir do restante do dossiê. Leia-a como menos documentada que as demais.',
+};
+
+const REBUILT_MANY: Copy = {
+  en: 'For {n} sections of this dossier the step that researches them did not finish, and a later step wrote them from the rest of the dossier. Read them as less directly sourced than the others.',
+  es: 'En {n} secciones de este dossier la etapa que las investiga no llegó a completarse, y una etapa posterior las redactó a partir del resto del dossier. Tómalas como menos documentadas que las demás.',
+  fr: 'Pour {n} sections de ce dossier, l’étape qui les recherche n’a pas abouti, et une étape ultérieure les a rédigées à partir du reste du dossier. Considérez-les comme moins directement sourcées que les autres.',
+  pt: 'Em {n} seções deste dossiê a etapa que as pesquisa não foi concluída, e uma etapa posterior as redigiu a partir do restante do dossiê. Leia-as como menos documentadas que as demais.',
+};
+
+/**
  * The line shown above a delivered-but-incomplete report. `''` when there is
  * nothing to say, so a clean report carries no notice at all.
  *
@@ -98,16 +123,18 @@ const SHALLOW_MANY: Copy = {
  * there in front of them, fully written — which is worse than the silence this
  * replaced.
  */
-export function sectionsNotice(lang: unknown, statuses: Array<{ status: 'lost' | 'unenriched' }>): string {
+export function sectionsNotice(lang: unknown, statuses: Array<{ status: 'lost' | 'unenriched' | 'reconstructed' }>): string {
   const l = asLang(lang);
   const lost = statuses.filter((x) => x.status === 'lost').length;
   const shallow = statuses.filter((x) => x.status === 'unenriched').length;
+  const rebuilt = statuses.filter((x) => x.status === 'reconstructed').length;
   const parts: string[] = [];
   if (lost > 0) parts.push(lost === 1 ? pick(LOST_ONE, l) : pick(LOST_MANY, l).replace('{n}', String(lost)));
   if (shallow > 0) parts.push(shallow === 1 ? pick(SHALLOW_ONE, l) : pick(SHALLOW_MANY, l).replace('{n}', String(shallow)));
+  if (rebuilt > 0) parts.push(rebuilt === 1 ? pick(REBUILT_ONE, l) : pick(REBUILT_MANY, l).replace('{n}', String(rebuilt)));
   // Only claimed when it is true. Said unconditionally, it contradicted the very
   // next sentence on a report that had both kinds.
-  if (lost > 0 && shallow === 0) parts.push(pick(ALL_ELSE_OK, l));
+  if (lost > 0 && shallow === 0 && rebuilt === 0) parts.push(pick(ALL_ELSE_OK, l));
   if (lost > 0) parts.push(pick(WRITE_TO_US, l));
   return parts.join(' ');
 }
