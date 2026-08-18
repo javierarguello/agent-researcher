@@ -49,3 +49,41 @@ credit price; whether `essential` may be compared at all or comparison is
 `comprehensive`-only.
 
 **Not started.** No code exists for this.
+
+---
+
+## P-2 · No location given → RECOMMEND where in Florida to look — `open`
+
+**Asked for by Javier, 2026-08-18.** `location` is not required: it defaults to
+`'State of Florida, USA'` (`packages/core/src/templates/florida-business-for-sale.ts:407`,
+verified by reading). So a buyer who skips it gets a state-wide dossier — the
+analysts search all of Florida, the shortlist is whatever the market happened to
+surface, and nothing in the report tells them WHERE the opportunity actually is.
+The only thing that fires today is a soft pre-flight finding
+(`no_narrowing_filter`, `florida-preflight.ts` rules, `severity: 'info'`) saying a
+narrower area gives sharper matches — advice the buyer cannot act on, because they
+do not know which area.
+
+**What to build:** treat "no location" as its own supported case rather than as a
+missing field. The dossier should come back with a RECOMMENDATION of where to
+look — the two or three Florida markets that fit the buyer's industry, budget and
+filters, with the evidence for why (listing density, price levels, demographics,
+competition), and the shortlist ordered by it. Always inside Florida
+(`basePrompt`: *"Stay within the State of Florida unless the criteria explicitly
+say otherwise"*, `florida-business-for-sale.ts:954`).
+
+**Design questions, open:**
+- Is this a section that only appears when `location` is the default (a
+  `where_to_look` section, derived or agent-written), or a first WAVE that picks
+  the markets and hands them to the existing producers as their scope? The second
+  is better research and changes the DAG; the first is additive and cheap.
+- If it is a wave, its output narrows every later agent's search — which is close
+  to the buyer having typed a location, and should probably be shown back to them
+  in the report ("we focused on Hialeah, Kendall and Fort Myers, because…").
+- Interaction with P-1: "compare two locations" and "recommend a location" are the
+  same machinery seen from two ends.
+- Interaction with the assist: the "in your own words" box can now FILL an empty
+  location when the buyer's text names one (`fillable`, `florida-preflight.ts:150`).
+  This item is the case where nobody named one anywhere.
+
+**Not started.** No code exists for this.
