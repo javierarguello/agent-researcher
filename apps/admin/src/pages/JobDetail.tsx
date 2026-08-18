@@ -42,6 +42,27 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
  * never finished" — the opposite of what happened (round 7, R7-1). An unknown
  * status falls through to its own text rather than borrowing the friendliest one.
  */
+/**
+ * A loop that ran and one that never did — an agent with no `gatherStop` is a
+ * synthesizer (no loop at all), which is not the same as a loop that bought
+ * nothing, and neither should render as blank.
+ */
+function Research({ turnsUsed, gatherStop }: { turnsUsed?: number; gatherStop?: string }) {
+  if (!gatherStop && turnsUsed === undefined) return <Text size="sm" c="dimmed">—</Text>;
+  const turns = turnsUsed ?? 0;
+  // `stalled` is a loop cut off; `ceiling` is the job's spend guard. Either with no
+  // turns spent means the section was written from no research of its own.
+  const bad = gatherStop === 'stalled' || gatherStop === 'ceiling';
+  return (
+    <Group gap={6}>
+      <Mono size="sm" c={turns === 0 ? 'orange' : undefined}>{turns} turn{turns === 1 ? '' : 's'}</Mono>
+      {gatherStop && (
+        <Badge size="sm" variant="light" color={bad ? 'orange' : 'gray'} tt="none">{gatherStop}</Badge>
+      )}
+    </Group>
+  );
+}
+
 const SECTION_STATE: Record<string, { label: string; color: string; detail: string }> = {
   lost: { label: 'lost', color: 'orange', detail: 'nothing wrote it — the body is a placeholder and both renderers suppress it' },
   unenriched: { label: 'shallow', color: 'yellow', detail: 'written and delivered, but the step that deepens it never finished' },
@@ -379,6 +400,7 @@ export function JobDetail() {
                   <Table.Th>Status</Table.Th>
                   <Table.Th ta="right">Duration</Table.Th>
                   <Table.Th ta="right">Tries</Table.Th>
+                  <Table.Th>Research</Table.Th>
                   <Table.Th ta="right">Cost</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -392,7 +414,10 @@ export function JobDetail() {
                     <Table.Td ta="right"><Mono size="sm">{a.wave}</Mono></Table.Td>
                     <Table.Td><Badge size="sm" variant="light" color={AGENT_COLOR[a.status] ?? 'gray'} tt="none">{a.status}</Badge></Table.Td>
                     <Table.Td ta="right"><Mono size="sm">{secs(a.durationMs)}</Mono></Table.Td>
-                    <Table.Td ta="right"><Mono size="sm" c={a.attempts > 1 ? 'yellow' : undefined}>{a.attempts}</Mono></Table.Td>
+                    {/* What the loop did, next to what it cost. Without it an agent
+                        that made 22 plan updates and zero searches read exactly like
+                        one that did 21 real turns: `ok · 1 try · $0.38` (R7-30). */}
+                    <Table.Td><Research turnsUsed={a.turnsUsed} gatherStop={a.gatherStop} /></Table.Td>
                     <Table.Td ta="right"><Mono size="sm">{usd(a.costUsd)}</Mono></Table.Td>
                   </Table.Tr>
                 ))}

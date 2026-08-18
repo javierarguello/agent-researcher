@@ -310,6 +310,27 @@ describe('what the admin dashboard is told about a partial delivery', () => {
     expect(booked.mock.calls[0]?.[0].degraded, 'nothing was lost').toBeFalsy();
   });
 
+  it('carries what each agent’s loop did into the summary the admin page reads', async () => {
+    // `JobSummary.agents` copied six fields, and neither `turnsUsed` nor
+    // `gatherStop` was among them — so the admin table rendered an agent that made
+    // 22 plan updates and ZERO searches exactly like one that did 21 real turns
+    // (round 7, R7-30). The column that shows it is pinned in the admin suite; this
+    // is the half that WRITES it, which nothing asserted.
+    await seed('sum1');
+    const res = await runJob(input('sum1'));
+    expect(res.status).toBe('completed');
+
+    const summary = (await getJob('sum1'))!.summary as { agents?: Array<Record<string, unknown>> };
+    const scout = summary.agents?.find((a) => a.id === 'scout')!;
+    // Mutation that reds this: drop the two spread fields in `run-job.ts`'s agents map.
+    expect(scout.turnsUsed, 'the turns its loop paid for').toBeGreaterThan(0);
+    expect(scout.gatherStop, 'how the loop ended').toBeTruthy();
+    // A synthesizer never had a loop: absent, not zero — a `0 · —` row reads as a
+    // failed agent to whoever is deciding about a refund.
+    const advisor = summary.agents?.find((a) => a.id === 'advisor');
+    if (advisor) expect(advisor.gatherStop).toBeUndefined();
+  });
+
   it('still counts one when a section really was lost', async () => {
     // The control. Without it the fix above also passes on a field wired to
     // `false`, which is the failure this whole backlog keeps finding.

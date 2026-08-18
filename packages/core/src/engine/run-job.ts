@@ -512,6 +512,12 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     const durationMs = output.trace.durationMs ?? 0;
     const agents = output.trace.agents.map((a) => ({
       id: a.id, wave: a.wave, status: a.status, durationMs: a.durationMs ?? null, attempts: a.attempts, costUsd: a.cost.usd,
+      // What the loop actually did. Six fields went out and neither of these was
+      // among them, so `ok · 1 try · $0.38` was all an admin could see of an agent
+      // that searched nothing (R7-30). Written only when there was a loop —
+      // a synthesizer has none, and `0 · —` would read as a failure.
+      ...(a.turnsUsed ? { turnsUsed: a.turnsUsed } : {}),
+      ...(a.gatherStop ? { gatherStop: a.gatherStop } : {}),
     }));
     const agentErrors = output.trace.agents
       .filter((a) => a.status === 'failed')

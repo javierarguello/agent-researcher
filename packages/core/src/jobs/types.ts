@@ -142,8 +142,26 @@ export interface JobSummary {
   durationMs: number;
   /** How many worker dispatches the job took to finish. */
   attempts?: number;
-  /** Per-agent timing + retries (heavy detail lives in trace.json). */
-  agents?: Array<{ id: string; wave: number; status: string; durationMs: number | null; attempts: number; costUsd: number }>;
+  /**
+   * Per-agent timing + retries (heavy detail lives in trace.json).
+   *
+   * `turnsUsed`/`gatherStop` are here because without them the admin table renders
+   * an agent that made 22 plan updates and ZERO searches identically to one that
+   * did 21 real turns: `ok · 1 try · $0.38` (round 7, R7-30). They are the only
+   * surviving signal on a multi-dispatch job, where `slimAgents()` has already
+   * blanked the loop's closing note. Absent on summaries written before they
+   * existed — an old job renders a dash, not a zero.
+   */
+  agents?: Array<{
+    id: string;
+    wave: number;
+    status: string;
+    durationMs: number | null;
+    attempts: number;
+    costUsd: number;
+    turnsUsed?: number;
+    gatherStop?: string;
+  }>;
   /** Warnings to review later (e.g. sections degraded after exhausting retries).
    *  INTERNAL: names agents and section keys, in English. Admin surfaces only. */
   warnings?: string[];

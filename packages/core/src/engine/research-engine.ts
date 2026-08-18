@@ -253,6 +253,15 @@ export interface Checkpoint {
   handoffs?: Record<string, string>;
   /** Section statuses so far — see `ReportMeta.sections`. */
   degraded: SectionStatus[];
+  /**
+   * Admin-facing warnings raised on EARLIER dispatches, carried so the delivering
+   * one still reports them. `slimAgents()` writes `notes: []`, so anything recorded
+   * only as an agent note is gone on the next dispatch — which is how a job that
+   * shrank a section on dispatch 1 and delivered on dispatch 2 shipped 3 of 6
+   * listings with nothing anywhere saying so (round 7, R7-4). Absent on checkpoints
+   * written before it existed; those resume with none, as they did.
+   */
+  warnings?: string[];
   /** Traces of agents already completed on prior dispatches — restored so the final
    *  trace/summary reflects the WHOLE run, not just the last resumed dispatch. */
   agentTraces?: AgentTrace[];
@@ -358,7 +367,9 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // or not: it degrades with the rest of the unfinished steps.
   const writeFailures: Record<string, WriteFailure> = { ...(input.resume?.writeFailures ?? {}) };
   const exhausted = (agentId: string) => writeFailureExhausted(writeFailures[agentId]);
-  const warnings: string[] = [];
+  // Seeded from the checkpoint: a warning is about the JOB, not about the dispatch
+  // that happened to notice it.
+  const warnings: string[] = [...(input.resume?.warnings ?? [])];
   const counter = { turns: 0 };
   const finalize = input.finalize ?? true;
 
@@ -433,6 +444,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     gatheredAgentIds: [...gathered],
     handoffs,
     degraded,
+    warnings,
     agentTraces: slimAgents(),
     cost: trace.cost,
     writeFailures,
@@ -580,6 +592,17 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
               for (const [label, before, after] of arrayFields(key, report[key], slice[key])) {
                 if (after < before) {
                   at.notes.push(`${new Date().toISOString()} rewrite of "${label}" returned ${after} item(s) where the current version had ${before}; the previous version is in the analyst's trace output.`);
+                  // …and where an admin actually reads. The note alone reached no
+                  // screen: `JobSummary.agents` carries six fields and `notes` is not
+                  // one of them, no admin page renders it, and `slimAgents()` blanks
+                  // it in the checkpoint, so a re-dispatch deleted the only record
+                  // (round 7, R7-4). `warnings` is admin-only — the API redacts it
+                  // for a buyer — and does NOT make the report degraded: an honest
+                  // dedup must not tell a buyer their dossier is incomplete.
+                  warnings.push(
+                    `Agent "${agent.id}" rewrote "${label}": ${after} item(s) where the current version had ${before}; ` +
+                      `the previous version is in that agent's trace output.`,
+                  );
                 }
               }
             }
@@ -709,6 +732,9 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     cost: trace.cost,
     ...(degraded.length ? { sections: degraded } : {}),
   });
+  // Before the early returns below, not only at the end: a dispatch that ends
+  // `incomplete` or `held` still raised whatever it raised.
+  if (warnings.length) trace.warnings = warnings;
   const checkpoint: Checkpoint = snapshot();
 
   const budgetStopped = jobSpend.budget().exceeded;

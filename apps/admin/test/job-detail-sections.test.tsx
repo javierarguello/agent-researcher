@@ -17,7 +17,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
 
 const { state } = vi.hoisted(() => ({
-  state: { sections: undefined as Array<{ key: string; status: string }> | undefined },
+  state: {
+    sections: undefined as Array<{ key: string; status: string }> | undefined,
+    agents: undefined as Array<Record<string, unknown>> | undefined,
+  },
 }));
 
 vi.mock('../src/api/client', async (orig) => ({
@@ -28,7 +31,7 @@ vi.mock('../src/api/client', async (orig) => ({
         jobId: 'j1', appId: 'fbizlab', userId: 'u@x.com', template: 't', status: 'completed',
         params: {}, cost: { usd: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
         error: null,
-        summary: { attempts: 1, ...(state.sections ? { sections: state.sections } : {}) },
+        summary: { attempts: 1, ...(state.sections ? { sections: state.sections } : {}), ...(state.agents ? { agents: state.agents } : {}) },
       });
     }
     return Promise.resolve({ sections: [], modes: [], steps: [] });
@@ -50,7 +53,7 @@ function show() {
   );
 }
 
-beforeEach(() => { state.sections = undefined; });
+beforeEach(() => { state.sections = undefined; state.agents = undefined; });
 
 describe('a partial delivery says which parts', () => {
   it('names the section and tells the two states apart', async () => {
@@ -80,6 +83,28 @@ describe('a partial delivery says which parts', () => {
     expect(screen.getByText('rebuilt')).toBeTruthy();
     expect(screen.queryByText('shallow')).toBeNull();
     expect(screen.getByText(/an enricher wrote it on the finalize pass/i)).toBeTruthy();
+  });
+
+  it('tells a step that researched nothing from one that did — the loop, next to the cost', async () => {
+    // `ok · 1 try · $0.38` was the whole row, so the agent that made 22 plan updates
+    // and zero searches was byte-identical to the one that did 21 real turns
+    // (round 7, R7-30). `gatherStop` existed and reached no screen; on a
+    // multi-dispatch job it is the ONLY surviving signal, because `slimAgents()`
+    // blanks the loop's closing note in the checkpoint.
+    state.agents = [
+      { id: 'deal-scout', wave: 1, status: 'ok', durationMs: 1000, attempts: 1, costUsd: 0.38, turnsUsed: 21, gatherStop: 'budget' },
+      { id: 'deep-dive-refiner', wave: 2, status: 'ok', durationMs: 1000, attempts: 1, costUsd: 0.38, turnsUsed: 0, gatherStop: 'stalled' },
+      { id: 'chart-analyst', wave: 3, status: 'ok', durationMs: 500, attempts: 1, costUsd: 0.02 },
+    ];
+    show();
+
+    await waitFor(() => expect(screen.getAllByText('deal-scout').length).toBeGreaterThan(0));
+    expect(screen.getByText('21 turns')).toBeTruthy();
+    expect(screen.getByText('budget')).toBeTruthy();
+    expect(screen.getByText('0 turns')).toBeTruthy();
+    expect(screen.getByText('stalled')).toBeTruthy();
+    // A synthesizer never had a loop; a bare `0` there would read as a failure.
+    expect(screen.getByText('—')).toBeTruthy();
   });
 
   it('shows nothing for a clean job', async () => {

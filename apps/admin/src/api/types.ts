@@ -137,6 +137,11 @@ export interface JobAgentSummary {
   durationMs: number | null;
   attempts: number;
   costUsd: number;
+  /** Research turns the agent's loop paid for. Absent for a synthesizer (no loop)
+   *  and for jobs summarised before the field existed. */
+  turnsUsed?: number;
+  /** How the loop ended: done · budget · stalled · ceiling. */
+  gatherStop?: string;
 }
 export interface JobSummary {
   mode?: string;

@@ -426,6 +426,56 @@ describe('3a · the enricher’s current block, today and fenced', () => {
     // The analyst's six are still in the trace, recoverable.
     expect(JSON.stringify(out.trace.agents.find((a) => a.id === 'scout')!.output)).toContain('Coral Way Coin Laundry');
   });
+
+  it('and the note reaches a screen: it is a WARNING, so it survives the checkpoint and the summary (before the fix: `at.notes` only — dropped by JobSummary, rendered by no admin page, and blanked by `slimAgents()` on the next dispatch)', async () => {
+    // The multi-dispatch case, which the pin above never exercised (round 7, R7-4).
+    // `slimAgents()` writes `notes: []` into the checkpoint, so a job that shrank a
+    // section on dispatch 1 and delivered on dispatch 2 shipped 3 of 6 listings with
+    // NOTHING anywhere saying so: no note, no warning, `meta.sections` empty, job
+    // green. `warnings` is admin-only (`api/src/index.ts` redacts it for a buyer)
+    // and now rides the checkpoint, so the record survives the dispatch that made it.
+    let dispatchNo = 0;
+    class ShrinkThenFail extends MockLlmProvider {
+      override async generate(opts: GenerateOptions): Promise<GenerateResult> {
+        const r = await super.generate(opts);
+        if (!opts.responseSchema) return r;
+        const keys = Object.keys((opts.responseSchema as { properties?: object }).properties ?? {});
+        // The advisor's write fails on every attempt of the FIRST dispatch, so
+        // dispatch 1 ends `incomplete` and the delivery happens on dispatch 2.
+        if (keys.includes('recommendation') && dispatchNo === 1) return { ...r, text: 'not json' };
+        const text = opts.messages.map((m) => m.text ?? '').join('\n');
+        if (text.startsWith('Write your assigned report sections')) {
+          return { ...r, text: JSON.stringify({ ...CURRENT_FINDINGS, _handoff: 'Six listings found.' }) };
+        }
+        if (text.startsWith('Improve and enrich the sections below')) {
+          return { ...r, text: JSON.stringify({ findings: { ...CURRENT_FINDINGS.findings, listings: SIX_LISTINGS.slice(0, 3) }, _handoff: 'Refined.' }) };
+        }
+        return r;
+      }
+    }
+    const mock = new ShrinkThenFail();
+    for (const name of ['gemini-vertex', 'ollama']) (await import('../../src/llm/models.js')).__setProviderForTests(name, mock);
+    const params = redTeamModel.paramsSchema.parse({}) as Record<string, unknown>;
+    dispatchNo = 1;
+    const first = await runResearch({ template: redTeamModel, params, jobId: 'a1-shrink-2d', generatedAt: '2026-08-17T00:00:00.000Z', finalize: false });
+    expect(first.trace.status, 'the premise: the shrink happens on a dispatch that does not deliver').toBe('incomplete');
+    expect(first.trace.warnings?.join('\n')).toMatch(/rewrote "findings.listings": 3 item\(s\) where the current version had 6/);
+    // The checkpoint carries it — `notes` do not survive `slimAgents()`.
+    expect(first.checkpoint.agentTraces?.find((a) => a.id === 'refiner')?.notes).toEqual([]);
+    expect(first.checkpoint.warnings?.join('\n')).toMatch(/rewrote "findings.listings": 3 item\(s\)/);
+
+    dispatchNo = 2;
+    const second = await runResearch({ template: redTeamModel, params, jobId: 'a1-shrink-2d', generatedAt: '2026-08-17T00:00:00.000Z', resume: first.checkpoint });
+    expect(second.trace.status).toBe('completed');
+    expect((second.report.findings as { listings: unknown[] }).listings.length).toBe(3);
+    // Mutation that reds this: push the shrink line to `at.notes` only, or drop
+    // `warnings` from the checkpoint/`resume` seed.
+    expect(second.trace.warnings?.join('\n'), 'the delivering dispatch says what happened').toMatch(
+      /Agent "refiner" rewrote "findings.listings": 3 item\(s\) where the current version had 6/,
+    );
+    // …and it is still not a buyer-facing degradation: the section is whole.
+    expect(second.meta.sections ?? []).toEqual([]);
+  });
 });
 
 // ============================================================================
