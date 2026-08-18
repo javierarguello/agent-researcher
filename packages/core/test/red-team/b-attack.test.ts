@@ -250,6 +250,14 @@ const NOTE_MODEL: ResearchTemplate<Record<string, unknown>> = {
   buildBrief: () => 'Find laundromats for sale in Miami.',
 };
 
+/** Same, with allowance left mid-loop: a cached re-read past the budget is refused
+ *  before it is ever noted, so the note flood only exists while turns remain. */
+const CACHED_FLOOD_MODEL: ResearchTemplate<Record<string, unknown>> = {
+  ...NOTE_MODEL,
+  id: 'b-notes-cached',
+  agents: [{ id: 'scout', role: 'producer', objective: 'Find listings.', produces: ['alpha'], researchBudget: 20, model: 'flash', gatherModel: 'gather' }],
+};
+
 const notePage = (): Page => ({
   url: 'https://attacker.test/note-flood',
   title: 'Miami laundromat (PZ-FLOOD)',
@@ -303,6 +311,48 @@ describe('F2 · a page floods the per-agent trace notes and evicts the real ones
     // The default script's own opening plan, plus ONE for the flood turn.
     expect(planNotes).toBe(2);
     expect(planProgress, 'buyer progress channel flooded').toBeLessThan(50);
+  });
+
+  it('and survives 400 cached re-reads of ONE page in one turn — the same flood through the other free branch (R7-29: before the fix 300/300 slots were cached spam, the "Writing" note and the loop’s own closing note were evicted, and 410 progress writes fired)', async () => {
+    // What `f013cfe` closed for `update_plan` it left open next door: the cached
+    // `fetch_page` branch noted every call. The same-URL cap replaced the page
+    // BODY from the third read on and kept noting. `MAX_NOTES` keeps the FIRST
+    // 300, so the notes an admin needs — the ones written last — are the ones lost.
+    let stage = 0;
+    const floodPayload: Payload = {
+      id: 'cached-flood',
+      kind: 'store',
+      sentinel: 'PZ-FLOOD',
+      page: notePage(),
+      obeyLoop: (ctx) => {
+        if (!ctx.text.includes('PZ-FLOOD')) return null;
+        stage += 1;
+        // One paid fetch to put the page in the store, then 400 free re-reads of it
+        // in a SINGLE model turn (292 of these fit in one 4,096-token turn).
+        if (stage === 1) return [{ id: 'seed', name: 'fetch_page', args: { url: notePage().url } }];
+        if (stage === 2) {
+          return Array.from({ length: 400 }, (_, i) => ({ id: `c${i}`, name: 'fetch_page', args: { url: notePage().url } }));
+        }
+        return 'stop';
+      },
+    };
+    const { out, progress } = await run({ template: CACHED_FLOOD_MODEL, payloads: [floodPayload], extraPages: [notePage()], params: { mode: 'comprehensive' } });
+    restore = () => __setExtraPages([]);
+
+    const scout = out.trace.agents.find((a) => a.id === 'scout')!;
+    const cachedNotes = scout.notes.filter((n) => /Reused|Declined to re-send/.test(n)).length;
+    // eslint-disable-next-line no-console
+    console.log(`R7-29 stored notes: ${scout.notes.length} (cached: ${cachedNotes}); progress lines: ${progress.length}`);
+
+    // Mutation that reds this: note inside the cached branch again (per call)
+    // instead of once per turn.
+    // Two, not 400: one for the two reads that returned the body, one for the 398
+    // we refused — and both name their count, so the flood is still visible.
+    expect(cachedNotes, 'one note per free branch per turn, not one per call').toBe(2);
+    expect(scout.notes.some((n) => /Declined to re-send 398 pages already returned twice/.test(n))).toBe(true);
+    expect(scout.notes.some((n) => n.includes('Writing')), 'admin lost the "Writing" note').toBe(true);
+    expect(scout.notes.some((n) => n.includes('Research loop ended')), 'the loop’s own closing note was evicted').toBe(true);
+    expect(progress.length, 'buyer progress channel flooded').toBeLessThan(50);
   });
 
   it('control: an honest run keeps the "Writing" note and a handful of progress lines', async () => {
@@ -438,9 +488,11 @@ describe('F4 · handoff propagation is bounded and structurally neutralised', ()
 });
 
 // ===========================================================================
-// F5 · Cost: the iteration ceiling bounds page bodies (KEEP_FULL_PAGES=2) but
-//      NOT the accumulated model turns + update_plan results, so context still
-//      grows with iterations. Quantified for a Florida-flagship-sized budget.
+// F5 · Cost: the iteration ceiling bounds page bodies (KEEP_FULL_PAGES=2) but NOT
+//      the accumulated model turns + update_plan results, so context grew with
+//      iterations — and one free call per turn kept the plan breaker blind, so
+//      "iterations" meant the full 2·budget+6. Round 7 (R7-3) closed the second
+//      half: a turn that buys nothing counts, whatever branch it came through.
 // ===========================================================================
 
 /** A producer with a large research budget, so maxIterations is Florida-sized. */
@@ -459,8 +511,8 @@ const FL_MODEL: ResearchTemplate<Record<string, unknown>> = {
   buildBrief: () => 'Find laundromats for sale in Miami.',
 };
 
-describe('F5 · a cached-fetch/plan-spam loop keeps GROWING within the iteration ceiling', () => {
-  it('the last loop prompt is far larger than the first — the bound is not tight (KEEP_FULL_PAGES caps pages, not turns)', async () => {
+describe('F5 · a cached-fetch/plan-spam loop is cut off instead of growing to the iteration ceiling', () => {
+  it('the (plan + cached re-read) loop ends after 13 iterations on 2 turns of budget, and the trace says why — before R7-3 it ran the whole 54 and each request kept growing', async () => {
     const spamUrl = 'https://attacker.test/cost-spam';
     const spamPage: Page = {
       url: spamUrl,
@@ -494,12 +546,18 @@ describe('F5 · a cached-fetch/plan-spam loop keeps GROWING within the iteration
     // eslint-disable-next-line no-console
     console.log(`F5 loop calls: ${loop.length}, turnsUsed: ${out.turnsUsed}, total loop chars: ${total}, first: ${sizes[0]}, last: ${sizes.at(-1)}`);
 
-    // The loop ran to the iteration ceiling on ~2 real turns of budget …
-    expect(loop.length).toBeGreaterThan(40);
+    // The measurement this test exists for. With the general breaker reverted
+    // (`NO_PROGRESS_TURNS_LIMIT = 9999`) the same attack runs 54 calls / 838,702
+    // chars, its last request 22× its first; here it is 13 / 53,674 and 5×. The
+    // per-request growth is unchanged (the conversation still accumulates, which is
+    // what KEEP_FULL_PAGES does not bound) — what changed is how long it may go on.
+    expect(loop.length, 'the loop is cut, not run to 2·24+6').toBe(13);
     expect(out.turnsUsed).toBeLessThanOrEqual(3);
-    // … and each request is bigger than the last: context grows with ITERATIONS
-    // even though page bodies are capped at 2. The ceiling bounds the count of
-    // requests, not the size of each — so total input is quadratic in the ceiling.
-    expect(sizes.at(-1)!).toBeGreaterThan(sizes[0]! * 3);
+    expect(total).toBeLessThan(150_000);
+    // And it is in the trace: an admin reading a $0 agent can see it was cut off
+    // rather than that the model chose to stop.
+    const scout = out.trace.agents.find((a) => a.id === 'scout')!;
+    expect(scout.notes.some((n) => /Stopping research: 8 turns in a row with no new evidence/.test(n))).toBe(true);
+    expect(scout.gatherStop).toBe('stalled');
   });
 });

@@ -197,6 +197,32 @@ const PLAN_TURNS_BEFORE_NUDGE = 3;
 const PLAN_TURNS_LIMIT = 4;
 
 /**
+ * The same bound for turns that buy nothing by ANY route, not just planning.
+ *
+ * One free call per turn walked straight around the plan breaker:
+ * `[update_plan, fetch_page(cached)]` on repeat cost 54 LLM calls and 974,761
+ * prompt chars for 0 research turns and 0 new evidence, ending `stalled` with a
+ * note that read as if the model had stopped on its own (round 7, R7-3). The
+ * same-URL body cap turned out to be a 38% discount on that, not a bound: what
+ * kept growing was the conversation, not the page bodies. The real pathological
+ * refiner in the July traces is `(Pc)*`; the breaker caught it only because its
+ * four re-reads happened to come first.
+ *
+ * "Buys nothing" is `buysNothing()` below, decided BEFORE the calls run: a plan
+ * update, a call we are about to refuse (allowance spent, search dead, unknown
+ * tool), or a re-read of a page whose body we will not send again. A paid search
+ * or fetch resets it — and so does a cached read that DOES return a body, which
+ * is what keeps the honest `P c P c P F` refiner alive.
+ *
+ * Looser than the plan bound on purpose, and measured: the most free-and-useless
+ * turns in a row any honest persona in `b-legit` reaches is 6 (the cross-checker
+ * that re-reads ONE listing five times: reads 3-5 are answered with the stub, and
+ * it re-plans between them). 8 keeps the same two-turn margin the plan bound has
+ * over its own honest maximum of 2.
+ */
+const NO_PROGRESS_TURNS_LIMIT = 8;
+
+/**
  * How many times the SAME cached page is returned in full to one loop.
  *
  * The honest deep-dive-refiner re-reads pages the scout fetched — four distinct
@@ -280,6 +306,8 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   const MAX_SEARCH_FAILURES = 3;
   /** Model turns in a row that carried only `update_plan` calls. */
   let planOnlyTurns = 0;
+  /** Model turns in a row that bought nothing and returned nothing new (⊇ the above). */
+  let noProgressTurns = 0;
   /** Full-text returns per cached URL, this loop. */
   const cachedReads = new Map<string, number>();
   // Assume the worst until the loop ends for a reason: an unexpected exit is a
@@ -310,7 +338,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       // three turns in a row without searching: under Gemini's mode ANY the model
       // cannot answer without a tool call, and the honest way out of a plan-loop
       // is to let it say it is ready (or to end the loop, below).
-      forceTools: turnsUsed === 0 && planOnlyTurns < PLAN_TURNS_BEFORE_NUDGE,
+      forceTools: turnsUsed === 0 && noProgressTurns < PLAN_TURNS_BEFORE_NUDGE,
       model: model.model,
       // A research turn emits a plan or a query — nothing long. Without these two
       // it could emit up to the model default on every one of `2×budget+6` turns,
@@ -326,14 +354,37 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     // outside `untrusted()`. Its own authority, but the marker still must not ride.
     messages.push({ role: 'model', text: stripFenceMarker(res.text), toolCalls: res.toolCalls });
 
+    // Classified BEFORE the calls run, so the loop can end without paying for the
+    // turn — the same shape as the plan-only rule this replaces. Every branch below
+    // that spends a turn, or returns a page body, is `false` here.
+    const buysNothing = (c: ToolCall): boolean => {
+      if (c.name === 'update_plan') return true;
+      if (c.name === 'web_search') return turnsUsed >= maxTurns || searchFailures >= MAX_SEARCH_FAILURES;
+      if (c.name === 'fetch_page') {
+        if (turnsUsed >= maxTurns) return true;
+        const url = String((c.args as any).url ?? '').trim();
+        // A cached page we are about to answer with the stub teaches the model
+        // nothing it has not already been told twice. A first or second read does.
+        if (url && evidence.extractedUrls.has(url)) return (cachedReads.get(url) ?? 0) + 1 > MAX_SAME_URL_CACHED_READS;
+        return false; // a paid fetch
+      }
+      return true; // unknown tool: an error string back, nothing bought
+    };
+    const noProgress = res.toolCalls.length > 0 && res.toolCalls.every(buysNothing);
+    noProgressTurns = noProgress ? noProgressTurns + 1 : 0;
     const planOnly = res.toolCalls.length > 0 && res.toolCalls.every((c) => c.name === 'update_plan');
     planOnlyTurns = planOnly ? planOnlyTurns + 1 : 0;
+    // The nudge below was delivered on an earlier turn and the model asked for
+    // nothing again. Nothing it can plan or re-read will change without new
+    // evidence; end the loop rather than pay for the rest of the iterations.
+    // `stalled`, not `done`: it was cut off, and with the allowance unspent there
+    // is nothing worth reusing anyway.
     if (planOnlyTurns >= PLAN_TURNS_LIMIT) {
-      // The nudge below was delivered on the previous turn and the model planned
-      // again. Nothing it can plan will change without a search; end the loop
-      // rather than pay for the rest of the iterations. `stalled`, not `done`: it
-      // was cut off, and with no turn spent there is nothing to reuse anyway.
       await note(`Stopping research: ${planOnlyTurns} plan updates in a row with no search or fetch.`, 'stopped');
+      break;
+    }
+    if (noProgressTurns >= NO_PROGRESS_TURNS_LIMIT) {
+      await note(`Stopping research: ${noProgressTurns} turns in a row with no new evidence (no search, no new page).`, 'stopped');
       break;
     }
 
@@ -354,16 +405,24 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       break;
     }
 
+    // One note per FREE branch per model turn, however many calls the turn carried.
+    // A note is a trace line, a progress write and a buyer-visible message, and a
+    // turn carrying hundreds of free calls used to emit one of each per call — 400
+    // cached re-reads evicted the `Writing` note and the loop's own closing note
+    // from the 300 an agent keeps, and fired 410 progress writes (round 7, R7-29).
     let planNoted = false;
+    let cachedReused = 0;
+    let cachedDeclined = 0;
     for (const call of res.toolCalls) {
       if (call.name === 'update_plan') {
         plan = Array.isArray((call.args as any).steps) ? ((call.args as any).steps as PlanStep[]) : plan;
         const response: Record<string, unknown> = { ok: true, turnsLeft: Math.max(0, maxTurns - turnsUsed) };
-        if (planOnly && planOnlyTurns >= PLAN_TURNS_BEFORE_NUDGE) {
+        if (noProgress && noProgressTurns >= PLAN_TURNS_BEFORE_NUDGE) {
           response.stopPlanning = true;
           response.message =
-            `You have updated the plan ${planOnlyTurns} turns in a row without searching or fetching. ` +
-            `Do not call update_plan again: either web_search / fetch_page now, or stop calling tools and say you are ready to write.`;
+            `You have spent ${noProgressTurns} turns in a row without gathering anything new — no search, and no page you ` +
+            `have not already been given. Do not call update_plan again: either web_search / fetch_page a NEW url now, or ` +
+            `stop calling tools and say you are ready to write.`;
         }
         messages.push({ role: 'tool', toolResult: { name: call.name, response } });
         // One note per model turn, however many plan calls it carried: the note
@@ -464,7 +523,8 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
               },
             },
           });
-          await note(reads > MAX_SAME_URL_CACHED_READS ? `Declined to re-send a page already returned twice.` : `Reused cached page.`, 'cached');
+          if (reads > MAX_SAME_URL_CACHED_READS) cachedDeclined += 1;
+          else cachedReused += 1;
           continue;
         }
         // The turn is spent either way — that is the budget guard, and it is
@@ -500,6 +560,19 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       } else {
         messages.push({ role: 'tool', toolResult: { name: call.name, response: { error: `Unknown tool: ${call.name}` } } });
       }
+    }
+    // After the turn, so the count is the turn's: `Reused cached page.` stays the
+    // wording for the ordinary one-per-turn re-read the honest refiner does.
+    if (cachedReused) {
+      await note(cachedReused === 1 ? `Reused cached page.` : `Reused ${cachedReused} cached pages.`, 'cached');
+    }
+    if (cachedDeclined) {
+      await note(
+        cachedDeclined === 1
+          ? `Declined to re-send a page already returned twice.`
+          : `Declined to re-send ${cachedDeclined} pages already returned twice.`,
+        'cached',
+      );
     }
   }
 

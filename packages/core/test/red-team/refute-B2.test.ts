@@ -207,7 +207,12 @@ describe('refute B2 · today’s gather on the real sequences', () => {
     const real = 'PSPFFFPSPFFFPccSPFPSPSPcPFPcPSPPSPcPSPSPSPPSPPcSPSSPSS';
     expect(real.length).toBe(54);
     const r = await replay(real, 24);
-    expect(r.iterations).toBe(54);
+    // 52, not the full 54: the trace's last eight turns come AFTER the 24th paid
+    // call, so every search in them is refused ("Budget reached") — eight turns in
+    // a row that bought nothing, which the general breaker now ends (R7-3). Two
+    // LLM calls of the real trace were pure loss. What this test is about is
+    // unchanged: the allowance was spent, so the loop counts as finished.
+    expect(r.iterations).toBe(52);
     expect(r.turns).toBe(24);
     // Mutation that reds this: drop `if (stop === 'stalled' && turnsUsed >= maxTurns) stop = 'budget'`
     // at the end of gather() → stop 'stalled', gatherCompleted false.
@@ -240,6 +245,48 @@ describe('refute B2 · today’s gather on the real sequences', () => {
       // The nudge came first: on the third plan-only turn the plan result said stop planning.
       expect(notes.filter((n) => n.startsWith('Plan updated')).length).toBeLessThanOrEqual(seq.indexOf('PPPP') + 4);
     }
+  });
+
+  it('one free cached re-read per turn no longer walks around the breaker: `(Pc)*` ends at 12 iterations, not the 54 bound — and the honest `P c P c P F` refiner is untouched (R7-3)', async () => {
+    restore = __setExtraPages(LOTS);
+    // The dodge, measured in round 7 (G1-break F2): the plan breaker only looked at
+    // turns that were ONLY `update_plan`, so appending one free call per turn made
+    // it blind. `[update_plan, fetch_page(cached)]` on repeat cost 54 LLM calls and
+    // 974,761 prompt chars for 0 turns and 0 evidence. Here the same shape is one
+    // call per turn, alternating, which is the real pathological refiner's `(Pc)*`.
+    const evidence = createEvidence();
+    evidence.extractedUrls.add(LOTS[0]!.url);
+    evidence.extracted.push({ url: LOTS[0]!.url, ok: true, content: LOTS[0]!.content });
+    const notes: string[] = [];
+    const p = new Replay('Pc'.repeat(27));
+    __setProviderForTests('gemini-vertex', p);
+    __setProviderForTests('ollama', p);
+    const r = await gather({ model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }], maxTurns: 24, evidence, onNote: (n) => { notes.push(n); } });
+
+    // The first two re-reads return the page body (progress); from the third the
+    // body is refused, and eight such turns in a row end the loop. Mutation that
+    // reds this: `NO_PROGRESS_TURNS_LIMIT` past the bound, or `buysNothing()`
+    // returning false for a stubbed cached read.
+    expect(p.calls).toBe(12);
+    expect(p.calls).toBeLessThan(2 * 24 + 6);
+    expect(r.turns).toBe(0);
+    expect(r.stop).toBe('stalled');
+    expect(notes.some((n) => /Stopping research: 8 turns in a row with no new evidence/.test(n))).toBe(true);
+
+    // The honest counter-example, from out/local-4837f6e3: a refiner that re-reads
+    // pages the scout fetched and then pays for one of its own. A blanket
+    // "no free calls in a row" breaker would cut this; a cached read that returns a
+    // BODY is progress, so it runs to the end.
+    const seeded = createEvidence();
+    seeded.extractedUrls.add(LOTS[0]!.url);
+    seeded.extracted.push({ url: LOTS[0]!.url, ok: true, content: LOTS[0]!.content });
+    const h = new Replay('PcPcPFP');
+    __setProviderForTests('gemini-vertex', h);
+    __setProviderForTests('ollama', h);
+    const honest = await gather({ model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }], maxTurns: 24, evidence: seeded });
+    expect(h.calls, 'every turn of the honest sequence ran, plus the one that says "ready"').toBe(8);
+    expect(honest.turns, 'its one paid fetch').toBe(1);
+    expect(honest.stop).toBe('done');
   });
 
   it('after three plan-only turns the next call is NOT forced to call a tool — under Gemini mode ANY that was the only way out of a plan-loop the loop itself offered none for', async () => {
