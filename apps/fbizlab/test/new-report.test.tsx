@@ -161,7 +161,16 @@ async function orderedParams(): Promise<Record<string, unknown>> {
 
 beforeEach(() => {
   hooks.createJob.mockClear();
-  hooks.preflight.mockClear();
+  // `mockClear` forgets the CALLS and keeps the implementation, so the two tests
+  // below that install `mockRejectedValue` left every later test's preflight
+  // rejecting, and an unconsumed `mockResolvedValueOnce` leaked into whichever test
+  // ran next — which is how a test could pass alone and fail in the file. Reset the
+  // implementation too, and hand back the response the real endpoint always sends.
+  hooks.preflight.mockReset();
+  hooks.preflight.mockResolvedValue({
+    ok: true, summary: 'We will research X.', quality: 'ok',
+    issues: [], corrections: [], assist: { state: 'on' },
+  } as never);
   localStorage.clear();
 });
 
@@ -355,6 +364,93 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     // Mutation that reds this: ignore `pf.proposals` in submit().
     expect(created.params.directives).toEqual({ weather: 'sun', colours: ['red'] });
     expect(created.params.keywords).toEqual(['absentee owner']);
+  });
+
+  it('notes rewritten after the preview are validated again — the deleted text’s proposals are never ordered', async () => {
+    // The preview cache was keyed on `cleanParams()` alone, and the box is separate
+    // state. So: validate with "I want sunshine" → proposals `{weather:'sun'}`; go
+    // back, replace the text with "actually I want RAIN, forget the sunshine";
+    // press Generate → the dialog offered GENERATE, the preflight was never called
+    // again, and the job was created with the proposals of the deleted sentence
+    // (round 7, R7-7).
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
+      proposals: { directives: { weather: 'sun' }, keywords: ['absentee owner'] },
+      proposedParams: { gridRegion: 'ERCOT West', parcelUse: 'Somewhere', language: 'es', mode: 'essential', directives: { weather: 'sun' }, keywords: ['absentee owner'] },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.type(screen.getByTestId('free-text'), 'I want sunshine');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await screen.findByTestId('proposals');
+
+    // Back to the form, rewrite the notes, reopen the dialog.
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.clear(screen.getByTestId('free-text'));
+    await userEvent.type(screen.getByTestId('free-text'), 'actually I want RAIN, forget the sunshine');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+
+    // Mutation that reds this: `paramsKey = JSON.stringify(cleanParams())`.
+    const again = await screen.findByRole('button', { name: /validate & continue/i });
+    await userEvent.click(again);
+    expect(hooks.preflight).toHaveBeenCalledTimes(2);
+    expect((hooks.preflight.mock.calls.at(-1)?.[0] as { freeText?: string }).freeText).toBe('actually I want RAIN, forget the sunshine');
+    // The second preflight (the default mock) proposes nothing, so nothing from the
+    // deleted sentence may ride along.
+    const ctas = await screen.findAllByRole('button', { name: /generate dossier/i });
+    await userEvent.click(ctas.at(-1)!);
+    const created = hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> };
+    expect(created.params.directives).toBeUndefined();
+    expect(created.params.keywords).toBeUndefined();
+  });
+
+  it('a second preview with nothing to say submits WITHOUT the first one’s proposals', async () => {
+    // The `!useful` branch orders immediately. It read `pf` from state — the review
+    // of the text the buyer has since rewritten — so the proposals of the old
+    // sentence rode along on a request that was never reviewed for them.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
+      proposals: { directives: { weather: 'sun' }, keywords: ['absentee owner'] },
+      proposedParams: { gridRegion: 'ERCOT West', parcelUse: 'Somewhere', language: 'es', mode: 'essential', directives: { weather: 'sun' }, keywords: ['absentee owner'] },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.type(screen.getByTestId('free-text'), 'I want sunshine');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await screen.findByTestId('proposals');
+
+    // Nothing to review the second time round: no summary, no issues, no proposals.
+    hooks.preflight.mockResolvedValueOnce({ ok: true, summary: '', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' } } as never);
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.clear(screen.getByTestId('free-text'));
+    await userEvent.type(screen.getByTestId('free-text'), 'forget all of that');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+
+    // Mutation that reds this: `await submit()` instead of `await submit(null)`.
+    await waitFor(() => expect(hooks.createJob).toHaveBeenCalled());
+    const created = hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> };
+    expect(created.params.directives).toBeUndefined();
+    expect(created.params.keywords).toBeUndefined();
+  });
+
+  it('notes typed AFTER a preview are still sent — they used to be discarded, paid for and never read', async () => {
+    // The other half: validate with an EMPTY box, then write the notes and press
+    // Generate. `preflight` had been called once, with no `freeText`, and the job
+    // was created and charged without the buyer's words ever leaving the browser.
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    expect((hooks.preflight.mock.calls.at(-1)?.[0] as { freeText?: string }).freeText).toBeUndefined();
+
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.type(screen.getByTestId('free-text'), 'absentee owners only, please');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    expect((hooks.preflight.mock.calls.at(-1)?.[0] as { freeText?: string }).freeText).toBe('absentee owners only, please');
   });
 
   it('…and orders WITHOUT it when the buyer unticks the suggestions', async () => {

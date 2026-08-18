@@ -224,6 +224,25 @@ export interface ValidatedRequest {
 }
 
 /**
+ * Params a model USED to accept, and what to say when one still arrives.
+ *
+ * `paramsSchema` is a plain `z.object`, so an unknown key is STRIPPED, not
+ * rejected — and a deployed SPA is a static bundle: every tab left open when
+ * `7a45269` shipped still posts `params.instructions`, and the API accepted the
+ * request, dropped the buyer's words, ran the job and charged for it, with nothing
+ * anywhere saying they had been dropped (round 7, R7-8). Hashed assets and a
+ * no-cache index only fix the NEXT load, and this is a form people leave open.
+ *
+ * Rejected explicitly rather than with `.strict()`: strict would 400 every client
+ * that sends any extra key, including tooling that round-trips stored params from
+ * jobs created before these fields were retired.
+ */
+const RETIRED_PARAMS: Record<string, string> = {
+  instructions: 'This model no longer accepts free-text instructions.',
+  preferredSources: 'This model no longer accepts a preferred-sources list.',
+};
+
+/**
  * Validates a research request body `{ template, params }`. The caller identity
  * (appId + userId) is NOT in the body — it comes from the session token.
  * Throws a descriptive Error if the template or params are invalid.
@@ -234,6 +253,17 @@ export function validateRequest(body: unknown): ValidatedRequest {
   const templateId = typeof raw.template === 'string' ? raw.template : '';
   const template = getTemplate(templateId);
   if (!template) throw new Error(`Unknown template: ${templateId || '(missing)'}`);
+
+  // Before the schema, so an old bundle is told to reload rather than being given a
+  // validation error about a different field (the pre-`7a45269` form has no
+  // industry rule, so its request also fails today's `superRefine` — pointing the
+  // buyer at a field their form does not have).
+  const sent = (raw.params ?? {}) as Record<string, unknown>;
+  const declared = new Set(Object.keys((template.paramsSchema as unknown as { shape?: Record<string, unknown> }).shape ?? {}));
+  const retired = Object.keys(RETIRED_PARAMS).filter((k) => k in sent && !declared.has(k));
+  if (retired.length) {
+    throw new Error(`${retired.map((k) => RETIRED_PARAMS[k]).join(' ')} Reload the page and try again.`);
+  }
 
   const parsed = template.paramsSchema.safeParse(raw.params ?? {});
   if (!parsed.success) {

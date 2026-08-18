@@ -377,8 +377,15 @@ export function NewReport() {
     if (d && Object.keys(d).length === 0) delete c[dirKey];
     return c;
   };
-  const paramsKey = JSON.stringify(cleanParams());
-  const validated = validatedKey === paramsKey && pf != null; // already previewed these exact params
+  // The NOTES are part of what was previewed. They are separate state and were not
+  // in this key, so a buyer who rewrote them after the preview got the dialog's
+  // "Generate" button: the preflight was never called again, the new text never left
+  // the browser, and the proposals of the sentence they had DELETED were ordered and
+  // paid for (round 7, R7-7). Trimmed and clipped exactly as `runPreflight` sends
+  // them, so trailing whitespace does not spend an assisted attempt.
+  const previewText = freeText.trim().slice(0, FREE_TEXT_MAX);
+  const paramsKey = JSON.stringify([cleanParams(), previewText]);
+  const validated = validatedKey === paramsKey && pf != null; // already previewed these exact params + notes
   const canGo = !needsSubject && !hasLive && !blocked && !create.isPending && !preflight.isPending;
   const insufficient = typeof bal === 'number' && bal < cost;
   const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(params)); } catch { /* ignore */ } };
@@ -462,7 +469,7 @@ export function NewReport() {
   async function runPreflight() {
     setError(null);
     try {
-      const text = freeText.trim().slice(0, FREE_TEXT_MAX);
+      const text = previewText;
       const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams(), ...(text ? { freeText: text } : {}), draftId: draftId(), captcha: await captcha.current?.getToken() });
       const useful = (res.summary?.trim().length ?? 0) > 0 || res.issues.length > 0 || res.corrections.length > 0 || !!res.proposals;
       if (useful) {
@@ -470,7 +477,15 @@ export function NewReport() {
         setValidatedKey(paramsKey);
         setApplyFixes(res.corrections.length > 0); // proposed fixes are opt-out, not silent
         setApplyProposals(!!res.proposals);
-      } else await submit();
+      } else {
+        // Nothing to review — but the PREVIOUS review may still be in state, and
+        // submitting with it would apply proposals derived from text this request no
+        // longer carries. Passed explicitly: `setPf(null)` does not land before the
+        // call below reads it.
+        setPf(null);
+        setApplyProposals(false);
+        await submit(null);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         setConfirming(false);
@@ -514,14 +529,14 @@ export function NewReport() {
 
   // Step 2: actually create the job (moderation runs again server-side). When the
   // user kept the suggested fixes, we submit the corrected set the API returned.
-  async function submit() {
+  async function submit(review: typeof pf | null = pf) {
     setError(null);
     try {
-      const base = applyFixes && pf?.correctedParams ? pf.correctedParams : cleanParams();
+      const base = applyFixes && review?.correctedParams ? review.correctedParams : cleanParams();
       // The proposals ride on top of whichever base the user kept. When both are
       // kept the API's `proposedParams` is exactly that; otherwise merge here.
-      const params = applyProposals && pf?.proposals
-        ? (applyFixes && pf.proposedParams ? pf.proposedParams : mergeProposals(base, pf.proposals, dirKey))
+      const params = applyProposals && review?.proposals
+        ? (applyFixes && review.proposedParams ? review.proposedParams : mergeProposals(base, review.proposals, dirKey))
         : base;
       const res = await create.mutateAsync({ template: model!.id, params, captcha: await captcha.current?.getToken() });
       clearDraft();
@@ -810,7 +825,7 @@ export function NewReport() {
               <div className="modal__actions">
                 <button className="btn btn--outline" disabled={create.isPending || preflight.isPending} onClick={() => setConfirming(false)}>{t.goBack}</button>
                 {validated ? (
-                  <button className="btn btn--black" disabled={create.isPending || (!captchaReady && !insufficient)} onClick={insufficient ? goBuy : submit}>{insufficient ? t.buyCredits : t.generate}</button>
+                  <button className="btn btn--black" disabled={create.isPending || (!captchaReady && !insufficient)} onClick={insufficient ? goBuy : () => submit()}>{insufficient ? t.buyCredits : t.generate}</button>
                 ) : (
                   <button className="btn btn--black" disabled={preflight.isPending || (!captchaReady && !insufficient)} onClick={insufficient ? goBuy : runPreflight}>{insufficient ? t.buyCredits : t.validateContinue}</button>
                 )}
