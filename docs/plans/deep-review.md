@@ -1159,8 +1159,7 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
 Run 2026-08-17/18: four groups × two opposed lenses (breaker / verifier), each in its
 own worktree (which started at `d1ac4dd` — the reviewers had to reset to `a11bafe`
 first; the next brief must say so). Raw reports: `m-red-team-reports/round7/`
-(brief + 8 reports; **G1-verify was still running when this was written — append it
-when it lands, it may move items below**). Nothing from this round is fixed yet.
+(brief + 8 reports, complete). Nothing from this round is fixed yet.
 
 **Verdict of the round in one line:** the security mechanisms of the batch hold —
 every named mutation was re-run and goes red (with four wrong COUNTS in commit
@@ -1259,6 +1258,19 @@ cache leaves the free-text box outside it.
   model picks it with the box empty → "Las instrucciones libres son vagas…" about
   a control that no longer exists. Reproduced live (G4-verify F3;
   `deterministic.ts:43`). Fix: remove the code (no rule emits it).
+- **R7-29 · The note/progress flood B2 closed for `update_plan` is wide open
+  through `fetch_page` on a CACHED url.** 400 cached fetches in one turn (292 fit
+  in 4,096 tokens; sustained 6/turn × 54 iterations also does it) → 400 notes,
+  410 progress writes, the admin's `Writing` note AND the new `Research loop
+  ended` note evicted (`MAX_NOTES` keeps FIRST). The same-URL cap replaced the
+  bytes, not the note (`gather.ts:467`). Reproduced end-to-end (G1-verify F1).
+  Fix: one per-turn latch for all free branches (like `planNoted`).
+- **R7-30 · `gatherStop` reaches no admin screen** — dropped by `JobSummary`
+  (`run-job.ts:513`), no column in JobDetail; for a HELD job `trace.json` is not
+  even listed (files only when completed). The 0-search plan-looper renders as
+  `ok · 1 try · $0.38`, identical to a 24-search agent (G1-verify F2). Fix:
+  `turnsUsed` + `gatherStop` on `JobSummary.agents[]` + one admin column. (Same
+  class as R7-4.)
 
 ### P2 — batch
 - R7-11 `gatheredAgentIds` × `CHECKPOINT_MAX_PAGES=60`: a gathered agent's evicted
@@ -1327,12 +1339,30 @@ cache leaves the free-text box outside it.
   "Preferred sources" in English (G4-verify F8). Dead comments: `prompt.ts:407`
   ("and `preferredSources` … four kilobytes"), red-team fixture header + orphan
   `instructions` param, `apps/fbizlab/src/api/types.ts:40`, `report-html.ts:25`.
+- R7-31 `stopped` also lies for the plan-breaker cut (0 searches → buyer reads
+  "Research for this step is complete." twice) — with R7-22, add a `cut_off` kind
+  for `stalled`/`ceiling` (G1-verify F3). The production per-host caps
+  (`FOREIGN_PER_DOMAIN_*`) are pinned by NO test (set to 999 → 0 red) — assert
+  through `buildDossier`; the `stopPlanning` half of the plan breaker is pinned by
+  no test (`if (false)` → 0 red) and refute-B2's comment claims it (F4, F5).
+  `refute-B2` title says "~150 calls (≈27 tokens)" while it prints 227/≈18 (F6).
+  Three figures in `1fa5d31`'s message are the `b-legit` FIXTURE (0/5, 3/12, 80
+  listings) or the other run's cost (`$1.19`, `$0.22`) presented as the real
+  traces (F7). `docs/agents.md:48-57,159,225` describe the pre-batch loop and
+  dossier (F8). `touched/fetched` are per-dispatch — a re-dispatched writer falls
+  to referenced+store order (disclosed; F9). `LLM_GATHER_*` env knobs documented
+  in deployment.md are NOT wired in `infra/deploy.sh` `COMMON_ENV` — production
+  runs the code defaults (F10; the new bounds as constants is fine).
 - R7-28 Wrong mutation counts in commit messages (`9850bdf` 5→6, 3→2; `245811f`
   3→2, 4→3; `f74f7b0` 2→3): the batch's evidence must be measured, not recalled.
   And `hasKeywordsField` fails silently for a template with required params.
 
 ### Checked and TRUE by round 7 (do not re-check)
-All twelve D1 mutations + the Gemini split; the old-checkpoint fixture is literal
+All seven B2 / three B1 / two onTurn mutations red EXACTLY as claimed (G1-verify);
+every loop number from the real traces reproduces to the digit (26=2·10+6, 22/4/0,
+$0.382752, 571,813 tokens; 16/0; 54=2·24+6; `P c P c P F`; 199/174; 8/11; $0.88;
+48 in six 8-result searches); all 33 hashes in the two backlog docs resolve and are
+ancestors of `a11bafe`; all twelve D1 mutations + the Gemini split; the old-checkpoint fixture is literal
 and its mutation bites; the signature is per DISPATCH and survives `approveHold`;
 `retryable()` does not finalize too early in any constructible case; chart-refiner
 gets the analyst's charts in its wave; the plan breaker is calibrated on the real
