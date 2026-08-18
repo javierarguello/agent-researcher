@@ -187,8 +187,9 @@ export function urlsIn(value: unknown): Set<string> {
 }
 
 /**
- * Own first, then referenced, then the rest — each tier in store order, the caps
- * unchanged, the per-domain cap on the last tier only.
+ * Own pages first, then the sections being rewritten, then the rest of own, then
+ * everything the loop merely saw — each tier in store order, the caps unchanged,
+ * the per-domain cap on the last tier only.
  *
  * The store is shared by every agent and filled in insertion order, and the
  * dossier rendered its first 48 snippets / 14 pages. Measured on the two real
@@ -199,6 +200,16 @@ export function urlsIn(value: unknown): Set<string> {
  * an honest peer's own fetched page is in the checkpoint but not in its prompt.
  * "Most recent first" would not restore the refiner's listing pages (a cached
  * hit does not re-append); the sections it is handed are how it finds them.
+ *
+ * The `referenced` tier needs a RESERVE, or it never renders in production. It was
+ * appended after `touched` — every url a search returned to this loop — and both
+ * backends return 8 results per query, so any agent with six searches fills all 48
+ * snippet slots from its own SERP rows alone. Measured: the wave-2 enricher saw
+ * 0 of the 12 listings it was handed to fill gaps in, while unread SERP rows took
+ * every slot (round 7, R7-2; 7 of the flagship's 10 producers are over that
+ * density). So `referenced` now sits above `touched` AND holds back slots that
+ * `fetched` cannot take — sized by how many referenced items there are, capped at
+ * half, so an honest scout with 192 own results gives up nothing it does not owe.
  */
 export function rankEvidence<T extends { url: string }>(items: T[], max: number, perDomain: number, prefer?: EvidencePreference): T[] {
   const fetched: T[] = [];
@@ -211,7 +222,24 @@ export function rankEvidence<T extends { url: string }>(items: T[], max: number,
     else if (prefer?.referenced?.has(it.url)) referenced.push(it);
     else rest.push(it);
   }
-  const out = [...fetched, ...touched, ...referenced].slice(0, max);
+  // Slots the sections being rewritten cannot be pushed out of. Sized by the set,
+  // never by a constant: with nothing referenced this is 0 and the order below is
+  // exactly what it was.
+  const reserve = Math.min(referenced.length, Math.floor(max / 2));
+  const out: T[] = [];
+  const seen = new Set<T>();
+  const take = (tier: T[], limit: number): void => {
+    for (const it of tier) {
+      if (out.length >= limit) return;
+      if (seen.has(it)) continue;
+      seen.add(it);
+      out.push(it);
+    }
+  };
+  take(fetched, max - reserve); // its own pages, but not into the reserve
+  take(referenced, max); // the sections it is rewriting
+  take(fetched, max); // whatever the reserve held back, still ahead of SERP rows
+  take(touched, max); // everything its loop was merely shown
   // The foreign tier, diversity first: up to `perDomain` per host in store order,
   // then — only if slots remain — the rest of it in store order. The cap decides
   // ORDER, never volume: a dossier is as full as it was, so a store that is

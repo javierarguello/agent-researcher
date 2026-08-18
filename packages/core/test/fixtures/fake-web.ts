@@ -245,6 +245,25 @@ export function canExtractPages(): boolean {
 }
 
 /**
+ * Results per query. PRODUCTION RETURNS 8 — Brave `count=8` (`tools/web-search.ts`)
+ * and Tavily `max_results: 8`. The fixture's 5 is a legacy of the corpus size, and
+ * the gap hid a real defect: at 8/query a producer with six searches fills all 48
+ * dossier snippet slots with its own results, which is how the `referenced` tier
+ * turned out to be unreachable in production while every test passed (R7-2).
+ * Tests that measure density set it to 8.
+ */
+let RESULTS_PER_QUERY = 5;
+
+/** Set the results-per-query for one test; returns the restore. */
+export function __setResultsPerQuery(n: number): () => void {
+  const prev = RESULTS_PER_QUERY;
+  RESULTS_PER_QUERY = n;
+  return () => {
+    RESULTS_PER_QUERY = prev;
+  };
+}
+
+/**
  * Ranked search over the fake corpus. Always returns something: an agent that
  * asks an odd question still gets the general market pages rather than starving,
  * which is what a real search backend does too.
@@ -253,7 +272,7 @@ export async function searchWeb(query: string): Promise<SearchResult[]> {
   const ranked = allPages().map((page) => ({ page, s: score(query, page) }))
     .sort((a, b) => b.s - a.s)
     .filter((r, i) => r.s > 0 || i < 3)
-    .slice(0, 5);
+    .slice(0, RESULTS_PER_QUERY);
   return ranked.map(({ page }) => ({ title: page.title, url: page.url, snippet: page.snippet }));
 }
 

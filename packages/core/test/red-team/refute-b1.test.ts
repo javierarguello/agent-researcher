@@ -20,7 +20,7 @@ import { runResearch } from '../../src/engine/research-engine.js';
 import { __setProviderForTests } from '../../src/llm/models.js';
 import type { GenerateOptions, GenerateResult, LlmProvider } from '../../src/llm/provider.js';
 import type { ResearchTemplate } from '../../src/templates/types.js';
-import { __setExtraPages, type Page } from '../fixtures/fake-web.js';
+import { __setExtraPages, __setResultsPerQuery, type Page } from '../fixtures/fake-web.js';
 import { sampleFromSchema } from '../mocks/llm.js';
 import { describeMock } from '../llm-mode.js';
 
@@ -186,5 +186,122 @@ describe.skipIf(!runs.length)('B1 refute · the real July traces: no writer cite
     expect(beyond.length).toBeLessThanOrEqual(fetches);
     expect(beyond.length).toBeLessThan(sources.length * 0.03);
     expect(inHead).toBeGreaterThan(cited.size * 0.6);
+  });
+});
+
+// --- The REFERENCED tier at production density (R7-2) --------------------------
+//
+// `1fa5d31` added a third tier for exactly one case: the wave-2 enricher, which is
+// handed sections full of `sourceUrl`s and told to fill their gaps, and whose own
+// `current` carries those URLs bare — no title, no snippet, no page. The tier put
+// them in the dossier.
+//
+// It could not reach production. `touched` is EVERY url a search returned to this
+// loop, and both backends return 8 per query (Brave `count=8`, Tavily
+// `max_results: 8`); the fixture returned 5. So any agent with ≥6 searches fills all
+// 48 snippet slots from its own results alone, and tier 3 renders nothing: the
+// enricher sees 0 of the 12 listings it is rewriting, while an unread SERP row
+// outranks a URL the writer was told to fill in (round 7, G1-break F1).
+const REF_MODEL: ResearchTemplate<Record<string, unknown>> = {
+  id: 'refute-b1-ref',
+  name: 'refute B1 referenced',
+  description: 'A wave-1 scout that builds a shortlist and a wave-2 refiner that enriches it.',
+  version: 1,
+  basePrompt: 'You are a research analyst.',
+  paramsSchema: z.object({ language: z.enum(['en', 'es']).default('en') }),
+  modes: { comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 1 } },
+  sections: [
+    {
+      key: 'shortlist',
+      title: 'Shortlist',
+      guidance: 'ROLE-SHORTLIST',
+      schema: z.object({ listings: z.array(z.object({ name: z.string(), sourceUrl: z.string() })) }),
+    },
+  ],
+  agents: [
+    { id: 'scout', role: 'producer', objective: 'ROLE-SCOUT', produces: ['shortlist'], researchBudget: 12, model: 'flash', gatherModel: 'gather' },
+    { id: 'refiner', role: 'producer', objective: 'ROLE-REFINER', enriches: ['shortlist'], dependsOn: ['scout'], researchBudget: 12, model: 'flash', gatherModel: 'gather' },
+  ],
+  buildBrief: () => 'Find laundromats for sale in Miami.',
+};
+
+/** The 12 listings the scout shortlists — what the refiner is handed to rewrite. */
+const SHORTLISTED = Array.from({ length: 12 }, (_, i) => lotUrl(i + 1));
+
+class Density implements LlmProvider {
+  readonly name = 'refute-b1-ref';
+  private nextLot = 20; // the refiner's own results never overlap the shortlist
+  readonly searchedBy = new Map<string, string[]>();
+  readonly writes = new Map<string, { pages: string[]; snippets: string[] }>();
+
+  private roleOf(opts: GenerateOptions): string {
+    const text = opts.messages.map((m) => m.text ?? '').join('\n');
+    return /ROLE-(SCOUT|REFINER)/.exec(text)?.[1] ?? '?';
+  }
+
+  async generate(opts: GenerateOptions): Promise<GenerateResult> {
+    const usage = { inputTokens: 100, outputTokens: 50 };
+    const role = this.roleOf(opts);
+    if (opts.responseSchema) {
+      const text = opts.messages.map((m) => m.text ?? '').join('\n');
+      this.writes.set(role, {
+        pages: [...text.matchAll(/\[P\d+\] Full page content — (\S+)/g)].map((m) => m[1]!),
+        snippets: [...text.matchAll(/\n\s+URL: (\S+)/g)].map((m) => m[1]!),
+      });
+      // The scout writes the shortlist it found; the refiner rewrites it unchanged.
+      const value = sampleFromSchema(opts.responseSchema as Record<string, unknown>) as Record<string, unknown>;
+      value.shortlist = { listings: SHORTLISTED.map((url, i) => ({ name: `Lot ${i + 1}`, sourceUrl: url })) };
+      return { text: JSON.stringify(value), toolCalls: [], usage };
+    }
+    if (!opts.tools?.length) return { text: 'ok', toolCalls: [], usage };
+    const toolMsgs = opts.messages.filter((m) => m.role === 'tool');
+    const last = toolMsgs[toolMsgs.length - 1]?.toolResult;
+    const res = last?.response as { stop?: boolean; turnsLeft?: number } | undefined;
+    if (res?.stop || res?.turnsLeft === 0) return { text: 'Ready to write.', toolCalls: [], usage };
+    const done = (this.searchedBy.get(role) ?? []).length / 8;
+    // Six searches each: 48 results — exactly the dossier's snippet budget.
+    if (done >= 6) return { text: 'Ready to write.', toolCalls: [], usage };
+    const eight = role === 'SCOUT' ? Array.from({ length: 8 }, (_, i) => i + 1 + done * 8) : Array.from({ length: 8 }, () => this.nextLot++);
+    this.searchedBy.set(role, [...(this.searchedBy.get(role) ?? []), ...eight.map(lotUrl)]);
+    return { text: '', usage, toolCalls: [{ id: `s${toolMsgs.length}`, name: 'web_search', args: { query: eight.map((n) => `rlotq${n}z`).join(' ') } }] };
+  }
+}
+
+describeMock('B1 refute · the REFERENCED tier at production density (8 results per query)', () => {
+  it('a wave-2 enricher sees all 12 listings it is rewriting, even with its own 48 fresh results in hand (before the fix: 0 of 12 — its own SERP rows filled every slot)', async () => {
+    const restoreDensity = __setResultsPerQuery(8);
+    restore = () => {
+      restoreDensity();
+      __setExtraPages([])();
+    };
+    __setExtraPages(LOTS);
+    const model = new Density();
+    __setProviderForTests('gemini-vertex', model);
+    __setProviderForTests('ollama', model);
+    const out = await runResearch({
+      template: REF_MODEL,
+      params: REF_MODEL.paramsSchema.parse({ mode: 'comprehensive' }) as Record<string, unknown>,
+      jobId: 'refute-b1-ref',
+      generatedAt: '2026-08-17T00:00:00.000Z',
+      costCeilingUsd: null,
+    });
+    expect(out.trace.status).toBe('completed');
+
+    const ref = model.writes.get('REFINER')!;
+    const own = model.searchedBy.get('REFINER')!;
+    // The premise: production density, and its own results alone would fill the 48.
+    expect(own.length).toBe(48);
+    expect(ref.snippets.length).toBe(48);
+    const referencedVisible = SHORTLISTED.filter((u) => ref.snippets.includes(u)).length;
+    const ownVisible = own.filter((u) => ref.snippets.includes(u)).length;
+    // eslint-disable-next-line no-console
+    console.log(`refiner: ${referencedVisible}/12 shortlisted listings and ${ownVisible}/48 of its own results rendered as [S]`);
+
+    // Mutation that reds this: drop the `referenced` reserve in `rankEvidence`
+    // (`const reserve = 0`), or put `touched` back above `referenced`.
+    expect(referencedVisible, 'the listings the enricher is told to fill gaps in').toBe(12);
+    // And it keeps most of what it paid for: the reserve is sized by the referenced
+    // set, not a constant, so the other 36 slots are still its own.
+    expect(ownVisible).toBe(36);
   });
 });

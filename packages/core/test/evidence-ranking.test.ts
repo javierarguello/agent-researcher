@@ -26,15 +26,42 @@ describe('rankEvidence · own first, then referenced, then the rest', () => {
     expect(out).toHaveLength(14);
   });
 
-  it('fetched outranks touched, and touched outranks referenced — a result URL a peer fetched earlier must not push the writer’s own fetch out', () => {
+  it('fetched outranks everything, and referenced outranks touched — an unread SERP row must not push out a URL the writer was told to fill gaps in', () => {
     const store = [u('a.example', 1), u('b.example', 1), u('c.example', 1), u('d.example', 1)];
     const out = rankEvidence(store, 4, 9, {
       fetched: new Set([u('d.example', 1).url]),
       touched: new Set([u('c.example', 1).url, u('d.example', 1).url]),
       referenced: new Set([u('b.example', 1).url]),
     });
-    // Mutation that reds this: merge `fetched` into `touched` (one tier).
-    expect(out.map((x) => x.url)).toEqual([u('d.example', 1).url, u('c.example', 1).url, u('b.example', 1).url, u('a.example', 1).url]);
+    // `referenced` used to be LAST, which is why it never rendered in production
+    // (R7-2): `touched` is every url a search returned, 8 per query. Mutation that
+    // reds this: merge `fetched` into `touched` (one tier), or put `touched` back
+    // above `referenced`.
+    expect(out.map((x) => x.url)).toEqual([u('d.example', 1).url, u('b.example', 1).url, u('c.example', 1).url, u('a.example', 1).url]);
+  });
+
+  it('the referenced tier holds back slots its own fetches cannot take — sized by the set, and 0 when nothing is referenced', () => {
+    // The production shape: a writer whose own loop alone would fill every slot.
+    const own = list('mine.example', 48);
+    const store = [...own, ...list('shortlist.example', 12)];
+    const prefer = {
+      fetched: new Set(own.map((x) => x.url)),
+      referenced: new Set(list('shortlist.example', 12).map((x) => x.url)),
+    };
+    const out = rankEvidence(store, 48, 8, prefer);
+    // Mutation that reds this: `const reserve = 0`.
+    expect(out.filter((x) => x.url.includes('shortlist.example'))).toHaveLength(12);
+    expect(out.filter((x) => x.url.includes('mine.example'))).toHaveLength(36);
+    // …and a writer with nothing referenced keeps every slot it had before.
+    const none = rankEvidence(store, 48, 8, { fetched: prefer.fetched });
+    expect(none.filter((x) => x.url.includes('mine.example'))).toHaveLength(48);
+    // The reserve is capped at half, so a huge referenced set cannot take the page
+    // over: 12 of 48 here, but 24 would be the most it could ever hold back.
+    const many = rankEvidence([...own, ...list('shortlist.example', 40)], 48, 8, {
+      fetched: prefer.fetched,
+      referenced: new Set(list('shortlist.example', 40).map((x) => x.url)),
+    });
+    expect(many.filter((x) => x.url.includes('mine.example'))).toHaveLength(24);
   });
 
   it('with no preference at all, everything is the foreign tier: diversity-first, then store order — and with a cap larger than any host, exactly the store order', () => {
