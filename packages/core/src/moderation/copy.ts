@@ -131,9 +131,13 @@ export const CORE_ISSUE_CODES = [
   'no_narrowing_filter',
   'scope_too_broad',
   'contradictory_range',
-  'instructions_vague',
   'request_ambiguous',
 ] as const;
+// `instructions_vague` was removed with the free-text instructions field itself
+// (`7a45269`). It stayed in the enum the assisted pass is bound to, no rule emitted
+// it, and against a real model it was PICKED with the box empty — so a buyer read
+// "the free-text instructions are vague" about a control that no longer exists
+// (round 7, R7-10).
 export type CoreIssueCode = (typeof CORE_ISSUE_CODES)[number];
 
 export type IssueSeverity = 'info' | 'warn';
@@ -162,12 +166,6 @@ const ISSUE_COPY: Record<CoreIssueCode, Copy> = {
     es: 'Un mínimo es mayor que su máximo, así que nada puede coincidir. Revisa el rango.',
     fr: 'Un minimum dépasse son maximum : aucun résultat possible. Vérifiez la fourchette.',
     pt: 'Um mínimo é maior que o máximo, então nada pode corresponder. Revise a faixa.',
-  },
-  instructions_vague: {
-    en: 'The free-text instructions are vague. Naming what matters to you (margins, staffing, absentee owner…) focuses the analysis.',
-    es: 'Las instrucciones libres son vagas. Nombrar lo que te importa (márgenes, personal, dueño ausente…) enfoca el análisis.',
-    fr: 'Les instructions libres sont vagues. Préciser ce qui compte (marges, personnel, propriétaire absent…) recentre l’analyse.',
-    pt: 'As instruções livres estão vagas. Dizer o que importa (margens, equipe, dono ausente…) foca a análise.',
   },
   request_ambiguous: {
     en: 'The request reads as ambiguous or self-contradictory. Re-check the fields before spending credits.',

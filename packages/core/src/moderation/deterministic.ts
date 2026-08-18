@@ -11,6 +11,7 @@
 import type { ResearchTemplate } from '../templates/types.js';
 import {
   coreIssueMessage,
+  CORE_ISSUE_CODES,
   type IssueSeverity,
   type Lang,
 } from './copy.js';
@@ -40,8 +41,11 @@ export function issueMessage(
 export function allowedIssueCodes(template: Pick<ResearchTemplate<any>, 'preflight'> | undefined): string[] {
   const own = Object.keys(template?.preflight?.issueCopy ?? {});
   const fromRules = (template?.preflight?.rules ?? []).map((r) => r.code);
-  const core = ['missing_subject', 'no_narrowing_filter', 'scope_too_broad', 'contradictory_range', 'instructions_vague', 'request_ambiguous'];
-  return Array.from(new Set([...core, ...own, ...fromRules]));
+  // From the enum itself, not a second hand-written copy: this list is what the
+  // assisted pass may answer with, and the copy table is what turns an answer into
+  // a sentence. They drifted — `instructions_vague` outlived both its field and its
+  // copy here, and the model kept picking it (R7-10).
+  return Array.from(new Set([...CORE_ISSUE_CODES, ...own, ...fromRules]));
 }
 
 /**
