@@ -1170,6 +1170,41 @@ assertions cannot fail, and persisted shapes read by nobody. Plus two batch-spec
 things: the assist over-proposes against a real model, and the SPA's validation
 cache leaves the free-text box outside it.
 
+### Fixed so far (2026-08-18) — seven commits, one per cluster
+All P1 except R7-9 (which is gated on a product decision, below). Every commit is
+revert-verified with MEASURED mutation counts in its message; suite 974 → 1010 here
+(a clean clone counts 12 fewer — see step 2). `npm test` + `npm run typecheck` green
+in the MAIN checkout after each.
+
+| item | commit | what changed |
+|---|---|---|
+| R7-1 | `c9065e3` | `delivered` from `produces`; new `reconstructed` status (body kept, honest copy in both renderers + admin row) |
+| R7-3 + R7-29 | `93b132e` | `buysNothing()` per-turn classification, limit 8 (plan bound stays 4); one note per free branch per turn |
+| R7-2 | `6fde120` | `referenced` above `touched` + a reserve sized by the set; fixture density settable, production is 8/query |
+| R7-4 + R7-30 | `6780c94` | shrink note → `warnings[]`, carried by the checkpoint; `turnsUsed`/`gatherStop` → `JobSummary` + an admin Research column |
+| R7-5 + R7-6 | `f33ecce` | `held` in `LIFECYCLE_OTHER` + lifecycle-only `phase → kind` coercion; `PROGRESS_KINDS` exported + cross-package pin |
+| R7-7 + R7-8 | `929e8dd` | preview key includes the notes; `validateRequest` 400s on `instructions`/`preferredSources` |
+| R7-10 | `b3e3f8e` | `instructions_vague` removed; `allowedIssueCodes` reads `CORE_ISSUE_CODES` |
+
+Three things worth carrying into round 8, all found by MEASURING rather than by
+reading:
+- three mutations first came back **0 red** (the PDF's `reconstructed` line — the
+  cover notice satisfied the regex; the `JobSummary` write of `turnsUsed`; the
+  stale-review submit path). Each got its own test before the count was recorded.
+- the R7-3 limit of 4 that the finder proposed **cut an honest `b-legit` persona**
+  mid-loop. The general bound is 8, calibrated on that persona's measured 6.
+- `new-report.test.tsx`'s `beforeEach` used `mockClear()`, which keeps the
+  implementation: two tests installing `mockRejectedValue` left every later test's
+  preflight rejecting, and an unconsumed `mockResolvedValueOnce` leaked into the
+  next test. A test passed alone and failed in the file. Now `mockReset()` + a
+  re-installed default.
+
+**Still open from P1: R7-9** (the assist over-proposes). Its quote-grounding and
+per-field checkboxes are ready to build; what is blocked is the product question in
+its entry — may an EMPTY basic (location, askingPriceMax) be proposed from the notes
+through the existing `correctable` path, confirmed by the buyer? Everything else in
+round 7 (the whole P2 batch, R7-11..R7-28, R7-31) is untouched.
+
 ### How to continue (for the next agent)
 1. Read this section, then the eight reports in `m-red-team-reports/round7/`
    (each carries the reproduction code inline — port it into a real test before
