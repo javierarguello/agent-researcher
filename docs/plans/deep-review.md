@@ -1153,3 +1153,195 @@ real July traces (`out/*/trace.json`) rather than the fixtures:
   2026‑08‑17): it populates the directives ("Your preferences") and optionally
   `keywords`; `preferredSources` is removed from the SPA and the backend;
   `instructionsField` and the "ADDITIONAL CLIENT INSTRUCTIONS" block go. Queued.
+
+## Round 7 — eight Opus reviewers against the 2026-08-17 batch (`d1ac4dd..a11bafe`)
+
+Run 2026-08-17/18: four groups × two opposed lenses (breaker / verifier), each in its
+own worktree (which started at `d1ac4dd` — the reviewers had to reset to `a11bafe`
+first; the next brief must say so). Raw reports: `m-red-team-reports/round7/`
+(brief + 8 reports; **G1-verify was still running when this was written — append it
+when it lands, it may move items below**). Nothing from this round is fixed yet.
+
+**Verdict of the round in one line:** the security mechanisms of the batch hold —
+every named mutation was re-run and goes red (with four wrong COUNTS in commit
+messages, see P2), the buyer never gets `message`, the free-text channel is closed
+in the engine, the checkpoint migration is a literal fixture — and the round found
+what the last six rounds always find: guards that reach no screen, tests whose
+assertions cannot fail, and persisted shapes read by nobody. Plus two batch-specific
+things: the assist over-proposes against a real model, and the SPA's validation
+cache leaves the free-text box outside it.
+
+### How to continue (for the next agent)
+1. Read this section, then the eight reports in `m-red-team-reports/round7/`
+   (each carries the reproduction code inline — port it into a real test before
+   fixing; the finders' scratch tests were left uncommitted in worktrees that may be
+   gone). Then `git show` the commit each finding names.
+2. Fix in the order below, one commit per cluster, revert-verified, counts
+   MEASURED not estimated (round 7 caught four wrong counts). Run
+   `npm test` + `npm run typecheck` in the MAIN checkout. Note: a fresh worktree
+   lacks `apps/fbizlab/.env.local` (gitignored) and 5 `rate-limit-copy` tests go
+   red for that reason alone; and 6 red-team tests are gated on `out/*/trace.json`
+   (only in Javier's checkout), so a clean clone shows 968, not 974.
+3. Update this section with the commit per item; then run round 8 against the
+   fixes (two lenses, worktrees reset to HEAD).
+
+### P1 — fix first
+- **R7-1 · A refiner delivers a section its producer never wrote, labelled
+  `unenriched` ("researched and written… complete and sourced").** With D1's
+  finalize-in-place, on the SECOND dispatch an exhausted producer no longer runs
+  and `runWaves(true)` runs its enricher best-effort with `current = {}` — the
+  enricher INVENTS the section; `delivered` counts a done agent's `enriches` key as
+  delivered, so `meta.sections` says `unenriched`, whose buyer copy is false in
+  every clause. All three flagship pairs (charts, market, deep_dives). Reproduced
+  (G2-break F1; `research-engine.ts:687`, `:761-784`). Fix: `delivered` from
+  `produces`; an `enriches` key counts only if a producer of that key is done;
+  else `lost` (or a new status "reconstructed" with honest copy — keep the body,
+  change the label).
+- **R7-2 · The dossier's `referenced` tier is unreachable at production search
+  density.** Brave/Tavily return 8/query (fixture: 5); any agent with ≥6 searches
+  fills the 48 snippet slots with its own `touched` results, so the wave-2 enricher
+  sees **0/12** of the shortlist it is rewriting (was 12/12 before B1); an unread
+  SERP row (`touched`) outranks a URL the writer must fill (`referenced`).
+  Reproduced (G1-break F1; `prompt.ts:200-241`). Fix: reserve a floor for
+  `referenced` sized by `referenced.size`; put `referenced` ABOVE `touched`.
+  Port `refute-b1` to 8/query.
+- **R7-3 · One free cached re-read per turn dodges the plan breaker.**
+  `[update_plan, fetch_page(cached)]` per turn: 54 calls / 975k chars / 0 turns /
+  0 evidence; the same-URL cap is a 38% discount, not a bound; the real
+  pathological refiner was `(Pc)*`. Reproduced (G1-break F2; `gather.ts:322`).
+  Fix: count a turn as "no progress" when it spent no budget AND returned no new
+  URL, resetting on a NEW url (the honest `P c P c P F` refiner has 5 free calls
+  before its first paid one — a plain free-call breaker cuts it).
+- **R7-4 · The A1 shrink note reaches no screen and a re-dispatch deletes it.**
+  It goes to `at.notes` → dropped by `JobSummary`, rendered by no admin page,
+  blanked by `slimAgents()` in the checkpoint; the a-legit pin only runs one
+  dispatch. Reproduced (G2-verify F1). Fix: a `warnings[]` entry or a
+  `meta.sections` row with its own status (no buyer "degraded" copy for an honest
+  dedup).
+- **R7-5 · A job held BEFORE the deploy tells the buyer it is being generated.**
+  `held` is the one phase with no manifest step; a pre-`kind` held document →
+  buyer gets `{phase:'held', updatedAt}` → JobView shows the pulsing dot +
+  "Generando tu dossier…" and nothing else; NEW held jobs also headline
+  "Generating your dossier…" under an "En revisión" badge; the inbox prints the
+  literal `held`. Reproduced (G3-break F1, G3-verify F4). Fix: `held` (+ its four
+  labels) in `phases.ts` `LIFECYCLE_OTHER`; coerce `phase:'held' → kind:'held'`
+  in `clientProgress` for the CLOSED lifecycle set only; drop the inbox's
+  `?? j.progress.phase` fallback.
+- **R7-6 · The SPA's `ProgressKind` is a hand copy of the core union with no
+  pin.** Adding a kind in core typechecks everywhere and the buyer's line goes
+  blank; `progress-kinds.test.ts` and `progress-copy.test.tsx` are 4th/5th hand
+  copies. Reproduced (G3-verify F1). Fix: `PROGRESS_KINDS as const` in core; a
+  cross-package pin like `language-lists.test.ts` (code in the report).
+- **R7-7 · The free-text box is outside the SPA's "already validated" key.**
+  Notes typed AFTER a validation are never sent (job created, paid, notes
+  discarded); notes REWRITTEN after one are ordered with the stale proposals.
+  Reproduced twice (G4-break F1, G4-verify F2; `NewReport.tsx:380`). Fix:
+  `paramsKey = JSON.stringify([cleanParams(), freeText.trim()])`, clear
+  `pf.proposals` on change; consider only invalidating when the text differs from
+  the validated one (an edit spends an assisted attempt).
+- **R7-8 · The old SPA bundle still posts `params.instructions`; the API strips it
+  in silence and charges.** `z.object` drops unknown keys; no client-version
+  header. Reproduced (G4-break F2). Fix: pre-parse check in `validateRequest`
+  that 400s on `instructions`/`preferredSources` with "this model no longer accepts
+  free-text instructions — reload"; NOT `.strict()`.
+- **R7-9 · The assist over-proposes: against a real model, 9/10 realistic notes
+  got a value in ALL 7 directives, twice contradicting the note; the gate never
+  checks "does the text say this"; proposals arrive pre-ticked, all-or-nothing,
+  and go into every agent's system prompt.** Reproduced live (G4-verify F1;
+  `enrich.ts:378-410`). Fix: `{value, quote}` with `quote` a substring of the text
+  (drops implications — so pair with) per-field checkboxes defaulting OFF for
+  fields the note is silent on. **Product question for Javier:** should an EMPTY
+  basic (location, askingPriceMax) be proposable from the notes via the existing
+  `correctable` list, confirmed by the buyer? It relaxes "basics by hand" for the
+  empty case only. Also: the copy should say what the box does NOT fill (price,
+  location, filters) — proposed clause in the report.
+- **R7-10 · `instructions_vague` is still in the assist's issue enum** and the
+  model picks it with the box empty → "Las instrucciones libres son vagas…" about
+  a control that no longer exists. Reproduced live (G4-verify F3;
+  `deterministic.ts:43`). Fix: remove the code (no rule emits it).
+
+### P2 — batch
+- R7-11 `gatheredAgentIds` × `CHECKPOINT_MAX_PAGES=60`: a gathered agent's evicted
+  pages are gone for good and it writes from pages it never gathered; the doc
+  comment "a cache miss, not a correctness problem" is now false (G2-break F2).
+  Fix: keep pages of gathered agents, or un-gather an agent whose pages were
+  evicted.
+- R7-12 A resumed agent (no loop) falls to the diversity-first foreign pass, not
+  store order — 43→35 marketplace snippets of 48; the "90% one marketplace still
+  fills every slot" unit test has cap = store size (G1-break F3).
+- R7-13 `counter.turns` is not seeded from `resume` → job `turnsUsed` vs
+  `searchCalls` still diverges on every re-dispatch; the comment at
+  `research-engine.ts:501-504` says "overwrites" (now adds) (G1-break F4).
+- R7-14 `jsonFailureSignature`: "two truncations are one failure" is 73.4% true
+  (7 V8 kinds); collapse to one `json:parse` bucket (G2-break F3).
+- R7-15 Gemini forwarding justified by the `responseJsonSchema` doc while the
+  provider sends `responseSchema`; the four fields DO pass; `maxLength` (5 in
+  Florida) withheld on evidence about another field; `minimum/maximum` dead for
+  Florida (G2-break F4).
+- R7-16 `cutJson` seeks commas — a thousands separator is a comma
+  (`…price is $538` reachable again); the `at > max/2` guard falls to a raw cut;
+  and the a-legit test's 3/5 assertions are tautologies (` … [cut]` suffix) —
+  `trimmedExtract` must strip the sentinel (G2-break F5, G2-verify F3).
+- R7-17 A4 strips model TEXT but not tool ARGS; and 2 of the 3 strip sites
+  (`gather.ts` loop turn, schema repair) have no test — full suite green when
+  reverted (G2-break F6, G2-verify F2).
+- R7-18 `agent.focus` reaches NO write prompt (kickoff only); the two chart
+  synthesizers have a focus nobody reads; chart-refiner now gets "NEVER drop an
+  item" without its "drop misleading ones" (G2-verify F6). Decide: render focus in
+  the write builders (reconcile with the preamble in one sentence) or delete it.
+- R7-19 finalize-in-place emits `phase:'planning'` with kind `assembling` → buyer
+  reads "Planning" over "Assembling the report." (G2-verify F7).
+- R7-20 The non-admin `summary` redaction (warnings, agentErrors, costUsd) has no
+  test — handing the whole summary leaves the API suite green (G2-verify F5).
+- R7-21 `proseUrl` allows relative/protocol-relative links (`//attacker/p` is a
+  live `_blank` anchor in prose — the img reasoning not applied to `a`); PDF vs
+  web disagree on `tel:` and relative (`245811f`'s "agree" claim false)
+  (G3-break F2). Fix: `proseUrl` = `https?|mailto|tel` only; `tel:` in `mdInline`.
+- R7-22 Kinds that lie: `stopped` says "complete" for `stalled`/`ceiling`
+  (invisible), `cached` says "re-reading" when we refused (visible)
+  (G3-break F3). `detail` clipped by UTF-16 unit (F4). Two comments describe
+  removed behaviour; `heldNotice` is now admin-only copy duplicated in
+  `progress-copy.ts` and ALREADY drifted in en/es (G3-break F5, G3-verify F2) —
+  one source.
+- R7-23 JobView renders step label in the report's language and the progress
+  line in the UI's (G3-verify F3). Fix: `progressLine(…, reportLang)`.
+- R7-24 The PDF's `SOURCE_LABEL_MAX` clip is asserted by nothing (G3-verify F5);
+  "real titles ≤130" is false (max 167); 47% of real rows carry the host in the
+  title — dedupe rule proposed (G3-verify F7); Sources tooltip carries the full
+  attacker title, host-less (G3-break F6).
+- R7-25 Keyword gate refuses snake_case (64% of real proposals dropped, two notes
+  0) — tell the model "spaces, not underscores" (G4-verify F4); the summary is
+  rendered with proposals applied even when declined (F5); "nothing the model
+  wrote is echoed" is false as written — reword: no model PROSE, ≤6-word keywords
+  shown to the buyer, and run `preScreen()` on proposed keywords (G4-break F4).
+- R7-26 `freeText` not in the draft — "buy credits" loses the notes (G4-break F5).
+  No-industry dead end: the box cannot unlock the CTA; say so in the copy
+  (G4-break F3, G4-verify).
+- R7-27 Docs stale after `7a45269`: `docs/architecture.md:111`, `modules.md:24`,
+  `request-review.md:100` (the fail-open justification names a removed
+  mechanism) and `:47` (`+40` not `max(3×,+24)`), `local-llm.md:81` (its
+  injection curl now returns 200), `model-ui.md:97`; `docs/agents.md` §2/§3 stale
+  after D1 ("on the final attempt"; checkpoint fields; the 2-dispatch bound
+  unnamed); `api-reference.md` inbox example lacks `progress`/`mode`/
+  `creditsSpent` (G4-verify F6, G2-verify F4, G3-verify F8). Old-job PDF prints
+  "Preferred sources" in English (G4-verify F8). Dead comments: `prompt.ts:407`
+  ("and `preferredSources` … four kilobytes"), red-team fixture header + orphan
+  `instructions` param, `apps/fbizlab/src/api/types.ts:40`, `report-html.ts:25`.
+- R7-28 Wrong mutation counts in commit messages (`9850bdf` 5→6, 3→2; `245811f`
+  3→2, 4→3; `f74f7b0` 2→3): the batch's evidence must be measured, not recalled.
+  And `hasKeywordsField` fails silently for a template with required params.
+
+### Checked and TRUE by round 7 (do not re-check)
+All twelve D1 mutations + the Gemini split; the old-checkpoint fixture is literal
+and its mutation bites; the signature is per DISPATCH and survives `approveHold`;
+`retryable()` does not finalize too early in any constructible case; chart-refiner
+gets the analyst's charts in its wave; the plan breaker is calibrated on the real
+traces (honest max 2 plan-only turns; both real plan-loops die at 12 and 4
+iterations); no `functionCall` is sent without its response; `stalled→budget` and
+its sibling test are honest; store-order mutation → 11 red exactly; the buyer
+never gets `message` (6 red); every `<Markdown>` site has `img:null` +
+`urlTransform`; every PDF prose path goes through `mdInline`; 0/373 real source
+URLs fail `safeHref`; the 1,214 strings of the two real reports render 20 changed,
+all better, 0 regressions; the free-text channel is closed in the engine (whole-
+string equality); `freeText` is moderated before the assist; the four SPA toggle
+combinations produce valid params; `mergeProposals` = `applyProposals`.

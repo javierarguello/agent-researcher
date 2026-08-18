@@ -201,3 +201,7 @@ The ceiling bounds the bill, not the waste inside it.
    0/12, A1 marker echo 0/3, A-legit imperatives 10 vs 9, B-legit handoffs); a
    frontier-tier pass is what would move A2 (and D1's trigger) either way.
 4. Write up — done (deep-review.md).
+5. **Round 7 (2026-08-17/18)** — eight Opus reviewers against the whole batch;
+   verdicts and the fix queue in `deep-review.md § "Round 7"`, raw reports in
+   `m-red-team-reports/round7/`. Ten P1 items are OPEN there; nothing fixed yet.
+   Whoever continues: start at "How to continue" in that section.
