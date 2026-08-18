@@ -1170,9 +1170,9 @@ assertions cannot fail, and persisted shapes read by nobody. Plus two batch-spec
 things: the assist over-proposes against a real model, and the SPA's validation
 cache leaves the free-text box outside it.
 
-### Fixed so far (2026-08-18) — seven commits, one per cluster
-All P1 except R7-9 (which is gated on a product decision, below). Every commit is
-revert-verified with MEASURED mutation counts in its message; suite 974 → 1010 here
+### Fixed (2026-08-18) — eight commits, one per cluster
+All twelve P1 items. Every commit is
+revert-verified with MEASURED mutation counts in its message; suite 974 → 1023 here
 (a clean clone counts 12 fewer — see step 2). `npm test` + `npm run typecheck` green
 in the MAIN checkout after each.
 
@@ -1185,6 +1185,7 @@ in the MAIN checkout after each.
 | R7-5 + R7-6 | `f33ecce` | `held` in `LIFECYCLE_OTHER` + lifecycle-only `phase → kind` coercion; `PROGRESS_KINDS` exported + cross-package pin |
 | R7-7 + R7-8 | `929e8dd` | preview key includes the notes; `validateRequest` 400s on `instructions`/`preferredSources` |
 | R7-10 | `b3e3f8e` | `instructions_vague` removed; `allowedIssueCodes` reads `CORE_ISSUE_CODES` |
+| R7-9 | `38bfc53` | `{value, quote}` verified verbatim; per-field acceptance defaulting off for what was inferred; `fillable` basics (location only), always unticked; the summary stops folding proposals in (also half of R7-25) |
 
 Three things worth carrying into round 8, all found by MEASURING rather than by
 reading:
@@ -1193,17 +1194,23 @@ reading:
   stale-review submit path). Each got its own test before the count was recorded.
 - the R7-3 limit of 4 that the finder proposed **cut an honest `b-legit` persona**
   mid-loop. The general bound is 8, calibrated on that persona's measured 6.
+- R7-9's own fix sketch ("drop any pick without a quote") would have dropped the
+  honest reads too — "que se maneje sola" → `absentee` has no literal quote. The
+  quote decides the DEFAULT, not the pick.
 - `new-report.test.tsx`'s `beforeEach` used `mockClear()`, which keeps the
   implementation: two tests installing `mockRejectedValue` left every later test's
   preflight rejecting, and an unconsumed `mockResolvedValueOnce` leaked into the
   next test. A test passed alone and failed in the file. Now `mockReset()` + a
   re-installed default.
 
-**Still open from P1: R7-9** (the assist over-proposes). Its quote-grounding and
-per-field checkboxes are ready to build; what is blocked is the product question in
-its entry — may an EMPTY basic (location, askingPriceMax) be proposed from the notes
-through the existing `correctable` path, confirmed by the buyer? Everything else in
-round 7 (the whole P2 batch, R7-11..R7-28, R7-31) is untouched.
+**The P1 batch is closed.** Javier's decision on R7-9's product question, for the
+record: an empty basic MAY be proposed from the notes — `location` only, because a
+buyer can check a place name at a glance in a diff and cannot check a number
+(`askingPriceMax` stays by hand). It requires a verbatim quote, renders in its own
+block, and is never pre-ticked. The mechanism is `PreflightSpec.fillable`, so a
+template opts in field by field.
+
+Everything else in round 7 (the whole P2 batch, R7-11..R7-28, R7-31) is untouched.
 
 ### How to continue (for the next agent)
 1. Read this section, then the eight reports in `m-red-team-reports/round7/`
