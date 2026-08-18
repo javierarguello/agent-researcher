@@ -15,7 +15,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
-const { job } = vi.hoisted(() => ({ job: { current: {} as Record<string, unknown> } }));
+const { job, tpl } = vi.hoisted(() => ({
+  job: { current: {} as Record<string, unknown> },
+  tpl: { current: { steps: [] as Array<Record<string, unknown>>, modes: [], sections: [] } as Record<string, unknown> },
+}));
 
 vi.mock('../src/api/hooks', async (orig) => ({
   // The real module for anything the mock does not name — otherwise the polling
@@ -23,7 +26,7 @@ vi.mock('../src/api/hooks', async (orig) => ({
   ...(await orig<typeof import('../src/api/hooks')>()),
   useJob: () => ({ data: job.current }),
   useJobReport: () => ({ data: undefined }),
-  useTemplate: () => ({ data: { steps: [], modes: [], sections: [] } }),
+  useTemplate: () => ({ data: tpl.current }),
 }));
 vi.mock('../src/components/ReportViewer', () => ({ ReportViewer: () => null }));
 vi.mock('../src/components/DownloadPdf', () => ({ DownloadPdf: () => null }));
@@ -66,6 +69,22 @@ describe('a job parked for a decision', () => {
     show({ status: 'held', progress: { phase: 'held', kind: 'held', updatedAt: 't' }, summary: null });
     expect(screen.getByText(/paused while we review it/i)).toBeTruthy();
     show({ status: 'held', progress: { phase: 'held', kind: 'held', updatedAt: 't' }, summary: null }, 'es');
+    expect(screen.getByText(/en pausa mientras lo revisamos/i)).toBeTruthy();
+  });
+
+  it('does not headline a parked job "Generating your dossier…" — the manifest has a step for `held` now', async () => {
+    // The live card's headline is `stepsById[phase]?.label ?? t.working`, and `held`
+    // was the one phase with no step. So the page said "Generando tu dossier…" in
+    // bold, under a badge that said "En revisión", while nothing was being generated
+    // at all (round 7, R7-5). The manifest steps here are what `buildSteps` now
+    // emits — pinned on the core side in `progress-kinds.test.ts`.
+    tpl.current = { steps: [{ id: 'planning', label: 'Planificando' }, { id: 'held', label: 'En revisión', description: 'Alguien está revisando este dossier antes de continuar.' }], modes: [], sections: [] };
+    show({ status: 'held', progress: { phase: 'held', kind: 'held', updatedAt: 't' }, summary: null }, 'es');
+    expect(screen.queryByText(/generando tu dossier/i)).toBeNull();
+    expect(screen.getAllByText(/en revisión/i).length).toBeGreaterThan(0);
+    // …and the line the API's `kind` gives it is still there, and says something
+    // the step description does not.
+    expect(screen.getByText(/alguien está revisando este dossier/i)).toBeTruthy();
     expect(screen.getByText(/en pausa mientras lo revisamos/i)).toBeTruthy();
   });
 

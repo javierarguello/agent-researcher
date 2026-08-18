@@ -9,11 +9,16 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 import { runResearch, type ResearchProgress } from '../src/engine/research-engine.js';
-import { clientProgress, PROGRESS_DETAIL_MAX, type ProgressKind } from '../src/jobs/types.js';
+import { clientProgress, PROGRESS_KINDS, PROGRESS_DETAIL_MAX, type ProgressKind } from '../src/jobs/types.js';
+import { LIFECYCLE_OTHER, phaseLabel } from '../src/templates/phases.js';
 import { installMockProvider } from './mocks/llm.js';
 import { compactModel } from './fixtures/compact-model.js';
 
-const KINDS = new Set<ProgressKind>(['starting', 'wave', 'researching', 'reusing', 'plan', 'searched', 'search_failed', 'fetched', 'cached', 'stopped', 'ceiling', 'writing', 'composing', 'retry', 'failed', 'assembling', 'done', 'held', 'incomplete']);
+// Read from the exported const, not copied: a hand-written set here caught the
+// engine emitting a kind nobody knew, and was blind to the direction that actually
+// happens — core grows a kind and every client that hand-copied the union renders a
+// blank line for it (round 7, R7-6).
+const KINDS = new Set<ProgressKind>(PROGRESS_KINDS);
 
 describe('progress events carry a kind', () => {
   it('every event of a run has a kind from the closed set; searches carry the query; nothing else carries a detail', async () => {
@@ -63,5 +68,38 @@ describe('clientProgress — the buyer-facing shape', () => {
     expect(clientProgress({ ...base, message: 'Fetched 1 page(s).', kind: 'fetched', detail: 'https://x' })).toEqual({ phase: 'scout', kind: 'fetched', updatedAt: 't' });
     // A document from before the field: phase and updatedAt only.
     expect(clientProgress({ ...base, message: 'Searched: q' })).toEqual({ phase: 'scout', updatedAt: 't' });
+  });
+
+  it('gives a legacy lifecycle document its kind — and invents one for nothing else', () => {
+    // `held` is the phase that OUTLIVES a deploy: the job sits waiting for a human.
+    // A held document written before `kind` existed reached the buyer as
+    // `{phase:'held', updatedAt}`, so the client had no line to render and the page
+    // showed the pulsing dot and "Generating your dossier…" forever, with the one
+    // sentence written for that screen — "paused while we review it, nothing more is
+    // being spent" — gone (round 7, R7-5).
+    expect(clientProgress({ ...base, phase: 'held', message: 'Held at the cost ceiling.' })).toEqual({ phase: 'held', kind: 'held', updatedAt: 't' });
+    for (const phase of ['incomplete', 'failed', 'done', 'assembling', 'planning'] as const) {
+      const out = clientProgress({ ...base, phase, message: 'x' });
+      expect(out.kind, phase).toBe(phase === 'planning' ? undefined : phase);
+    }
+    // …and NOT for an agent phase: a `searched` has no safe kind without its query,
+    // which is exactly what C3 removed. Mutation that reds this: coerce every phase.
+    expect(clientProgress({ ...base, phase: 'deal-scout', message: 'Searched: q' })).toEqual({ phase: 'deal-scout', updatedAt: 't' });
+    // A kind already on the document always wins.
+    expect(clientProgress({ ...base, phase: 'held', message: 'x', kind: 'ceiling' }).kind).toBe('ceiling');
+  });
+});
+
+describe('held is a lifecycle phase like the others', () => {
+  it('has a step in the manifest, in every language — the buyer’s client looks it up by phase', () => {
+    // `held` was the one phase with no step, so `stepsById['held']` was undefined and
+    // both the job page's headline and the inbox row fell back: "Generating your
+    // dossier…" over an "En revisión" badge, and the raw English key `held` in the
+    // list (round 7, R7-5 / G3-verify F4).
+    expect(LIFECYCLE_OTHER).toContain('held');
+    for (const [lang, label] of [['en', 'Under review'], ['es', 'En revisión'], ['fr', 'En révision'], ['pt', 'Em revisão']] as const) {
+      expect(phaseLabel('held', lang).label, lang).toBe(label);
+      expect(phaseLabel('held', lang).description, lang).toBeTruthy();
+    }
   });
 });

@@ -80,26 +80,45 @@ export interface JobFile {
  * shows `detail` only where it is the buyer's own research happening (the query
  * of a `searched`), clipped and quoted.
  */
-export type ProgressKind =
-  | 'starting'
-  | 'wave'
-  | 'researching'
-  | 'reusing'
-  | 'plan'
-  | 'searched'
-  | 'search_failed'
-  | 'fetched'
-  | 'cached'
-  | 'stopped'
-  | 'ceiling'
-  | 'writing'
-  | 'composing'
-  | 'retry'
-  | 'failed'
-  | 'assembling'
-  | 'done'
-  | 'held'
-  | 'incomplete';
+export const PROGRESS_KINDS = [
+  'starting',
+  'wave',
+  'researching',
+  'reusing',
+  'plan',
+  'searched',
+  'search_failed',
+  'fetched',
+  'cached',
+  'stopped',
+  'ceiling',
+  'writing',
+  'composing',
+  'retry',
+  'failed',
+  'assembling',
+  'done',
+  'held',
+  'incomplete',
+] as const;
+
+/**
+ * A VALUE as well as a type, so a client can be pinned against it. Every client
+ * hand-copied this union — the SPA's `api/types.ts`, its progress-copy table, and
+ * two test files — and adding a kind here typechecked everywhere while the buyer's
+ * line went BLANK for it: the SPA is a separately deployed static bundle, so a new
+ * engine kind reaches an old bundle before any rebuild (round 7, R7-6). The pin
+ * lives in `apps/fbizlab/test/progress-kind-pin.test.tsx`, which reads this list.
+ */
+export type ProgressKind = (typeof PROGRESS_KINDS)[number];
+
+/**
+ * Lifecycle phases whose NAME is also a kind — the closed set a legacy document
+ * may be coerced through. Deliberately not every phase: an agent phase like
+ * `deal-scout` has no safe kind (a `searched` without its query is nothing), which
+ * is what C3 removed.
+ */
+const LIFECYCLE_KINDS = new Set<string>(['held', 'incomplete', 'failed', 'done', 'assembling']);
 
 /** How much of a `searched` detail a client is handed. Real honest queries: p90 90 chars, max 118. */
 export const PROGRESS_DETAIL_MAX = 120;
@@ -124,7 +143,12 @@ export interface JobProgress {
  */
 export function clientProgress(p: JobProgress): { phase: string; kind?: ProgressKind; detail?: string; updatedAt: string } {
   const detail = p.kind === 'searched' && p.detail ? p.detail.slice(0, PROGRESS_DETAIL_MAX) : undefined;
-  return { phase: p.phase, ...(p.kind ? { kind: p.kind } : {}), ...(detail ? { detail } : {}), updatedAt: p.updatedAt };
+  // A document written before `kind` existed still has to say something. `held` is
+  // the case that matters: a parked job is the one kind of job that deliberately
+  // outlives a deploy, and without a kind the buyer's page showed a pulsing dot and
+  // "Generating your dossier…" under an "Under review" badge, forever (R7-5).
+  const kind = p.kind ?? (LIFECYCLE_KINDS.has(p.phase) ? (p.phase as ProgressKind) : undefined);
+  return { phase: p.phase, ...(kind ? { kind } : {}), ...(detail ? { detail } : {}), updatedAt: p.updatedAt };
 }
 
 /** Compact, denormalized job summary for dashboards (heavy detail stays in trace.json). */

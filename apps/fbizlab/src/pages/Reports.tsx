@@ -190,7 +190,11 @@ export function Reports() {
                   {meta && <div className="dash-row__meta mono">{meta}</div>}
                   {LIVE.includes(j.status) && (
                     <>
-                      {j.progress && <div className="dash-row__step">{stepMap[j.progress.phase] ?? j.progress.phase}</div>}
+                      {/* No `?? j.progress.phase`: the fallback printed the raw
+                          internal key — a Spanish buyer's parked job read `held`
+                          under an "En revisión" badge (round 7, G3-verify F4).
+                          A phase this bundle has no label for shows nothing. */}
+                      {j.progress && stepMap[j.progress.phase] && <div className="dash-row__step">{stepMap[j.progress.phase]}</div>}
                       <div className="dash-row__bar"><span /></div>
                     </>
                   )}
