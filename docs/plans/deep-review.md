@@ -371,7 +371,7 @@ otherwise.
 
 ---
 
-## K · The pre-screen — reopened 2026-08-03, re-measured 2026-08-19 (evasion closed; the semantic half is still a decision)
+## K · The pre-screen — reopened 2026-08-03, re-measured and CLOSED 2026-08-19 (option 1, refocus)
 
 Two independent reviewers, both running strings rather than reading regexes:
 **85 injection strings pass** the pre-screen, and **59 ordinary business phrasings
@@ -396,7 +396,10 @@ weakest and a normalizer is strongest. It currently fails there too: `ig-nore`
 (a real hyphen), eleven invisible code points outside the class, six homoglyphs
 outside the table, and any digit substitution all walk through.
 
-**Two ways forward, and the choice is a product decision:**
+**Two ways forward, and the choice is a product decision.** **DECIDED 2026-08-19
+(Javier): option 1, refocus** — see the re-measured census at the end of this
+section for the numbers it was decided on. Both are kept below because the
+reasoning only reads if the option not taken is still on the page.
 
 1. **Refocus.** The pre-screen owns normalization and evasion and stops trying to
    out-regex a classifier on semantics. Fewer false positives by construction, and
@@ -409,14 +412,14 @@ outside the table, and any digit substitution all walk through.
    recovers both documented false positives. They also showed it is enumerable and
    therefore borrowable, like every exemption before it.
 
-Until then, K1-K5 stay closed (they are real improvements over what preceded them)
-and this sits above them as the honest state of the layer.
+K1-K5 stay closed (they are real improvements over what preceded them) and this
+sits above them as the honest state of the layer.
 
 **The pre-screen also decides on one blob**, not per field: `collectFreeText` joins
 array elements with `", "` and the gap matches it, so two innocent keywords can
 still fuse into a 422. The test that claimed otherwise now says so.
 
-### Re-measured 2026-08-19 — the evasion half is CLOSED, the semantic half is the decision
+### Re-measured 2026-08-19 — the evasion half is closed, and the decision is taken
 
 The 2026-08-03 census (85 pass / 59 refused) was never re-run and its two string
 lists were not kept in the repo, so this is a REBUILT census, not the same one:
@@ -470,16 +473,36 @@ unconditionally, and `MODERATION_LLM` defaults to true (`config.ts:126`). So the
 pre-screen is the only layer only when the classifier is switched off or fails open
 — never on the path where a miss reaches a prompt with the classifier silent.
 
-**Recommendation, for Javier's call:** option 1, refocus. The layer is now at zero
-on the thing only it can do, the semantic 61 belong to the classifier that runs on
-every path that matters, and each of the 61 costs a false positive to chase. Option
-2 is still available and unblocked — the prototyped rest-of-sentence discriminator
-is written up above — but it should be paid for against these numbers, not against
-the 2026-08-03 pair.
+**DECIDED 2026-08-19 (Javier): option 1, refocus.** The pre-screen owns
+normalization and evasion — where it is now at zero — and stops trying to out-regex
+a classifier on semantics. The three facts it was decided on, in order of weight:
+
+1. The 61 are semantic, and the classifier that handles them runs on every path
+   where a miss reaches a prompt (the `assist === 'on'` coincidence above).
+2. A miss costs little (two layers behind it); a false positive costs a paying
+   customer a hard 422 with no second opinion, on ordinary trade vocabulary. Every
+   rule that reads intent trades the cheap failure for the expensive one — the swing
+   `2c41984` / `a5f906d` made twice.
+3. Evasion is the half only this layer can do, and it is measurably done.
+
+**What the refocus does NOT license.** No pattern is deleted in the name of this
+decision: the semantic rules that exist are pinned by the corpus and cost nothing
+to keep. What the decision closes is the pressure to ADD more of them. If a
+semantic rule is ever removed it needs its own measurement, both directions, like
+any other change here.
+
+**What it leaves as work, and the highest-yield item on this whole layer:** make the
+fail-open VISIBLE. `moderation.llm_failed` and `moderation.unparsable` are logged as
+WARNINGs (`moderate.ts`) and nothing watches them, and `MODERATION_LLM` can be
+`false` in an environment with no signal at all — which is the one configuration in
+which the pre-screen really is the only layer, and exactly the state this decision
+assumes is rare. An alert or a metric on those two events is worth more than any
+number of new regexes. Not built; listed in the handoff's smaller items.
 
 **Not measured, on purpose:** the classifier's own recall over the 61. That needs
 billed calls (`test/no-paid-calls.ts` forbids them in the suite) and belongs in a
-live run, not here.
+live run, not here. It would sharpen fact 1 above; it does not change the direction,
+because facts 2 and 3 stand on their own.
 
 ---
 

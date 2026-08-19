@@ -35,7 +35,9 @@ and it is the only place that is current by construction.
 - `npm test` from the root: **1149 passed, 0 failed**. A clean clone counts **6**
   fewer — the red-team tests gated on `out/*/trace.json`, which only exists in
   Javier's checkout. `npm run typecheck` clean.
-- **Next is round 10**, against `79fa632..HEAD`. The brief to copy is
+- **Next is round 10**, against `79fa632..HEAD` — which now also carries `63fd892`
+  (the §K evasion fix) and `1644897` (P-5 + two `keywords` doc corrections), neither
+  of them reviewed by anyone. The brief to copy is
   `m-red-team-reports/round9/BRIEF.md`; both of its corrections worked and should
   stay — a PRIVATE scratchpad per reviewer, and the sha in each agent's PROMPT
   rather than in the brief (a brief cannot name its own commit). Tell the reviewers
@@ -61,23 +63,24 @@ of mine previewed before the value under test was ever set).
 
 ## Open, and waiting on Javier rather than on work
 
-- **K, the pre-screen** (`deep-review.md` § K) — **re-measured 2026-08-19** on a
-  rebuilt census (the 2026-08-03 lists were never kept): 70 of 95 attack strings
-  passed, 2 of 73 ordinary phrasings were refused, and both refusals are the
-  documented attribution class. Nine of the seventy were EVASION, and those are
-  closed in this batch — the invisible class, `ig-nore`, `ign0re` — leaving
-  **61 / 95**, all semantic, and 2 / 73 unchanged. What is still open is only the
-  product decision between "refocus on normalization and evasion" (recommended, and
-  the layer is now at zero on that half) and "keep patching semantics" — with one
-  fact that was reasoned before and is now read out of the code: the buyer's free
-  text reaches a model only when `assist === 'on'`, which is exactly when the LLM
-  classifier runs too, so the pre-screen is never the sole layer on a path where a
-  miss reaches a prompt.
+- **K is no longer here. It closed 2026-08-19** — re-measured on a rebuilt census
+  (the 2026-08-03 lists were never kept), 70 → **61 of 95** attacks passing and
+  2 / 73 ordinary phrasings refused, unchanged; the nine that closed were all
+  evasion. Decision taken: **option 1, refocus** — the pre-screen owns normalization
+  and evasion, the classifier owns semantics. Reasoning and what the decision does
+  NOT license are in `deep-review.md` § K; the census is runnable at
+  `m-red-team-reports/k-census-2026-08-19/`.
 - **Product, none started**: P-1 (one dossier comparing two scenarios), P-2
   (recommend where in Florida when no location is given), P-4 (move the mode
   selector into the right-hand summary card — the real work is mobile, where that
-  card does not render at all). Each carries its own open design questions.
-- Smaller: C5's dispatch deadline (unmeasured), D1 essential pricing, the
+  card does not render at all), P-5 (a couple of pages inside the app that explain
+  the params and the report to the buyer — asked for 2026-08-19). Each carries its
+  own open design questions.
+- Smaller: **an alert on the moderation fail-open** (`moderation.llm_failed` /
+  `moderation.unparsable` are WARNINGs nobody watches, and `MODERATION_LLM=false`
+  has no signal at all — the one configuration in which the pre-screen is really the
+  only layer; §K's own follow-up, and the highest-yield item left on that layer),
+  C5's dispatch deadline (unmeasured), D1 essential pricing, the
   `MAX_JOB_COST_USD` default of $20 against a ~$2.6 honest comprehensive job, E3's
   unblock script (needs Javier's credentials for the dry run), N2 Stripe clawback,
   M-A2 (FENCE_RE near-misses, gated on frontier-tier evidence).
