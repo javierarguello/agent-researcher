@@ -169,8 +169,12 @@ describe('a localized template is localized in every language we publish', () =>
         m.modes.map((x) => block.modeLabels![x.key as 'essential' | 'comprehensive']),
       );
       expect(m.name, lang).toBe(block.name);
-      // Field help — the line under every input on the buyer's form.
+      // Field help — the line under every input on the buyer's form. An
+      // `internalParams` key is not on that form and not in the manifest, and its
+      // translations stay in the template on purpose, for the day it comes back.
+      const internal = new Set(t().internalParams ?? []);
       for (const [key, f] of Object.entries(block.fields ?? {})) {
+        if (internal.has(key)) continue;
         if (f.help) expect((m.paramsUi?.fields?.[key] as { help?: string } | undefined)?.help, `${lang}/${key}`).toBe(f.help);
       }
       // Workflow steps — what the buyer watches for the whole wait.

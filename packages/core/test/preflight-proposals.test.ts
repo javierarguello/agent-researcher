@@ -14,6 +14,17 @@ import { acceptProposals, applyProposals } from '../src/moderation/enrich.js';
 import type { GenerateOptions, GenerateResult } from '../src/llm/provider.js';
 
 const florida = getTemplate('florida-business-for-sale')!;
+/**
+ * The flagship as it will be when `keywords` come back off `internalParams`.
+ *
+ * `keywords` is internal now — declared in the schema, refused at the API, absent
+ * from the manifest — so the assist proposes none for the shipped template, and
+ * the gate tests below would assert `[]` for a reason that has nothing to do with
+ * the gate they exist to pin. They run against this instead, so the gate keeps its
+ * cover while the field is off the client surface; the SHIPPED behaviour is
+ * asserted in "the flagship proposes no keywords at all".
+ */
+const keywordsOn = { ...florida, internalParams: [] };
 const base = { industry: 'laundromats', location: 'Miami-Dade County, FL', mode: 'essential' } as Record<string, unknown>;
 
 describe('acceptProposals', () => {
@@ -51,7 +62,7 @@ describe('acceptProposals', () => {
 
   it('keywords: short phrases only — no URLs, no markup, no sentences, nothing already there, at most eight', () => {
     const out = acceptProposals(
-      florida,
+      keywordsOn,
       { ...base, keywords: ['absentee owner'] },
       {
         directives: {},
@@ -74,7 +85,7 @@ describe('acceptProposals', () => {
 
   it('the whole set has to validate as params — if it does not, nothing is proposed', () => {
     // 19 keywords already; 8 more would break `keywords.max(20)`.
-    const out = acceptProposals(florida, { ...base, keywords: Array.from({ length: 19 }, (_, i) => `k${i}`) }, { directives: {}, keywords: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] });
+    const out = acceptProposals(keywordsOn, { ...base, keywords: Array.from({ length: 19 }, (_, i) => `k${i}`) }, { directives: {}, keywords: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] });
     expect(out).toEqual({ directives: {}, keywords: [] });
   });
 
@@ -278,6 +289,41 @@ describe('a basic must be quoted by something that names it (R8-26)', () => {
   });
 });
 
+describe('the flagship proposes no keywords at all — the field is internal now', () => {
+  it('the model is asked for an empty list, and a keyword it returns anyway is dropped', async () => {
+    // `keywords` was the last channel by which a buyer's own prose reached an
+    // agent's prompt: the free text is not a param, directive values are ours, and
+    // every other field is typed. It is off the API and off the manifest, so the
+    // assist must not offer one either — a proposal the buyer's own submit would
+    // 400 on is worse than no proposal at all. Mutation that reds this: drop the
+    // `internalParams` check from `hasKeywordsField`.
+    const { proposeFromText } = await import('../src/moderation/enrich.js');
+    const { __setProviderForTests } = await import('../src/llm/models.js');
+    const { MockLlmProvider } = await import('./mocks/llm.js');
+    const { writableConfig } = await import('./writable-config.js');
+    const wasOn = writableConfig.validation.llm;
+    writableConfig.validation.llm = true;
+
+    let system = '';
+    class Capture extends MockLlmProvider {
+      override async generate(opts: GenerateOptions): Promise<GenerateResult> {
+        system = opts.system ?? '';
+        return { text: JSON.stringify({ directives: {}, keywords: ['coin laundry'] }), toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+    }
+    for (const n of ['gemini-vertex', 'flash', 'ollama']) __setProviderForTests(n, new Capture());
+    const out = await proposeFromText(florida, base, 'una lavandería en Hialeah, dueño jubilándose');
+
+    expect(system, 'the instruction asks for none').toMatch(/keywords — an empty list/i);
+    expect(out.proposals.keywords, 'and one returned anyway does not reach the buyer').toEqual([]);
+    writableConfig.validation.llm = wasOn;
+  });
+
+  it('and the same answer through acceptProposals keeps nothing', () => {
+    expect(acceptProposals(florida, base, { directives: {}, keywords: ['coin laundry'] }, 'x').keywords).toEqual([]);
+  });
+});
+
 describe('the keyword instruction', () => {
   it('asks for spaces, because the gate refuses underscores', async () => {
     // The prompt shows the model a FIELDS block whose every option is snake_case
@@ -300,13 +346,13 @@ describe('the keyword instruction', () => {
       }
     }
     for (const n of ['gemini-vertex', 'flash', 'ollama']) __setProviderForTests(n, new Capture());
-    await proposeFromText(florida, base, 'una lavandería en Hialeah, dueño jubilándose');
+    await proposeFromText(keywordsOn, base, 'una lavandería en Hialeah, dueño jubilándose');
 
     // Mutation that reds this: drop the sentence from `proposalSystemPrompt`.
     expect(system).toMatch(/spaces/i);
     expect(system).toMatch(/never underscores/i);
     // …and the gate it exists to satisfy is unchanged: refused, not cleaned.
-    const out = acceptProposals(florida, base, { directives: {}, keywords: ['seller_financing', 'seller financing'] }, 'x');
+    const out = acceptProposals(keywordsOn, base, { directives: {}, keywords: ['seller_financing', 'seller financing'] }, 'x');
     expect(out.keywords).toEqual(['seller financing']);
     writableConfig.validation.llm = wasOn;
   });

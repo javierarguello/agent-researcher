@@ -1349,9 +1349,10 @@ app.post(
             maxLength: 2000,
             description:
               'What the user wrote in their own words. Moderated like every other free text, then read by the ' +
-              'assisted layer to PROPOSE structured params — values from the model\'s directive vocabularies and ' +
-              'a few keywords — returned as `proposals` with `proposedParams` ready to submit if the user accepts. ' +
-              'It is never a param and never reaches a research prompt.',
+              'assisted layer to PROPOSE structured params — values from the model\'s directive vocabularies, and ' +
+              'keywords only for a model that offers them (the flagship does not: `keywords` is an internal param ' +
+              'and a request carrying it is refused) — returned as `proposals` with `proposedParams` ready to ' +
+              'submit if the user accepts. It is never a param and never reaches a research prompt.',
           },
           draftId: {
             type: 'string',

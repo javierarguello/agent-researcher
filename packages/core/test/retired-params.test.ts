@@ -32,10 +32,14 @@ describe('a request from a bundle older than the deploy', () => {
   });
 
   it('lets a current request through untouched', () => {
-    // The control: the guard must not reject what the live form sends.
-    const out = validateRequest(req({ ...base, keywords: ['absentee owner'] }));
+    // The control: the guard must not reject what the live form sends. This used to
+    // send `keywords`, which the live form no longer has — that field is
+    // `internalParams` now and has its own refusal, pinned in
+    // `internal-params.test.ts`. The control has to be something a client may
+    // actually send, or it stops being a control.
+    const out = validateRequest(req({ ...base, directives: { ownerInvolvement: 'absentee' } }));
     expect(out.params.industry).toBe('laundromats');
-    expect(out.params.keywords).toEqual(['absentee owner']);
+    expect(out.params.directives).toEqual({ ownerInvolvement: 'absentee' });
   });
 
   it('still ignores an unknown key that was never ours — no `.strict()`', () => {

@@ -1023,6 +1023,11 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
   // Confirm-step review: deterministic summary + rules, and the whitelist the
   // assisted (LLM) pass may propose corrections for. See florida-preflight.ts.
   preflight: floridaPreflight,
+  // `keywords` is the last channel by which a buyer's own prose reaches an agent's
+  // prompt — the free text is not a param, directive values are ours, and every
+  // other field is typed. Off the client surface for now, kept in the schema and
+  // in `buildBrief` so it comes back by deleting this line (Javier, 2026-08-19).
+  internalParams: ['keywords'],
   // Paid post-report deliverables this model offers (credits are the code
   // default; overridable per model in Firestore via /admin/pricing). Generators
   // ship later — the catalog + prices are defined here.
@@ -1064,7 +1069,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       { label: 'Asking price', minKey: 'askingPriceMin', maxKey: 'askingPriceMax', min: 0, max: 5_000_000, step: 25_000, prefix: '$' },
     ],
     // Secondary inputs live in a collapsed "Advanced" section.
-    advanced: ['keywords'],
+
     // Directives are in `paramsSchema` (so the API validates them) but must not be
     // rendered by the generic form builder — a client that fell back to the JSON
     // Schema would draw a raw object editor. They have their own localized block

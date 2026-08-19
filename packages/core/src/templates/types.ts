@@ -300,6 +300,26 @@ export interface ResearchTemplate<TParams = unknown> {
   directives?: DirectiveSpec;
   /** Presentation hints for rendering `paramsSchema` in a client UI. */
   paramsUi?: ParamsUi;
+  /**
+   * Params the ENGINE understands and no CLIENT may send.
+   *
+   * Not a retirement: the key stays in `paramsSchema`, `buildBrief` still renders
+   * it, and a server-side caller — the local CLI, a future internal job — keeps
+   * working. What it loses is the three client-facing surfaces, and it has to lose
+   * all three together or the field is broken rather than hidden:
+   *   - `toManifest` strips it from the published `paramsSchema` and from every
+   *     `paramsUi` hint that names it, so no client renders an input for it;
+   *   - `validateRequest` refuses a request that sends it, with a message, rather
+   *     than stripping it in silence (round 7, R7-8: a param we drop without
+   *     saying so is a job the buyer paid for that did not read what they wrote);
+   *   - the pre-flight assist stops proposing it.
+   *
+   * `keywords` is the first: it is the last channel by which a buyer's own prose
+   * reaches an agent's prompt, and taking it off the client surface is what makes
+   * the pre-screen's remaining job "normalize and catch evasion" rather than
+   * "read intent" (Javier, 2026-08-19; see `deep-review.md` § K).
+   */
+  internalParams?: string[];
   /** Paid post-report deliverables this model offers (the add-on catalog). */
   addons?: AddonSpec[];
   /**

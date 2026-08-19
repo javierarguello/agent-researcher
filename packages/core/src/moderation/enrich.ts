@@ -462,8 +462,17 @@ export async function proposeFromText(
   return { proposals: acceptProposals(template, params, parsed, text), ...(usage ? { usage } : {}) };
 }
 
-/** Whether the template's params carry a `keywords` string array. */
+/**
+ * Whether the template's params carry a `keywords` string array **that a client
+ * may set**.
+ *
+ * An `internalParams` key is declared in the schema and refused at the API, so
+ * proposing it would offer the buyer a value their own submit would 400 on — and
+ * the assist reads their free text, which is exactly the prose we took off that
+ * surface. Both halves have to agree or the feature is worse than either.
+ */
 function hasKeywordsField(template: ResearchTemplate<any>): boolean {
+  if ((template.internalParams ?? []).includes('keywords')) return false;
   const probe = template.paramsSchema.safeParse({ keywords: ['x'] });
   // A schema that lacks the field either strips it (success, no keywords) or rejects
   // it; one that has it keeps it.

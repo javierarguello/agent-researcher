@@ -16,7 +16,7 @@ const T = {
     s1: 'What & where', s1h: "Define what you're hunting for.",
     s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
-    s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences and keywords for you to confirm — the text itself is not part of the request. It does not set the price, the location or the filters: those stay yours, above.',
+    s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences for you to confirm — the text itself is not part of the request. It does not set the price, the location or the filters: those stay yours, above.',
     sdPick: 'Pick them yourself', sdHide: 'Write it instead', sdTitle: 'Your preferences',
     sdBoth: 'Two ways to fill the same fields. Describe what you’re after and we propose a value for each one, for you to confirm — or pick them yourself. Either way it does not set the price, the location or the filters: those stay yours, above.',
     notesKept: 'Your notes are still sent — we read them when you continue.', fromNotes: 'from your notes', notesShow: 'Edit', yourChoice: 'your own choice',
@@ -47,7 +47,7 @@ const T = {
     s1: 'Qué y dónde', s1h: 'Define qué estás buscando.',
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
-    s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias y palabras clave para que las confirmes — el texto en sí no forma parte del pedido. No define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
+    s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias para que las confirmes — el texto en sí no forma parte del pedido. No define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
     sdPick: 'Elígelos tú mismo', sdHide: 'Mejor lo escribo', sdTitle: 'Tus preferencias',
     sdBoth: 'Dos formas de llenar los mismos campos. Describe lo que buscas y proponemos un valor para cada uno, para que los confirmes — o elígelos tú mismo. En cualquier caso no define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
     notesKept: 'Tus notas se siguen enviando — las leemos al continuar.', fromNotes: 'de tus notas', notesShow: 'Editar', yourChoice: 'tu propia elección',
@@ -78,7 +78,7 @@ const T = {
     s1: 'Quoi et où', s1h: 'Définissez ce que vous cherchez.',
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
-    s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences et en mots-clés que vous confirmez — le texte lui-même ne fait pas partie de la demande. Il ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
+    s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences que vous confirmez — le texte lui-même ne fait pas partie de la demande. Il ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
     sdPick: 'Les choisir vous-même', sdHide: 'Je préfère l’écrire', sdTitle: 'Vos préférences',
     sdBoth: 'Deux façons de remplir les mêmes champs. Décrivez ce que vous cherchez et nous proposons une valeur pour chacun, que vous confirmez — ou choisissez-les vous-même. Dans les deux cas, cela ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
     notesKept: 'Vos notes sont toujours envoyées — nous les lisons à l’étape suivante.', fromNotes: 'd’après vos notes', notesShow: 'Modifier', yourChoice: 'votre propre choix',
@@ -109,7 +109,7 @@ const T = {
     s1: 'O quê e onde', s1h: 'Defina o que você procura.',
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
-    s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências e palavras-chave para você confirmar — o texto em si não faz parte do pedido. Ele não define preço, localização nem filtros: isso continua com você, acima.',
+    s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências para você confirmar — o texto em si não faz parte do pedido. Ele não define preço, localização nem filtros: isso continua com você, acima.',
     sdPick: 'Escolher você mesmo', sdHide: 'Prefiro escrever', sdTitle: 'Suas preferências',
     sdBoth: 'Duas formas de preencher os mesmos campos. Descreva o que você procura e propomos um valor para cada um, para você confirmar — ou escolha você mesmo. De qualquer forma, não define preço, localização nem filtros: isso continua com você, acima.',
     notesKept: 'Suas notas continuam sendo enviadas — nós as lemos ao continuar.', fromNotes: 'das suas notas', notesShow: 'Editar', yourChoice: 'sua própria escolha',
@@ -404,9 +404,13 @@ export function NewReport() {
    */
   const subjectKey = primaryKeys[0];
   const subject = String(params[primaryKeys[0] ?? ''] ?? '');
-  const keywordCount = Array.isArray(params.keywords) ? (params.keywords as unknown[]).length : 0;
-  // Industry is optional; without it, at least one keyword is (mirrors the API).
-  const needsSubject = !subject.trim() && keywordCount === 0;
+  // The API's rule is "an industry, or at least one keyword" — but `keywords` is an
+  // internal param now: not in the manifest, not on this form, refused if a client
+  // sends it (`ResearchTemplate.internalParams`). So the only half a buyer can
+  // satisfy is the subject, and a form that says "or a keyword" would be pointing
+  // at a field it does not render. The keyword half stays in the API for a
+  // server-side caller; here it is simply the subject.
+  const needsSubject = !subject.trim();
   const bal = balance.data?.balance;
   // Only one report may be in flight per user (until it finishes or fails).
   const hasLive = (stats.data?.inProgress ?? 0) >= 1;

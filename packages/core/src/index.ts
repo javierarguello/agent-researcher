@@ -274,6 +274,18 @@ export function validateRequest(body: unknown): ValidatedRequest {
     throw new Error(`${retired.map((k) => RETIRED_PARAMS[k]).join(' ')} Reload the page and try again.`);
   }
 
+  // A param the engine understands and no client may send. The key IS declared —
+  // that is the difference from a retired one — so the schema would accept it
+  // happily, and a client that has it on its form (every tab open at this deploy)
+  // would have its value used without ever having been offered the field. Same
+  // answer as above and for the same reason: say so, do not strip it silently.
+  const internal = (template.internalParams ?? []).filter((k) => k in sent);
+  if (internal.length) {
+    throw new Error(
+      `This model does not accept ${internal.join(', ')} from a client. Reload the page and try again.`,
+    );
+  }
+
   const parsed = template.paramsSchema.safeParse(raw.params ?? {});
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');

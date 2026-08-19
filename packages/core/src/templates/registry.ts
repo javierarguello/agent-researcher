@@ -79,6 +79,39 @@ function buildSteps(t: ResearchTemplate<any>, tr: TemplateI18n | undefined, lang
   ];
 }
 
+/**
+ * Strip a template's `internalParams` out of everything a client reads.
+ *
+ * Both halves, or the field is broken rather than hidden: a schema without the
+ * key and a `paramsUi` that still names it makes a client render a control for a
+ * property that does not exist, and a `paramsUi` without it while the schema
+ * keeps it makes the client render a default input for a field whose every
+ * submission is a 400.
+ */
+function hideInternal<T>(schema: T, ui: ParamsUi | undefined, internal: string[] | undefined): { schema: T; ui: ParamsUi | undefined } {
+  if (!internal?.length) return { schema, ui };
+  const hide = new Set(internal);
+  const js = schema as unknown as { properties?: Record<string, unknown>; required?: string[] };
+  const outSchema = js && typeof js === 'object' && js.properties
+    ? {
+        ...js,
+        properties: Object.fromEntries(Object.entries(js.properties).filter(([k]) => !hide.has(k))),
+        ...(js.required ? { required: js.required.filter((k) => !hide.has(k)) } : {}),
+      }
+    : schema;
+  const outUi = ui
+    ? {
+        ...ui,
+        ...(ui.fields ? { fields: Object.fromEntries(Object.entries(ui.fields).filter(([k]) => !hide.has(k))) } : {}),
+        ...(ui.rows ? { rows: ui.rows.map((r) => r.filter((k) => !hide.has(k))).filter((r) => r.length) } : {}),
+        ...(ui.hidden ? { hidden: ui.hidden.filter((k) => !hide.has(k)) } : {}),
+        ...(ui.advanced ? { advanced: ui.advanced.filter((k) => !hide.has(k)) } : {}),
+        ...(ui.ranges ? { ranges: ui.ranges.filter((r) => !hide.has(r.minKey) && !hide.has(r.maxKey)) } : {}),
+      }
+    : ui;
+  return { schema: outSchema as T, ui: outUi };
+}
+
 /** Apply per-language help/placeholder overrides to the paramsUi. */
 function localizeParamsUi(ui: ParamsUi | undefined, tr: TemplateI18n | undefined): ParamsUi | undefined {
   if (!ui || !(tr?.fields || tr?.ranges)) return ui;
@@ -132,6 +165,7 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
   // texts fell back to English produced a manifest in two languages — and a `lang`
   // field that was wrong about part of it whichever value it took.
   const actualLang = lang === DEFAULT_LANG || tr ? lang : DEFAULT_LANG;
+  const hidden = hideInternal(z.toJSONSchema(t.paramsSchema), t.paramsUi ? localizeParamsUi(t.paramsUi, tr) : undefined, t.internalParams);
   return {
     id: t.id,
     name: tr?.name ?? t.name,
@@ -139,8 +173,10 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     version: t.version,
     lang: actualLang,
     sections: t.sections.map((s) => ({ key: s.key, title: tr?.sectionTitles?.[s.key] ?? s.title })),
-    paramsSchema: z.toJSONSchema(t.paramsSchema),
-    ...(t.paramsUi ? { paramsUi: localizeParamsUi(t.paramsUi, tr) } : {}),
+    // `internalParams` never leave the server: a client cannot render, submit or
+    // discover them. See `ResearchTemplate.internalParams`.
+    paramsSchema: hidden.schema,
+    ...(hidden.ui ? { paramsUi: hidden.ui } : {}),
     // Localized in the template, not in the client: a new directive field (or a
     // new language for an existing one) reaches every front-end with no client
     // change. Note what is NOT here — the prompt text these render into. That is
