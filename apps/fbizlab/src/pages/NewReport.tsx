@@ -17,8 +17,9 @@ const T = {
     s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
     s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences and keywords for you to confirm — the text itself is not part of the request. It does not set the price, the location or the filters: those stay yours, above.',
-    sdPick: 'Pick them yourself', sdHide: 'Hide these', fromNotes: 'from your notes', notesShow: 'Edit', notesHide: 'Hide',
-    sdEmpty: 'Empty for now. What you write above lands here when you continue — one field at a time, each one yours to confirm or change. You can also pick them yourself right now.',
+    sdPick: 'Pick them yourself', sdHide: 'Write it instead', sdTitle: 'Your preferences',
+    sdBoth: 'Two ways to fill the same fields. Describe what you’re after and we propose a value for each one, for you to confirm — or pick them yourself. Either way it does not set the price, the location or the filters: those stay yours, above.',
+    notesKept: 'Your notes are still sent — we read them when you continue.', fromNotes: 'from your notes', notesShow: 'Edit',
     sdFilled: 'Filled from your notes — check them and change anything. A field you touch becomes yours; we will not fill it again.',
     sdOff: 'Your notes were not read this time, so these fields are the way to say it. Everything here is optional.',
     s4Off: 'Your notes were not read this time. Pick your preferences by hand — they carry the same information.', proposalsTitle: 'Suggested from your notes', proposalsHint: 'Tick what you recognise. Anything we inferred rather than read comes unticked.', applyProposals: 'Apply suggestions', kw: 'Keywords', basicsTitle: 'From your notes, for a field you left empty',
@@ -47,8 +48,9 @@ const T = {
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
     s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias y palabras clave para que las confirmes — el texto en sí no forma parte del pedido. No define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
-    sdPick: 'Elígelos tú mismo', sdHide: 'Ocultar', fromNotes: 'de tus notas', notesShow: 'Editar', notesHide: 'Ocultar',
-    sdEmpty: 'Vacío por ahora. Lo que escribas arriba aterriza aquí al continuar — campo por campo, y cada uno es tuyo para confirmarlo o cambiarlo. También puedes elegirlos tú mismo ahora.',
+    sdPick: 'Elígelos tú mismo', sdHide: 'Mejor lo escribo', sdTitle: 'Tus preferencias',
+    sdBoth: 'Dos formas de llenar los mismos campos. Describe lo que buscas y proponemos un valor para cada uno, para que los confirmes — o elígelos tú mismo. En cualquier caso no define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
+    notesKept: 'Tus notas se siguen enviando — las leemos al continuar.', fromNotes: 'de tus notas', notesShow: 'Editar',
     sdFilled: 'Llenados desde tus notas — revísalos y cambia lo que quieras. Un campo que tocas pasa a ser tuyo; no lo volvemos a llenar.',
     sdOff: 'Tus notas no se leyeron esta vez, así que estos campos son la forma de decirlo. Todo aquí es opcional.',
     s4Off: 'Tus notas no se leyeron esta vez. Elige tus preferencias a mano — llevan la misma información.', proposalsTitle: 'Sugerido a partir de tus notas', proposalsHint: 'Marca lo que reconozcas. Lo que dedujimos en vez de leer viene sin marcar.', applyProposals: 'Aplicar sugerencias', kw: 'Palabras clave', basicsTitle: 'De tus notas, para un campo que dejaste vacío',
@@ -77,8 +79,9 @@ const T = {
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
     s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences et en mots-clés que vous confirmez — le texte lui-même ne fait pas partie de la demande. Il ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
-    sdPick: 'Les choisir vous-même', sdHide: 'Masquer', fromNotes: 'd’après vos notes', notesShow: 'Modifier', notesHide: 'Masquer',
-    sdEmpty: 'Vide pour l’instant. Ce que vous écrivez ci-dessus arrive ici à l’étape suivante — un champ à la fois, chacun à confirmer ou à changer. Vous pouvez aussi les choisir vous-même dès maintenant.',
+    sdPick: 'Les choisir vous-même', sdHide: 'Je préfère l’écrire', sdTitle: 'Vos préférences',
+    sdBoth: 'Deux façons de remplir les mêmes champs. Décrivez ce que vous cherchez et nous proposons une valeur pour chacun, que vous confirmez — ou choisissez-les vous-même. Dans les deux cas, cela ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
+    notesKept: 'Vos notes sont toujours envoyées — nous les lisons à l’étape suivante.', fromNotes: 'd’après vos notes', notesShow: 'Modifier',
     sdFilled: 'Remplis d’après vos notes — vérifiez-les et changez ce que vous voulez. Un champ que vous touchez devient le vôtre ; nous ne le remplirons plus.',
     sdOff: 'Vos notes n’ont pas été lues cette fois : ces champs sont donc le moyen de le dire. Tout ici est optionnel.',
     s4Off: 'Vos notes n’ont pas été lues cette fois. Choisissez vos préférences à la main — elles portent la même information.', proposalsTitle: 'Suggéré d’après vos notes', proposalsHint: 'Cochez ce que vous reconnaissez. Ce que nous avons déduit plutôt que lu arrive décoché.', applyProposals: 'Appliquer les suggestions', kw: 'Mots-clés', basicsTitle: 'D’après vos notes, pour un champ laissé vide',
@@ -107,8 +110,9 @@ const T = {
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
     s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências e palavras-chave para você confirmar — o texto em si não faz parte do pedido. Ele não define preço, localização nem filtros: isso continua com você, acima.',
-    sdPick: 'Escolher você mesmo', sdHide: 'Ocultar', fromNotes: 'das suas notas', notesShow: 'Editar', notesHide: 'Ocultar',
-    sdEmpty: 'Vazio por enquanto. O que você escrever acima chega aqui ao continuar — um campo de cada vez, cada um seu para confirmar ou mudar. Você também pode escolhê-los agora.',
+    sdPick: 'Escolher você mesmo', sdHide: 'Prefiro escrever', sdTitle: 'Suas preferências',
+    sdBoth: 'Duas formas de preencher os mesmos campos. Descreva o que você procura e propomos um valor para cada um, para você confirmar — ou escolha você mesmo. De qualquer forma, não define preço, localização nem filtros: isso continua com você, acima.',
+    notesKept: 'Suas notas continuam sendo enviadas — nós as lemos ao continuar.', fromNotes: 'das suas notas', notesShow: 'Editar',
     sdFilled: 'Preenchidos a partir das suas notas — confira e mude o que quiser. Um campo que você toca passa a ser seu; não o preenchemos de novo.',
     sdOff: 'Suas notas não foram lidas desta vez, então estes campos são o jeito de dizer isso. Tudo aqui é opcional.',
     s4Off: 'Suas notas não foram lidas desta vez. Escolha suas preferências à mão — elas levam a mesma informação.', proposalsTitle: 'Sugerido a partir das suas notas', proposalsHint: 'Marque o que você reconhecer. O que deduzimos em vez de ler vem desmarcado.', applyProposals: 'Aplicar sugestões', kw: 'Palavras-chave', basicsTitle: 'Das suas notas, para um campo que você deixou vazio',
@@ -263,10 +267,17 @@ export function NewReport() {
    * cannot take it back.
    */
   const [fromNotes, setFromNotes] = useState<Record<string, string>>({});
-  /** Explicit open/close for the preferences block; `null` = decide from content. */
-  const [dirOpen, setDirOpen] = useState<boolean | null>(null);
-  /** The notes box collapses once it has been read — visible, with the text inside. */
-  const [notesOpen, setNotesOpen] = useState(true);
+  /**
+   * Which of the two ways into the SAME seven params is on screen.
+   *
+   * `write` — the box, the default. `pick` — the seven fields. One at a time, so the
+   * page stops asking for the same thing twice and stops opening with a wall of
+   * chips. Switching is a VIEW change and never a data change: notes typed and then
+   * hidden are still sent and still read (hiding is not discarding — that is how a
+   * buyer ends up paying for words nobody used), which is why `pick` shows them
+   * quoted on one line rather than nothing at all.
+   */
+  const [way, setWay] = useState<'write' | 'pick'>('write');
   // What the user typed in their own words. NOT a param: it goes to the preflight,
   // which reads it and proposes preferences and keywords; the job never sees it.
   const [freeText, setFreeText] = useState('');
@@ -385,10 +396,15 @@ export function NewReport() {
   const directives = model?.directives ?? [];
   const dirKey = model?.directivesKey ?? 'directives';
   const dirVals = (params[dirKey] as Record<string, unknown>) ?? {};
-  /** The assist could not run, so the fields are the buyer's only way to say this. */
+  /**
+   * The assist could not run — no credits, cooldown, ATTEMPTS SPENT, disabled.
+   *
+   * The box can do nothing for them from here, so the fields are not merely the
+   * other option, they are the only one: the view is forced and the box is not
+   * offered back.
+   */
   const assistOff = !!pf && pf.assist?.state !== 'on';
-  /** Open when the buyer asked, or when there is anything to see. */
-  const dirExpanded = dirOpen ?? (Object.keys(dirVals).length > 0 || assistOff);
+  const picking = way === 'pick' || assistOff;
   const setDir = (k: string, v: unknown) => {
     const next: Record<string, unknown> = { ...dirVals };
     if (v === undefined || (Array.isArray(v) && v.length === 0)) delete next[k];
@@ -397,10 +413,6 @@ export function NewReport() {
   };
   /** A hand edit takes the field back: it stops being "from your notes". */
   const editDir = (k: string, v: unknown) => {
-    // …and pins the block open. Without this, unpicking the LAST value while
-    // browsing the fields drops `dirVals` to empty and the whole section snaps shut
-    // underneath the buyer's cursor — the auto-open rule reading as a bug.
-    setDirOpen(true);
     setDir(k, v);
     setFromNotes((n) => {
       if (!(k in n)) return n;
@@ -615,8 +627,9 @@ export function NewReport() {
           setParams((p) => ({ ...p, [dirKey]: { ...((p[dirKey] as Record<string, unknown> | undefined) ?? {}), ...kept } }));
           setFromNotes(tags);
         }
-        // Read, so it folds away — visible, with the text still in it.
-        if (previewText) setNotesOpen(false);
+        // Read: show what it produced. The fields are where the proposals landed,
+        // and the notes stay on screen above them, quoted.
+        if (Object.keys(kept).length) setWay('pick');
       } else {
         // Nothing to review — but the PREVIOUS review may still be in state, and
         // submitting with it would apply proposals derived from text this request no
@@ -785,68 +798,25 @@ export function NewReport() {
               <div className="nr-row">{filterKeys.filter(isBoolean).map((k) => checkField(k))}</div>
             </section>
 
-            {/* 04 In your own words — FIRST, because it is the way in.
+            {/* 04 — ONE section, two ways into the same seven params.
 
-                It used to sit under the seven chip rows it fills, which put the
-                RESULT above its cause — and on a phone, where 04 and 05 are separate
-                wizard steps, the empty preferences header arrived a whole step before
-                the box that explains it. The explanation itself was passed to
-                `SecHead`'s `right` slot, styled `nr-hint`: mono, 10px, uppercase,
-                right-aligned. Fine for three words; a forty-word sentence rendered
-                that way is decoration nobody reads. It is a lead paragraph now. */}
+                They were two sections, open at once, asking for the same thing twice
+                and opening the page with ~30 chips; then two collapsibles, where the
+                collapsed one read as a section that had failed to load. Now it is a
+                choice, made with a control instead of inferred from layout: the box
+                (default) or the fields, one at a time.
+
+                Switching is a VIEW change, never a data change. Notes typed and then
+                hidden are still sent and still read — hiding is not discarding, which
+                is how a buyer ends up paying for words nobody used — so `pick` keeps
+                them on screen, quoted on one line, with the way back beside them. */}
             <section className="nr-sec" style={stepOf(2)}>
               <SecHead
                 n="04"
-                title={t.s4}
+                title={picking ? t.sdTitle : t.s4}
                 right={
-                  notesOpen ? (
-                    <span className="nr-hint">{t.optionalUseful}</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="nr-hint"
-                      data-testid="toggle-notes"
-                      style={{ background: 'none', border: 0, cursor: 'pointer' }}
-                      onClick={() => setNotesOpen(true)}
-                    >
-                      {t.notesShow}
-                    </button>
-                  )
-                }
-              />
-              <p className="nr-lead">{t.s4h}</p>
-              {/* The assist could not run, so this box can do nothing for them —
-                  said here, on the form, not only inside the modal. */}
-              {assistOff && <p className="nr-lead" style={{ color: 'var(--risk)' }} data-testid="assist-off">{t.s4Off}</p>}
-              {notesOpen ? (
-                <>
-                  <textarea className="textarea" rows={6} maxLength={FREE_TEXT_MAX} value={freeText} onChange={(e) => setFreeText(e.target.value)} data-testid="free-text" />
-                  <div className="between" style={{ marginTop: 6 }}>
-                    <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>{t.optionalUseful}</span>
-                    <span className="mono muted" style={{ fontSize: 10.5 }}>{freeText.length} / {FREE_TEXT_MAX}</span>
-                  </div>
-                </>
-              ) : (
-                <p className="soft" data-testid="notes-collapsed" style={{ fontSize: 13.5, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  “{freeText.trim()}”
-                </p>
-              )}
-            </section>
-
-            {/* 05 Your preferences — what the box above produces.
-
-                Collapsed until it holds something, but never a bare header: the empty
-                state says what will land here and when, and offers the way to fill it
-                by hand. The counter is the other half of that — a buyer coming back
-                to a page they half-filled can see there is something in here without
-                opening it. */}
-            {directives.length > 0 && (
-              <section className="nr-sec" style={stepOf(3)}>
-                <SecHead
-                  n="05"
-                  title={t.sd}
-                  right={
-                    <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
+                  <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
+                    {directives.length > 0 && picking && (
                       <span
                         className="mono muted"
                         data-testid="dir-count"
@@ -854,36 +824,66 @@ export function NewReport() {
                       >
                         {Object.keys(dirVals).length}/{directives.length}
                       </span>
+                    )}
+                    {/* Not offered back when the assist cannot run: an input that can
+                        do nothing is worse than no input. */}
+                    {directives.length > 0 && !assistOff && (
                       <button
                         type="button"
                         className="btn btn--outline btn--sm"
                         data-testid="toggle-preferences"
-                        onClick={() => setDirOpen(!dirExpanded)}
+                        onClick={() => setWay(picking ? 'write' : 'pick')}
                       >
-                        {dirExpanded ? t.sdHide : t.sdPick}
+                        {picking ? t.sdHide : t.sdPick}
+                      </button>
+                    )}
+                  </div>
+                }
+              />
+              <p className="nr-lead">
+                {assistOff ? t.sdOff : picking ? (Object.keys(fromNotes).length ? t.sdFilled : t.sdBoth) : t.s4h}
+              </p>
+              {/* Said on the FORM, next to the box it made inert — not only inside
+                  the modal the buyer has to open to find out. */}
+              {assistOff && <p className="nr-lead" style={{ color: 'var(--risk)' }} data-testid="assist-off">{t.s4Off}</p>}
+
+              {picking ? (
+                <>
+                  {freeText.trim() && (
+                    <div className="nr-empty between" style={{ marginBottom: 18 }}>
+                      <span className="stack" style={{ gap: 4, minWidth: 0 }}>
+                        <span className="soft" data-testid="notes-collapsed" style={{ fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          “{freeText.trim()}”
+                        </span>
+                        <span className="mono muted" style={{ fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{t.notesKept}</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="nr-hint"
+                        data-testid="toggle-notes"
+                        style={{ background: 'none', border: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        onClick={() => setWay('write')}
+                      >
+                        {t.notesShow}
                       </button>
                     </div>
-                  }
-                />
-                <p className="nr-lead">
-                  {assistOff ? t.sdOff : Object.keys(fromNotes).length ? t.sdFilled : t.sdh}
-                </p>
-                {dirExpanded ? (
+                  )}
                   <div className="stack" style={{ gap: 18 }}>{directives.map(dirField)}</div>
-                ) : (
-                  <div className="nr-empty between">
-                    <span style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--muted)' }}>{t.sdEmpty}</span>
-                    <button type="button" className="btn btn--black btn--sm" data-testid="pick-by-hand" onClick={() => setDirOpen(true)}>
-                      {t.sdPick}
-                    </button>
+                </>
+              ) : (
+                <>
+                  <textarea className="textarea" rows={6} maxLength={FREE_TEXT_MAX} value={freeText} onChange={(e) => setFreeText(e.target.value)} data-testid="free-text" />
+                  <div className="between" style={{ marginTop: 6 }}>
+                    <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>{t.optionalUseful}</span>
+                    <span className="mono muted" style={{ fontSize: 10.5 }}>{freeText.length} / {FREE_TEXT_MAX}</span>
                   </div>
-                )}
-              </section>
-            )}
+                </>
+              )}
+            </section>
 
             {/* 06 Advanced */}
             <section className="nr-sec" style={stepOf(3)}>
-              <SecHead n={directives.length ? '06' : '05'} title={t.s5} right={<button type="button" className="nr-hint" style={{ background: 'none', border: 0, cursor: 'pointer' }} onClick={() => setAdvOpen((o) => !o)}>{advOpen ? t.hide : t.show}</button>} />
+              <SecHead n="05" title={t.s5} right={<button type="button" className="nr-hint" style={{ background: 'none', border: 0, cursor: 'pointer' }} onClick={() => setAdvOpen((o) => !o)}>{advOpen ? t.hide : t.show}</button>} />
               {advOpen && (
                 <div className="stack" style={{ gap: 16, paddingTop: 4 }}>
                   {advancedKeys.map(advField)}
