@@ -61,14 +61,18 @@ of mine previewed before the value under test was ever set).
 
 ## Open, and waiting on Javier rather than on work
 
-- **K, the pre-screen** (`deep-review.md` § K) — 85 injection strings pass and 59
-  ordinary business phrasings are refused, and the cause is structural, not a
-  missing case. Parked since 2026-08-03 for a product decision between "refocus on
-  normalization and evasion" and "keep patching". **The balance moved on
-  2026-08-19**: `29f8593` took `keywords` off the client surface, so the buyer's
-  prose no longer reaches a prompt as a phrase list and a MISS costs much less,
-  while a false positive still costs a hard 422. The census was not re-measured —
-  the pre-screen code is untouched since `a5f906d`, so it still describes it.
+- **K, the pre-screen** (`deep-review.md` § K) — **re-measured 2026-08-19** on a
+  rebuilt census (the 2026-08-03 lists were never kept): 70 of 95 attack strings
+  passed, 2 of 73 ordinary phrasings were refused, and both refusals are the
+  documented attribution class. Nine of the seventy were EVASION, and those are
+  closed in this batch — the invisible class, `ig-nore`, `ign0re` — leaving
+  **61 / 95**, all semantic, and 2 / 73 unchanged. What is still open is only the
+  product decision between "refocus on normalization and evasion" (recommended, and
+  the layer is now at zero on that half) and "keep patching semantics" — with one
+  fact that was reasoned before and is now read out of the code: the buyer's free
+  text reaches a model only when `assist === 'on'`, which is exactly when the LLM
+  classifier runs too, so the pre-screen is never the sole layer on a path where a
+  miss reaches a prompt.
 - **Product, none started**: P-1 (one dossier comparing two scenarios), P-2
   (recommend where in Florida when no location is given), P-4 (move the mode
   selector into the right-hand summary card — the real work is mobile, where that

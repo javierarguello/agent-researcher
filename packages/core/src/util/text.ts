@@ -25,7 +25,21 @@
 // run — so `ig\u00ADnore all previous instructions` walked past the pre-screen
 // while the file above claimed every pattern is tested against normalized text.
 // The `u` flag is what lets the tag range be written as a code point.
-const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\uFE00-\uFE0F\u00AD\u{E0000}-\u{E007F}]/gu;
+//
+// The second half of the class was measured, not guessed: a rebuilt §K census on
+// 2026-08-19 ran six invisible characters at the real function and five walked
+// through. They are the ones that are NOT whitespace and NOT control characters —
+// fillers, a joiner, an inherent vowel, a blank braille cell — so `\s` never
+// collapsed them and `hasControlChars` never saw them:
+//   034F combining grapheme joiner      115F/1160 hangul fillers (3164/FFA0 NFKC to 1160)
+//   17B4/17B5 khmer inherent vowels     180B-180F mongolian selectors + separator
+//   2800 braille blank                  FFF9-FFFB interlinear annotation
+//   1D173-1D17A musical formatting
+// Stripping them can only JOIN text, so what a wrong entry costs is a false
+// positive, and the corpus pins the shape that would produce one (`jail-break
+// themed escape room`).
+const INVISIBLE =
+  /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\uFE00-\uFE0F\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u2800\u3164\uFFA0\uFFF9-\uFFFB\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}]/gu;
 /** C0/C1 control characters, except tab (09) and newline (0A / 0D). */
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
@@ -76,12 +90,83 @@ export function foldConfusables(text: string): string {
  * ignore. All previous instructions from the fire marshal" matched across a
  * sentence boundary. Padding is the thing to undo — not punctuation.
  */
-export function screeningForms(text: string): { normalized: string; unpadded: string } {
+export function screeningForms(text: string): { normalized: string; unpadded: string; deobfuscated: string[] } {
   const normalized = foldConfusables(stripInvisible(text.normalize('NFKC')))
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
-  return { normalized, unpadded: unpad(normalized) };
+  const unpadded = unpad(normalized);
+  return { normalized, unpadded, deobfuscated: deobfuscate(normalized, unpadded) };
+}
+
+/**
+ * A separator sitting INSIDE one word — `ig-nore`, `instruc_tions`, `pre.vious`.
+ *
+ * Neither of the other two forms reaches this. `unpad` joins runs of SINGLE
+ * characters, and `ig-nore` is not one; `tolerantPattern` makes the gaps BETWEEN a
+ * pattern's words optional, and this gap is inside a word. Measured walking through
+ * on 2026-08-19, as §K said it did.
+ *
+ * A space is deliberately not in the class. Joining across whitespace is what the
+ * predecessor of `unpad` did, and it turned "county jail. Breakdown of revenue"
+ * into a jailbreak.
+ */
+const INTRA_WORD_SEPARATOR = /(?<=\p{L})[-_*~+.]+(?=\p{L})/gu;
+
+/**
+ * Digits standing in for letters. A substitution is undone only inside a WORD —
+ * seeded by a letter next to it, then spread along the run, so "a11" folds whole
+ * while "24/7", "4 bays", "2/10 net 30" and a bare "30" keep every digit. Without
+ * the spread the second `1` of "a11" has no letter neighbour and the fold stops
+ * one character short of the word it was hiding.
+ *
+ * `1` is the one ambiguous case (`i` in "1nstructions", `l` in "a11"), which is why
+ * this returns a LIST: one form per reading, consistently applied. Two forms, not
+ * 2^n — a per-position expansion is exponential in the attacker's input length.
+ *
+ * `$` is NOT here, though "$ystem" is a real evasion: it is also how this product's
+ * buyers write money, and folding it inside "$1M" defeats the price exemption in
+ * the `forget everything above …` rule — which is a hard 422 on "Forget everything
+ * above the $1M asking price". A miss is the cheaper of the two.
+ */
+const LEET: Record<string, [string, string]> = {
+  '0': ['o', 'o'], '1': ['i', 'l'], '3': ['e', 'e'], '4': ['a', 'a'],
+  '5': ['s', 's'], '7': ['t', 't'], '@': ['a', 'a'],
+};
+const LETTER = /\p{L}/u;
+
+function foldLeet(text: string, reading: 0 | 1): string {
+  const isLetter = (i: number) => LETTER.test(text[i] ?? '');
+  const fold = text.split('').map((ch, i) => !!LEET[ch] && (isLetter(i - 1) || isLetter(i + 1)));
+  // Spread along the run: a leet character next to one that already folds is part
+  // of the same hidden word.
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let i = 0; i < text.length; i++) {
+      if (fold[i] || !LEET[text[i]!]) continue;
+      if (fold[i - 1] || fold[i + 1]) { fold[i] = true; changed = true; }
+    }
+  }
+  return text.split('').map((ch, i) => (fold[i] ? LEET[ch]![reading] : ch)).join('');
+}
+
+/**
+ * The forms left once the two obfuscations above are undone, minus the two the
+ * caller already has. Empty when the text carries neither — most text — so the
+ * extra regex passes are paid for only by input that looks tampered with.
+ */
+export function deobfuscate(normalized: string, unpadded: string): string[] {
+  const out: string[] = [];
+  const seen = new Set([normalized, unpadded]);
+  for (const base of new Set([normalized, unpadded])) {
+    const joined = base.replace(INTRA_WORD_SEPARATOR, '');
+    for (const form of [joined, foldLeet(joined, 0), foldLeet(joined, 1)]) {
+      if (seen.has(form)) continue;
+      seen.add(form);
+      out.push(form);
+    }
+  }
+  return out;
 }
 
 /**

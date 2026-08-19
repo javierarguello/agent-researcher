@@ -192,12 +192,22 @@ export function preScreen(text: string): ModerationCategory | null {
   // Control characters (except tab/newline) are used to smuggle instructions.
   if (hasControlChars(text)) return 'control_chars';
 
-  const { normalized, unpadded } = screeningForms(text);
+  const { normalized, unpadded, deobfuscated } = screeningForms(text);
   // The tolerant twin covers both forms: it treats every inter-word gap as
   // optional, so it matches "system-prompt" in the normalized text and the
   // already-closed gap in the unpadded one.
+  //
+  // `deobfuscated` is the third: a separator inside ONE WORD of the pattern
+  // ("ig-nore", "instruc_tions") and digits standing in for letters ("ign0re",
+  // "sy5tem") are invisible to the other two, and both walked through until
+  // 2026-08-19. It is empty for text that carries neither.
+  //
+  // Only THIS list runs against it, never `PADDED_ONLY` below: those patterns are
+  // bare words, and closing intra-word separators turns "jail-break themed escape
+  // room" — an acquisition target this product serves — into `jailbreak`.
   for (const re of TOLERANT_PATTERNS) {
     if (re.test(normalized) || re.test(unpadded)) return 'prompt_injection';
+    if (deobfuscated.some((form) => re.test(form))) return 'prompt_injection';
   }
   if (unpadded !== normalized) {
     for (const re of TOLERANT_PADDED_ONLY) if (re.test(unpadded)) return 'prompt_injection';
