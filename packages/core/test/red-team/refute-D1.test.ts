@@ -158,14 +158,20 @@ describe('refute D1', () => {
     // thinking length varies) → different error strings.
     expect(msg(150)).not.toBe(msg(160));
     expect(msg(150)).toMatch(/position 150/);
-    // What the engine compares across dispatches instead: the parser's error KIND.
-    // Both cuts are one failure. (Mutation that reds it: drop the `at position`
-    // strip in `jsonFailureSignature`.)
-    expect(jsonFailureSignature(msg(150))).toBe('json:Unterminated string in JSON');
+    // What the engine compares across dispatches instead: ONE bucket for every parse
+    // failure. Keeping the parser's KIND made "two truncations are one failure" only
+    // 73.4% true — seven V8 kinds over a realistic section truncated at every offset
+    // — so the counter reset on about one dispatch in four for the failure most
+    // likely to repeat (round 7, R7-14). These two cuts happened to share a kind;
+    // the pair below did not, and the pair after that is the same non-answer twice.
+    // Mutation that reds it: return the parser's kind again.
+    expect(jsonFailureSignature(msg(150))).toBe('json:parse');
     expect(jsonFailureSignature(msg(160))).toBe(jsonFailureSignature(msg(150)));
-    // …and the excerpt: "not json" vs "still not json" is the same non-answer.
-    expect(jsonFailureSignature("Unexpected token 'o', \"not json\" is not valid JSON")).toBe('json:Unexpected token');
-    expect(jsonFailureSignature("Unexpected token 's', \"still not json\" is not valid JSON")).toBe('json:Unexpected token');
+    expect(jsonFailureSignature('Unterminated string in JSON at position 512')).toBe(
+      jsonFailureSignature("Expected ',' or '}' after property value in JSON at position 9000"),
+    );
+    expect(jsonFailureSignature("Unexpected token 'o', \"not json\" is not valid JSON")).toBe('json:parse');
+    expect(jsonFailureSignature("Unexpected token 's', \"still not json\" is not valid JSON")).toBe('json:parse');
 
     // Zod's messages, on the other hand, are identical for ANY value that violates
     // the same constraint — 81 or 95 chars, an empty or… well, empty array — so

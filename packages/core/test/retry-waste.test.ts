@@ -527,7 +527,7 @@ describe('a write that fails the same way on two dispatches is given up on', () 
     scoutWrites('not json');
     const first = await dispatch('s1');
     expect(first.trace.status).toBe('incomplete');
-    expect(first.checkpoint.writeFailures).toEqual({ scout: { signature: 'json:Unexpected token', dispatches: 1 } });
+    expect(first.checkpoint.writeFailures).toEqual({ scout: { signature: 'json:parse', dispatches: 1 } });
 
     scoutWrites('still not json'); // a different excerpt, the same failure
     const second = await dispatch('s1', first.checkpoint);
@@ -538,11 +538,11 @@ describe('a write that fails the same way on two dispatches is given up on', () 
     // best-effort, findings lost — instead of returning `incomplete` six more
     // times. Mutation that reds it: `REPEATED_WRITE_FAILURE_DISPATCHES = 2` → 3.
     expect(second.trace.status).toBe('completed');
-    expect(second.checkpoint.writeFailures?.scout).toEqual({ signature: 'json:Unexpected token', dispatches: 2 });
+    expect(second.checkpoint.writeFailures?.scout).toEqual({ signature: 'json:parse', dispatches: 2 });
     expect(second.meta.sections).toEqual([{ key: 'findings', status: 'lost' }]);
     expect(second.trace.agents.find((a) => a.id === 'advisor')!.status).toBe('ok');
     expect(second.trace.warnings?.join('\n')).toMatch(
-      /Degraded \[findings\] from agent "scout" after exhausting retries\/re-dispatches: the write failed the same way on 2 dispatches \[json:Unexpected token\]: .*Model did not return valid JSON/,
+      /Degraded \[findings\] from agent "scout" after exhausting retries\/re-dispatches: the write failed the same way on 2 dispatches \[json:parse\]: .*Model did not return valid JSON/,
     );
     // And a dispatch that somehow resumes from here (an approval, say) does not run
     // the scout at all: no calls of its own, its row is the checkpoint's.
@@ -574,7 +574,7 @@ describe('a write that fails the same way on two dispatches is given up on', () 
   it('a DIFFERENT failure starts the count over: JSON on one dispatch, schema on the next, and the job is still retried', async () => {
     scoutWrites('not json');
     const first = await dispatch('d1');
-    expect(first.checkpoint.writeFailures?.scout).toEqual({ signature: 'json:Unexpected token', dispatches: 1 });
+    expect(first.checkpoint.writeFailures?.scout).toEqual({ signature: 'json:parse', dispatches: 1 });
 
     // Valid JSON, wrong shape: `findings` (and the handoff the producer schema asks
     // for) missing entirely.

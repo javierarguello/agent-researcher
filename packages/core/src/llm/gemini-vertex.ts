@@ -267,14 +267,25 @@ export function jsonSchemaToGemini(
   // risks; report an empty list" was a schema-valid answer for Gemini and an
   // invalid one for us: a repair round, then a retry, then a re-dispatch (M-D1).
   // `minItems`/`maxItems` are int64 strings in `@google/genai`'s `Schema`.
-  // `minLength`/`maxLength`/`pattern` are typed too but NOT forwarded: the SDK's
-  // own list of what structured output honours (`responseJsonSchema` in
-  // genai.d.ts) names these four and not the string ones, and a bound the decoder
-  // ignores is a bound we would wrongly believe in. Zod still enforces them.
+  //
+  // The string bounds ride along now. They were withheld on the SDK's list of what
+  // `responseJsonSchema` honours — and that is a DIFFERENT field: this provider
+  // sends `responseSchema` (the SDK only moves a schema to the other path when it
+  // carries `$schema`, which `jsonSchemaToGemini` never emits), and the `Schema`
+  // type we do send documents `minLength`/`maxLength`/`pattern` in the same voice as
+  // the four above. So the reason for withholding them was evidence about another
+  // field (round 7, R7-15). Measured over the real Florida section schemas: 17
+  // `minItems`, 2 `maxItems`, 5 `maxLength`, and zero `minimum`/`maximum` — i.e. the
+  // half of the original change that was kept is dead for the flagship today and the
+  // half that was dropped is the live one, and `.max(80)` on a label was costing a
+  // repair round. Zod still enforces every one of them after the fact.
   if (typeof base.minItems === 'number') out.minItems = String(base.minItems);
   if (typeof base.maxItems === 'number') out.maxItems = String(base.maxItems);
   if (typeof base.minimum === 'number') out.minimum = base.minimum;
   if (typeof base.maximum === 'number') out.maximum = base.maximum;
+  if (typeof base.minLength === 'number') out.minLength = String(base.minLength);
+  if (typeof base.maxLength === 'number') out.maxLength = String(base.maxLength);
+  if (typeof base.pattern === 'string') out.pattern = base.pattern;
 
   if (base.properties && typeof base.properties === 'object') {
     out.properties = Object.fromEntries(

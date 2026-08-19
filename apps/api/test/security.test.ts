@@ -590,6 +590,39 @@ describe('a report is the buyer\u2019s; the diagnostics are ours', () => {
     expect((theirs.json() as { files: Array<{ name: string }> }).files.map((f) => f.name)).toContain('trace.json');
   });
 
+  it('hands the buyer the notice and the section states — and none of the diagnostics beside them (R7-20)', async () => {
+    // `summary` is one object with two audiences in it: `warnings` names our agents
+    // and section keys in English, `agentErrors` carries provider messages, `costUsd`
+    // is our margin. Handing the whole thing over left every suite green — the
+    // redaction was written and asserted nowhere. Mutation that reds this: return
+    // `s` for a non-admin.
+    const { jobId, owner, admin } = await completedJob();
+    const { setJobSummary } = await import('@agent-researcher/core');
+    await setJobSummary(jobId, {
+      schemaVersion: 'x@1', language: 'en', mode: 'essential', depth: 'standard',
+      turnsUsed: 7, sourcesFound: 30, reportBytes: 100, durationMs: 1000, attempts: 2,
+      agents: [{ id: 'market-analyst', wave: 1, status: 'ok', durationMs: 10, attempts: 1, costUsd: 0.82 }],
+      warnings: ['Degraded [risks_red_flags] from agent "market-analyst" after exhausting retries'],
+      agentErrors: [{ agentId: 'market-analyst', error: 'TypeError at prompt.ts:118' }],
+      sections: [{ key: 'risks_red_flags', status: 'lost' }],
+      notice: 'One section of this dossier could not be completed.',
+    } as never);
+
+    const mine = (await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(owner) })).json() as { summary: Record<string, unknown> };
+    expect(mine.summary.notice).toBe('One section of this dossier could not be completed.');
+    expect(mine.summary.sections).toEqual([{ key: 'risks_red_flags', status: 'lost' }]);
+    expect(Object.keys(mine.summary).sort(), 'nothing else travels').toEqual(['notice', 'sections']);
+    expect(JSON.stringify(mine)).not.toContain('market-analyst');
+    expect(JSON.stringify(mine)).not.toContain('prompt.ts');
+    expect(JSON.stringify(mine)).not.toContain('0.82');
+
+    // Unchanged for us: this is what the admin page is built from.
+    const theirs = (await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(admin) })).json() as { summary: Record<string, unknown> };
+    expect(theirs.summary.warnings).toBeTruthy();
+    expect(theirs.summary.agentErrors).toBeTruthy();
+    expect(theirs.summary.agents).toBeTruthy();
+  });
+
   it('refuses to serve the trace, even to the job\u2019s owner', async () => {
     const { jobId, owner, admin } = await completedJob();
 

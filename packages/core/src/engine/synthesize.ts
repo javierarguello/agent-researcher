@@ -62,13 +62,23 @@ export function schemaFailureSignature(issues: ReadonlyArray<{ path: PropertyKey
   return `schema:${[...keys].sort().join(',')}`.slice(0, MAX_SIGNATURE_CHARS);
 }
 
-/** `json:` + the parser's error kind, without the position or the offending excerpt. */
-export function jsonFailureSignature(message: string): string {
-  const kind = message
-    .replace(/ at position \d+[\s\S]*$/, '')
-    .replace(/^Unexpected token\b[\s\S]*$/, 'Unexpected token')
-    .trim();
-  return `json:${kind}`.slice(0, MAX_SIGNATURE_CHARS);
+/**
+ * ONE bucket for every JSON parse failure.
+ *
+ * This used to keep the parser's error kind, on the stated grounds that "two
+ * truncations are one failure". Measured over a realistic listing section (5,378
+ * chars) truncated at every offset in the last 80%: seven distinct V8 kinds, and two
+ * independent truncations share one 73.4% of the time (round 7, R7-14). So the
+ * repeat-failure counter — the thing that decides an agent is not worth a third
+ * dispatch — reset on about one dispatch in four for the failure most likely to
+ * repeat: a section that simply does not fit in `maxOutputTokens`. Each extra
+ * dispatch is `agentMaxAttempts` × 2 structured calls of up to 32k output.
+ *
+ * The kind never distinguished two model BEHAVIOURS, only two cut points, which is
+ * the same thing the position said and the same reason the position was dropped.
+ */
+export function jsonFailureSignature(_message: string): string {
+  return 'json:parse';
 }
 
 export interface StructuredResult<T> {

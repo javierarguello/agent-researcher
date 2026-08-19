@@ -371,14 +371,21 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     expect(config.llm.maxOutputTokens).toBe(32768);
   });
 
-  it('jsonSchemaToGemini forwards minItems/maxItems/minimum/maximum (it dropped them): the Zod-only constraints the Florida schemas use now reach the decoder; string length still does not', () => {
+  it('jsonSchemaToGemini forwards every bound the schema declares — array, number AND string — to the decoder', () => {
     // Was the tripwire pinning the DROP: `risks: z.array(...).min(1)`, `metrics.min(1)`,
     // `keyFindings.min(1)`, `periods.min(2)` reached Zod and not the decoder, so
     // "this listing has no risks; report an empty list" was a schema-valid answer for
     // Gemini and a failed write for us. `@google/genai`'s `Schema` carries all four
-    // (`minItems`/`maxItems` as int64 STRINGS), and its `responseJsonSchema` doc
-    // lists exactly these as honoured — and not `minLength`/`maxLength`/`pattern`,
-    // which is why an 80-char label cap is still Zod's alone.
+    // (`minItems`/`maxItems` as int64 STRINGS).
+    //
+    // The string bounds were withheld on that SDK doc's list — for
+    // `responseJsonSchema`, which is a DIFFERENT field: this provider sends
+    // `responseSchema`, and the `Schema` type it takes documents `minLength` /
+    // `maxLength` / `pattern` in the same voice as the four above (round 7, R7-15).
+    // Over the real Florida sections: 17 `minItems`, 2 `maxItems`, 5 `maxLength`,
+    // zero `minimum`/`maximum` — so the half that was kept is dead for the flagship
+    // and the half that was dropped is the live one. Mutation that reds this: drop
+    // the `maxLength` forward.
     const schema = z.toJSONSchema(
       z.object({ risks: z.array(z.string()).min(1), labels: z.array(z.string().max(80)).min(1).max(40), n: z.number().int().min(0).max(5) }),
     ) as Record<string, unknown>;
@@ -389,7 +396,10 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     expect(gem.properties.risks).toMatchObject({ type: 'ARRAY', minItems: '1' }); // …and now in what Gemini sees
     expect(gem.properties.labels).toMatchObject({ type: 'ARRAY', minItems: '1', maxItems: '40' });
     expect(gem.properties.n).toMatchObject({ type: 'INTEGER', minimum: 0, maximum: 5 });
-    expect(gem.properties.labels?.items).not.toHaveProperty('maxLength'); // not honoured by the decoder; not pretended
+    expect((gem.properties.labels?.items as Record<string, unknown>)?.maxLength).toBe('80');
+    // `pattern` rides along the same way when a schema declares one.
+    const pat = jsonSchemaToGemini(z.toJSONSchema(z.object({ code: z.string().regex(/^[A-Z]{2}$/) })) as never) as unknown as { properties: Record<string, Record<string, unknown>> };
+    expect(pat.properties.code?.pattern).toBe('^[A-Z]{2}$');
   });
 
   it('a Zod `.min(1)` array and a `.max(5000000)` number reach the Gemini schema exactly as the section declares them', () => {
