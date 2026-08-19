@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { ReportViewer, RL } from '../src/components/ReportViewer';
 import { KNOWN_STATUSES } from '../src/lib/section-status';
-import { SECTION_LINES, SECTION_STATUSES, WRONG_STEP_WORDS } from '../../../packages/core/test/fixtures/section-lines';
+import { LINE_FOR_STATUS, SECTION_LINES, SECTION_STATUSES, WRONG_STEP_WORDS } from '../../../packages/core/test/fixtures/section-lines';
 
 describe('the viewer prints the canonical section line', () => {
   it.each(Object.entries(SECTION_LINES))('%s says what core says, key for key', (lang, lines) => {
@@ -48,6 +48,20 @@ describe('the reassurance is conditional, on this surface too (round 9, R9-7)', 
     expect(count({ sections: [{ key: 'a', status: 'lost' }, { key: 'b', status: 'lost' }] }), 'two gaps').toBe(0);
     expect(count({ sections: [{ key: 'a', status: 'lost' }, { key: 'b', status: 'unenriched' }] }), 'a gap and a shallow one').toBe(0);
     expect(count({ sections: [{ key: 'a', status: 'lost' }] }), 'the only thing wrong').toBe(1);
+  });
+});
+
+describe('every status the engine can write prints something here too (round 9, R9-21)', () => {
+  it.each([...SECTION_STATUSES])('the viewer prints the %s line', (status) => {
+    const { container } = render(
+      <ReportViewer
+        report={{ market: { text: 'Laundromat demand in Miami-Dade grew 12% year over year.' } }}
+        sections={[{ key: 'market', title: 'Market' }]}
+        meta={{ sections: [{ key: 'market', status }] } as never}
+        lang="en"
+      />,
+    );
+    expect(container.textContent, status).toContain(SECTION_LINES.en[LINE_FOR_STATUS[status]]);
   });
 });
 

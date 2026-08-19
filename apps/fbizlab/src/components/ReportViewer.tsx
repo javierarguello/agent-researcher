@@ -137,7 +137,12 @@ const MD = {
   // written, unbounded, on all three surfaces. R7-24 bounded the Sources tooltip for
   // this reason and kept what WE compose (host, clipped label, url); here there is
   // nothing of ours to keep (round 8, R8-34).
-  a: ({ title: _title, ...p }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (p.href ? <a {...p} target="_blank" rel="noopener noreferrer" /> : <>{p.children}</>),
+  // `node` goes too: react-markdown passes its hast node to a custom component and
+  // the TS type does not mention it, so the spread wrote `node="[object Object]"`
+  // onto every prose anchor in the buyer's report (round 9, R9-23). Inert, and not
+  // attacker-controlled — but the subject of this override is what that spread is
+  // allowed to carry, and it audited one of the two props that do not belong.
+  a: ({ title: _title, node: _node, ...p }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => (p.href ? <a {...p} target="_blank" rel="noopener noreferrer" /> : <>{p.children}</>),
   img: () => null,
 };
 const Prose = ({ md }: { md: string }) => <div className="prose"><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{md}</Markdown></div>;

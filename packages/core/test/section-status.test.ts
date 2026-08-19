@@ -23,7 +23,7 @@ import { installMockProvider } from './mocks/llm.js';
 import { sectionsNotice } from '../src/jobs/report-copy.js';
 import { KNOWN_STATUSES, normalizeSectionStatuses, type SectionStatus } from '../src/engine/section-status.js';
 import { LEGACY_SHAPES } from './fixtures/legacy-section-shapes.js';
-import { SECTION_LINES, SECTION_STATUSES, WRONG_STEP_WORDS } from './fixtures/section-lines.js';
+import { LINE_FOR_STATUS, SECTION_LINES, SECTION_STATUSES, WRONG_STEP_WORDS } from './fixtures/section-lines.js';
 import type { ResearchTemplate } from '../src/templates/types.js';
 import type { Checkpoint } from '../src/engine/research-engine.js';
 
@@ -418,6 +418,34 @@ describe('the three copies of the per-section line say the same thing', () => {
     // but they name the same internal step, one above the other in one document.
     for (const [lang, wrong] of Object.entries(WRONG_STEP_WORDS)) {
       expect(sectionsNotice(lang, [{ status: 'unenriched' }]), lang).not.toMatch(wrong);
+    }
+  });
+});
+
+describe('every status the engine can write prints something (round 9, R9-21)', () => {
+  // The pin that was missing. Adding a fourth status the way the type layer pushes
+  // you to — the union, both `KNOWN_STATUSES`, `SECTION_STATUSES`, the
+  // exhaustiveness record — left the suite at 1109 passed, 0 failed, with the
+  // section's body rendered and NO line under it in either renderer, and
+  // `sectionsNotice` returning ''. Naming a status is not the same as telling the
+  // buyer what it means. This iterates the status list, so a fourth one is a fourth
+  // case here and in the viewer's parity suite, red until both renderers say
+  // something.
+  it.each([...SECTION_STATUSES])('the PDF prints the %s line', async (status) => {
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    const html = await buildReportHtml({
+      report: { market: { text: 'Laundromat demand in Miami-Dade grew 12% year over year.' } },
+      sections: [{ key: 'market', title: 'Market' }],
+      meta: { sections: [{ key: 'market', status }] },
+      lang: 'en', theme: getPdfTheme('fbizlab'),
+    } as never);
+    expect(html, status).toContain(SECTION_LINES.en[LINE_FOR_STATUS[status]]);
+  });
+
+  it('and the cover notice says something about each one too', () => {
+    for (const status of SECTION_STATUSES) {
+      expect(sectionsNotice('en', [{ status }]), status).not.toBe('');
     }
   });
 });

@@ -55,8 +55,16 @@ export function sourceLabel(s: { url: string; label?: string }): string {
   } catch {
     host = '';
   }
-  const chars = Array.from(label);
-  const clipped = chars.length > SOURCE_LABEL_MAX ? `${chars.slice(0, SOURCE_LABEL_MAX - 1).join('')}…` : label;
-  if (!clipped) return host || s.url;
+  const cut = (x: string) => {
+    const c = Array.from(x);
+    return c.length > SOURCE_LABEL_MAX ? `${c.slice(0, SOURCE_LABEL_MAX - 1).join('')}…` : x;
+  };
+  const clipped = cut(label);
+  // The fallback is clipped too. A url that `new URL()` parses but whose hostname is
+  // empty — `javascript:void("AAAA…")` — with no label put the WHOLE string on the
+  // page as the row's text, 4,020 characters of it, while the tooltip beside it was
+  // bounded at 320 (round 9, R9-22). `safeHref` refuses the scheme so it is a span
+  // and not a link, but the text is on screen either way.
+  if (!clipped) return host || cut(s.url);
   return host && clipped.toLowerCase() !== host ? `${host} — ${clipped}` : clipped;
 }

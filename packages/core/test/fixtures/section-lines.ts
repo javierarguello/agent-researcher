@@ -84,6 +84,22 @@ export const SECTION_LINES: Record<'en' | 'es' | 'fr' | 'pt', Record<SectionLine
 };
 
 /**
+ * Which line each status prints. Two hand-maintained lists — the statuses and the
+ * copy keys — used to sit in this file with nothing tying them together, so a fourth
+ * status added the way the type layer pushes you to add it (union, both
+ * `KNOWN_STATUSES`, `SECTION_STATUSES`, the exhaustiveness record) shipped with
+ * **1109 passed, 0 failed** and no advisory line in either renderer, and an empty
+ * cover notice (round 9, R9-21). The `Record` over the union is the tie: a fourth
+ * status is a type error here, and the renderer tests below iterate this map, so
+ * both renderers go red until they print something for it.
+ */
+export const LINE_FOR_STATUS: Record<(typeof SECTION_STATUSES)[number], SectionLineKey> = {
+  lost: 'degradedSection',
+  unenriched: 'unenrichedSection',
+  reconstructed: 'reconstructedSection',
+};
+
+/**
  * Words that mean a sports pass, a passageway or a laundry cycle in the language
  * they appear in. They described an internal step to a paying reader; the notice
  * was corrected and the other two copies were not.

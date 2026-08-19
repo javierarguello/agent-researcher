@@ -282,6 +282,29 @@ describe('C-attack · what a link TITLE and a long url carry to the buyer (round
     expect(container.textContent).not.toContain('Official registry of the State of Florida');
   });
 
+  it('a prose anchor carries nothing but the link — no tooltip, and no hast node (round 9, R9-23)', () => {
+    // Mutation that reds this: spread `p` without destructuring `node` out.
+    const { container } = render(
+      <ReportViewer report={{ m: { text: 'See the [listing](https://ok.test/p).' } }} sections={[{ key: 'm', title: 'M' }]} lang="en" />,
+    );
+    const a = container.querySelector('a[href="https://ok.test/p"]')!;
+    expect([...a.attributes].map((x) => x.name).sort()).toEqual(['href', 'rel', 'target']);
+  });
+
+  it('a Sources row with no label and no host is clipped like every other one (round 9, R9-22)', () => {
+    // The tooltip was bounded at 320 and the ROW's own text was not: a url that
+    // `new URL()` parses but whose hostname is empty, with no label, put 4,020
+    // characters on the page without hovering.
+    // Mutation that reds this: return `host || s.url` unclipped.
+    const url = `javascript:void("${'A'.repeat(4000)}")`;
+    const { container } = render(
+      <ReportViewer report={{ sources: { items: [{ id: 1, url }] } }} sections={[{ key: 'sources', title: 'Sources' }]} lang="en" />,
+    );
+    const li = container.querySelector('ul.rv-sources li')!;
+    expect(li.querySelector('a'), 'the scheme is still refused').toBeNull();
+    expect([...(li.textContent ?? '')].length, 'the row is bounded like the tooltip').toBeLessThanOrEqual(162);
+  });
+
   it('the Sources tooltip clips by CODE POINT, and the bound is reachable — a long url used to end it in half an emoji', () => {
     // `2c346de` fixed exactly this for `progress.detail` in the same batch, and
     // `clientProgress` carries the comment "By CODE POINT, like `sourceLabel` and
