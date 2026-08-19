@@ -72,6 +72,33 @@ describe('rankEvidence · own first, then referenced, then the rest', () => {
   });
 });
 
+describe('rankEvidence · the referenced reserve is not a free pass for one host (R8-6)', () => {
+  it('a host cited many times in the sections cannot take the whole reserve', () => {
+    // `referenced` was the one tier with no per-host ordering, and it holds back
+    // half the dossier. A page that talks one producer into citing it repeatedly —
+    // or a farm whose links land in a section — took every reserved slot: measured
+    // at 24 of 48 snippets and 7 of 14 pages, with the honest scout's own results
+    // falling 48 → 24. Mutation that reds this: `take(referenced, max)` again.
+    const store = [...list('farm.example', 20), ...list('a.example', 1), ...list('b.example', 1)];
+    const referenced = new Set(store.map((x) => x.url));
+    const out = rankEvidence(store, 10, 3, { referenced });
+    const firstPass = out.slice(0, 5).map((x) => x.url);
+    expect(firstPass.filter((u) => u.includes('farm.example'))).toHaveLength(3);
+    expect(firstPass).toContain('https://a.example/p/1');
+    expect(firstPass).toContain('https://b.example/p/1');
+    // …and volume is untouched: the farm's other pages follow, the dossier is full.
+    expect(out).toHaveLength(10);
+  });
+
+  it('and the writer’s OWN fetches are still uncapped — it paid for those', () => {
+    // The tier boundary that matters: a scout that fetched twelve pages from one
+    // marketplace sees all twelve. Mutation that reds this: spread `fetched` too.
+    const store = list('marketplace.example', 12);
+    const out = rankEvidence(store, 14, 3, { fetched: new Set(store.map((x) => x.url)) });
+    expect(out).toHaveLength(12);
+  });
+});
+
 describe('rankEvidence · the per-domain cap decides ORDER in the foreign tier, never volume', () => {
   it('a farm of one host no longer pushes every other host out of the first pass', () => {
     // A steered peer fetched 20 farm pages first; two honest hosts fetched one page each after.
@@ -156,6 +183,39 @@ describe('urlsIn · the URLs a writer is handed in its sections', () => {
 // production — left the whole core suite green. That is standing lesson 1 in
 // miniature: the guard is tested, the caller is not. These go through the prompt
 // builder the engine calls, with no `perDomain` of their own.
+describe('what a producer’s dossier calls `referenced` (R8-6)', () => {
+  it('is the sections it is REWRITING, not every section anyone has finished', () => {
+    // `urlsIn({ current, context })` made the reserve cover other agents' finished
+    // sections — most of the report by the last wave. So a host cited anywhere
+    // upstream was promoted above the honest scout's own SERP rows and given a
+    // reserve it cannot be pushed out of, which is a poisoned page's cheapest way
+    // into a later prompt: get cited once, ride to every writer after.
+    // Mutation that reds this: `referenced: urlsIn({ current, context })`.
+    const mine = 'https://mine.example/p/1';
+    const theirs = 'https://theirs.example/p/1';
+    const store = [...list('serp.example', 30), { url: theirs }, { url: mine }];
+    const evidence = store.map((x, i) => ({ url: x.url, title: `T${i}`, snippet: 's' }));
+    const prompt = buildProducerSynthPrompt({
+      agent: { id: 'w', objective: 'o', model: 'pro', produces: ['deals'], enriches: [], wave: 2 } as never,
+      brief: 'b',
+      sections: [{ key: 'deals', title: 'Deals', schema: z.object({ body: z.string() }) }] as never,
+      evidence: evidence as never,
+      extracted: [],
+      current: { deals: { body: `see ${mine}` } },
+      context: { market: { body: `see ${theirs}` } },
+      touched: new Set<string>(),
+      fetched: new Set<string>(),
+      lang: 'en',
+    });
+    const dossier = prompt.slice(prompt.indexOf('EVIDENCE:'));
+    const at = (u: string) => dossier.indexOf(u);
+    expect(at(mine), 'the section it is rewriting is reserved a slot').toBeGreaterThan(-1);
+    expect(at(mine)).toBeLessThan(at('https://serp.example/p/1'));
+    // The other agent's citation is ordinary foreign evidence: present, unpromoted.
+    expect(at(theirs)).toBeGreaterThan(at(mine));
+  });
+});
+
 describe('the dossier a writer actually receives is diversity-first', () => {
   const agent = { id: 'scout', role: 'producer' as const, objective: 'Find things.', produces: ['findings'] };
   const sections = [{ key: 'findings', title: 'Findings', guidance: 'Write it.', schema: z.object({ text: z.string() }) }];

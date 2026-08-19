@@ -256,32 +256,39 @@ export function rankEvidence<T extends { url: string }>(items: T[], max: number,
       out.push(it);
     }
   };
+  // Diversity first: up to `perDomain` per host in store order, then — only if
+  // slots remain — the rest of it in store order. The cap decides ORDER, never
+  // volume: a dossier is as full as it was, so a store that is legitimately 90% one
+  // marketplace still fills 48, while a farm of one host cannot push every other
+  // host out of the first pass.
+  const takeSpread = (tier: T[], limit: number): void => {
+    const perHost = new Map<string, number>();
+    const deferred: T[] = [];
+    for (const it of tier) {
+      if (out.length >= limit) break;
+      if (seen.has(it)) continue;
+      const host = hostOf(it.url);
+      const n = perHost.get(host) ?? 0;
+      if (n >= perDomain) {
+        deferred.push(it);
+        continue;
+      }
+      perHost.set(host, n + 1);
+      seen.add(it);
+      out.push(it);
+    }
+    take(deferred, limit);
+  };
   take(fetched, max - reserve); // its own pages, but not into the reserve
-  take(referenced, max); // the sections it is rewriting
+  // The sections it is rewriting — under the SAME per-host ordering as the foreign
+  // tier. `referenced` was the one tier with no cap, and it holds a reserve of half
+  // the dossier: a host cited repeatedly in the sections a writer is handed took 24
+  // of 48 snippets and 7 of 14 pages, and the honest scout's own results fell 48 →
+  // 24 (round 8, R8-6). A writer's OWN fetches stay uncapped — it paid for those.
+  takeSpread(referenced, max);
   take(fetched, max); // whatever the reserve held back, still ahead of SERP rows
   take(touched, max); // everything its loop was merely shown
-  // The foreign tier, diversity first: up to `perDomain` per host in store order,
-  // then — only if slots remain — the rest of it in store order. The cap decides
-  // ORDER, never volume: a dossier is as full as it was, so a store that is
-  // legitimately 90% one marketplace still fills 48, while a farm of one host can
-  // no longer push every other host out of the first pass.
-  const perHost = new Map<string, number>();
-  const deferred: T[] = [];
-  for (const it of rest) {
-    if (out.length >= max) break;
-    const host = hostOf(it.url);
-    const n = perHost.get(host) ?? 0;
-    if (n >= perDomain) {
-      deferred.push(it);
-      continue;
-    }
-    perHost.set(host, n + 1);
-    out.push(it);
-  }
-  for (const it of deferred) {
-    if (out.length >= max) break;
-    out.push(it);
-  }
+  takeSpread(rest, max); // the foreign tier
   return out;
 }
 
@@ -470,14 +477,18 @@ function cutJson(json: string, max: number): { text: string; whole: boolean } {
     }
     if (!inString && (c === ',' || c === '}' || c === ']')) at = i;
   }
-  // Any boundary beats a raw cut, wherever it falls: the old `at > max / 2` guard
-  // fell through to the raw cut for a section whose only boundary is early, which
-  // is most of them (one long markdown string). When there is none at all the cut
-  // IS mid-value, and the note says so rather than implying a whole one.
-  // The boundary character is KEPT, so the extract ends visibly at one — `…,` or
-  // `…}` — instead of at whatever happened to precede it. The test that proves the
-  // cut asserts exactly that, and could not while the sentinel was in the way.
-  return at >= 0 ? { text: head.slice(0, at + 1), whole: true } : { text: head, whole: false };
+  // A boundary beats a raw cut only if it keeps most of what fits. "Any boundary,
+  // wherever it falls" (R7-16's second half) turned a section whose long prose is
+  // not its first field into 16 characters of a 60,026-char section: everything
+  // after the first structural comma went, under a heading that says "Use these for
+  // exact figures". Measured on the flagship's real `executive_summary` shape: 465
+  // of 3,333 available characters, no `overview`, no `keyFindings` (round 8, R8-5).
+  // Below the threshold the raw cut is the better answer — more of the section, and
+  // `whole: false` makes the caller label it `[cut mid-value]` rather than implying
+  // a complete one. The boundary character is KEPT, so a boundary cut ends visibly
+  // at one — `…,` or `…}` — instead of at whatever happened to precede it.
+  const KEEP_AT_BOUNDARY = 0.8;
+  return at >= 0 && at + 1 >= head.length * KEEP_AT_BOUNDARY ? { text: head.slice(0, at + 1), whole: true } : { text: head, whole: false };
 }
 
 /**
@@ -578,7 +589,13 @@ export function buildProducerSynthPrompt(input: {
   const dossier =
     !evidence.length && !extracted.some((p) => p.ok && p.content)
       ? '(No web evidence was gathered. State this limitation in your sections; do not invent listings or figures.)'
-      : buildDossier(evidence, extracted, { fetched, touched, referenced: urlsIn({ current, context }) });
+      // `current` ALONE — the sections this writer is rewriting. `context` is other
+      // agents' finished sections, which is most of the report by the last wave, so
+      // including it turned a reserve for "what I was asked to fill gaps in" into a
+      // reserve for "anything anyone cited", handing a poisoned host half the
+      // dossier for free (round 8, R8-6). It matches the enricher builder below,
+      // and the tier's own documentation.
+      : buildDossier(evidence, extracted, { fetched, touched, referenced: urlsIn(current) });
   return (
     `Write your assigned report sections as a single JSON object. ${agent.objective}\n\n` +
     briefBlock(brief) +

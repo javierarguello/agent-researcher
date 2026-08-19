@@ -583,18 +583,32 @@ describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () =>
     expect(extract).not.toMatch(/\$538$/);
   });
 
-  it('uses a boundary wherever it falls — the old rule fell through to a raw cut when the only one was early', () => {
-    // The finder's first case: a short field then one long value, so the only
-    // boundary outside a string sits near the start. `at > max / 2` was false and
-    // the RAW cut was returned — landing mid-value, which is the exact defect the
-    // boundary rule exists to prevent. Mutation that reds this: restore the
-    // `at > max / 2` guard.
+  it('takes a boundary only when it keeps most of the extract — an early one is an information regression (R8-5)', () => {
+    // A short field then one long value, so the only boundary outside a string sits
+    // near the start. R7-16 preferred ANY boundary over the raw cut and this test
+    // asserted the result: 16 characters of a 60,026-char section, labelled `[cut]`
+    // as if it were complete. The flagship's real `executive_summary` has that
+    // shape — `{"summary":"…","overview":…}` — and it lost 465 of 3,333 available
+    // characters under a heading that says "Use these for exact figures".
+    // Mutation that reds this: drop the `KEEP_AT_BOUNDARY` clause.
     const ctx = { deals: { note: 'short', body: 'z'.repeat(60_000) } };
     const p = buildSynthesizerPrompt({ agent: writer, brief: BRIEF, sections: [summarySection], context: ctx, handoffs: { scout: 'ok' }, lang: 'en' });
     const extract = trimmedExtract(p, 'deals')!;
-    expect(extract, 'cut at the boundary, early as it is').toBe('{"note":"short",');
+    expect(extract!.length, 'nearly all of what fits, not the first 16 characters').toBeGreaterThan(3_000);
+    expect(extract).toContain('zzz');
+    // …and it is labelled for what it is: the cut landed inside `body`.
+    expect(p).toContain(' … [cut mid-value]]');
+  });
+
+  it('and still cuts at a boundary when one falls late enough to keep (R7-16)', () => {
+    // The other side of the same threshold: a section whose fields are all short has
+    // a boundary near the end of the extract, and taking it costs almost nothing and
+    // buys a whole value. Mutation that reds this: return the raw cut unconditionally.
+    const ctx = { deals: Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`f${i}`, 'v'.repeat(150)])) };
+    const p = buildSynthesizerPrompt({ agent: writer, brief: BRIEF, sections: [summarySection], context: ctx, handoffs: { scout: 'ok' }, lang: 'en' });
+    const extract = trimmedExtract(p, 'deals')!;
+    expect(extract!.endsWith('",') || extract!.endsWith('"}')).toBe(true);
     expect(p).toContain(' … [cut]]');
-    expect(extract).not.toContain('zzz');
   });
 
   it('and when there is no boundary to cut at, the note says the cut is mid-value', () => {
