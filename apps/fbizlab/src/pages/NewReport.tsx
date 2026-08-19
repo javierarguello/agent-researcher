@@ -316,7 +316,17 @@ export function NewReport() {
     inited.current = true;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
-      if (raw) { setParams(JSON.parse(raw)); return; }
+      if (raw) {
+        // Shape-tolerant: a draft written before the notes were carried is the bare
+        // params object. A rename is a migration, even in localStorage.
+        const saved = JSON.parse(raw) as Props | { params?: Props; freeText?: string };
+        const isWrapped = saved && typeof saved === 'object' && 'params' in saved;
+        setParams((isWrapped ? (saved as { params?: Props }).params : (saved as Props)) ?? {});
+        if (isWrapped && typeof (saved as { freeText?: string }).freeText === 'string') {
+          setFreeText((saved as { freeText: string }).freeText);
+        }
+        return;
+      }
     } catch { /* ignore a corrupt draft */ }
     const d: Props = {};
     for (const [k, p] of Object.entries(schema.properties ?? {})) if (p.default !== undefined) d[k] = p.default;
@@ -524,7 +534,20 @@ export function NewReport() {
   const validated = validatedKey === paramsKey && pf != null; // already previewed these exact params + notes
   const canGo = !needsSubject && !hasLive && !blocked && !create.isPending && !preflight.isPending;
   const insufficient = typeof bal === 'number' && bal < cost;
-  const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(params)); } catch { /* ignore */ } };
+  /**
+   * What survives a trip to buy credits.
+   *
+   * It used to be `params` alone, and the notes are not a param any more — so the
+   * buyer sent to top up came back to a form that had kept every field except the
+   * one they wrote by hand, 2,000 characters of it (round 7, R7-26). A regression
+   * introduced by moving the text OUT of `params`, which is the shape of most of
+   * this week's findings.
+   */
+  const saveDraft = () => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ params, freeText }));
+    } catch { /* ignore */ }
+  };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
   // Not enough credits → keep every input and send them to buy; they come back here.
   const goBuy = () => { saveDraft(); setConfirming(false); nav('/app/credits'); };

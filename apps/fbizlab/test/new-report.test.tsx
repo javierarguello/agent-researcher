@@ -18,7 +18,11 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 // The network seam. Everything below it is mocked; the component above it is real.
-const { hooks } = vi.hoisted(() => ({
+const { hooks, state } = vi.hoisted(() => ({
+  // The credits the buyer has. The buy-credits path — the only thing that saves a
+  // draft — is unreachable while it exceeds the cost, which is why R7-26's storage
+  // half could only be reasoned about.
+  state: { balance: 100 },
   hooks: {
     createJob: vi.fn(async () => ({ jobId: 'j1' })),
     // The real endpoint always returns these; a fixture that omits them tests a
@@ -106,7 +110,7 @@ const MANIFEST = {
 vi.mock('../src/api/hooks', () => ({
   useTemplates: () => ({ data: { templates: [MANIFEST] }, isLoading: false }),
   useTemplate: () => ({ data: MANIFEST }),
-  useBalance: () => ({ data: { balance: 100 } }),
+  useBalance: () => ({ data: { balance: state.balance } }),
   useMyStats: () => ({ data: { inProgress: 0, blocked: false, total: 0, ready: 0, failed: 0 } }),
   useCreateJob: () => ({ mutateAsync: hooks.createJob, isPending: false }),
   usePreflight: () => ({ mutateAsync: hooks.preflight, isPending: false }),
@@ -173,6 +177,7 @@ async function orderedParams(): Promise<Record<string, unknown>> {
 }
 
 beforeEach(() => {
+  state.balance = 100;
   hooks.createJob.mockClear();
   // `mockClear` forgets the CALLS and keeps the implementation, so the two tests
   // below that install `mockRejectedValue` left every later test's preflight
@@ -231,6 +236,40 @@ describe('the directive block comes entirely from the manifest', () => {
     await userEvent.click(screen.getByTestId('toggle-preferences'));
     expect((screen.getByTestId('free-text') as HTMLTextAreaElement).value).toBe('absentee owners only');
     expect(screen.queryByRole('button', { name: 'Sunshine' })).toBeNull();
+  });
+
+  it('survives a trip to buy credits — the draft carries the notes, and an old draft still loads', async () => {
+    // `saveDraft` wrote `params` alone, and the notes stopped being a param on
+    // 2026-08-17 — so a buyer sent to top up came back to a form that had kept every
+    // field except the one they typed (round 7, R7-26). Mutation that reds this:
+    // `JSON.stringify(params)`.
+    const { DRAFT_KEY } = await import('../src/api/client');
+    state.balance = 0; // the only path that saves a draft
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.type(screen.getByTestId('free-text'), 'absentee owners only, please');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    const buy = await screen.findAllByRole('button', { name: /buy credits/i });
+    await userEvent.click(buy.at(-1)!); // the modal's, not the page header's
+
+    const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? '{}') as { params?: Record<string, unknown>; freeText?: string };
+    expect(saved.freeText, 'the 2,000 characters they typed').toBe('absentee owners only, please');
+    expect(saved.params?.gridRegion).toBe('ERCOT West');
+  });
+
+  it('reads back both draft shapes — the notes, and one written before they were carried', async () => {
+    const { DRAFT_KEY } = await import('../src/api/client');
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ params: { gridRegion: 'ERCOT West' }, freeText: 'absentee owners only, please' }));
+    renderForm();
+    expect((screen.getByTestId('free-text') as HTMLTextAreaElement).value).toBe('absentee owners only, please');
+
+    // A rename is a migration, even in localStorage: the old shape is the bare
+    // params object. Mutation that reds this: treat every draft as the new shape.
+    localStorage.clear();
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ gridRegion: 'ERCOT West' }));
+    renderForm();
+    const boxes = screen.getAllByPlaceholderText('e.g. ERCOT West') as HTMLInputElement[];
+    expect(boxes.at(-1)!.value, 'the old shape still loads').toBe('ERCOT West');
   });
 
   it('still sends the notes when the buyer switched to picking by hand', async () => {

@@ -347,7 +347,8 @@ function proposalSystemPrompt(template: ResearchTemplate<any>, fields: Directive
       : '2. basics — an empty object.\n') +
     (keywordsAllowed
       ? `3. keywords — up to ${MAX_PROPOSED_KEYWORDS} short search phrases (one to four words each) that the text names or directly implies: ` +
-        'a business type, a feature, a deal trait. No sentences, no instructions, no URLs, nothing invented.\n\n'
+        'a business type, a feature, a deal trait. Plain words separated by SPACES — never underscores, never ' +
+        'snake_case. No sentences, no instructions, no URLs, nothing invented.\n\n'
       : '3. keywords — an empty list.\n\n') +
     'FIELDS:\n' + JSON.stringify(vocab, null, 2) + '\n\n' +
     'Answer with the JSON object only.'
@@ -520,6 +521,12 @@ export function acceptProposals(
       // 80 characters is not a keyword, and a phrase that needed a URL or markup
       // stripped out of it was not one either — refused, not cleaned into one.
       if (k.trim().length > KEYWORD_MAX_LEN) continue;
+      // `_` is in this set because it is Markdown emphasis. The model was mirroring
+      // the FIELDS block, whose every option value is snake_case, so 64% of the
+      // keywords it proposed over ten real notes were refused here and two notes
+      // produced none at all (round 7, R7-25). The fix is upstream — the instruction
+      // now says "spaces, never underscores" — and this stays exactly as strict:
+      // refused, not cleaned.
       if (/https?:\/\/|www\.|[<>{}[\]|`*_#\\]/i.test(k)) continue;
       const clean = sanitizeProposal(k, KEYWORD_MAX_LEN);
       if (!clean || clean.split(/\s+/).length > 6) continue;

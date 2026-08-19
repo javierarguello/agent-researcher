@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { getTemplate } from '../src/templates/registry.js';
 import { acceptProposals, applyProposals } from '../src/moderation/enrich.js';
+import type { GenerateOptions, GenerateResult } from '../src/llm/provider.js';
 
 const florida = getTemplate('florida-business-for-sale')!;
 const base = { industry: 'laundromats', location: 'Miami-Dade County, FL', mode: 'essential' } as Record<string, unknown>;
@@ -211,5 +212,40 @@ describe('a basic the buyer left empty and their own words name', () => {
     expect(applyProposals(empty, proposals).location).toBeUndefined();
     // …and what the client that renders the row submits when the buyer ticks it.
     expect(applyProposals(empty, proposals, 'directives', { basics: true }).location).toBe('Hialeah, FL');
+  });
+});
+
+// --- What the model is ASKED for, so the gate does not eat it (R7-25) ----------
+describe('the keyword instruction', () => {
+  it('asks for spaces, because the gate refuses underscores', async () => {
+    // The prompt shows the model a FIELDS block whose every option is snake_case
+    // (`owner_retiring`, `seller_financing`), so it mirrored that style for the
+    // keywords — and the gate refuses `_` as Markdown emphasis. Over ten real notes
+    // 26 of 72 proposed keywords survived and two notes produced NONE (round 7,
+    // R7-25). The cheap fix is upstream: ask for the shape the gate accepts.
+    const { proposeFromText } = await import('../src/moderation/enrich.js');
+    const { __setProviderForTests } = await import('../src/llm/models.js');
+    const { MockLlmProvider } = await import('./mocks/llm.js');
+    const { writableConfig } = await import('./writable-config.js');
+    const wasOn = writableConfig.validation.llm;
+    writableConfig.validation.llm = true;
+
+    let system = '';
+    class Capture extends MockLlmProvider {
+      override async generate(opts: GenerateOptions): Promise<GenerateResult> {
+        system = opts.system ?? '';
+        return { text: JSON.stringify({ directives: {}, keywords: [] }), toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+    }
+    for (const n of ['gemini-vertex', 'flash', 'ollama']) __setProviderForTests(n, new Capture());
+    await proposeFromText(florida, base, 'una lavandería en Hialeah, dueño jubilándose');
+
+    // Mutation that reds this: drop the sentence from `proposalSystemPrompt`.
+    expect(system).toMatch(/spaces/i);
+    expect(system).toMatch(/never underscores/i);
+    // …and the gate it exists to satisfy is unchanged: refused, not cleaned.
+    const out = acceptProposals(florida, base, { directives: {}, keywords: ['seller_financing', 'seller financing'] }, 'x');
+    expect(out.keywords).toEqual(['seller financing']);
+    writableConfig.validation.llm = wasOn;
   });
 });
