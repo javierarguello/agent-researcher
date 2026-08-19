@@ -94,7 +94,7 @@ type (an `enum` wins regardless of type). Reference implementation:
 | `type: integer` / `number` | Number input (respects `minimum`) |
 | `type: array` (items string) | Tags input (free entry + suggestions) |
 | `type: string` **with suggestions** | Autocomplete (type **or** pick) |
-| `type: string` (long, e.g. `instructions`) | Textarea |
+| `type: string` (long, e.g. `soilNotes`) | Textarea |
 | `type: string` | Text input |
 
 Seed initial values from each property's `default` (`defaultsFor(schema)`).

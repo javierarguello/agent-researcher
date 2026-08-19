@@ -21,7 +21,7 @@ apps, with its purpose and key exports. Public exports are re-exported from
 | `research-engine.ts` | Generic executor: resolve mode → effective template, topo-sort agents into waves, run each wave (bounded concurrency), merge validated slices, fill derived sections, validate, emit trace. Failure isolation + degraded sections. | `runResearch`, `planWaves`, `ResearchOutput`, `ReportMeta`, `JobTrace`, `AgentTrace`, `ResearchProgress` |
 | `gather.ts` | The budgeted producer research loop (`update_plan`/`web_search`/`fetch_page`) over a shared, deduped `Evidence` store. | `gather`, `createEvidence`, `Evidence`, `RESEARCH_TOOLS` |
 | `synthesize.ts` | Structured JSON synthesis: Zod → JSON Schema → model → parse + validate, with one repair round. | `synthesizeStructured` |
-| `prompt.ts` | Prompt composition: system prompt (base + fenced client instructions), producer/enricher/synthesizer prompts, evidence dossier, language directive. | `buildSystemPrompt`, `buildAgentKickoff`, `buildProducerSynthPrompt`, `buildEnricherSynthPrompt`, `buildSynthesizerPrompt`, `Language`, `LANGUAGES`, `isLanguage` |
+| `prompt.ts` | Prompt composition: system prompt (base + the buyer's structured directives), producer/enricher/synthesizer prompts, evidence dossier, language directive. Client free text reaches no prompt — see `moderation/enrich.ts`. | `buildSystemPrompt`, `buildAgentKickoff`, `buildProducerSynthPrompt`, `buildEnricherSynthPrompt`, `buildSynthesizerPrompt`, `Language`, `LANGUAGES`, `isLanguage` |
 | `run-job.ts` | End-to-end job execution called by the worker: run engine, upload GCS outputs, sync Firestore, headline, refund-on-failure, stats, structured logging. | `runJob`, `RunJobInput`, `RunJobResult` |
 
 ## `templates/` — research models

@@ -19,7 +19,9 @@ interface AgentSpec {
   researchBudget?: number;         // web_search/fetch_page budget (producers only; default config.search.maxTurns)
   model?: string;                  // alias for synthesis   (default: config.llm.defaultSynthModel = 'pro')
   gatherModel?: string;            // alias for research loop (default: config.llm.defaultGatherModel = 'gather')
-  focus?: string;                  // extra research/writing guidance (e.g. which sources to prefer)
+  focus?: string;                  // extra RESEARCH guidance (which sources to prefer). Only agents with a
+                                   // research loop read it — `validateTemplate` refuses it on a synthesizer.
+                                   // Writing guidance goes in the section's `guidance`.
   sites?: string[];                // suggested (ADDITIVE) source domains — unioned with the template's `sites`
 }
 ```
@@ -55,6 +57,15 @@ A budgeted tool-calling loop over three tools:
   agent must do real research before it can conclude; up to 2 nudges push it if it
   tries to stop with zero evidence. The loop caps total iterations at
   `maxTurns × 2 + 6`.
+- Two breakers end a loop that is going nowhere, because the iteration cap alone
+  let a plan-loop bill `2×budget+6` model calls for zero searches: **4 plan-only
+  turns in a row**, and **8 turns in a row that buy nothing** — a plan update, a
+  call we are about to refuse, or a re-read of a page whose body we will not send
+  again. Anything that spends a turn, or hands the model a page body it has not
+  been given twice, resets both. On the third such turn the plan result also tells
+  the model to stop planning and `forceTools` is dropped, so it can say it is ready.
+- A loop that ends this way reports `gatherStop: 'stalled'` and the buyer's live
+  line reads `cut_off` ("stopped early"), never `stopped` ("research complete").
 - Every search result URL is added to the shared `Evidence.sources` (deduped);
   every successfully fetched page to `Evidence.extracted` (deduped). Search runs in
   **English** regardless of report language.
@@ -114,21 +125,33 @@ the rest. Two layers (`research-engine.ts` + `run-job.ts`):
    (`agentRetryBaseMs` … `agentRetryMaxMs`). `AgentTrace.attempts` counts them and
    the failing reason is appended to `notes`.
 2. **Durable checkpoint / resume.** After every agent completes, the engine writes
-   a `checkpoint.json` to GCS (`report` so far, gathered `sources`, `doneAgentIds`,
-   `degraded`). If agents are still failing when the in-run attempts are spent and
-   this isn't the final job attempt, the run returns **`incomplete`**; the worker
-   replies `503` so **Cloud Tasks re-dispatches** it, and the next run resumes from
-   the checkpoint (done agents are skipped, not re-run). This repeats up to
-   `config.workflow.maxJobAttempts` (Cloud Tasks backoff between tries).
-3. **Degrade & deliver the rest.** On the **final** attempt, any section still
-   unfilled is degraded to a placeholder, a `warnings[]` entry is added to the job +
+   a `checkpoint.json` to GCS: the `report` so far, the shared `sources` and page
+   bodies (`extracted`, capped — a `gathered` agent's own pages are kept first, and
+   an agent whose pages could not all be kept loses `gathered` so it re-buys them),
+   `doneAgentIds`, `gatheredAgentIds`, `fetchedByAgent`, `handoffs`, `degraded`,
+   `warnings`, `writeFailures` and the accumulated `cost`. If agents are still
+   failing when the in-run attempts are spent and this isn't the final job attempt,
+   the run returns **`incomplete`**; the worker replies `503` so **Cloud Tasks
+   re-dispatches** it, and the next run resumes from the checkpoint (done agents are
+   skipped, not re-run). This repeats up to `config.workflow.maxJobAttempts`.
+   Every field added since the first version is optional: a checkpoint written
+   before it existed resumes exactly as it did.
+3. **Degrade & deliver the rest.** A write that fails the SAME way on two dispatches
+   is given up on (`writeFailures`, one signature per dispatch), and when nothing
+   left is retryable the dispatch finalizes IN PLACE rather than paying for six more
+   that would each reach the same conclusion. Any section still unfilled is degraded
+   to a placeholder, a `warnings[]` entry is added to the job +
    trace (and `log.warn('job.degraded')` is emitted so you can investigate later),
    and the rest of the report is delivered normally. `report.meta.sections` lists
    them as `{ key, status: 'lost' }`; stats count the report as `degraded`.
 4. **Deliver a shallow section as shallow.** A section a producer wrote and a
    refiner never deepened is recorded as `{ key, status: 'unenriched' }`. Its
    content is real and is rendered as usual — only the buyer's notice differs.
-   Statuses other than `lost` are NOT counted as a degraded delivery.
+   A section NO producer delivered, written by an enricher on the finalize pass, is
+   `{ key, status: 'reconstructed' }`: the body stays (an enricher with other
+   finished dependencies writes from real sections) and the copy says nothing
+   researched it directly. Statuses other than `lost` are NOT counted as a degraded
+   delivery.
 
 The `checkpoint.json` is deleted once the job reaches a terminal state.
 
@@ -217,8 +240,9 @@ the template `basePrompt` plus the client's **structured directives** (a closed
 vocabulary the template declares — every word ours). There is deliberately no
 free-text block: the buyer's own words never reach a prompt. They fill the
 directives and the keywords through the preflight assist (`/research/preflight`
-with `freeText`), as proposals the buyer accepts. Per-agent `focus` rides in the
-user message.
+with `freeText`), as proposals the buyer accepts, one field at a time and only
+where it can quote them. Per-agent `focus` rides in the research KICKOFF's user
+message — and nowhere else, so an agent without a loop cannot be told one.
 
 ## Per-agent trace
 

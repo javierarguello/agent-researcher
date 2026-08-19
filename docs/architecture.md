@@ -108,8 +108,12 @@ credits }`) — nothing in Firestore. Full detail: [credits.md](credits.md).
    sections, depth, param overrides like `targetCount`), producing an
    **effective template** (sections/agents for excluded keys are dropped) and
    **effective params**.
-2. Builds the shared **system prompt** (base prompt + fenced client instructions)
-   and the **research brief** from the effective params.
+2. Builds the shared **system prompt** (base prompt + the buyer's structured
+   directives, rendered from closed vocabularies) and the **research brief** from
+   the effective params. There is no free-text client instruction any more:
+   `7a45269` removed `instructionsField`, and what a buyer types in their own words
+   fills directives and keywords through the pre-flight assist, as proposals they
+   confirm.
 3. Creates one shared **evidence store**.
 4. **Topo-sorts** the agents into waves (`planWaves` / Kahn layering). An agent's
    dependencies are its explicit `dependsOn` plus the producer of any section it

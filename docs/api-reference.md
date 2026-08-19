@@ -117,7 +117,10 @@ Query: `limit` (1-100, default 50). Admin only: `userId`, `appId` (default to th
 token's). Returns newest-first summaries:
 ```jsonc
 { "jobs": [ { "jobId", "template", "title", "shortDescription", "status",
-              "cost", "createdAt", "updatedAt", "finishedAt" } ] }
+              "mode", "creditsSpent", "cost", "createdAt", "updatedAt", "finishedAt",
+              // Same shape as the poll below (kind + detail, no `message` for a
+              // buyer) so a list can show a live row without a second call.
+              "progress": { "phase": "deal-scout", "kind": "searched", "updatedAt": "…" } } ] }
 ```
 
 ### `GET /research/:jobId` — poll a job  · user
@@ -135,12 +138,17 @@ While `queued`/`running`/`failed`:
   "shortDescription": "Buy-side research on laundromats under $500k.",
   "status": "running",
   // Non-admin shape. `kind` is a closed vocabulary (starting, wave, researching,
-  // reusing, plan, searched, search_failed, fetched, cached, stopped, ceiling,
-  // writing, composing, retry, failed, assembling, done, held, incomplete) — render
-  // it in the buyer's language; `detail` comes ONLY with `searched` (the query,
-  // clipped to 120 chars) — show it quoted, as a query, never as a sentence.
+  // reusing, plan, searched, search_failed, fetched, cached, stopped, cut_off,
+  // ceiling, writing, composing, retry, failed, assembling, done, held,
+  // incomplete) — render it in the buyer's language; `detail` comes ONLY with
+  // `searched` (the query, clipped to 120 code points) — show it quoted, as a
+  // query, never as a sentence. `stopped` means the research for that step
+  // finished; `cut_off` means we stopped it (a loop that bought nothing, or the
+  // job's cost ceiling) — they must not read the same.
   // Admins additionally get `message` (the engine's English line), `turnsUsed`,
-  // `sourcesFound`. Old jobs may carry no `kind`: show the phase alone.
+  // `sourcesFound`. Old jobs may carry no `kind`: show the phase alone — except a
+  // lifecycle phase (`held`, `incomplete`, `failed`, `done`, `assembling`), which
+  // the API coerces to the matching kind.
   "progress": { "phase": "deal-scout", "kind": "searched", "detail": "laundromats for sale Hialeah", "updatedAt": "…" },
   // Map `progress.phase` → a localized label + description via the model
   // manifest's `steps` (GET /templates/:id) to explain the current phase.

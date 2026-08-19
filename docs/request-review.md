@@ -41,11 +41,14 @@ This layer alone is a complete preview. Everything below is an enhancement.
 A proposed value is then put through five gates before anyone sees it:
 
 1. the field must be on `preflight.correctable` (for the Florida model: only
-   `location` and `industry` — never `instructions`, never a number);
+   `location` and `industry` — never a number). A separate list, `preflight.fillable`,
+   says which EMPTY fields the buyer's own words may fill — Florida lists `location`
+   and nothing else, and a fill needs a verbatim quote plus the buyer's tick;
 2. `sanitizeProposal` strips links, markup and control characters, and truncates
    to the schema's limit;
-3. it must not be longer than `max(3×, +24 chars)` of the original — a
-   correction expands a little, an appended payload does not;
+3. it must not be longer than the original **+40 characters** (`MAX_EXPANSION`) — a
+   correction expands a little, an appended payload does not. (The rule used to be
+   `max(3×, +24)`; the doc kept quoting that after the code stopped.)
 4. `similarity(from, to) ≥ 0.55` — "maimi dade" → "Miami-Dade County, FL" passes,
    "Austin, Texas" doesn't;
 5. the whole params object, with the value applied, must re-validate against the
@@ -97,8 +100,11 @@ what records strikes and blocks accounts.
    stripped, homoglyphs folded) **and** the *squeezed* form (all non-alphanumeric
    removed), so `i‌gnore`, `іgnore` and `i.g.n.o.r.e` are all the same string to it.
 2. **LLM classifier** — answers `allowed` plus categories from a fixed enum.
-   Fails open on any error: the engine still fences client instructions as
-   low-authority (`engine/prompt.ts`).
+   Fails open on any error. What made that acceptable was that the engine fenced
+   client instructions as low-authority; since `7a45269` there is no client text in
+   a prompt at all — the buyer's words become directive values and keywords from
+   our own vocabularies, and only if the buyer accepts them. The fail-open is
+   safer than it was, and this line named a mechanism that no longer exists.
 
 A rejection increments a strike; at `MODERATION_STRIKE_LIMIT` the account is
 blocked. The `blockedReason` written to Firestore is built by `blockReasonFor()`

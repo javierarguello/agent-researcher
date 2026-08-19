@@ -1336,10 +1336,28 @@ measurement and each got its own test before the count was recorded: the early-b
 cut, the resumed writer's own-page preference, the `stopPlanning` instruction, and the
 per-host caps through the production caller.
 
-**Still open in P2:** R7-12, R7-18 (needs a decision: render `agent.focus` in the write
-builders or delete it), R7-25, R7-26, R7-27 (docs), R7-28 (the wrong counts are in
-commit messages already on main — record the correction here rather than rewriting
-history).
+**Also closed since:** R7-18 `d1dab19` (Javier's decision: name the kinds —
+`AgentKind` derived from `role` + `enriches` — refuse a `focus` on an agent with no
+loop in `validateTemplate`, and fold what the two chart synthesizers needed into the
+`charts` guidance, reconciled with the engine's "never drop an item"). R7-25 + R7-26
+`0497861` (the keyword instruction asks for the shape its own gate accepts — 26 of 72
+real keywords survived before; the draft carries the buyer's notes again, read
+shape-tolerantly).
+
+**R7-28, recorded rather than rewritten:** four mutation counts in the 2026-08-17
+commit messages are wrong (`9850bdf` 5→6 and 3→2; `245811f` 3→2 and 4→3; `f74f7b0`
+2→3), and so were two of mine from 2026-08-19 (`1ce4893` said 1044, really 1043;
+`90a355f` said 1049, really 1046 — corrected in `2c346de`'s message). Those commits
+are on main; the correction lives here. The rule that produces the defect is the same
+every time: a count carried from an estimate instead of re-measured after the change.
+
+**Still open in P2:** R7-12 (a resumed agent falls to the diversity-first foreign
+pass rather than store order — measured 43→35 marketplace snippets of 48; the "90% one
+marketplace still fills every slot" unit test has cap = store size), and R7-27's
+remaining doc sweep is done except any file added since.
+
+**Then: round 8**, two lenses, worktrees reset to HEAD — and the brief must say so,
+since round 7's started at `d1ac4dd` and every reviewer had to notice for themselves.
 
 ### P2 — batch
 - R7-11 `gatheredAgentIds` × `CHECKPOINT_MAX_PAGES=60`: a gathered agent's evicted
