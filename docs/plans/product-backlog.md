@@ -87,3 +87,51 @@ say otherwise"*, `florida-business-for-sale.ts:954`).
   This item is the case where nobody named one anywhere.
 
 **Not started.** No code exists for this.
+
+---
+
+## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `open`
+
+**Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
+("Your preferences", seven directive rows of chips) and 05 ("In your own words")
+both sit open on the page, one under the other. They are two ways to fill the SAME
+seven params — 05 exists only to fill 04 (`7a45269`) — so the form asks the buyer
+to do the same job twice, and the second one is a wall of ~30 chips before they
+know whether the product is any good.
+
+**The shape (Javier's, and the one to build):** the box is the way in; the fields
+are what it produced, and stay editable by hand afterwards.
+
+1. Section 05 is primary; 04 starts collapsed behind "prefer to pick them
+   yourself?" — visible from the first render, not only on error.
+2. On validate, the accepted proposals land in the FORM's directive state, not
+   only in the confirm dialog: 04 opens showing exactly what was filled, each field
+   marked with the words that filled it (`proposals.quotes`, already carried).
+3. The buyer edits any of them by hand from there. The precedence rule already
+   supports this: `acceptProposals` skips a field the buyer set
+   (`enrich.ts`, `if (current[f.key] !== undefined) continue`), so a later
+   re-validation cannot clobber a hand-picked value.
+4. The confirm dialog goes back to being a REVIEW (summary, issues, corrections)
+   instead of the place where seven preferences are decided — which today is at the
+   moment of spending credits, the worst moment to meet a new vocabulary.
+
+**Constraints, verified in the code:**
+- The assist is not always available: `PreflightOutcome.assist.state` is
+  `off_disabled | off_no_credits | off_cooldown | off_attempts`, and there are two
+  free attempts per draft. Prompt-first MUST fall back to the fields whenever the
+  assist is off, or a buyer with no attempts left has no way to express a
+  preference at all.
+- Mobile is a wizard: 04 and 05 are separate steps (`stepOf(2)`, `stepOf(3)`,
+  `WIZARD_STEPS = 4` in `NewReport.tsx`). Collapsing them changes the step count.
+- The form is manifest-driven, so this is an SPA decision, not a Florida one —
+  another model with directives gets the same behaviour for free.
+- Whatever is not rendered must not be silently sent, and whatever the buyer typed
+  must not be silently dropped: that is the R7-7 class of defect (input given,
+  charged for, never used).
+
+**Open:** does the box stay visible after it has filled the fields (so notes can be
+rewritten and re-validated, spending the second attempt), or collapse into a "from
+your notes" line? And does the confirm dialog still list the proposals, or only the
+summary once they are already on the form?
+
+**Not started.**
