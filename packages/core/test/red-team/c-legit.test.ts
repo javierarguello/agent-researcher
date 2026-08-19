@@ -87,6 +87,23 @@ describe('C-legit · PDF prose links — what an honest citation loses in `mdInl
     expect(html, 'the page’s own claim about itself').not.toContain('Official registry');
   });
 
+  it('…and with the other two title delimiters CommonMark allows (round 9, G3-verify F2)', () => {
+    // R8-34 closed the split for `"…"` only. `'…'` and `(…)` are titles too — the
+    // viewer's Markdown parser renders all three as clean anchors — so those two
+    // still reached the buyer's kept artifact as raw Markdown with the brackets
+    // showing, which is the whole damage statement R8-34 was raised for.
+    // Mutation that reds this: drop either alternative from the title group.
+    for (const md of [
+      "Asking $450,000 per [the listing](https://ok.test/p 'Official registry').",
+      'Asking $450,000 per [the listing](https://ok.test/p (Official registry)).',
+    ]) {
+      const html = pdf(md);
+      expect(hrefs(html), md).toEqual(['https://ok.test/p']);
+      expect(html, md).not.toContain('[the listing]');
+      expect(html, md).not.toContain('Official registry');
+    }
+  });
+
   it('keeps `http://`, ports, IDN hosts and non-ASCII paths as working links (what a naive `https`-only allowlist would break)', () => {
     // Mutation that reds this: change `https?` to `https` in the mdInline regex.
     const urls = [

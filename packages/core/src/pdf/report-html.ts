@@ -118,6 +118,31 @@ export function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
   };
 }
 
+/**
+ * An optional Markdown link/image TITLE, in all three delimiters CommonMark allows.
+ *
+ * ONE definition, used by the image strip and by the link rule below, because the
+ * two disagreeing is a live defect and not a style question: the strip's url class
+ * ends at the first space, so it never matched a TITLED image, and the moment the
+ * link rule learned about titles it matched one — turning `![alt](url "t")` into `!`
+ * plus a live anchor at the attacker's url, labelled with the attacker's alt text.
+ * That is the click-beacon the strip exists to stop, restored by the fix for
+ * something else (round 9, G3-break F1), and it came back a second time for the
+ * paren form while the two regexes were maintained separately.
+ *
+ * Every alternative excludes `)` so the group cannot cross the end of the link: it
+ * was `.*?`, and since `mdToHtml` joins a paragraph's lines with a space before
+ * calling this, one unterminated quote made the match run to the NEXT `")` and
+ * swallow everything between — a second real link deleted from the artifact the
+ * buyer keeps, with no marker (round 9, G3-break F3). A title that genuinely
+ * contains `)` falls back to raw Markdown, which is what it did before the branch
+ * existed: visible and complete beats invisible and short.
+ *
+ * `esc()` has already run, so a double quote is `&quot;` here and a single quote is
+ * still `'`.
+ */
+const MD_TITLE = String.raw`(?:\s+(?:&quot;[^)]*?&quot;|'[^')]*?'|\([^)]*?\)))?`;
+
 /** Minimal, SAFE Markdown → HTML (escape first, then a few inline/block rules). */
 function mdInline(s: string): string {
   let out = esc(s);
@@ -125,7 +150,13 @@ function mdInline(s: string): string {
   // (see ReportViewer's `MD`) and this renderer never emitted one. Without this
   // line the link rule below turned `![alt](url)` into `!` + a link labelled by
   // the alt text: a click-beacon dressed as a "verified photo".
-  out = out.replace(/!\[[^\]]*\]\([^\s)]*\)/g, '');
+  // The title form too, and BEFORE the link rule below — which is why this line
+  // has to know about titles at all. Its url class ends at the first space, so it
+  // never matched `![alt](url "t")`; the link rule, once taught to match a title,
+  // did — and turned a titled image into `!` + a live anchor at the attacker's url
+  // labelled with the attacker's alt text. The click-beacon this line exists to
+  // stop, restored by the fix for something else (round 9, G3-break F1).
+  out = out.replace(new RegExp(String.raw`!\[[^\]]*\]\([^\s)]*${MD_TITLE}\)`, 'g'), '');
   // `u` is ALREADY escaped — `esc(s)` ran on the whole string first — so it goes
   // into the attribute as is. It used to be escaped a second time, which turned
   // every `&amp;` into `&amp;amp;`: in both real July reports, every prose
@@ -145,7 +176,25 @@ function mdInline(s: string): string {
   // rendered because a link title is the page's own account of itself, which the
   // viewer does not show either. The quotes are `&quot;` by the time this runs:
   // `esc(s)` has already gone over the whole string.
-  out = out.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)(?:[^\s()]|\([^\s()]*\))+)(?:\s+&quot;.*?&quot;)?\)/g, (_m, t, u) => `<a href="${u}">${t}</a>`);
+  //
+  // The title cannot cross a `)`. It was `.*?`, which is unanchored, and `mdToHtml`
+  // joins a paragraph's lines with a space before calling this — so one unterminated
+  // quote made the match run to the NEXT `&quot;)` and SWALLOW everything between,
+  // including a second real link, with no marker in the artifact the buyer keeps
+  // (round 9, G3-break F3). A title that genuinely contains `)` now falls back to
+  // raw Markdown, which is what it did before the title branch existed: visible and
+  // complete beats invisible and short.
+  //
+  // All THREE delimiters CommonMark allows, because the viewer's parser renders all
+  // three and R8-34 closed only `&quot;…&quot;` — so `'…'` and `(…)` went on reaching the
+  // buyer's kept artifact as raw Markdown, which is the split R8-34 was raised to
+  // end (round 9, G3-verify F2). `esc()` leaves `'` alone, so that form is literal
+  // here; the paren form excludes `)` so it cannot eat the closing paren of a
+  // destination like `…/Hialeah,_Florida_(city)`.
+  out = out.replace(
+    new RegExp(String.raw`\[([^\]]+)\]\(((?:https?://|mailto:|tel:)(?:[^\s()]|\([^\s()]*\))+)${MD_TITLE}\)`, 'g'),
+    (_m, t, u) => `<a href="${u}">${t}</a>`,
+  );
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');

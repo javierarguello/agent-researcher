@@ -48,6 +48,49 @@ describe('C-attack · PDF — Markdown images (report-html.ts:123 mdInline)', ()
     expect(html).not.toContain('beacon.attacker.test');
     expect(html).not.toContain('verified photo');
   });
+
+  it('SOUND · and a TITLED image is not a link either — the title branch must not reach past the image strip (round 9, G3-break F1)', () => {
+    // `0250063` taught the LINK rule to match `[t](url "title")` so a titled link
+    // would stop reaching the buyer's PDF as raw Markdown. The image strip above it
+    // ends its url class at the first space, so it never matched a TITLED image —
+    // and the widened link rule did: `![alt](url "t")` became `!` + a live anchor at
+    // the attacker's url, labelled with the attacker's alt text. That is the exact
+    // click-beacon the strip exists to stop, restored by the fix for something else,
+    // in the artifact the buyer keeps and forwards — while the viewer, which drops
+    // images at the element level, renders nothing at all.
+    // Mutation that reds this: drop the title group from the image-strip line.
+    // All three title delimiters: the strip and the link rule have to agree on what
+    // a title IS, or the beacon comes back through whichever one the strip forgot.
+    for (const titled of [
+      `![Bubbles Express verified photo](${BEACON} "Verified by the Florida DBPR")`,
+      `![Bubbles Express verified photo](${BEACON} 'Verified by the Florida DBPR')`,
+      `![Bubbles Express verified photo](${BEACON} (Verified by the Florida DBPR))`,
+    ]) {
+      const html = pdf({ findings: { overview: `Two match. ${titled}`, listings: [], risks: [`Lease. ${titled}`] } }, [{ key: 'findings', title: 'Findings' }]);
+      expect(html, titled).toContain('Two match.');
+      expect(html, titled).not.toMatch(/<img\b/i);
+      expect(html, titled).not.toContain('beacon.attacker.test');
+      expect(html, titled).not.toContain('verified photo');
+      expect(html, `the bare \`!\` the link rule leaves behind: ${titled}`).not.toMatch(/Two match\. !/);
+    }
+  });
+
+  it('SOUND · a malformed title does not DELETE the rest of the paragraph (round 9, G3-break F3)', () => {
+    // The title group was `.*?` — unanchored, and `mdToHtml` joins a paragraph's
+    // lines with a space before calling this, so its reach is the whole paragraph.
+    // An unterminated quote made the match run to the NEXT `")`, swallowing every
+    // character in between: a second, real link vanished from the PDF with no
+    // marker, while the viewer kept every character. Raw Markdown is ugly; silent
+    // deletion is a primitive for taking a risk sentence out of the artifact the
+    // buyer keeps while leaving it on screen.
+    // Mutation that reds this: put `.*?` back in the title group.
+    const html = pdf(
+      { findings: { overview: 'See [a](https://x.test/1 "Title A) and [b](https://y.test/2 "Title B").', listings: [], risks: [] } },
+      [{ key: 'findings', title: 'Findings' }],
+    );
+    expect(html, 'the second link survived').toContain('https://y.test/2');
+    expect(html, 'and so did the prose between them').toContain('and');
+  });
 });
 
 // ── The PDF: raw hrefs ─────────────────────────────────────────────────────
