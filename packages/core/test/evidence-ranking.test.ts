@@ -65,6 +65,26 @@ describe('rankEvidence · own first, then referenced, then the rest', () => {
     expect(many.filter((x) => x.url.includes('mine.example'))).toHaveLength(24);
   });
 
+  it('a URL the writer’s own loop also saw is still one of the sections it is rewriting (R8-19)', () => {
+    // The tiers are an exclusive chain, so an item that is BOTH `touched` (a SERP
+    // row this loop was shown) and `referenced` (a listing in the section it was
+    // handed to fill the gaps in) fell to `touched` — emitted in the later of the
+    // two tiers and, worse, subtracted from the reserve that protects the ones
+    // left. The overlap is the normal case for a refiner, whose searches are
+    // supposed to return the listings it was just handed; the shipped end-to-end
+    // fixture excluded it with one line (`nextLot = 20`).
+    const own = list('mine.example', 48);
+    const shortlist = list('shortlist.example', 12);
+    const out = rankEvidence([...own, ...shortlist], 48, 8, {
+      fetched: new Set(own.map((x) => x.url)),
+      touched: new Set(shortlist.map((x) => x.url)),
+      referenced: new Set(shortlist.map((x) => x.url)),
+    });
+    // Mutation that reds this: classify `touched` before `referenced` again.
+    expect(out.filter((x) => x.url.includes('shortlist.example'))).toHaveLength(12);
+    expect(out.filter((x) => x.url.includes('mine.example'))).toHaveLength(36);
+  });
+
   it('with no preference at all, everything is the foreign tier: diversity-first, then store order — and with a cap larger than any host, exactly the store order', () => {
     const store = [...list('x.example', 5), ...list('y.example', 5)];
     expect(rankEvidence(store, 6, 3).map((x) => x.url)).toEqual([...list('x.example', 3), ...list('y.example', 3)].map((x) => x.url));
@@ -171,6 +191,23 @@ describe('urlsIn · the URLs a writer is handed in its sections', () => {
     expect(found.size).toBe(3);
     expect(urlsIn(undefined).size).toBe(0);
     expect(urlsIn({}).size).toBe(0);
+  });
+
+  it('finds a bare URL at the end of a line, and a JSON escape is not part of it (R8-18)', () => {
+    // The regex used to run over `JSON.stringify(value)`, where a newline in a
+    // section is the two characters `\` and `n` — neither excluded, neither
+    // stripped. So the commonest shape the flagship's own guidance asks for, a
+    // bare canonical URL ending a line of prose, produced `…/9182\\nNext`: absent
+    // from the set, so that listing got no reserve and did not outrank a SERP row.
+    const found = urlsIn({ body: 'See https://acme-brokers.com/listing/9182\nNext line.' });
+    expect(found.has('https://acme-brokers.com/listing/9182')).toBe(true);
+    expect(found.size).toBe(1);
+    // The same for the other escapes a section value can carry. A REAL backslash
+    // in the string stays part of the match — it is a character the section
+    // contains, not an artifact of serializing it, which is the whole difference.
+    expect(urlsIn({ a: 'https://a.example/x"quoted', b: 'https://b.example/y\tcol', c: 'https://c.example/z\\path' })).toEqual(
+      new Set(['https://a.example/x', 'https://b.example/y', 'https://c.example/z\\path']),
+    );
   });
 });
 

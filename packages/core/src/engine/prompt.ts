@@ -197,12 +197,42 @@ function hostOf(url: string): string {
   }
 }
 
-/** URLs that appear anywhere in a value — the sections a writer is handed. */
+/**
+ * URLs that appear anywhere in a value — the sections a writer is handed.
+ *
+ * Walks the VALUE, not its serialization. Over `JSON.stringify(value)` a newline
+ * inside a section is the two characters `\` and `n`, and neither is excluded by
+ * the class below or stripped after it — so `…/listing/9182\nNext line.` yielded
+ * `…/listing/9182\\nNext`, which matches no store URL. That listing then sat in no
+ * tier, held no reserve and lost to an unread SERP row (round 8, R8-18). A bare
+ * canonical URL ending a line of prose is exactly what the flagship's own
+ * guidance asks the writers for, so this was the common shape, not the odd one.
+ */
 export function urlsIn(value: unknown): Set<string> {
   const out = new Set<string>();
-  const text = value === undefined ? '' : JSON.stringify(value);
-  // A URL in prose ends with the sentence's punctuation more often than not.
-  for (const m of text.matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) out.add(m[0].replace(/[.,;:!?]+$/, ''));
+  const seen = new WeakSet<object>();
+  const scan = (text: string): void => {
+    // A URL in prose ends with the sentence's punctuation more often than not.
+    for (const m of text.matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) out.add(m[0].replace(/[.,;:!?]+$/, ''));
+  };
+  const visit = (v: unknown): void => {
+    if (typeof v === 'string') scan(v);
+    else if (Array.isArray(v)) {
+      if (seen.has(v)) return;
+      seen.add(v);
+      for (const x of v) visit(x);
+    } else if (v && typeof v === 'object') {
+      if (seen.has(v)) return;
+      seen.add(v);
+      // Keys too: the serialization scanned them, and a section keyed by url is
+      // strange but not ours to lose.
+      for (const [k, x] of Object.entries(v)) {
+        scan(k);
+        visit(x);
+      }
+    }
+  };
+  visit(value);
   return out;
 }
 
@@ -237,9 +267,16 @@ export function rankEvidence<T extends { url: string }>(items: T[], max: number,
   const referenced: T[] = [];
   const rest: T[] = [];
   for (const it of items) {
+    // `referenced` is tested BEFORE `touched`: the tiers are exclusive, and an item
+    // that is both — a listing in the section this writer was handed that its own
+    // search also returned — is the refiner's normal case, not the odd one. Under
+    // the old order it fell to `touched`, emitted in the later of the two tiers,
+    // and was subtracted from the reserve that protects the listings left
+    // (round 8, R8-19). Nothing an honest run relies on gets worse: those items
+    // rank higher, never lower.
     if (prefer?.fetched?.has(it.url)) fetched.push(it);
-    else if (prefer?.touched?.has(it.url)) touched.push(it);
     else if (prefer?.referenced?.has(it.url)) referenced.push(it);
+    else if (prefer?.touched?.has(it.url)) touched.push(it);
     else rest.push(it);
   }
   // Slots the sections being rewritten cannot be pushed out of. Sized by the set,

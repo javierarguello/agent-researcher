@@ -230,7 +230,12 @@ const SHORTLISTED = Array.from({ length: 12 }, (_, i) => lotUrl(i + 1));
 
 class Density implements LlmProvider {
   readonly name = 'refute-b1-ref';
-  private nextLot = 20; // the refiner's own results never overlap the shortlist
+  // The refiner's searches return the FIRST EIGHT listings it was handed, then
+  // fresh lots. This used to be `20` — "the refiner's own results never overlap
+  // the shortlist" — which excluded by construction the production shape it stands
+  // in for: an agent told "fill the gaps in these listings" searches for those
+  // listings, and the backend returns them (round 8, R8-19).
+  private nextLot = 5;
   readonly searchedBy = new Map<string, string[]>();
   readonly writes = new Map<string, { pages: string[]; snippets: string[] }>();
 
@@ -268,13 +273,17 @@ class Density implements LlmProvider {
 }
 
 describeMock('B1 refute · the REFERENCED tier at production density (8 results per query)', () => {
-  it('a wave-2 enricher sees all 12 listings it is rewriting, even with its own 48 fresh results in hand (before the fix: 0 of 12 — its own SERP rows filled every slot)', async () => {
+  it('a wave-2 enricher sees all 12 listings it is rewriting, with 48 results of its own in hand — eight of them those same listings (with the tier last: 8 of 12, and only the eight it happened to search up)', async () => {
     const restoreDensity = __setResultsPerQuery(8);
+    // `__setExtraPages(p)` captures the CURRENT corpus and returns a restorer to
+    // it, so calling it inside the teardown captured `LOTS` and put the 120 lot
+    // pages straight back — the clear never happened (round 8, R8-29). Capture the
+    // restorer at set time, the way the first block in this file does.
+    const restoreExtras = __setExtraPages(LOTS);
     restore = () => {
       restoreDensity();
-      __setExtraPages([])();
+      restoreExtras();
     };
-    __setExtraPages(LOTS);
     const model = new Density();
     __setProviderForTests('gemini-vertex', model);
     __setProviderForTests('ollama', model);
@@ -297,11 +306,19 @@ describeMock('B1 refute · the REFERENCED tier at production density (8 results 
     // eslint-disable-next-line no-console
     console.log(`refiner: ${referencedVisible}/12 shortlisted listings and ${ownVisible}/48 of its own results rendered as [S]`);
 
-    // Mutation that reds this: drop the `referenced` reserve in `rankEvidence`
-    // (`const reserve = 0`), or put `touched` back above `referenced`.
+    // Mutation that reds this: put `touched` back above `referenced` in the OUTPUT
+    // order. Not `const reserve = 0` — that was written here and it is false: this
+    // refiner never fetches, so its `fetched` tier is empty and the reserve holds
+    // back slots nothing is competing for. The reserve only bites when `fetched`
+    // alone could fill `max - reserve` — 37 of 48 URLs both fetched by this loop
+    // and present in the store — which no research budget reaches; it is pinned by
+    // `evidence-ranking.test.ts` at the unit level and by nothing end to end, and
+    // that is worth knowing rather than implying otherwise.
     expect(referencedVisible, 'the listings the enricher is told to fill gaps in').toBe(12);
-    // And it keeps most of what it paid for: the reserve is sized by the referenced
-    // set, not a constant, so the other 36 slots are still its own.
-    expect(ownVisible).toBe(36);
+    // Eight of the twelve are also its OWN results now, which is the point of the
+    // overlap: they are counted once, in the referenced tier, and the slots left
+    // still go to what it paid for. What this proves is the ORDER; what it does not
+    // prove is which tier an overlapping url landed in — both render it here.
+    expect(ownVisible).toBe(44);
   });
 });
