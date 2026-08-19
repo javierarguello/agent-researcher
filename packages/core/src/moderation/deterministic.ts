@@ -99,7 +99,7 @@ export function renderPlan(
 ): string {
   if (template.preflight?.describePlan) {
     try {
-      return `${template.preflight.describePlan(params, ctx).trim()}${planDirectives(template, params, ctx.lang)}`;
+      return template.preflight.describePlan(params, ctx).trim();
     } catch {
       /* fall through to the generic renderer */
     }
@@ -112,13 +112,6 @@ export function renderPlan(
   return `${head(template.name, ctx.modeLabel)}${filters.length ? ` — ${filters.join('; ')}.` : '.'}`;
 }
 
-/** "Preferences" — the lead-in for the directive clause. */
-const PREFS_LEAD: Record<Lang, string> = {
-  en: 'Preferences you set:',
-  es: 'Preferencias que indicaste:',
-  fr: 'Préférences que vous avez indiquées :',
-  pt: 'Preferências que você indicou:',
-};
 const PREFS_YESNO: Record<Lang, [string, string]> = {
   en: ['yes', 'no'],
   es: ['sí', 'no'],
@@ -127,25 +120,39 @@ const PREFS_YESNO: Record<Lang, [string, string]> = {
 };
 
 /**
- * The directives, appended to whatever the model's own `describePlan` wrote.
+ * The preferences a request carries, as LABEL/VALUE PAIRS rather than a sentence.
  *
- * Here and not in the template, because this is the last screen before payment and
- * a template must not be able to forget it: `describePlan` rendered industry,
- * location, price band, revenue, cash flow, SBA, real estate and keywords, and NO
- * directive at all — while six of the seven decide which listings get shortlisted
- * (round 8, R8-36). The page's proposals block lists them, but only while there
- * are proposals: not after a second review that proposes nothing, and never for a
- * value the buyer picked by hand.
+ * Answers R8-36 — `describePlan` rendered industry, location, price band, revenue,
+ * cash flow, SBA, real estate and keywords, and NO directive at all, while six of
+ * the seven decide which listings get shortlisted — and it lives here rather than
+ * in a template so that a template cannot forget the last screen before payment.
+ *
+ * PAIRS, and not appended to the summary, because of how it went wrong the first
+ * time (round 9, R9-1). The buyer's app deliberately keeps the directives OUT of
+ * the key that decides whether a preview is still valid: keyed on, every chip click
+ * would flip the dialog back to "Validate & continue" and spend one of the two
+ * assisted attempts — `reserveAssistedReview` is claimed on every preflight call, so
+ * that cost is real. Folding the preferences into `summary` made a cached sentence
+ * depend on a value that changes without re-previewing, so the confirm dialog named
+ * a preference that was not going and stayed silent about one that was. As pairs,
+ * a client renders them from the params it is about to SUBMIT, and a client that
+ * does not edit after previewing can render the ones it was handed. Neither has to
+ * parse a sentence.
  *
  * Still a pure function of the validated params, and still no user-authored text:
- * every word here is a label from the manifest, in the buyer's language — the same
- * strings the form showed them.
+ * the labels are the manifest's, in the buyer's language — the same strings the form
+ * showed them. (The `yes`/`no` for a boolean directive is ours, and is the only word
+ * here that is not a manifest label.)
  */
-function planDirectives(template: ResearchTemplate<any>, params: Record<string, unknown>, lang: Lang): string {
+export function planPreferences(
+  template: ResearchTemplate<any>,
+  params: Record<string, unknown>,
+  lang: Lang,
+): Array<{ label: string; value: string }> {
   const spec = template.directives;
   const set = spec ? (params[spec.key] as Record<string, unknown> | undefined) : undefined;
-  if (!spec || !set || typeof set !== 'object') return '';
-  const parts: string[] = [];
+  if (!spec || !set || typeof set !== 'object') return [];
+  const out: Array<{ label: string; value: string }> = [];
   for (const field of spec.fields) {
     const v = set[field.key];
     if (v === undefined || v === null || (Array.isArray(v) && !v.length)) continue;
@@ -156,9 +163,9 @@ function planDirectives(template: ResearchTemplate<any>, params: Record<string, 
       : Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map(label).join(', ')
       : typeof v === 'string' ? label(v)
       : '';
-    if (shown) parts.push(`${text.label}: ${shown}`);
+    if (shown) out.push({ label: text.label, value: shown });
   }
-  return parts.length ? ` ${PREFS_LEAD[lang] ?? PREFS_LEAD.en} ${parts.join('; ')}.` : '';
+  return out;
 }
 
 const GENERIC_HEAD: Record<Lang, (name: string, mode: string) => string> = {

@@ -37,8 +37,8 @@ const T = {
     notEnough: 'Not enough credits — buy more first.', buyCredits: 'Buy credits', alreadyRunning: 'You already have a dossier in progress — wait for it to finish before starting another.',
     rejected: 'Your request couldn’t be submitted:', tooMany: 'Too many requests just now. Nothing was charged — wait a moment and try again.', blockedNote: 'Your account is blocked:', captchaFailed: 'We couldn’t confirm you’re human. Reload the page and try again.', enqueueFailed: 'We couldn’t start your dossier just now. Please try again in a moment.', emailNotice: 'We’ll email you when your dossier is ready.',
     validateContinue: 'Validate & continue', preparing: 'Preparing summary…',
-    whatWeWillSearch: 'What we’ll search', findingsTitle: 'Worth checking before you spend credits', fixesTitle: 'Suggested fixes', applyFixes: 'Apply suggested fixes', assistOff: 'Assisted review',
-    noCredits: 'Not enough credits — buy more first.', yes: 'Yes',
+    whatWeWillSearch: 'What we’ll search', prefsLead: 'Preferences you set:', findingsTitle: 'Worth checking before you spend credits', fixesTitle: 'Suggested fixes', applyFixes: 'Apply suggested fixes', assistOff: 'Assisted review',
+    noCredits: 'Not enough credits — buy more first.', yes: 'Yes', no: 'No',
     modeDesc: { essential: 'Core sections. Roughly half the cost. Great for early scanning.', comprehensive: 'Full long-form dossier: valuations, comparables, diligence, playbook.' } as Record<string, string>,
   },
   es: {
@@ -68,8 +68,8 @@ const T = {
     notEnough: 'Créditos insuficientes — compra más primero.', buyCredits: 'Comprar créditos', alreadyRunning: 'Ya tienes un dossier en progreso — espera a que termine antes de iniciar otro.',
     rejected: 'No pudimos enviar tu solicitud:', tooMany: 'Demasiadas solicitudes ahora mismo. No se te cobró nada — espera un momento e inténtalo de nuevo.', blockedNote: 'Tu cuenta está bloqueada:', captchaFailed: 'No pudimos confirmar que eres una persona. Recarga la página e inténtalo de nuevo.', enqueueFailed: 'No pudimos iniciar tu dossier ahora mismo. Inténtalo de nuevo en un momento.', emailNotice: 'Te enviaremos un email cuando tu dossier esté listo.',
     validateContinue: 'Validar y continuar', preparing: 'Preparando resumen…',
-    whatWeWillSearch: 'Lo que buscaremos', findingsTitle: 'Vale la pena revisar antes de gastar créditos', fixesTitle: 'Correcciones sugeridas', applyFixes: 'Aplicar correcciones', assistOff: 'Revisión asistida',
-    noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí',
+    whatWeWillSearch: 'Lo que buscaremos', prefsLead: 'Preferencias que indicaste:', findingsTitle: 'Vale la pena revisar antes de gastar créditos', fixesTitle: 'Correcciones sugeridas', applyFixes: 'Aplicar correcciones', assistOff: 'Revisión asistida',
+    noCredits: 'Créditos insuficientes — compra más primero.', yes: 'Sí', no: 'No',
     modeDesc: { essential: 'Secciones núcleo. Aproximadamente la mitad del costo. Ideal para explorar.', comprehensive: 'Dossier largo completo: valoraciones, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   fr: {
@@ -99,8 +99,8 @@ const T = {
     notEnough: 'Crédits insuffisants — achetez-en d’abord.', buyCredits: 'Acheter des crédits', alreadyRunning: 'Vous avez déjà un dossier en cours — attendez qu’il se termine avant d’en lancer un autre.',
     rejected: 'Votre demande n’a pas pu être envoyée :', tooMany: 'Trop de requêtes en ce moment. Rien ne vous a été facturé — attendez un instant et réessayez.', blockedNote: 'Votre compte est bloqué :', captchaFailed: 'Nous n’avons pas pu confirmer que vous êtes une personne. Rechargez la page et réessayez.', enqueueFailed: 'Nous n’avons pas pu lancer votre dossier pour l’instant. Réessayez dans un moment.', emailNotice: 'Nous vous enverrons un email quand votre dossier sera prêt.',
     validateContinue: 'Valider et continuer', preparing: 'Préparation du résumé…',
-    whatWeWillSearch: 'Ce que nous chercherons', findingsTitle: 'À vérifier avant de dépenser des crédits', fixesTitle: 'Corrections suggérées', applyFixes: 'Appliquer les corrections', assistOff: 'Relecture assistée',
-    noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui',
+    whatWeWillSearch: 'Ce que nous chercherons', prefsLead: 'Préférences que vous avez indiquées :', findingsTitle: 'À vérifier avant de dépenser des crédits', fixesTitle: 'Corrections suggérées', applyFixes: 'Appliquer les corrections', assistOff: 'Relecture assistée',
+    noCredits: 'Crédits insuffisants — achetez-en d’abord.', yes: 'Oui', no: 'Non',
     modeDesc: { essential: 'Sections clés. Environ moitié du coût. Idéal pour un premier tri.', comprehensive: 'Dossier long complet : valorisations, comparables, due diligence, playbook.' } as Record<string, string>,
   },
   pt: {
@@ -130,8 +130,8 @@ const T = {
     notEnough: 'Créditos insuficientes — compre mais primeiro.', buyCredits: 'Comprar créditos', alreadyRunning: 'Você já tem um dossiê em andamento — aguarde ele terminar antes de iniciar outro.',
     rejected: 'Não foi possível enviar sua solicitação:', tooMany: 'Muitas solicitações agora. Nada foi cobrado — aguarde um instante e tente novamente.', blockedNote: 'Sua conta está bloqueada:', captchaFailed: 'Não conseguimos confirmar que você é uma pessoa. Recarregue a página e tente novamente.', enqueueFailed: 'Não conseguimos iniciar seu dossiê agora. Tente novamente em instantes.', emailNotice: 'Enviaremos um email quando seu dossiê estiver pronto.',
     validateContinue: 'Validar e continuar', preparing: 'Preparando resumo…',
-    whatWeWillSearch: 'O que vamos buscar', findingsTitle: 'Vale revisar antes de gastar créditos', fixesTitle: 'Correções sugeridas', applyFixes: 'Aplicar correções', assistOff: 'Revisão assistida',
-    noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim',
+    whatWeWillSearch: 'O que vamos buscar', prefsLead: 'Preferências que você indicou:', findingsTitle: 'Vale revisar antes de gastar créditos', fixesTitle: 'Correções sugeridas', applyFixes: 'Aplicar correções', assistOff: 'Revisão assistida',
+    noCredits: 'Créditos insuficientes — compre mais primeiro.', yes: 'Sim', no: 'Não',
     modeDesc: { essential: 'Seções principais. Cerca da metade do custo. Ótimo para triagem inicial.', comprehensive: 'Dossiê longo completo: valuations, comparáveis, due diligence, playbook.' } as Record<string, string>,
   },
 };
@@ -423,6 +423,21 @@ export function NewReport() {
   const directives = model?.directives ?? [];
   const dirKey = model?.directivesKey ?? 'directives';
   const dirVals = (params[dirKey] as Record<string, unknown>) ?? {};
+  /**
+   * The preferences the request is about to carry, in the manifest's own labels.
+   *
+   * Read off `dirVals` — the live form — never off the last preview. Field order is
+   * the manifest's, so the same set always reads the same way.
+   */
+  const livePrefs = directives.flatMap((f) => {
+    const v = dirVals[f.key];
+    if (v === undefined || v === null || (Array.isArray(v) && !v.length)) return [];
+    const label = (x: unknown) => f.options?.find((o) => o.value === x)?.label ?? String(x);
+    const value = typeof v === 'boolean' ? (v ? t.yes : t.no)
+      : Array.isArray(v) ? v.map(label).join(', ')
+      : label(v);
+    return value ? [{ label: f.label, value }] : [];
+  });
   /**
    * The assist could not run — no credits, cooldown, ATTEMPTS SPENT, disabled.
    *
@@ -1056,6 +1071,22 @@ export function NewReport() {
                 <div className="pf-result">
                   <div className="eyebrow" style={{ color: 'var(--accent)', marginBottom: 8 }}>{t.whatWeWillSearch}</div>
                   <p className="soft" style={{ fontSize: 14, lineHeight: 1.6 }}>{pf.summary || t.confirmSub}</p>
+
+                  {/* The preferences, rendered from the FORM and not from `pf`.
+                      The server sends them as pairs (`pf.preferences`) and they are
+                      right for the request the PREVIEW carried — but the directives
+                      are deliberately outside `paramsKey`, so the buyer can change
+                      one without re-previewing (keyed on, every chip click would
+                      spend an assisted attempt). A cached sentence therefore named a
+                      value that was not going and stayed silent about one that was
+                      (round 9, R9-1). Same rule as the proposals block below: the
+                      FORM is what will be sent. */}
+                  {livePrefs.length > 0 && (
+                    <p className="soft" data-testid="confirm-prefs" style={{ fontSize: 13, lineHeight: 1.6, marginTop: -6 }}>
+                      <span className="mono muted">{t.prefsLead} </span>
+                      {livePrefs.map((x) => `${x.label}: ${x.value}`).join('; ')}.
+                    </p>
+                  )}
 
                   {/* Proposed corrections, as a diff the user can decline. */}
                   {(pf.corrections?.length ?? 0) > 0 && (

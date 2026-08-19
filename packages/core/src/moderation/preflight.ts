@@ -14,7 +14,7 @@
  * to generate anything — the preview degrades to the deterministic layer instead
  * of disappearing. It never blocks a generation.
  */
-import { deterministicIssues, issueMessage, renderPlan, type PreflightIssue } from './deterministic.js';
+import { deterministicIssues, issueMessage, planPreferences, renderPlan, type PreflightIssue } from './deterministic.js';
 import { enrichRequest, applyCorrections, type Correction } from './enrich.js';
 import { assistMessage, type AssistState, type Lang } from './copy.js';
 import { applyProposals, proposeFromText, type Proposals } from './enrich.js';
@@ -40,6 +40,18 @@ export interface PreflightOutcome {
   proposals?: Proposals;
   /** `correctedParams` (or the params) with the proposals applied too. */
   proposedParams?: Record<string, unknown>;
+  /**
+   * The preferences this request carries, as label/value pairs in the buyer's
+   * language — the manifest's own labels, never a word the model wrote.
+   *
+   * Pairs and not a sentence inside `summary`, because a client that lets the buyer
+   * edit a preference WITHOUT re-previewing (the buyer's app does exactly that, on
+   * purpose — re-previewing spends an assisted attempt) would otherwise show a
+   * cached sentence about values that have since changed (round 9, R9-1). Render
+   * these from the params you are about to submit; they are what makes the last
+   * screen before payment state what will actually be searched (round 8, R8-36).
+   */
+  preferences: Array<{ label: string; value: string }>;
   /** Whether the assisted pass ran, and why not when it didn't. */
   assist: { state: AssistState; message?: string };
   /** Token usage + dollars of the assisted pass, for per-user metering. */
@@ -71,6 +83,7 @@ export async function runPreflight(input: {
   const issues = deterministicIssues(template, params, lang);
   const base: PreflightOutcome = {
     summary: renderPlan(template, params, { lang, modeLabel }),
+    preferences: planPreferences(template, params, lang),
     quality: qualityFromIssues(issues),
     issues,
     corrections: [],
@@ -108,6 +121,9 @@ export async function runPreflight(input: {
     // preferences they had not accepted yet (round 7, R7-9 / R7-25). What the
     // proposals would add is shown beside them, as a diff, where it can be ticked.
     summary: renderPlan(template, correctedParams ?? params, { lang, modeLabel }),
+    // From the same params as the summary — the request as the buyer TYPED it, not
+    // with the proposals folded in.
+    preferences: planPreferences(template, correctedParams ?? params, lang),
     quality: worst(qualityFromIssues(merged), enriched.quality),
     issues: merged,
     corrections: enriched.corrections,

@@ -59,6 +59,23 @@ describeMock('pre-flight — assisted pass (stubbed model)', () => {
     expect(b.summary).toContain('Miami-Dade County, FL');
   });
 
+  it('returns the preferences the request carries, as pairs a client can render (round 8 R8-36, round 9 R9-1)', async () => {
+    // The last screen before payment has to state the preferences that decide which
+    // listings get shortlisted. They ride the response as label/value PAIRS rather
+    // than folded into `summary`, because a client that lets the buyer edit one
+    // without re-previewing — which the buyer's app does on purpose, since a
+    // re-preview spends an assisted attempt — would otherwise show a cached sentence
+    // about values that have since changed. A headless client renders these; the SPA
+    // renders its own from the form it is about to submit.
+    // Mutation that reds this: drop `preferences` from the preflight outcome.
+    const r = await preflight({ directives: { ownerInvolvement: 'absentee' } });
+    const b = r.json();
+    expect(r.statusCode).toBe(200);
+    expect(b.preferences).toEqual([{ label: 'Owner involvement', value: 'Absentee — a manager runs it' }]);
+    // …and they are NOT duplicated into the summary, which is what went stale.
+    expect(b.summary).not.toContain('Absentee');
+  });
+
   it('drops a correction that replaces the value instead of fixing it', async () => {
     fakeLlm.reply = JSON.stringify({ corrections: [{ field: 'location', value: 'Austin, Texas' }], quality: 'ok' });
     const b = (await preflight()).json();

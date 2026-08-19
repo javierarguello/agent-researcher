@@ -14,7 +14,7 @@ import { screeningForms, similarity, sanitizeProposal } from '../src/util/text.j
 import { acceptCorrections, enrichRequest } from '../src/moderation/enrich.js';
 import { __setProviderForTests } from '../src/llm/models.js'; // setup.ts clears providers between tests
 import { config } from '../src/config.js';
-import { deterministicIssues, renderPlan } from '../src/moderation/deterministic.js';
+import { deterministicIssues, planPreferences, renderPlan } from '../src/moderation/deterministic.js';
 import { moderationMessage, blockReasonFor } from '../src/moderation/copy.js';
 import { floridaBusinessForSale as tpl } from '../src/templates/florida-business-for-sale.js';
 
@@ -456,17 +456,31 @@ describe('deterministic review', () => {
     // value the buyer picked by hand. So a buyer could pay with `absentee` and
     // `financial_distress` in the request and nothing on that screen saying so.
     // Mutation that reds this: drop the directive clause from `renderPlan`.
+    //
+    // They come back as PAIRS rather than as a clause inside `summary`, and that is
+    // the correction of how this first shipped (round 9, R9-1): the buyer's app
+    // deliberately keeps the directives OUT of the key that decides whether a
+    // preview is still valid — keyed on, every chip click spends one of the two
+    // assisted attempts — so a sentence folded into `summary` went stale the moment
+    // the buyer edited a chip, and the confirm dialog named a preference that was
+    // not going. As pairs, a client renders them from the params it is about to
+    // submit. Mutation that reds this: return `[]` from `planPreferences`.
     const p = params({ directives: { ownerInvolvement: 'absentee', reasonForSale: ['owner_retiring', 'estate_sale'] } });
-    const en = renderPlan(tpl, p, { lang: 'en', modeLabel: 'Essential' });
-    expect(en).toContain('Owner involvement');
-    expect(en).toContain('Absentee — a manager runs it');
-    expect(en).toContain('Owner retiring');
-    expect(en).toContain('Estate sale');
+    const en = planPreferences(tpl, p, 'en');
+    expect(en).toEqual([
+      { label: 'Reason for sale', value: 'Owner retiring, Estate sale' },
+      { label: 'Owner involvement', value: 'Absentee — a manager runs it' },
+    ]);
+    // Field order is the manifest's, not the object's, so the same set always reads
+    // the same way.
+    expect(planPreferences(tpl, params({ directives: { reasonForSale: ['owner_retiring', 'estate_sale'], ownerInvolvement: 'absentee' } }), 'en')).toEqual(en);
     // In the buyer's language, from the same manifest text the form rendered.
-    const es = renderPlan(tpl, p, { lang: 'es', modeLabel: 'Esencial' });
-    expect(es).toContain('Participación del dueño');
-    expect(es).not.toContain('Owner involvement');
-    // …and a request with no preferences reads exactly as it did.
+    const es = planPreferences(tpl, p, 'es');
+    expect(es.map((x) => x.label)).toContain('Participación del dueño');
+    expect(JSON.stringify(es)).not.toContain('Owner involvement');
+    // …and a request with no preferences carries none, and its summary is unchanged.
+    expect(planPreferences(tpl, params({}), 'en')).toEqual([]);
+    expect(planPreferences(tpl, params({ directives: {} }), 'en')).toEqual([]);
     expect(renderPlan(tpl, params({}), { lang: 'en', modeLabel: 'Essential' })).toBe(
       renderPlan(tpl, params({ directives: {} }), { lang: 'en', modeLabel: 'Essential' }),
     );

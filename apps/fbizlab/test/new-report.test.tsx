@@ -836,6 +836,80 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
   // it alone; the two that touch it red it at its FIRST line, because the fields are
   // not on screen at all, which is asserted more directly by the tests above.
 
+  it('the confirm dialog states the preferences that are GOING, not the ones that were previewed (round 9, R9-1)', async () => {
+    // `4ba3bd4` made the server's plan summary depend on the directives, to answer
+    // R8-36 ("the preferences that steer the shortlist were absent from the last
+    // screen before payment"). But the directives are deliberately OUT of the
+    // preview key — keyed on, every chip click would flip the dialog back to
+    // "Validate & continue" and spend one of the two assisted attempts (the test
+    // directly below pins that, and `reserveAssistedReview` is claimed on every
+    // preflight call, so the cost is real). So the summary went stale the moment the
+    // buyer edited a chip after previewing: the dialog named a value that was not
+    // going, and — having previewed with nothing set — said nothing about one that
+    // was, which is R8-36's own sentence unfixed.
+    //
+    // The dialog therefore renders the preferences from the FORM, like the proposals
+    // block above it (round 8, R8-9). Mutation that reds this: render the clause
+    // from `pf.summary` again.
+    // The preflight mock echoes the directives it was CALLED with into the summary,
+    // which is what `renderPlan` has done since `4ba3bd4`. A fixed-string mock cannot
+    // see this defect at all — the summary has to depend on the params, because that
+    // dependency IS the defect.
+    // The mock answers like the server does: the preferences come back as PAIRS,
+    // computed from the params the request carried. A fixed-string mock cannot see
+    // this defect at all — the response has to depend on the params, because that
+    // dependency is what goes stale.
+    hooks.preflight.mockImplementation(async (body: unknown) => {
+      const d = ((body as { params?: { directives?: Record<string, string> } })?.params?.directives) ?? {};
+      const said = { sun: 'Sunshine', rain: 'Rain' }[d.weather ?? ''];
+      return {
+        ok: true, quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
+        summary: 'We will research X.',
+        preferences: said ? [{ label: 'Preferred weather', value: said }] : [],
+      };
+    });
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    // Picked by HAND before the preview, so the preview really did carry it — this
+    // is the buyer who never used the notes box at all.
+    await userEvent.click(screen.getByTestId('toggle-preferences'));
+    await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Rain' })); // a hand edit, after the preview
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+
+    const modal = document.querySelector('.modal')!;
+    expect(hooks.preflight, 'no second review was bought').toHaveBeenCalledTimes(1);
+    expect(modal.textContent, 'the value that is actually going').toContain('Rain');
+    // `pf.preferences` still says Sunshine — it is right about the request the
+    // PREVIEW carried, and that is exactly what must not be on this screen.
+    expect(modal.textContent, 'the value the preview was built from').not.toContain('Sunshine');
+    const params = await order();
+    expect(params.directives).toEqual({ weather: 'rain' });
+  });
+
+  it('…and states one the buyer set AFTER a preview that had none (round 9, R9-1)', async () => {
+    // The other direction, and the one that is R8-36 verbatim: preview with nothing
+    // set, then pick a preference, then pay. The summary was frozen at a request
+    // that carried no directives, so the last screen before payment said nothing
+    // about the one being sent.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.click(screen.getByTestId('toggle-preferences'));
+    await userEvent.click(screen.getByRole('button', { name: 'Rain' }));
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+
+    expect(document.querySelector('.modal')!.textContent).toContain('Rain');
+  });
+
   it('editing a chip does not send the buyer back through validation', async () => {
     // The trap this design walks into if the preview key keeps the directives: every
     // chip click flips the dialog back to "Validate & continue" and spends one of
