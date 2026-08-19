@@ -1351,10 +1351,13 @@ commit messages are wrong (`9850bdf` 5→6 and 3→2; `245811f` 3→2 and 4→3;
 are on main; the correction lives here. The rule that produces the defect is the same
 every time: a count carried from an estimate instead of re-measured after the change.
 
-**Still open in P2:** R7-12 (a resumed agent falls to the diversity-first foreign
-pass rather than store order — measured 43→35 marketplace snippets of 48; the "90% one
-marketplace still fills every slot" unit test has cap = store size), and R7-27's
-remaining doc sweep is done except any file added since.
+**P2 is closed.** R7-12 landed last: a resumed writer's own results are carried in
+`touchedByAgent`, so it ranks them first instead of meeting the per-host cap with
+everything it owns — the finder's own fix sketch (skip the diversity pass when
+`prefer` is empty) would have turned the poisoned-farm defence off for exactly the
+agents a re-dispatch produces, so the cause was fixed rather than the symptom. The
+unit test that was meant to cover it ran 48 items against `max = 48`; it now states
+what happens when the store is larger than the cap, which is the real shape.
 
 **Then: round 8**, two lenses, worktrees reset to HEAD — and the brief must say so,
 since round 7's started at `d1ac4dd` and every reviewer had to notice for themselves.
