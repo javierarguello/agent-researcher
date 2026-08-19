@@ -1830,7 +1830,225 @@ three commits AFTER `60c92a0` removed nine of it — then repeated into round 8'
 brief, where it would have made a reviewer measuring 1065 "confirm" a number five
 too low. Measured at four commits (`3d6aad8`, `3397da8`, `1ce4893`, `4b61242`).
 
-**Still open:** 20 of the 22 P2 items above (R8-16 and R8-32 landed with the P1
-clusters), then round 9. The full handoff — order of work, the rules and why each
-exists, the traps this batch walked into, and the decisions not to undo — is in
-"How to continue (for the next agent)" at the top of this round.
+**All 22 P2 items are closed** (`62b5e61..79fa632`, eight commits) — each is stamped
+with its hash in the list above. The full handoff is in "How to continue (for the
+next agent)" at the top of this round.
+
+---
+
+## Round 9 — eight Opus reviewers against the round-8 FIX batch (`4b61242..79fa632`)
+
+Run 2026-08-19. Four groups × two lenses, private scratchpad each, all eight pinned
+to `a37d5f5` (the brief's own commit) and every one of them measured the brief's
+clean-worktree total of **1109** before starting. Raw reports:
+`m-red-team-reports/round9/` (brief + 8, complete).
+
+**Verdict of the round in one line:** the batch's arithmetic is the most honest this
+repo has produced — **all 26 revert-verify counts across the eight commits reproduce
+exactly**, including both disclosed 0-reds and both "before" halves of `8d2df52`,
+and every suite total reconciles to the unit — and its PROSE is the least honest:
+nine claims are false or over-stated, and three of the fixes shipped a hole of their
+own. Same shape as round 8 found in round 7, one level down. The pattern is now
+explicit enough to name: **this repo measures well and generalises badly.** Every
+false claim in this round is a true measurement stated as a universal — "nothing
+gets worse", "no budget reaches", "a template cannot forget", "nothing else moved",
+"copies its arrays", "the two artifacts now agree".
+
+### P0
+- **R9-1 · The confirm dialog states a preference the request will not carry, and
+  stays silent about one it will.** `renderPlan` is pure in the params it is CALLED
+  with, but `NewReport.tsx` deliberately keeps the directives out of `paramsKey` —
+  pinned and commented, because putting them back burns an assisted-review attempt
+  per chip click (R7-11's lesson). Before `4ba3bd4` that exclusion was sound: the
+  summary did not depend on the directives. It does now, and nothing re-previews.
+  Reproduced both ways: the modal shows `Preferred weather: Sunshine` while
+  `createJob` sends `{"weather":"rain"}`; and, having previewed with nothing set, the
+  modal shows no Preferences clause while the request carries one — which is R8-36's
+  own sentence, unfixed, on the path P-3 invites the buyer down (G4-break F1).
+  **The fix is probably client-side** — render the clause from the LIVE form, the way
+  `c5c037e` already decided the confirm dialog renders from the form and not from
+  `pf.proposals`. Putting `dirKey` back into `paramsKey` is the naive fix and costs
+  real money.
+
+### P1
+- **R9-2 · `0250063`'s title branch turned a poisoned image back into a live link in
+  the PDF.** FIXED `0ff22ef`. The image strip's url class ends at the first space so
+  it never matched a TITLED image; the widened link rule did, and `![alt](url "t")`
+  became `!` + an anchor at the attacker's url labelled with their alt text — the
+  click-beacon the strip exists to stop, in the artifact the buyer keeps, while the
+  viewer rendered nothing (G3-break F1). Reproduced a second time while fixing it,
+  for the paren form; the title is now one shared definition used by both rules.
+- **R9-3 · A malformed link title silently DELETED the rest of the paragraph from the
+  PDF**, including a second real link, where the viewer kept every character. FIXED
+  `0ff22ef` (G3-break F3). `.*?` over a joined paragraph.
+- **R9-4 · Any two-word fragment still pre-ticks a directive.** `«de la»`, `«of the»`,
+  `«en el»` — reproduced against the real template. R8-26's threshold is `length ≥ 8
+  OR contains a space`, and the second branch re-admits exactly the filler class the
+  first was written to refuse. **Deleting that branch is 0 red**: the shipped rule's
+  second half is pinned by nothing, and the test that claims to cover it asserts two
+  quotes that both clear the length rule on their own. Mirror image: a real one-word
+  quote under 8 characters no longer ticks (`ausente`, `riesgo`, `deuda`), which
+  falls hardest on the three non-English languages (G2-break F1).
+- **R9-5 · The basics anchor drops honest proposals with no unticked lane.**
+  `St. Pete → St. Petersburg, FL`, `Jax → Jacksonville, FL`, `Orléans → Orleans, FL`
+  (the model's own ASCII normalisation breaks the anchor), any value whose tokens are
+  all under 3 characters, and every CJK value. For a BASIC the quote is a hard gate,
+  so the proposal VANISHES — while `enrich.ts`'s comment one screen above advertises
+  the unticked fallback. A buyer who wrote "Jax" now submits a statewide search for
+  the same money (G2-break F2).
+- **R9-6 · The density e2e lost the only end-to-end detection the evidence tiers had.**
+  `nextLot` 20 → 5 made the store's insertion order already equal the answer, so the
+  test passes **with `rankEvidence` deleted from the snippet dossier**; at `nextLot =
+  20` it did not. The fixture needs BOTH the overlap (R8-19's shape) and a shortlist
+  that store order does not hand over — e.g. shortlist the far end of the scout's
+  range (G1-break F1).
+- **R9-7 · Every lost section tells the buyer "Everything else was researched and
+  written as usual"** — false as soon as a second section is degraded, in all four
+  languages, in both copies, and self-contradicting one section apart when the other
+  is `unenriched`. `sectionsNotice` was split into `ALL_ELSE_OK` for exactly this;
+  the per-section copy never was, and `62b5e61` canonicalised the unfixed sentence
+  into a shared fixture (G3-break F2). Condition it, do not delete it.
+
+### P2 — batch
+- R9-8 The reserve grows with `referenced`, and `fetched` is served `max - reserve`
+  FIRST, so an agent that both fetched and was handed referenced items gives up its
+  own pages: 10/10 → 7/10 at `MAX_PAGES = 14`. "Nothing an honest run relies on gets
+  worse" is false as written, and the new comment's "37 URLs, which no research
+  budget reaches" is right for the 48-snippet call and wrong for the 14-page one,
+  where the threshold is **8** (G1-break F4, G1-verify F2/F3).
+- R9-9 Three titles in `d-legit.test.ts` carry figures that moved with the density and
+  were left at their density-5 values (5.07M → 5.69M; "7 pages" → 8; $2.58 → $2.65),
+  plus a pre-existing `79 of 92 turns` that is 78. So `8901f60`'s "nothing else in
+  the suite prints a figure that moved" is false — they are `it()` titles, not tables
+  (G1-verify F1). Also `D-legit.md` and `m-red-team.md` still state the old bounds
+  (G1-break F7), and `deep-review.md`'s own "checked TRUE" line still says
+  54 / 838,702 (G1-verify F5).
+- R9-10 `refute-b1.test.ts:119` is still titled "at production density (5 fresh
+  results per query)" in the batch that pinned production at 8. The measurement is
+  corpus-shaped and correct; only the title lies (G1-break F5, G1-verify F4).
+- R9-11 The density test's `ownVisible === 44` is invariant under every mutation it is
+  offered as evidence for — including `rankEvidence` deleted. Assert the composition
+  (the first 12 rendered snippets are the twelve shortlisted urls), not the count
+  (G1-break F3). And the fixture comment "the FIRST EIGHT listings it was handed" is
+  backwards: `nextLot = 5` returns the LAST eight (G1-break F2).
+- R9-12 The new `urlsIn` test pins a backslash INTO the URL. No store url can contain
+  one, so the match can only ever miss; the doubly-escaped shape a model that
+  JSON-escapes its own output produces still loses both listings. Add `\\` to the
+  excluded class and flip the expectation (G1-break F6).
+- R9-13 `«the»` still buys `The Villages, FL` for a buyer who wrote Hialeah, with
+  «the» printed as the evidence — R8-26's own example with the value swapped. The
+  token floor `>= 3` that gives the anchor whatever strength it has is **0 red**.
+  `isEvidence` is applied to directives only, not to the field the code calls
+  higher-bar (G2-break F3).
+- R9-14 Withholding `maxLength` removed the only channel that told the model any of
+  the five bounds, and `unit` (`.max(8)`, the tightest) carries no `.describe()` at
+  all. One overshoot buys a second full structured call of the agent's whole slice;
+  two lose the slice (`schema:unit:too_big`, reproduced) — the failure mode
+  `research-engine.ts:1099` already forbids in writing for the handoff field. Put the
+  bounds in `.describe()`, where they cost nothing (G2-break F4).
+- R9-15 `types.ts` and both authoring docs still say `researchBudget`/`sites` are
+  "ignored for synthesizers"; they are now a throw at module load, so a second
+  template that follows the doc fails to boot the API and the worker (G2-break F6).
+- R9-16 The `maxLength` test's title says the opposite of its own assertion, and the
+  paragraph above the new one still concludes the pre-R8-21 position (G2-break F5,
+  G2-verify F1). "Must be a phrase" and "any word of the value" over-state the two
+  quote rules by exactly the gap R9-4 and R9-5 measure (G2-verify F2/F3).
+- R9-17 `renderPlan` appends the directive clause only inside the `describePlan`
+  branch — and the generic fall-through prints `directives: [object Object]` on the
+  last screen before payment. "A template cannot forget it" is not the invariant the
+  code has; it becomes P1 the day a second template registers (G4-break F2,
+  G4-verify F1).
+- R9-18 `snapshot()` still hands out the live `report`, `sources`, `writeFailures` and
+  `cost` — `sources` is the largest array on the checkpoint. "Copies its arrays and
+  maps instead of handing out the live ones" is broader than the change, and the
+  incomplete version is invisible for the same reason the whole thing is: every
+  caller serializes immediately (G4-break F3, G4-verify F2).
+- R9-19 `planDirectives` renders a directive value verbatim with no vocabulary
+  re-check and no length bound, while its sibling `renderDirectives` re-checks and
+  says why. Defence-in-depth only — no live caller skips validation — but `renderPlan`
+  is exported from the package index (G4-break F5).
+- R9-20 The Research cell cannot separate the flagship's three producer-refiners from
+  its one synthesizer-refiner: `agentKind` returns `refiner` for both, and a producer
+  whose loop threw before turn 1 renders the identical badge as an agent that never
+  had a loop. Carry `role` (or `hadLoop`) beside `kind` (G4-break F4).
+- R9-21 A fourth section status ships **1109 passed, 0 failed** with no advisory line
+  in either renderer and an empty cover notice. The `Record<SectionStatus['status'],
+  true>` pin forces you to NAME the status, not to give it a line — and it fires only
+  under `npm run typecheck`, after three unrelated `src` errors. Derive the copy keys
+  from the status list instead of listing both by hand (G3-verify F1).
+- R9-22 The Sources ROW text is unbounded where the tooltip is bounded: a hostless
+  url with no label puts 4,020 characters on screen without hovering. Clip the
+  `host || s.url` fallback the same way, in both copies (G3-break F4).
+- R9-23 `node="[object Object]"` ships on every prose anchor — react-markdown passes
+  its hast node and the destructure caught only `title` (G3-break F5). And the
+  tooltip clips by code point, not by grapheme cluster, so the last glyph can still
+  be half a flag — milder than the lone surrogate R8-35 fixed, and consistent with
+  the rest of the codebase, but "clips by CODE POINT" will be read as "clips safely"
+  (G3-break F6).
+- R9-24 `local-llm.md`'s new ADC paragraph names the wrong first Firestore read: the
+  `APP_ENV=local` auth hook calls `getApp` before any route code runs, so the rate
+  meter is the second reader, and a reader who disables the meter still gets the 500
+  (G4-verify F3).
+- R9-25 The corrected checkpoint field list is still missing `turnsUsed` — in the type
+  since `7d2e7b8`, written by `snapshot()`, read on resume. The docs commit that
+  fixed a stale list reproduced the defect on the third field (G4-verify F4).
+- R9-26 The new `validateRequest` comment says "the worker re-validates through
+  `paramsSchema`". It does not: `apps/worker/src` contains no `paramsSchema` at all
+  and hands `job.params` to `runJob` as stored. The CONCLUSION holds — an admin retry
+  is unaffected — but because nothing re-validates it, which is a different fact
+  (G4-verify F5).
+- R9-27 Record corrections of the record corrections: `b-legit` reaches **5**, not 4
+  (its cross-checker runs 4 and 5 re-reads; the 6 belongs to `d-legit`, which is
+  right); `8d2df52` welds the 296/298 cached-note figure onto the persona sentence it
+  does not belong to; `0250063` says "5,160-character" for a fixture that measures
+  **4,803**; and "four commits before the first P2 commit" is six (G4-verify F6/F7,
+  G3-verify F3, G4-verify row 19). `planDirectives`'s "every word here is a label
+  from the manifest" excludes its own hardcoded lead-in and yes/no (G4-verify F8).
+
+### Checked and TRUE by round 9 (do not re-check)
+**All 26 mutation counts across the eight commits**, re-run alone with a full suite
+each — 6/6 for `62b5e61`, 5/5 for `8ff7312` (including the disclosed 0-red),
+1/1 for `8901f60`, 4/4 for `8d2df52` **including both "before" halves** (the pre-fix
+resumed-writer fixture really is 0 red for its own test; the pre-fix
+`rate-limit-copy` really does cascade to 2), 3/3 for `0250063`, 5/5 for `1ab2a86`,
+5/5 for `4ba3bd4` (including the disclosed 0-red), 2/2 for `79fa632`. Every suite
+total reconciles to the unit in the checkout it names, and the clean-clone constant
+of 6 is right — all six gated tests are in core. The re-measured density figures all
+reproduce to the character, including 54 / **893,430** with the breaker reverted, and
+the new bounds are honest (5M over 4.58M is 9.2% headroom, LESS than the 4.5M/3.94M
+it replaced). The flagship's bound census is exact (five `maxLength`, all chart copy,
+zero `minLength`, zero `pattern`; Zod refuses at n+1 and accepts at n for all five).
+`validateTemplate` refuses all four loop-only fields and names the kind. The P2 span
+**1035 → 1062** is right to the commit, `929e8dd`'s "2 red" really is 3, `93b132e`'s
+cached-note figure really is 296, and P-3's four hashes are the right ones in the
+right order. `sourceLabel` clips at 160, so the old C1C2 tooltip really is 188
+against an unreachable 320. There is no unpinned third reader of section statuses.
+
+### How to continue (for the next agent)
+
+**Two of the round's own findings are already fixed:** R9-2 and R9-3, in `0ff22ef`,
+which also closes G3-verify F2 (the other two title delimiters). Nothing else from
+round 9 is done.
+
+**Order of work.** R9-1 first — it is the only P0 and it is on the last screen before
+payment. Then R9-4/R9-5 together (they are one function and they pull in opposite
+directions: one gate is too loose, the other too tight). Then R9-6 and R9-7. The P2
+batch clusters by file the way round 8's did: the engine ones (R9-8, R9-9, R9-10,
+R9-11, R9-12), the quote/provider ones (R9-13, R9-14, R9-15, R9-16), the
+summary/checkpoint ones (R9-17, R9-18, R9-19, R9-20), the buyer-surface ones (R9-21,
+R9-22, R9-23), and the docs/record ones (R9-24, R9-25, R9-26, R9-27).
+
+**The rule this round earns, on top of round 8's.** Every false claim here is a true
+measurement written as a universal. Before writing "nothing", "every", "cannot" or
+"now agree", name the case you checked and say the bound: *"1 red for the 48-snippet
+call with a 12-item shortlist; the 14-page call is 8"* is worth more than *"no budget
+reaches it"*, and it is the sentence that survives the next round.
+
+**Also new since the batch under review** (outside round 9's scope, needs its own
+pass): `29f8593` makes `keywords` an `internalParams` — off the API and the manifest,
+not proposed by the assist, kept in the schema for a server-side caller. That closes
+the last channel by which a buyer's PROSE reached an agent's prompt as a phrase list;
+`industry` and `location` are still free text and still reach it, which is what the
+API's injection tests now use.
+
+---
