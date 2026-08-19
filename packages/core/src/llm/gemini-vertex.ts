@@ -284,8 +284,23 @@ export function jsonSchemaToGemini(
   if (typeof base.minimum === 'number') out.minimum = base.minimum;
   if (typeof base.maximum === 'number') out.maximum = base.maximum;
   if (typeof base.minLength === 'number') out.minLength = String(base.minLength);
-  if (typeof base.maxLength === 'number') out.maxLength = String(base.maxLength);
   if (typeof base.pattern === 'string') out.pattern = base.pattern;
+  // `maxLength` is deliberately NOT forwarded (round 8, R8-21). Its stated benefit
+  // — "`.max(80)` on a chart label was costing a repair round" — and its cost are
+  // the same behaviour seen from two sides: a constrained decoder satisfies an upper
+  // bound by STOPPING at it. Every `maxLength` in the flagship is buyer-visible
+  // chart copy (`title` 160, `description` 500, `labels[]` 80, `series[].name` 80,
+  // `unit` 8), so the benefit is a repair round we pay for and see, and the cost is
+  // a caption cut mid-sentence that passes Zod (it is ≤ the bound) and reaches the
+  // buyer with nothing anywhere saying so. We cannot tell the two apart from the
+  // mock tier — whether Vertex truncates or re-plans is a paid-tier question — and
+  // between a failure we can see and one we cannot, the bound stays ours to enforce.
+  // Flip this back with a measurement, not an argument: one paid run whose model
+  // meets a `maxLength` and whose output is a whole sentence, written down here.
+  // (`minLength` and `pattern` are dead for the flagship today — no `.min()` on a
+  // section string, no `.regex()` anywhere. `pattern` is a trap for the next
+  // template: Gemini's is RE2 and zod emits ECMA-262, so a lookahead would be
+  // forwarded and rejected by the API rather than by us.)
 
   if (base.properties && typeof base.properties === 'object') {
     out.properties = Object.fromEntries(

@@ -78,6 +78,32 @@ describe('templates', () => {
     expect(errors.some((e) => /refiner .* declares `focus`/.test(e)), 'a refiner with no loop, named as one').toBe(true);
   });
 
+  it('…and refuses the other three loop-only fields for the same reason (R8-20)', () => {
+    // `focus` was guarded and `sites`, `researchBudget` and `gatherModel` were not,
+    // though all four are read inside `if (hasResearchLoop(agent))` and by nothing
+    // else. `sites` is the one that repeats R7-18 exactly: it becomes "SUGGESTED
+    // SOURCES (additive …)" in the kickoff, so a synthesizer declaring it ships a
+    // DIRECTIVE that reaches no prompt — a template author's sentence that looks
+    // obeyed and is not. Mutation that reds this: drop a field from the loop in
+    // `validate.ts`.
+    const t = getTemplate('florida-business-for-sale')!;
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['sites', { sites: ['bizbuysell.com'] }],
+      ['researchBudget', { researchBudget: 24 }],
+      ['gatherModel', { gatherModel: 'flash' }],
+    ];
+    for (const [field, extra] of cases) {
+      const broken = { ...t, agents: t.agents.map((a) => (a.role === 'synthesizer' ? { ...a, ...extra } : a)) };
+      const errors = validateTemplate(broken as never);
+      expect(errors.some((e) => new RegExp(`declares \`${field}\``).test(e)), `${field} passed the validator`).toBe(true);
+      // …and it names the kind, so the author is told what they built, not just
+      // which key to delete.
+      expect(errors.some((e) => new RegExp(`writer .* declares \`${field}\``).test(e)), `${field}: unnamed kind`).toBe(true);
+    }
+    // The control: the flagship as shipped declares none of them on a synthesizer.
+    expect(validateTemplate(t)).toEqual([]);
+  });
+
   it('florida waves are acyclic and cover all agents', () => {
     const t = getTemplate('florida-business-for-sale')!;
     const waves = planWaves(t);

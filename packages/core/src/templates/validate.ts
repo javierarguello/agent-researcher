@@ -58,11 +58,26 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
     // of them saying the OPPOSITE of what the shipped prompt said (round 7, R7-18).
     // What a synthesizer needs to be told about its writing belongs in the
     // `guidance` of the section it writes, which does reach it.
-    if (a.focus && !hasResearchLoop(a)) {
-      err(
-        `${agentKind(a)} "${a.id}" declares \`focus\`, which only the research kickoff renders — an agent with no ` +
-          `research loop never reads it. Put what it needs to know into the guidance of the section it writes.`,
-      );
+    // …and the same for the other three fields the loop is the only reader of.
+    // `focus` was guarded alone, so a second template could repeat R7-18 one field
+    // over: `sites` becomes "SUGGESTED SOURCES (additive …)" in the kickoff, so a
+    // synthesizer declaring it ships a DIRECTIVE that reaches no prompt — the same
+    // defect, the same invisibility (round 8, R8-20). `researchBudget` and
+    // `gatherModel` buy nothing on an agent with no loop to spend them in.
+    const LOOP_ONLY: Array<[keyof AgentSpec, string]> = [
+      ['focus', 'only the research kickoff renders it'],
+      ['sites', 'it becomes SUGGESTED SOURCES in the research kickoff'],
+      ['researchBudget', 'it is turns for a research loop'],
+      ['gatherModel', 'it is the model that drives a research loop'],
+    ];
+    if (!hasResearchLoop(a)) {
+      for (const [field, why] of LOOP_ONLY) {
+        if (a[field] === undefined) continue;
+        err(
+          `${agentKind(a)} "${a.id}" declares \`${field}\`, and ${why} — an agent with no research loop never ` +
+            `reads it. Put what it needs to know into the guidance of the section it writes.`,
+        );
+      }
     }
   }
 

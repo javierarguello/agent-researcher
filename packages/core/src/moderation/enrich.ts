@@ -286,6 +286,35 @@ const NO_PROPOSALS: ProposeResult = { proposals: { directives: {}, keywords: [] 
 const QUOTE_MAX_LEN = 140;
 /** Shorter than this and a "quote" matches almost any text by accident. */
 const QUOTE_MIN_LEN = 3;
+/**
+ * …and shorter than THIS it still does. `una`, `the`, `for`, `sale` appear in
+ * almost every note a buyer types, and a quote is what makes the client tick a
+ * proposal by default: three characters were enough to pre-tick a directive the
+ * buyer never asked for (round 8, R8-26). One word of eight characters, or two
+ * words of any length, is a phrase; below that the proposal still stands, it is
+ * just shown unticked — which is the designed fallback for an inference with no
+ * literal quote.
+ */
+const QUOTE_TICK_MIN_LEN = 8;
+const isEvidence = (q: string): boolean => q.trim().length >= QUOTE_TICK_MIN_LEN || /\s/.test(q.trim());
+
+/**
+ * A quote is evidence for a VALUE only if it contains something of the value.
+ *
+ * For a directive there is nothing to compare — the value is one of OURS and the
+ * honest case has no literal quote ("que se maneje sola" → `absentee`). For a
+ * BASIC the value is the model's own string, and `verbatim()` alone let
+ * `{ value: 'Orlando, FL', quote: 'una' }` through for a buyer who wrote Hialeah:
+ * the quote was in the text, the value was from anywhere on earth, and «una» was
+ * shown to the buyer as the evidence for Orlando. Any word of the value that the
+ * quote also contains is enough of an anchor — the model still gets to normalise
+ * `Hialeah` into `Hialeah, FL`.
+ */
+function quoteNames(quote: string, value: string): boolean {
+  const q = flatten(quote);
+  const tokens = flatten(value).split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 3);
+  return tokens.length > 0 && tokens.some((t) => q.includes(t));
+}
 
 /** Case- and whitespace-insensitive: a model re-types a quote, it does not copy bytes. */
 const flatten = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -472,7 +501,7 @@ export function acceptProposals(
     const said = verbatim(freeText, quote);
     const keep = (val: unknown) => {
       out.directives[f.key] = val;
-      if (said) quotes[f.key] = said;
+      if (said && isEvidence(said)) quotes[f.key] = said;
     };
     if (f.kind === 'boolean') {
       if (typeof v === 'boolean') keep(v);
@@ -502,6 +531,8 @@ export function acceptProposals(
     if (typeof v !== 'string') continue;
     const said = verbatim(freeText, quote);
     if (!said) continue;
+    // …and it must be a quote OF THIS VALUE, not merely of the note.
+    if (!quoteNames(said, v)) continue;
     // Measured on the RAW value, like a correction: one that does not fit is
     // refused, never trimmed into one that does.
     if (v.trim().length > f.maxLength) continue;

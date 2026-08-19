@@ -149,6 +149,35 @@ describe('the quote that says whose words a proposal is', () => {
     expect(out.quotes?.ownerInvolvement).toBe('que se maneje sola');
   });
 
+  it('a filler word is not evidence — three characters ticked a directive by default (R8-26)', () => {
+    // `verbatim()` proves the QUOTE is in the text; it can never prove the VALUE is,
+    // because a directive value is one of OURS and the honest case has no literal
+    // quote at all ("que se maneje sola" → `absentee`). So the only thing standing
+    // between a model and a pre-ticked field was `QUOTE_MIN_LEN = 3` — and its own
+    // comment says "shorter than this and a quote matches almost any text by
+    // accident", which three characters still does. `una` is in almost every
+    // Spanish sentence ever typed into that box.
+    // Mutation that reds this: drop the tick threshold and go back to 3.
+    const out = acceptProposals(
+      florida,
+      base,
+      { directives: { riskAppetite: { value: 'opportunistic', quote: 'una' } }, keywords: [] },
+      text,
+    );
+    expect(out.directives.riskAppetite, 'the proposal still stands — this gate is the DEFAULT').toBe('opportunistic');
+    expect(out.quotes?.riskAppetite, 'ticked by default on the strength of «una»').toBeUndefined();
+    // …and a quote that is actually a phrase still ticks, in either shape: long
+    // enough to be evidence, or more than one word.
+    const ok = acceptProposals(
+      florida,
+      base,
+      { directives: { ownerInvolvement: { value: 'absentee', quote: 'que se maneje sola' }, riskAppetite: { value: 'balanced', quote: 'lavandería' } }, keywords: [] },
+      text,
+    );
+    expect(ok.quotes?.ownerInvolvement).toBe('que se maneje sola');
+    expect(ok.quotes?.riskAppetite).toBe('lavandería');
+  });
+
   it('reads a bare value from an older model answer exactly as before', () => {
     // The shape is what we ASK for, not what we can rely on getting: a model that
     // answers with the old flat value still proposes, it is just never quoted.
@@ -216,6 +245,39 @@ describe('a basic the buyer left empty and their own words name', () => {
 });
 
 // --- What the model is ASKED for, so the gate does not eat it (R7-25) ----------
+describe('a basic must be quoted by something that names it (R8-26)', () => {
+  const empty = { industry: 'laundromats', mode: 'essential' } as Record<string, unknown>;
+  const text = 'Busco una lavandería en Hialeah, presupuesto máximo 500k.';
+
+  it('refuses a location from anywhere on earth carried by a three-letter quote', () => {
+    // The field the code calls higher-bar "because it decides what is searched at
+    // all" accepted `Orlando, FL` from a buyer who wrote Hialeah, as long as the
+    // model returned ANY three-character substring of the note as its quote — and
+    // then showed «una» to the buyer as the evidence for Orlando. A quote is
+    // evidence for a VALUE only if it contains something of the value.
+    // Mutation that reds this: accept any verbatim quote for a basic again.
+    const out = acceptProposals(
+      florida, empty,
+      { directives: {}, keywords: [], basics: { location: { value: 'Orlando, FL', quote: 'una' } } },
+      text,
+    );
+    expect(out.basics?.location).toBeUndefined();
+    expect(out.quotes?.location).toBeUndefined();
+  });
+
+  it('and keeps the normalised one the buyer really did name', () => {
+    // The honest shape this must not break: the model tidies `Hialeah` into
+    // `Hialeah, FL`, and the quote is the buyer's phrase around the word.
+    const out = acceptProposals(
+      florida, empty,
+      { directives: {}, keywords: [], basics: { location: { value: 'Hialeah, FL', quote: 'lavandería en Hialeah' } } },
+      text,
+    );
+    expect(out.basics?.location).toBe('Hialeah, FL');
+    expect(out.quotes?.location).toBe('lavandería en Hialeah');
+  });
+});
+
 describe('the keyword instruction', () => {
   it('asks for spaces, because the gate refuses underscores', async () => {
     // The prompt shows the model a FIELDS block whose every option is snake_case

@@ -384,8 +384,13 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     // `maxLength` / `pattern` in the same voice as the four above (round 7, R7-15).
     // Over the real Florida sections: 17 `minItems`, 2 `maxItems`, 5 `maxLength`,
     // zero `minimum`/`maximum` — so the half that was kept is dead for the flagship
-    // and the half that was dropped is the live one. Mutation that reds this: drop
-    // the `maxLength` forward.
+    // and the half that was dropped is the live one.
+    //
+    // `maxLength` is the exception and is NOT forwarded (round 8, R8-21): a
+    // constrained decoder satisfies an upper bound by stopping at it, all five of
+    // the flagship's are buyer-visible chart copy, and a caption cut mid-sentence
+    // passes Zod and reaches the buyer silently. The repair round it would save is a
+    // cost we can see. Mutation that reds this: forward `maxLength` again.
     const schema = z.toJSONSchema(
       z.object({ risks: z.array(z.string()).min(1), labels: z.array(z.string().max(80)).min(1).max(40), n: z.number().int().min(0).max(5) }),
     ) as Record<string, unknown>;
@@ -396,7 +401,9 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     expect(gem.properties.risks).toMatchObject({ type: 'ARRAY', minItems: '1' }); // …and now in what Gemini sees
     expect(gem.properties.labels).toMatchObject({ type: 'ARRAY', minItems: '1', maxItems: '40' });
     expect(gem.properties.n).toMatchObject({ type: 'INTEGER', minimum: 0, maximum: 5 });
-    expect((gem.properties.labels?.items as Record<string, unknown>)?.maxLength).toBe('80');
+    expect((gem.properties.labels?.items as Record<string, unknown>)?.maxLength, 'the decoder must not be told where to stop a label').toBeUndefined();
+    // …and Zod still holds it: the bound is enforced, just after the fact.
+    expect(z.object({ l: z.string().max(80) }).safeParse({ l: 'x'.repeat(81) }).success).toBe(false);
     // `pattern` rides along the same way when a schema declares one.
     const pat = jsonSchemaToGemini(z.toJSONSchema(z.object({ code: z.string().regex(/^[A-Z]{2}$/) })) as never) as unknown as { properties: Record<string, Record<string, unknown>> };
     expect(pat.properties.code?.pattern).toBe('^[A-Z]{2}$');
