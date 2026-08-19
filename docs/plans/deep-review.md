@@ -1483,16 +1483,87 @@ each found independently; `cutJson` and the `referenced` reserve are design erro
 that the batch's own new tests PIN in place; and the suite arithmetic is wrong in 14
 of 22 commit messages.
 
-### How to continue (for the next agent)
-1. Read this section, then the eight reports. Each finding carries its reproduction
-   inline — port it into a real test BEFORE fixing.
-2. Fix in the order below, one commit per cluster, revert-verified. **Measure the
-   suite with the command, in the main checkout, and paste the number** — do not
-   carry the previous commit's claimed total (that is how 14 of 22 went wrong).
-   A clean clone counts **6** fewer, not 12/16/"the same": the six red-team tests
-   gated on `out/*/trace.json`. Measured at four commits.
-3. Then round 9, and give the reviewers a private scratchpad subdirectory — two of
-   round 8's overwrote each other's scripts.
+### How to continue (for the next agent) — state as of 2026-08-19
+
+**Done:** the P0, all fourteen P1, and two of the P2 batch (R8-16 with the
+checkpoint cluster, R8-32 with the deploy one). Seven commits, `6fa4089..692852c`,
+each revert-verified; the table is in "Fixed (2026-08-19)" at the end of this file.
+Suite **1093 passed, 0 failed** (`npm test`, main checkout, measured at `692852c`).
+Nothing is half-landed: every commit is green on its own. They are committed on the
+local `main` and **not pushed yet** — `origin/main` is at `585b660`, the round-8
+report commit, so the first thing to do is push (or say why not).
+
+**Next, in this order:**
+1. The **20 remaining P2 items** below — R8-17 through R8-37, skipping R8-16 and
+   R8-32, which are marked `done` inline. They are independent of each other, so
+   cluster them by file rather than by number (the docs ones, R8-31 and R8-33, are
+   one commit; the viewer/PDF ones, R8-22/R8-34/R8-35, are another).
+2. Then **round 9**: eight reviewers against `4b61242..HEAD`, same brief shape as
+   `m-red-team-reports/round8/BRIEF.md`, with two changes — give each reviewer a
+   PRIVATE scratchpad subdirectory (two of round 8's overwrote each other's
+   scripts), and state the clean-clone constant as **6**, not "~16" (round 8's brief
+   repeated the wrong one; see R8-15).
+
+**The rules, and why each one exists.** These are not style; every one of them was
+paid for by a defect that shipped:
+- Port the finding's reproduction into a **real test BEFORE fixing**. Each report
+  carries its reproduction inline.
+- **Revert-verify every test**: mutate the one line the fix added, run the FULL
+  suite, count red, revert. If it measures **0 red**, the test does not pin the fix —
+  fix the test, or say "0 red" out loud in the commit message and why the line stays.
+  Two lines in this batch measured 0 red; both are disclosed in `f4491a5`.
+- **Measure the suite with the command and paste the number.** Never carry the
+  previous commit's claimed total — that is exactly how 14 of 22 messages went wrong
+  (R8-15). A clean clone counts **6** fewer than the main checkout: the red-team
+  tests gated on `out/*/trace.json`. Measured at four commits.
+- One commit per cluster, with the reasoning in the message, not just the change.
+
+**Traps this batch walked into — do not repeat them:**
+- `npm test` runs the workspaces with `&&`, so a red core suite means the api,
+  worker, fbizlab and admin suites **never run**. Under a mutation the "passed"
+  total collapses (1093 → ~690) and means nothing. Count only the RED.
+- When mutating with `perl -0pi -e`, **grep the file afterwards** to confirm the
+  substitution actually applied. A pattern that silently fails to match reads
+  exactly like a fix nothing pins — it cost two wrong "0 red" readings here.
+- A mutation that measures 0 red because ANOTHER copy of the same guard covers it
+  means one of the two is dead. The second `fetchedByAgent` trim looked prudent and
+  was unreachable; it was deleted rather than left as a comfort. Redundant code that
+  no test can distinguish is how a fix gets believed twice.
+- `apps/fbizlab`'s test fixtures render labels that are not associated with their
+  inputs (no `for`/`id`), so `getByLabelText` fails on the params fields. Reach them
+  with `getByText('<label>').closest('.field')!.querySelector('input')`.
+
+**Decisions taken while fixing — do not silently undo them:**
+- **R7-11's rule is retired** (in `7d2e7b8`). "If its own pages do not all fit, a
+  gathered agent loses `gathered` and re-buys the loop" cost money for nothing: the
+  re-bought loop cannot carry more than the same 60 pages. It keeps the newest 60 of
+  its OWN, no foreign page displaces one, and an admin warning names the agent and
+  the count. The old test asserted the old rule and was rewritten with the reason.
+- **Two published measurements moved down** with the breaker fix (`f4491a5`):
+  `(Pc)*` 12 → 10 iterations, B-attack's plan-spam 13 → 12 loop calls. Both are the
+  fix working. The `deep-dive-refiner` shape now trips the no-progress breaker two
+  iterations before the plan-only one, so its trace says "8 turns in a row with no
+  new evidence"; the test asserts WHICH breaker fires per shape rather than
+  accepting either.
+- **The confirm dialog renders from the form, not from `pf.proposals`** (`c5c037e`).
+  A field the buyer took over shows their value, labelled as theirs; unticking it is
+  a deliberate delete. Re-freezing the row to the last preview reintroduces R8-9.
+- **`picking` is `assistOff ? !notesOpen : way === 'pick'`** — `notesOpen` is set
+  only by the buyer's own click on Edit. Folding it back into `way` reintroduces
+  R8-11 (the box is still SENT while unreachable).
+- **`KEEP_AT_BOUNDARY = 0.8`** in `cutJson`, and **`referenced: urlsIn(current)`** —
+  both are the corrections of a round-7 fix that overshot; the round-7 tests that
+  asserted the overshoot were rewritten, not deleted.
+
+**Everything else open, outside round 8** (do not lose these):
+- `docs/plans/product-backlog.md`: **P-1** (one dossier comparing TWO scenarios, max
+  two) and **P-2** (recommend where in Florida to look when no location is given) —
+  both asked for by Javier on 2026-08-18, neither started, both with their design
+  questions written out.
+- **M-A2** (FENCE_RE near-misses, line 1115) — open, gated on frontier-tier evidence.
+- **K** (the pre-screen, line 374) — REOPENED and parked for a product decision since
+  2026-08-03: 85 injection strings pass and 59 ordinary business phrasings are
+  rejected, and the cause is structural. It needs a decision, not a patch.
 
 ### P0
 - **R8-1 · A push to `deploy-prod` blanks four production secrets.** `deploy.yml`
@@ -1603,7 +1674,7 @@ of 22 commit messages.
   repeated in round 8's own brief (G4-verify F2).
 
 ### P2 — batch
-- R8-16 The turn counter is seeded from `cost.searchCalls` (BILLED calls), so a fetch
+- R8-16 **done `7d2e7b8`** (with the checkpoint cluster). The turn counter is seeded from `cost.searchCalls` (BILLED calls), so a fetch
   that reached no backend — an empty url, or any fetch with no `TAVILY_API_KEY` — is
   still forgotten on resume and the per-agent rows still do not sum. R7-13's symptom,
   reproduced at HEAD (G1-break F4, G1-verify F4). Fix: carry `turnsUsed` in the
@@ -1662,7 +1733,8 @@ of 22 commit messages.
   citing `a84878d` and `e3e8e3b`, and its section totals are wrong at both ends;
   `product-backlog.md` stamps P-3 `done (16e7014)` when `3397da8` delivered its title
   (G4-verify F4/F5/F6/F7/F8/F9).
-- R8-32 `MAX_JOB_COST_USD` — the ceiling that decides whether a job is HELD — is in
+- R8-32 **done `6fa4089`** (with the deploy cluster; the other 43 variables stay
+  unwired — they are tuning dials, not money). `MAX_JOB_COST_USD` — the ceiling that decides whether a job is HELD — is in
   no `--set-env-vars`, along with 43 other documented variables (G4-break F4).
 - R8-33 `929e8dd`'s stated reason for not using `.strict()` is false: replaying a
   pre-`7a45269` job's stored params 400s anyway. The real reason is the
@@ -1729,5 +1801,7 @@ three commits AFTER `60c92a0` removed nine of it — then repeated into round 8'
 brief, where it would have made a reviewer measuring 1065 "confirm" a number five
 too low. Measured at four commits (`3d6aad8`, `3397da8`, `1ce4893`, `4b61242`).
 
-**Still open:** the 22 P2 items above, then round 9 — with a private scratchpad
-subdirectory per reviewer (two of round 8's overwrote each other's scripts).
+**Still open:** 20 of the 22 P2 items above (R8-16 and R8-32 landed with the P1
+clusters), then round 9. The full handoff — order of work, the rules and why each
+exists, the traps this batch walked into, and the decisions not to undo — is in
+"How to continue (for the next agent)" at the top of this round.
