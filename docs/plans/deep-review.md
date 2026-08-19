@@ -1352,9 +1352,25 @@ shape-tolerantly).
 lives here): `90d6fdf`'s "a resumed writer forgets its own pages — 1 red" was **0
 red** — the test could not tell `fetched` from `touched`, and `8d2df52` rebuilt the
 fixture so both seeds bite; `929e8dd`'s "preview key ignores the notes — 2 red" is
-**3**; the persona that reaches the honest 6-turn maximum is **`d-legit`**, not
-`b-legit` (which reaches 4); and the cached-note figure in `93b132e` is **296**, not
-298. Same cause every time: a count carried instead of re-measured.
+**3** *(measured at `929e8dd` itself; at HEAD the same mutation is 4, because
+`c5c037e` added a fourth test that covers it — state the checkout with the count)*;
+the persona that reaches the honest 6-turn maximum is **`d-legit`**, not `b-legit`;
+and the cached-note figure in `93b132e` is **296**, not 298. Same cause every time:
+a count carried instead of re-measured.
+
+**R9-27 — the corrections of those corrections** (round 9 re-measured them all):
+`b-legit`'s cross-checker reaches **5**, not the 4 recorded above — it runs four and
+five re-reads for its two budgets, and the correction picked the low half of a pair.
+The 6 does belong to `d-legit`, so the substantive half stands. `8d2df52`'s message
+welds the 296/298 cached-note figure onto the persona sentence, where it does not
+belong — the two are separate corrections to separate commits, and `79fa632` states
+them separately and correctly. `0250063` says "5,160-character" for a fixture that
+measures **4,803**: the 5,160 is round 8's number for a string that is not in the
+tree. And "1029 belongs to `16e7014`, four commits before the first P2 commit" is
+**six** commits, four only if the two docs commits are not counted. None of these
+changes a decision; all four are the same failure as the ones they correct, which is
+the argument for the rule this round added — name the case you measured, and say
+which checkout you measured it in.
 
 **R7-28, recorded rather than rewritten:** four mutation counts in the 2026-08-17
 commit messages are wrong (`9850bdf` 5→6 and 3→2; `245811f` 3→2 and 4→3; `f74f7b0`
@@ -1911,28 +1927,28 @@ gets worse", "no budget reaches", "a template cannot forget", "nothing else move
   into a shared fixture (G3-break F2). Condition it, do not delete it.
 
 ### P2 — batch
-- R9-8 The reserve grows with `referenced`, and `fetched` is served `max - reserve`
+- R9-8 **done `2f5ab43`** The reserve grows with `referenced`, and `fetched` is served `max - reserve`
   FIRST, so an agent that both fetched and was handed referenced items gives up its
   own pages: 10/10 → 7/10 at `MAX_PAGES = 14`. "Nothing an honest run relies on gets
   worse" is false as written, and the new comment's "37 URLs, which no research
   budget reaches" is right for the 48-snippet call and wrong for the 14-page one,
   where the threshold is **8** (G1-break F4, G1-verify F2/F3).
-- R9-9 Three titles in `d-legit.test.ts` carry figures that moved with the density and
+- R9-9 **done `2f5ab43`** Three titles in `d-legit.test.ts` carry figures that moved with the density and
   were left at their density-5 values (5.07M → 5.69M; "7 pages" → 8; $2.58 → $2.65),
   plus a pre-existing `79 of 92 turns` that is 78. So `8901f60`'s "nothing else in
   the suite prints a figure that moved" is false — they are `it()` titles, not tables
   (G1-verify F1). Also `D-legit.md` and `m-red-team.md` still state the old bounds
   (G1-break F7), and `deep-review.md`'s own "checked TRUE" line still says
   54 / 838,702 (G1-verify F5).
-- R9-10 `refute-b1.test.ts:119` is still titled "at production density (5 fresh
+- R9-10 **done `2f5ab43`** `refute-b1.test.ts:119` is still titled "at production density (5 fresh
   results per query)" in the batch that pinned production at 8. The measurement is
   corpus-shaped and correct; only the title lies (G1-break F5, G1-verify F4).
-- R9-11 The density test's `ownVisible === 44` is invariant under every mutation it is
+- R9-11 **done `2f5ab43`** The density test's `ownVisible === 44` is invariant under every mutation it is
   offered as evidence for — including `rankEvidence` deleted. Assert the composition
   (the first 12 rendered snippets are the twelve shortlisted urls), not the count
   (G1-break F3). And the fixture comment "the FIRST EIGHT listings it was handed" is
   backwards: `nextLot = 5` returns the LAST eight (G1-break F2).
-- R9-12 The new `urlsIn` test pins a backslash INTO the URL. No store url can contain
+- R9-12 **done `2f5ab43`** The new `urlsIn` test pins a backslash INTO the URL. No store url can contain
   one, so the match can only ever miss; the doubly-escaped shape a model that
   JSON-escapes its own output produces still loses both listings. Add `\\` to the
   excluded class and flip the expectation (G1-break F6).
@@ -1941,64 +1957,64 @@ gets worse", "no budget reaches", "a template cannot forget", "nothing else move
   token floor `>= 3` that gives the anchor whatever strength it has is **0 red**.
   `isEvidence` is applied to directives only, not to the field the code calls
   higher-bar (G2-break F3).
-- R9-14 Withholding `maxLength` removed the only channel that told the model any of
+- R9-14 **done `b18ea51`** Withholding `maxLength` removed the only channel that told the model any of
   the five bounds, and `unit` (`.max(8)`, the tightest) carries no `.describe()` at
   all. One overshoot buys a second full structured call of the agent's whole slice;
   two lose the slice (`schema:unit:too_big`, reproduced) — the failure mode
   `research-engine.ts:1099` already forbids in writing for the handoff field. Put the
   bounds in `.describe()`, where they cost nothing (G2-break F4).
-- R9-15 `types.ts` and both authoring docs still say `researchBudget`/`sites` are
+- R9-15 **done `b18ea51`** `types.ts` and both authoring docs still say `researchBudget`/`sites` are
   "ignored for synthesizers"; they are now a throw at module load, so a second
   template that follows the doc fails to boot the API and the worker (G2-break F6).
-- R9-16 The `maxLength` test's title says the opposite of its own assertion, and the
+- R9-16 **done `b18ea51`** The `maxLength` test's title says the opposite of its own assertion, and the
   paragraph above the new one still concludes the pre-R8-21 position (G2-break F5,
   G2-verify F1). "Must be a phrase" and "any word of the value" over-state the two
   quote rules by exactly the gap R9-4 and R9-5 measure (G2-verify F2/F3).
-- R9-17 `renderPlan` appends the directive clause only inside the `describePlan`
+- R9-17 **done `99a1a48`** `renderPlan` appends the directive clause only inside the `describePlan`
   branch — and the generic fall-through prints `directives: [object Object]` on the
   last screen before payment. "A template cannot forget it" is not the invariant the
   code has; it becomes P1 the day a second template registers (G4-break F2,
   G4-verify F1).
-- R9-18 `snapshot()` still hands out the live `report`, `sources`, `writeFailures` and
+- R9-18 **done `99a1a48`** `snapshot()` still hands out the live `report`, `sources`, `writeFailures` and
   `cost` — `sources` is the largest array on the checkpoint. "Copies its arrays and
   maps instead of handing out the live ones" is broader than the change, and the
   incomplete version is invisible for the same reason the whole thing is: every
   caller serializes immediately (G4-break F3, G4-verify F2).
-- R9-19 `planDirectives` renders a directive value verbatim with no vocabulary
+- R9-19 **done `99a1a48`** `planDirectives` renders a directive value verbatim with no vocabulary
   re-check and no length bound, while its sibling `renderDirectives` re-checks and
   says why. Defence-in-depth only — no live caller skips validation — but `renderPlan`
   is exported from the package index (G4-break F5).
-- R9-20 The Research cell cannot separate the flagship's three producer-refiners from
+- R9-20 **done `99a1a48`** The Research cell cannot separate the flagship's three producer-refiners from
   its one synthesizer-refiner: `agentKind` returns `refiner` for both, and a producer
   whose loop threw before turn 1 renders the identical badge as an agent that never
   had a loop. Carry `role` (or `hadLoop`) beside `kind` (G4-break F4).
-- R9-21 A fourth section status ships **1109 passed, 0 failed** with no advisory line
+- R9-21 **done `7a29a43`** A fourth section status ships **1109 passed, 0 failed** with no advisory line
   in either renderer and an empty cover notice. The `Record<SectionStatus['status'],
   true>` pin forces you to NAME the status, not to give it a line — and it fires only
   under `npm run typecheck`, after three unrelated `src` errors. Derive the copy keys
   from the status list instead of listing both by hand (G3-verify F1).
-- R9-22 The Sources ROW text is unbounded where the tooltip is bounded: a hostless
+- R9-22 **done `7a29a43`** The Sources ROW text is unbounded where the tooltip is bounded: a hostless
   url with no label puts 4,020 characters on screen without hovering. Clip the
   `host || s.url` fallback the same way, in both copies (G3-break F4).
-- R9-23 `node="[object Object]"` ships on every prose anchor — react-markdown passes
+- R9-23 **done `7a29a43`** `node="[object Object]"` ships on every prose anchor — react-markdown passes
   its hast node and the destructure caught only `title` (G3-break F5). And the
   tooltip clips by code point, not by grapheme cluster, so the last glyph can still
   be half a flag — milder than the lone surrogate R8-35 fixed, and consistent with
   the rest of the codebase, but "clips by CODE POINT" will be read as "clips safely"
   (G3-break F6).
-- R9-24 `local-llm.md`'s new ADC paragraph names the wrong first Firestore read: the
+- R9-24 **done (the docs pass that wrote this line)** `local-llm.md`'s new ADC paragraph names the wrong first Firestore read: the
   `APP_ENV=local` auth hook calls `getApp` before any route code runs, so the rate
   meter is the second reader, and a reader who disables the meter still gets the 500
   (G4-verify F3).
-- R9-25 The corrected checkpoint field list is still missing `turnsUsed` — in the type
+- R9-25 **done (the docs pass that wrote this line)** The corrected checkpoint field list is still missing `turnsUsed` — in the type
   since `7d2e7b8`, written by `snapshot()`, read on resume. The docs commit that
   fixed a stale list reproduced the defect on the third field (G4-verify F4).
-- R9-26 The new `validateRequest` comment says "the worker re-validates through
+- R9-26 **done (the docs pass that wrote this line)** The new `validateRequest` comment says "the worker re-validates through
   `paramsSchema`". It does not: `apps/worker/src` contains no `paramsSchema` at all
   and hands `job.params` to `runJob` as stored. The CONCLUSION holds — an admin retry
   is unaffected — but because nothing re-validates it, which is a different fact
   (G4-verify F5).
-- R9-27 Record corrections of the record corrections: `b-legit` reaches **5**, not 4
+- R9-27 **done (the docs pass that wrote this line)** Record corrections of the record corrections: `b-legit` reaches **5**, not 4
   (its cross-checker runs 4 and 5 re-reads; the 6 belongs to `d-legit`, which is
   right); `8d2df52` welds the 296/298 cached-note figure onto the persona sentence it
   does not belong to; `0250063` says "5,160-character" for a fixture that measures
@@ -2027,7 +2043,16 @@ against an unreachable 320. There is no unpinned third reader of section statuse
 
 ### How to continue (for the next agent)
 
-**The P0 and all six P1 items are FIXED**, `0ff22ef..dcfeedf`, each revert-verified:
+**ROUND 9 IS CLOSED.** The P0, all six P1 and all twenty P2 items are fixed and
+stamped with their hash below, `0ff22ef..HEAD`. Suite **1149 passed, 0 failed**
+(main checkout; a clean clone counts 6 fewer), `npm run typecheck` clean. **Next:
+round 10** — eight reviewers against `79fa632..HEAD`, same brief shape as
+`m-red-team-reports/round9/BRIEF.md`, whose two corrections (a private scratchpad
+per reviewer, the sha in the prompt rather than in the brief) both worked. Tell them
+that this batch is the round-9 fixes plus `29f8593`, which makes `keywords` an
+internal param and is the one change in the range no reviewer has seen.
+
+The P1 half, for reference — `0ff22ef..dcfeedf`, each revert-verified:
 `0ff22ef` R9-2 + R9-3 (and G3-verify F2, the other two title delimiters) ·
 `c1397a9` R9-1 · `d77ffb3` R9-4 + R9-5 + R9-13 · `5a7b844` R9-6 · `dcfeedf` R9-7.
 Suite **1135 passed, 0 failed** (main checkout; a clean clone counts 6 fewer),

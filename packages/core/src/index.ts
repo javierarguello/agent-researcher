@@ -242,9 +242,12 @@ export interface ValidatedRequest {
  * Those are exactly the jobs whose stored params carry `instructions`, so replaying
  * one 400s ANYWAY, on the line below (round 8, R8-33). An old job's params cannot be
  * replayed as they are, and nothing in the repo tries: the admin's new-job modal
- * builds params from the schema defaults, the buyer's SPA from the form, and the
- * worker re-validates through `paramsSchema` rather than through this function, so
- * an admin retry of an old job is unaffected.
+ * builds params from the schema defaults and the buyer's SPA from the form. An
+ * admin retry of an old job is unaffected — not because the worker re-validates,
+ * which is what this comment used to claim, but because NOTHING does: the retry
+ * route re-dispatches the stored job and the worker hands `job.params` to `runJob`
+ * as they are (round 9, R9-26). A slightly less comfortable fact than the one that
+ * was written here, and the one that is true.
  */
 const RETIRED_PARAMS: Record<string, string> = {
   instructions: 'This model no longer accepts free-text instructions.',

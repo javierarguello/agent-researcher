@@ -144,10 +144,12 @@ const PREFS_YESNO: Record<Lang, [string, string]> = {
  * does not edit after previewing can render the ones it was handed. Neither has to
  * parse a sentence.
  *
- * Still a pure function of the validated params, and still no user-authored text:
- * the labels are the manifest's, in the buyer's language — the same strings the form
- * showed them. (The `yes`/`no` for a boolean directive is ours, and is the only word
- * here that is not a manifest label.)
+ * Still a pure function of the validated params, and still no user-authored text.
+ * The VALUE labels are the manifest's, in the buyer's language — the same strings
+ * the form showed them; the lead-in a client puts in front of them and the `yes`/`no`
+ * for a boolean are ours, hardcoded here. "Every word is a label from the manifest"
+ * was written and is not true of those two (round 9, R9-27). The property that
+ * matters — no word the MODEL or the BUYER wrote — holds absolutely.
  */
 export function planPreferences(
   template: ResearchTemplate<any>,

@@ -143,9 +143,12 @@ the rest. Two layers (`research-engine.ts` + `run-job.ts`):
    bodies (`extracted`, capped — a `gathered` agent's own pages are kept first, and
    an agent whose pages could not all be kept loses `gathered` so it re-buys them),
    `doneAgentIds`, `gatheredAgentIds`, `fetchedByAgent`, `touchedByAgent`,
-   `agentTraces`, `handoffs`, `degraded`, `warnings`, `writeFailures` and the
-   accumulated `cost` — read the `Checkpoint` type for the current list; this
-   sentence went stale one commit after it was written. If agents are still
+   `agentTraces`, `handoffs`, `degraded`, `warnings`, `writeFailures`, `turnsUsed`
+   and the accumulated `cost` — **read the `Checkpoint` type for the current list**.
+   This sentence went stale one commit after it was written, and the commit that
+   corrected it left out `turnsUsed`, which had been in the type for fourteen
+   commits (round 9, R9-25). A prose copy of a type is a list that is wrong on a
+   schedule; the pointer is the part to trust. If agents are still
    failing when the in-run attempts are spent and this isn't the final job attempt,
    the run returns **`incomplete`**; the worker replies `503` so **Cloud Tasks
    re-dispatches** it, and the next run resumes from the checkpoint (done agents are

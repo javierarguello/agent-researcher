@@ -68,10 +68,14 @@ APP_ENV=local npm run dev:api
 `x-user-id` headers — so you can call the API with plain `curl`.
 
 **You still need GCP credentials for Firestore**, even though nothing here calls a
-paid model: `gcloud auth application-default login`. The API's rate meter reads
-Firestore before `validateRequest` runs, so without ADC every request in §3 returns
-`500 {"error":"Something went wrong on our side."}` and the server log says
-`7 PERMISSION_DENIED`. There is no Firestore emulator wired up in this repo.
+paid model: `gcloud auth application-default login`. The FIRST read is not the one
+you would guess: `/research/*` is not public, so the `jwtAuth` hook runs before any
+route code and its `APP_ENV=local` branch loads the app record (`apps/api/src/auth.ts`,
+`getApp`). The rate meter reads Firestore too, and both are before `validateRequest`
+— so setting `PUBLIC_PREFLIGHT_PER_HOUR_IP=0` to dodge the meter does not help.
+Without ADC every request in §3 returns `500 {"error":"Something went wrong on our
+side."}` and the server log says `7 PERMISSION_DENIED`. There is no Firestore
+emulator wired up in this repo.
 
 ## 3. Exercise the review
 
