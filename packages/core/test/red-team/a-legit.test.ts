@@ -510,10 +510,21 @@ function trimNotes(prompt: string): string[] {
   return Object.values(producedSections(prompt)).filter((v): v is string => typeof v === 'string' && v.startsWith('[Trimmed to fit:'));
 }
 
+/**
+ * The extract ITSELF — without the sentinel the note ends with.
+ *
+ * This used to `slice(…, -1)`, dropping one character of `… [cut]]`, so every
+ * value it returned ended in `]` and the assertions below ("ends at a value
+ * boundary", "does not end in a digit", "does not end inside a URL") were true of
+ * the sentinel rather than of the cut. Three tautologies in the test that exists to
+ * prove the cut (round 7, R7-16).
+ */
 function trimmedExtract(prompt: string, key: string): string | undefined {
   const v = producedSections(prompt)[key];
   if (typeof v !== 'string' || !v.startsWith('[Trimmed to fit:')) return undefined;
-  return v.slice(v.indexOf('Extract: ') + 'Extract: '.length, -1);
+  const from = v.indexOf('Extract: ') + 'Extract: '.length;
+  const to = v.lastIndexOf(' … [');
+  return v.slice(from, to > from ? to : -1);
 }
 
 describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () => {
@@ -557,6 +568,45 @@ describe('4 · MAX_CONTEXT_CHARS and MAX_HANDOFF_CHARS, on an honest run', () =>
     expect(e2).not.toMatch(/\d$/);
     expect(JSON.stringify(bigSection(400, 'D', 27))).toContain('"askingPrice":538138');
     expect(p2).toContain('Use these for exact figures');
+  });
+
+  it('does not cut a figure written in PROSE either — a thousands separator is a comma (R7-16)', () => {
+    // The fix that made structural cuts land on a value boundary did it by seeking
+    // the last comma, and a thousands separator inside a sentence is a comma — so
+    // "the median asking price is $538,138" trimmed to "…is $538", under a heading
+    // that reads "Use these for exact figures". Mutation that reds this: drop the
+    // string-state tracking from `cutJson` (take the last `,` anywhere).
+    const long = `Miami-Dade has roughly 240 operators, and the median asking price is $538,138 across the twelve listings. ${'x'.repeat(60_000)}`;
+    const p = buildSynthesizerPrompt({ agent: writer, brief: BRIEF, sections: [summarySection], context: { market: { overview: long } }, handoffs: { scout: 'ok' }, lang: 'en' });
+    const extract = trimmedExtract(p, 'market')!;
+    expect(extract).toContain('$538,138');
+    expect(extract).not.toMatch(/\$538$/);
+  });
+
+  it('uses a boundary wherever it falls — the old rule fell through to a raw cut when the only one was early', () => {
+    // The finder's first case: a short field then one long value, so the only
+    // boundary outside a string sits near the start. `at > max / 2` was false and
+    // the RAW cut was returned — landing mid-value, which is the exact defect the
+    // boundary rule exists to prevent. Mutation that reds this: restore the
+    // `at > max / 2` guard.
+    const ctx = { deals: { note: 'short', body: 'z'.repeat(60_000) } };
+    const p = buildSynthesizerPrompt({ agent: writer, brief: BRIEF, sections: [summarySection], context: ctx, handoffs: { scout: 'ok' }, lang: 'en' });
+    const extract = trimmedExtract(p, 'deals')!;
+    expect(extract, 'cut at the boundary, early as it is').toBe('{"note":"short",');
+    expect(p).toContain(' … [cut]]');
+    expect(extract).not.toContain('zzz');
+  });
+
+  it('and when there is no boundary to cut at, the note says the cut is mid-value', () => {
+    // The honest limit: one enormous string has no boundary outside it, so the cut
+    // IS mid-value — and the note used to imply a whole one either way. Mutation
+    // that reds this: return `whole: true` unconditionally.
+    const p = buildSynthesizerPrompt({ agent: writer, brief: BRIEF, sections: [summarySection], context: { market: { overview: 'y'.repeat(60_000) } }, handoffs: { scout: 'ok' }, lang: 'en' });
+    expect(p).toContain(' … [cut mid-value]]');
+    // …and the ordinary case still says plain `[cut]`.
+    const q = buildSynthesizerPrompt({ agent: writer, brief: BRIEF, sections: [summarySection], context: { deals: bigSection(400, 'D') }, handoffs: { scout: 'ok' }, lang: 'en' });
+    expect(q).toContain(' … [cut]]');
+    expect(q).not.toContain('[cut mid-value]');
   });
 
   it('does not claim "the summary above covers it" when there is no summary above (before the fix it did, with no handoffs)', () => {

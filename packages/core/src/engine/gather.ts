@@ -6,7 +6,7 @@
  * re-fetched) by another, and the final `sources` list is unified.
  */
 import { config } from '../config.js';
-import { stripFenceMarker } from './prompt.js';
+import { stripFenceMarker, stripFenceMarkerDeep } from './prompt.js';
 import { llmCost, searchCost, type Cost, type CostSink } from '../cost.js';
 import type { ResolvedModel } from '../llm/index.js';
 import type { LlmMessage, ToolCall, ToolSchema } from '../llm/provider.js';
@@ -352,7 +352,14 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
 
     // The model's own turn, back to it — the one other place text entered a prompt
     // outside `untrusted()`. Its own authority, but the marker still must not ride.
-    messages.push({ role: 'model', text: stripFenceMarker(res.text), toolCalls: res.toolCalls });
+    // Its ARGS too, not only its text: a plan step is model output written after
+    // reading pages, it rides in every later request of this loop, and it was the
+    // one model-authored string on this path that went back unstripped (R7-17).
+    messages.push({
+      role: 'model',
+      text: stripFenceMarker(res.text),
+      toolCalls: res.toolCalls.map((c) => ({ ...c, args: stripFenceMarkerDeep(c.args) })),
+    });
 
     // Classified BEFORE the calls run, so the loop can end without paying for the
     // turn — the same shape as the plan-only rule this replaces. Every branch below

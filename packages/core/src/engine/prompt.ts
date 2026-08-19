@@ -130,6 +130,26 @@ export function stripFenceMarker(text: string): string {
 }
 
 /**
+ * The same, over the string leaves of a tool call's arguments.
+ *
+ * `res.toolCalls[].args` — the steps of an `update_plan`, the text of a
+ * `web_search` — is model output written AFTER reading fetched pages, and it was
+ * pushed back into the conversation unstripped and re-sent on every later turn of
+ * the loop. A page that gets the model to copy the marker into a plan step put it
+ * in every subsequent request of that agent (round 7, R7-17). The codebase's own
+ * standard is stricter: search results are JSON-encoded by the provider too and are
+ * stripped anyway, because the encoding is "an accident, not a guarantee".
+ */
+export function stripFenceMarkerDeep<T>(value: T): T {
+  if (typeof value === 'string') return stripFenceMarker(value) as unknown as T;
+  if (Array.isArray(value)) return value.map((v) => stripFenceMarkerDeep(v)) as unknown as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, stripFenceMarkerDeep(v)])) as unknown as T;
+  }
+  return value;
+}
+
+/**
  * Everything here was written by whoever owns the page, and we fetched it because
  * the model chose a search query. That makes it the least trusted text in the
  * prompt — below the paying client's own instructions, which are already fenced and
@@ -392,11 +412,12 @@ function contextBlock(context: Record<string, unknown>, handoffs: Record<string,
       left -= 1;
       const json = JSON.stringify(value);
       remaining -= Math.min(json?.length ?? 0, share);
+      const cut = json && json.length > share ? cutJson(json, share) : undefined;
       trimmed[key] =
-        json && json.length > share
-          ? `[Trimmed to fit: ${json.length.toLocaleString('en-US')} characters, of which the opening is ` +
+        cut
+          ? `[Trimmed to fit: ${json!.length.toLocaleString('en-US')} characters, of which the opening is ` +
             `below. This section is complete in the report${notes.length ? ', and the briefings above cover it' : ''}. ` +
-            `Extract: ${cutJson(json, share)} … [cut]]`
+            `Extract: ${cut.text} … [${cut.whole ? 'cut' : 'cut mid-value'}]]`
           : value;
     }
     // Fenced like the handoffs, and for the same reason: these values are model
@@ -422,10 +443,41 @@ function contextBlock(context: Record<string, unknown>, handoffs: Record<string,
  * budget (one huge string) is cut where it was, and the `… [cut]` the caller
  * appends says so either way.
  */
-function cutJson(json: string, max: number): string {
+function cutJson(json: string, max: number): { text: string; whole: boolean } {
   const head = json.slice(0, max);
-  const at = Math.max(head.lastIndexOf(','), head.lastIndexOf('}'), head.lastIndexOf(']'));
-  return at > max / 2 ? head.slice(0, at) : head;
+  // The boundary has to be one JSON put there, not one the PROSE contains. The
+  // previous version took the last `,`/`}`/`]` anywhere in the head — and a
+  // thousands separator is a comma, so "the median asking price is $538,138"
+  // trimmed to "…is $538" under a heading that says "Use these for exact figures".
+  // Seeking commas made the extract slightly ATTRACTED to that failure (round 7,
+  // R7-16). Track the string state and only cut outside one.
+  let inString = false;
+  let escaped = false;
+  let at = -1;
+  for (let i = 0; i < head.length; i += 1) {
+    const c = head[i]!;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (c === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString && (c === ',' || c === '}' || c === ']')) at = i;
+  }
+  // Any boundary beats a raw cut, wherever it falls: the old `at > max / 2` guard
+  // fell through to the raw cut for a section whose only boundary is early, which
+  // is most of them (one long markdown string). When there is none at all the cut
+  // IS mid-value, and the note says so rather than implying a whole one.
+  // The boundary character is KEPT, so the extract ends visibly at one — `…,` or
+  // `…}` — instead of at whatever happened to precede it. The test that proves the
+  // cut asserts exactly that, and could not while the sentinel was in the way.
+  return at >= 0 ? { text: head.slice(0, at + 1), whole: true } : { text: head, whole: false };
 }
 
 /**
