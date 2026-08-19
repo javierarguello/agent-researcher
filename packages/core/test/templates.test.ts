@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { listTemplates } from '../src/templates/registry.js';
 import { validateTemplate } from '../src/templates/validate.js';
+import { agentKind, hasResearchLoop } from '../src/templates/types.js';
 import { planWaves } from '../src/engine/research-engine.js';
 import { getTemplate, toManifest } from '../src/templates/registry.js';
 import { sampleFromSchema } from './mocks/llm.js';
@@ -11,6 +12,51 @@ describe('templates', () => {
     for (const t of listTemplates()) {
       expect(validateTemplate(t)).toEqual([]);
     }
+  });
+
+  it('no agent is told a `focus` it can never read — the field is the research loop’s', () => {
+    // `focus` is rendered by `buildAgentKickoff` and by nothing else, and only an
+    // agent with a research loop gets a kickoff. Two synthesizers in the flagship
+    // carried one for months — dead text, and one of them said the OPPOSITE of what
+    // the shipped rewrite preamble said (round 7, R7-18). Generic, so a second model
+    // cannot repeat it. Mutation that reds this: give a synthesizer a `focus`.
+    for (const t of listTemplates()) {
+      for (const a of t.agents) {
+        if (!a.focus) continue;
+        expect(hasResearchLoop(a), `${t.id}/${a.id} (${agentKind(a)}) declares a focus it never reads`).toBe(true);
+      }
+    }
+  });
+
+  it('what a synthesizer must know reaches the prompt it actually gets — through the section guidance', async () => {
+    // The other half of moving those sentences: `guidance` is rendered by every
+    // write builder, which is why it is the right home for an agent with no loop.
+    // And it is where the contradiction gets reconciled — the engine's rewrite
+    // preamble says "NEVER drop an item because you have nothing to add to it", the
+    // section says when dropping one IS right. Both must be in the same prompt, or
+    // the reconciliation is a comment nobody reads. Mutation that reds this: take
+    // the rewrite rules out of the `charts` guidance.
+    const { buildEnricherSynthPrompt } = await import('../src/engine/prompt.js');
+    const t = getTemplate('florida-business-for-sale')!;
+    const refiner = t.agents.find((a) => a.id === 'chart-refiner')!;
+    const charts = t.sections.find((s) => s.key === 'charts')!;
+    const p = buildEnricherSynthPrompt({
+      agent: refiner, brief: 'b', sections: [charts],
+      current: { charts: [{ title: 'Asking prices', type: 'bar', labels: ['A'], series: [[1]] }] },
+      evidence: [], extracted: [], lang: 'en',
+    } as never);
+
+    expect(p, 'the engine’s rule').toContain('NEVER drop an item because you have nothing to add to it');
+    expect(p, 'and the section’s, which qualifies it').toContain('Drop a chart ONLY when it is empty or its numbers are not in the report');
+    expect(p).toContain('never because you have nothing to add to it');
+  });
+
+  it('the validator refuses one, and names the kind so the author knows why', () => {
+    const t = getTemplate('florida-business-for-sale')!;
+    const broken = { ...t, agents: t.agents.map((a) => (a.role === 'synthesizer' ? { ...a, focus: 'Prefer bar charts.' } : a)) };
+    const errors = validateTemplate(broken as never);
+    expect(errors.some((e) => /writer .* declares `focus`/.test(e))).toBe(true);
+    expect(errors.some((e) => /refiner .* declares `focus`/.test(e)), 'a refiner with no loop, named as one').toBe(true);
   });
 
   it('florida waves are acyclic and cover all agents', () => {

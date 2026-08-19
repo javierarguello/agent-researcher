@@ -747,13 +747,23 @@ const sections: ReportSection[] = [
   {
     key: 'charts',
     title: 'Charts',
+    // Both agents that touch this section are synthesizers — no research loop — so
+    // anything they must be told belongs HERE. It used to live in their `focus`,
+    // which only the research kickoff renders, so neither ever read it: the
+    // refiner's "drop empty or misleading ones" was dead while the engine's rewrite
+    // preamble told it to never drop an item (round 7, R7-18). Reconciled below, in
+    // one sentence, in the place both of them do read.
     guidance:
       'Build 3-6 charts that visualize the report’s real numbers so a reader grasps them at a glance — e.g. ' +
       'asking prices across the shortlist (bar), valuation multiples (bar), a 3-year financial projection ' +
-      '(line), or comparable sale prices (bar). For each: a clear title, the chart type, category `labels`, ' +
-      'and numeric `series` aligned to those labels (set `unit` like "$" or "x"). Use ONLY figures already ' +
-      'present in the finished report — never invent data. If there is not enough quantitative data, return ' +
-      'an empty array.',
+      '(line), comparable sale prices (bar) or market size (bar/line). For each: a clear title, the chart ' +
+      'type, category `labels`, and numeric `series` aligned to those labels (set `unit` like "$" or "x"). ' +
+      'Use ONLY figures already present in the finished report — never invent data, and never invent a number ' +
+      'to complete a series. If there is not enough quantitative data, return an empty array.\n' +
+      'If charts already exist you are REWRITING them: keep and improve every chart whose numbers are in the ' +
+      'report, and add an obviously-missing one grounded in the refined listing profiles and valuations. Drop ' +
+      'a chart ONLY when it is empty or its numbers are not in the report — never because you have nothing to ' +
+      'add to it.',
     schema: z.array(chartSchema),
   },
   {
@@ -894,9 +904,8 @@ const agents: AgentSpec[] = [
     objective: 'Turn the report’s quantitative findings into chart specs (title, type, labels, series).',
     produces: ['charts'],
     dependsOn: ['deal-scout', 'valuation-analyst', 'financial-analyst', 'market-refiner'],
-    focus:
-      'Emit bar/line/pie/area charts from figures ALREADY in the report: shortlist asking prices, valuation ' +
-      'multiples, 3-year projections, comparable sale prices, market size. Labels + series must align. Never invent numbers.',
+    // No `focus`: a synthesizer has no research loop to render one. What it needs
+    // is in the `charts` section guidance, which every write prompt carries.
   },
   {
     id: 'chart-refiner',
@@ -904,9 +913,8 @@ const agents: AgentSpec[] = [
     objective: 'Refine and complete the charts (fix labels/series, add missing high-value charts) in a pro pass.',
     enriches: ['charts'],
     dependsOn: ['chart-analyst', 'deep-dive-refiner', 'valuation-analyst'],
-    focus:
-      'Improve the existing charts and add any obviously-missing one grounded in the refined deep-dives and ' +
-      'valuations. Keep only charts backed by real report figures; drop empty or misleading ones.',
+    // Likewise: its rewrite rules are in the section's guidance, reconciled there
+    // with the engine's "never drop an item because you have nothing to add to it".
   },
   {
     id: 'growth-strategist',

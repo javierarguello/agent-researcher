@@ -9,6 +9,7 @@ import { modelAliases } from '../llm/models.js';
 import { validateDirectives } from './directives.js';
 // The leaf module, not the registry: the registry imports THIS file.
 import { LANGUAGE_LABELS } from '../languages.js';
+import { agentKind, hasResearchLoop } from './types.js';
 import type { AgentSpec, ResearchTemplate } from './types.js';
 
 const SUPPORTED_LANGS = Object.keys(LANGUAGE_LABELS);
@@ -49,6 +50,19 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
     if (!known(a.gatherModel)) err(`agent "${a.id}" uses unknown gatherModel alias "${a.gatherModel}"`);
     if (a.role === 'producer' && !(a.produces?.length || a.enriches?.length)) {
       err(`producer "${a.id}" has no sections`);
+    }
+    // `focus` is rendered by `buildAgentKickoff` and by nothing else, and only a
+    // producer gets a kickoff — a synthesizer has no research loop at all. So a
+    // `focus` on a synthesizer is a sentence the model never reads, and the author
+    // has no way to find that out: two of them sat in the flagship for months, one
+    // of them saying the OPPOSITE of what the shipped prompt said (round 7, R7-18).
+    // What a synthesizer needs to be told about its writing belongs in the
+    // `guidance` of the section it writes, which does reach it.
+    if (a.focus && !hasResearchLoop(a)) {
+      err(
+        `${agentKind(a)} "${a.id}" declares \`focus\`, which only the research kickoff renders — an agent with no ` +
+          `research loop never reads it. Put what it needs to know into the guidance of the section it writes.`,
+      );
     }
   }
 

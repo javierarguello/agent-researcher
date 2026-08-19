@@ -15,9 +15,12 @@ import { maxCostForMode, resolveMode } from '../mode.js';
 import { resolveModel, type ResolvedModel } from '../llm/index.js';
 import type { ExtractedPage, SearchResult } from '../tools/web-search.js';
 import {
+  agentKind,
+  hasResearchLoop,
   reportSchemaOf,
   sectionByKey,
   sectionSubsetSchema,
+  type AgentKind,
   type AgentSpec,
   type ReportSection,
   type ResearchTemplate,
@@ -106,6 +109,11 @@ export type { SectionStatus };
 export interface AgentTrace {
   id: string;
   role: AgentSpec['role'];
+  /**
+   * What it does — `researcher` | `refiner` | `writer`, derived from `role` +
+   * `enriches` (see `AgentKind`). Absent on traces written before it existed.
+   */
+  kind?: AgentKind;
   /** 1-based wave the agent ran in. */
   wave: number;
   produces: string[];
@@ -549,11 +557,12 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         const at: AgentTrace = {
           id: agent.id,
           role: agent.role,
+          kind: agentKind(agent),
           wave: w + 1,
           produces: agent.produces ?? [],
           enriches: agent.enriches ?? [],
           model: agent.model ?? config.llm.defaultSynthModel,
-          ...(agent.role === 'producer' ? { gatherModel: agent.gatherModel ?? config.llm.defaultGatherModel } : {}),
+          ...(hasResearchLoop(agent) ? { gatherModel: agent.gatherModel ?? config.llm.defaultGatherModel } : {}),
           status: 'running',
           turnsUsed: 0,
           attempts: 0,
@@ -1041,7 +1050,7 @@ async function runAgent(ctx: {
     return ctx.emit(agent.id, m, kind, detail);
   };
 
-  if (agent.role === 'producer') {
+  if (hasResearchLoop(agent)) {
     const gatherModel: ResolvedModel = resolveModel(agent.gatherModel ?? config.llm.defaultGatherModel);
     const budget = Math.max(2, Math.round((agent.researchBudget ?? config.search.maxTurns) * depth.budgetScale));
     const sites = effectiveSites(template, agent);

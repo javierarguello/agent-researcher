@@ -32,13 +32,49 @@ export interface ReportSection {
   }) => unknown;
 }
 
+/**
+ * Whether this agent RESEARCHES. It is the one question the engine asks of `role`:
+ * a `producer` runs a budgeted web-research loop before it writes, a `synthesizer`
+ * writes from what the earlier steps produced and never touches the web.
+ */
 export type AgentRole = 'producer' | 'synthesizer';
+
+/**
+ * What an agent DOES, for docs, traces and validation messages — derived from
+ * `role` + `enriches`, never stored, so it cannot drift from them:
+ *
+ * - `researcher` — researches, then writes the sections it owns.
+ * - `refiner`    — rewrites a section another agent produced. It researches too if
+ *                  its `role` is `producer` (its `focus` then reaches its loop);
+ *                  a `synthesizer` refiner works from the report alone.
+ * - `writer`     — composes from upstream output only.
+ *
+ * The distinction exists because it decides who can be told a `focus`: that field
+ * is rendered by the research kickoff and by nothing else, so an agent with no loop
+ * cannot receive one. Two of them sat in the flagship for months, one saying the
+ * opposite of what the shipped prompt said (round 7, R7-18).
+ */
+export type AgentKind = 'researcher' | 'refiner' | 'writer';
+
+/** Whether this agent gets a research loop — and therefore whether `focus` reaches it. */
+export function hasResearchLoop(a: Pick<AgentSpec, 'role'>): boolean {
+  return a.role === 'producer';
+}
+
+/** See `AgentKind`. Derived, so a template declares one thing and not two. */
+export function agentKind(a: Pick<AgentSpec, 'role' | 'enriches'>): AgentKind {
+  if (a.enriches?.length) return 'refiner';
+  return hasResearchLoop(a) ? 'researcher' : 'writer';
+}
 
 /**
  * One node in a template's agent workflow.
  *
  * - `producer` runs a budgeted web-research loop, then synthesizes its sections.
  * - `synthesizer` composes its sections purely from upstream outputs (no search).
+ *
+ * `agentKind()` above names the three shapes these two values plus `enriches`
+ * actually produce — that is the vocabulary the docs and the validator speak.
  *
  * Dependencies (`dependsOn`, plus the producer of any `enriches` section) define
  * the DAG the executor runs wave-by-wave, parallel within a wave.
@@ -64,7 +100,13 @@ export interface AgentSpec {
   /** Short human label for this step (e.g. 'Deal scout'), shown in a client's
    *  progress view instead of the raw id. Falls back to a title-cased id. */
   label?: string;
-  /** Extra focus for this agent's research + writing (e.g. which sources to prefer). */
+  /**
+   * Extra focus for this agent's RESEARCH — which sources to prefer, what to look
+   * for. Rendered in the research kickoff and nowhere else, so it is a producer's
+   * field: a synthesizer has no loop, and `validateTemplate` refuses one there.
+   * Anything about how a section should be WRITTEN goes in that section's
+   * `guidance`, which every write prompt renders.
+   */
   focus?: string;
   /**
    * Domains this producer's `web_search` is scoped to (e.g. `bizbuysell.com`).
