@@ -1333,7 +1333,9 @@ dispatches). **R7-14 + R7-15 + R7-20** `b72de29` (one bucket per parse failure �
 kind was 73.4% honest; the string bounds reach Gemini; the buyer-facing summary
 redaction is asserted at last).
 
-Suite 1029 → 1063 in this checkout. Four mutations came back 0 red on the first
+Suite **1035 → 1062** in this checkout (re-measured, round 8, R8-31: the commit
+before the first P2 commit is 1035 and the last of them is 1062 — "1029 → 1063" was
+carried, not measured, and 1029 belongs to `16e7014`, four commits earlier). Four mutations came back 0 red on the first
 measurement and each got its own test before the count was recorded: the early-boundary
 cut, the resumed writer's own-page preference, the `stopPlanning` instruction, and the
 per-host caps through the production caller.
@@ -1346,6 +1348,14 @@ loop in `validateTemplate`, and fold what the two chart synthesizers needed into
 real keywords survived before; the draft carries the buyer's notes again, read
 shape-tolerantly).
 
+**R8-28, recorded rather than rewritten** (the commits are on main; the correction
+lives here): `90d6fdf`'s "a resumed writer forgets its own pages — 1 red" was **0
+red** — the test could not tell `fetched` from `touched`, and `8d2df52` rebuilt the
+fixture so both seeds bite; `929e8dd`'s "preview key ignores the notes — 2 red" is
+**3**; the persona that reaches the honest 6-turn maximum is **`d-legit`**, not
+`b-legit` (which reaches 4); and the cached-note figure in `93b132e` is **296**, not
+298. Same cause every time: a count carried instead of re-measured.
+
 **R7-28, recorded rather than rewritten:** four mutation counts in the 2026-08-17
 commit messages are wrong (`9850bdf` 5→6 and 3→2; `245811f` 3→2 and 4→3; `f74f7b0`
 2→3), and so were two of mine from 2026-08-19 (`1ce4893` said 1044, really 1043;
@@ -1353,8 +1363,10 @@ commit messages are wrong (`9850bdf` 5→6 and 3→2; `245811f` 3→2 and 4→3;
 are on main; the correction lives here. The rule that produces the defect is the same
 every time: a count carried from an estimate instead of re-measured after the change.
 
-**P2 is closed.** R7-12 landed last: a resumed writer's own results are carried in
-`touchedByAgent`, so it ranks them first instead of meeting the per-host cap with
+**P2 is closed.** R7-12 landed last, in **`a84878d`** (and R7-27's docs pass is
+**`e3e8e3b`** — both hashes were missing here, which is the rule `a11bafe` exists to
+enforce: cite the commits that are actually on main). A resumed writer's own results
+are carried in `touchedByAgent`, so it ranks them first instead of meeting the per-host cap with
 everything it owns — the finder's own fix sketch (skip the diversity pass when
 `prefer` is empty) would have turned the poisoned-farm defence off for exactly the
 agents a re-dispatch produces, so the cause was fixed rather than the symptom. The
@@ -1421,7 +1433,8 @@ since round 7's started at `d1ac4dd` and every reviewer had to notice for themse
 - R7-26 `freeText` not in the draft — "buy credits" loses the notes (G4-break F5).
   No-industry dead end: the box cannot unlock the CTA; say so in the copy
   (G4-break F3, G4-verify).
-- R7-27 Docs stale after `7a45269`: `docs/architecture.md:111`, `modules.md:24`,
+- R7-27 **closed `e3e8e3b`** — this entry stayed in the open list after the docs it
+  names had been rewritten (round 8, R8-31). Docs stale after `7a45269`: `docs/architecture.md:111`, `modules.md:24`,
   `request-review.md:100` (the fail-open justification names a removed
   mechanism) and `:47` (`+40` not `max(3×,+24)`), `local-llm.md:81` (its
   injection curl now returns 200), `model-ui.md:97`; `docs/agents.md` §2/§3 stale
@@ -1483,26 +1496,42 @@ each found independently; `cutJson` and the `referenced` reserve are design erro
 that the batch's own new tests PIN in place; and the suite arithmetic is wrong in 14
 of 22 commit messages.
 
-### How to continue (for the next agent) — state as of 2026-08-19
+### How to continue (for the next agent) — state as of 2026-08-19 (evening)
 
-**Done:** the P0, all fourteen P1, and two of the P2 batch (R8-16 with the
-checkpoint cluster, R8-32 with the deploy one). Seven commits, `6fa4089..692852c`,
-each revert-verified; the table is in "Fixed (2026-08-19)" at the end of this file.
-Suite **1093 passed, 0 failed** (`npm test`, main checkout, measured at `692852c`).
-Nothing is half-landed: every commit is green on its own. They are committed on the
-local `main` and **not pushed yet** — `origin/main` is at `585b660`, the round-8
-report commit, so the first thing to do is push (or say why not).
+**ROUND 8 IS CLOSED.** The P0, all fourteen P1 and all twenty-two P2 items are
+fixed and every one is stamped with its hash in the lists below. Fifteen commits,
+`6fa4089..HEAD`, each revert-verified on its own. Suite **1115 passed, 0 failed**
+(`npm test`, main checkout; a clean clone counts 6 fewer — the red-team tests gated
+on `out/*/trace.json`). `npm run typecheck` clean. The P1 batch is pushed;
+check `git status` for the P2 ones.
 
-**Next, in this order:**
-1. The **20 remaining P2 items** below — R8-17 through R8-37, skipping R8-16 and
-   R8-32, which are marked `done` inline. They are independent of each other, so
-   cluster them by file rather than by number (the docs ones, R8-31 and R8-33, are
-   one commit; the viewer/PDF ones, R8-22/R8-34/R8-35, are another).
-2. Then **round 9**: eight reviewers against `4b61242..HEAD`, same brief shape as
-   `m-red-team-reports/round8/BRIEF.md`, with two changes — give each reviewer a
-   PRIVATE scratchpad subdirectory (two of round 8's overwrote each other's
-   scripts), and state the clean-clone constant as **6**, not "~16" (round 8's brief
-   repeated the wrong one; see R8-15).
+The P2 pass ran in seven clusters, by file rather than by number:
+`62b5e61` section-status copy + coercion (R8-17, R8-22) · `8ff7312` the evidence
+tiers (R8-18, R8-19, R8-29) · `8901f60` the fixture's search density (R8-30) ·
+`8d2df52` four tests that reported evidence they were not producing (R8-23, R8-24,
+R8-25, R8-28) · `0250063` the link title and the Sources tooltip (R8-34, R8-35) ·
+`1ab2a86` the validator, the quote gate and the Gemini bound (R8-20, R8-21, R8-26) ·
+`4ba3bd4` the pre-flight summary and the admin row (R8-27, R8-36, R8-37) · plus this
+docs pass (R8-31, R8-33).
+
+**Three decisions taken in that pass, to argue with rather than to undo:**
+- **`maxLength` is no longer forwarded to Gemini's decoder** (R8-21). The benefit the
+  forward was added for and the cost it carries are the same behaviour seen from two
+  sides, all five bounds are buyer-visible chart copy, and only a paid run can tell
+  which one happens. It comes back on a measurement, written at the forward site.
+- **A prose link's `title` is dropped, not clipped** (R8-34). Bounding it would still
+  print the page's own account of itself, which is what the Sources tooltip refuses.
+- **The directive clause lives in `renderPlan`, not in a template's `describePlan`**
+  (R8-36), so no template can forget the last screen before payment.
+
+**Next: round 9.** Eight reviewers against `4b61242..HEAD`, same brief shape as
+`m-red-team-reports/round8/BRIEF.md`, with two changes — give each reviewer a
+PRIVATE scratchpad subdirectory (two of round 8's overwrote each other's scripts),
+and state the clean-clone constant as **6**, not "~16" (round 8's brief repeated the
+wrong one; see R8-15). Worth telling them: this batch moved several published
+measurements on purpose (the fixture's search density went 5 → 8, R8-30), so a
+figure that disagrees with an older commit message is not automatically a defect —
+check which side was measured.
 
 **The rules, and why each one exists.** These are not style; every one of them was
 paid for by a defect that shipped:
@@ -1679,52 +1708,52 @@ paid for by a defect that shipped:
   still forgotten on resume and the per-agent rows still do not sum. R7-13's symptom,
   reproduced at HEAD (G1-break F4, G1-verify F4). Fix: carry `turnsUsed` in the
   checkpoint.
-- R8-17 A browser holding the pre-`c9065e3` bundle coerces `reconstructed` → `lost`,
+- R8-17 **done `62b5e61`** A browser holding the pre-`c9065e3` bundle coerces `reconstructed` → `lost`,
   SUPPRESSES a section that has real content and prints "everything else was
   researched as usual", while the server-rendered PDF of the same report shows it.
   The "coercing to lost is the safe direction" reasoning is wrong for the one status
   whose design point is that the body stays (G1-verify F5).
-- R8-18 `urlsIn` drops any URL followed by a JSON escape (`\n`, `\"`), so a bare
+- R8-18 **done `8ff7312`** `urlsIn` drops any URL followed by a JSON escape (`\n`, `\"`), so a bare
   prose URL at end of line never reaches `referenced` (G2-break F4).
-- R8-19 A URL that is both `touched` and `referenced` is classified `touched` and
+- R8-19 **done `8ff7312`** A URL that is both `touched` and `referenced` is classified `touched` and
   loses the reserve; the shipped e2e fixture excludes the case by an explicit line
   (`nextLot = 20; // the refiner's own results never overlap the shortlist`)
   (G2-break F5).
-- R8-20 `validateTemplate` guards `focus` and not `sites`/`researchBudget`/
+- R8-20 **done `1ab2a86`** `validateTemplate` guards `focus` and not `sites`/`researchBudget`/
   `gatherModel` — a synthesizer declaring `sites` still ships a sentence that reaches
   no prompt (G2-break F6).
-- R8-21 Forwarding `maxLength` may turn a caught error into a silently truncated
+- R8-21 **done `1ab2a86`** Forwarding `maxLength` may turn a caught error into a silently truncated
   buyer-visible string (a chart `title`/`description` cut at the bound instead of
   re-planned). Reasoned; needs a paid-tier check (G2-break F7).
-- R8-22 The `unenriched` sentence exists in THREE copies (core notice, viewer, PDF)
+- R8-22 **done `62b5e61`** The `unenriched` sentence exists in THREE copies (core notice, viewer, PDF)
   and the "la passe / a passagem" fix landed in one. The fr/pt buyer still reads a
   sports pass and a passageway in the viewer and in the PDF they keep; en/es diverge
   too (G3-verify F1). Fix: a shared fixture like `LEGACY_SHAPES`.
-- R8-23 `rate-limit-copy.test.tsx` restores `config.googleClientId` inline, so the
+- R8-23 **done `8d2df52`** `rate-limit-copy.test.tsx` restores `config.googleClientId` inline, so the
   "control" test fails as a cascade — `60c92a0`'s "2 red" is 1 independent
   (G3-verify F2).
-- R8-24 `progress-kind-pin`'s title promises "in every language" and cannot see a
+- R8-24 **done `8d2df52`** `progress-kind-pin`'s title promises "in every language" and cannot see a
   missing one (`progressLine` falls back to English); the property is covered next
   door (G3-verify F3).
-- R8-25 `2bf0b97`'s test and four comments name `setDirOpen`/`dirExpanded`, deleted
+- R8-25 **done `8d2df52`** `2bf0b97`'s test and four comments name `setDirOpen`/`dirExpanded`, deleted
   by `3397da8` three commits later. Dead test, unperformable mutation (G3-verify F4).
-- R8-26 `verbatim()` proves PROVENANCE, not support: `riskAppetite: opportunistic`
+- R8-26 **done `1ab2a86`** `verbatim()` proves PROVENANCE, not support: `riskAppetite: opportunistic`
   quoting «bajo riesgo» passes, arrives ticked and is written onto the form. Correct
   for basics, over-claimed for directives in the message and the code comment
   (G3-break F8, G3-verify F5).
-- R8-27 `AgentTrace.kind` reaches no admin screen — the reason `d1dab19` gives for
+- R8-27 **done `4ba3bd4`** `AgentTrace.kind` reaches no admin screen — the reason `d1dab19` gives for
   adding it (G2-verify F4).
-- R8-28 Three mutation counts of mine are wrong: `90d6fdf`'s "a resumed writer
+- R8-28 **done `8d2df52`** Three mutation counts of mine are wrong: `90d6fdf`'s "a resumed writer
   forgets its own pages 1 red" is **0 red** (the test cannot tell `fetched` from
   `touched`); `929e8dd`'s "preview key ignores the notes 2 red" is **3**; the persona
   named for the honest 6-turn maximum is `d-legit`, not `b-legit` (which reaches 4),
   and the cached-note figure is 296, not 298 (G1-verify F3/F6, G4-verify F3).
-- R8-29 The density test's inline "mutation that reds this" is false (`reserve = 0`
+- R8-29 **done `8ff7312`** The density test's inline "mutation that reds this" is false (`reserve = 0`
   still passes — the tier ORDER carries it), and its `afterEach` restores the fixture
   corpus to the polluted value (G2-verify F2/F3).
-- R8-30 The fixture still defaults to 5 results per query; flipping it to production's
+- R8-30 **done `8901f60`** The fixture still defaults to 5 results per query; flipping it to production's
   8 reds exactly 2 printed measurement pins (G2-verify F5).
-- R8-31 Docs: `agents.md`'s checkpoint list omits `touchedByAgent` (added one commit
+- R8-31 **done (the docs pass that wrote this line)** Docs: `agents.md`'s checkpoint list omits `touchedByAgent` (added one commit
   later, same batch) and `agentTraces`; its breaker outcome sentence is wrong for a
   loop that spent its allowance (`budget`/`stopped`, not `stalled`/`cut_off`);
   `request-review.md` folds `fillable` into gate 1 of five gates it does not pass;
@@ -1736,18 +1765,18 @@ paid for by a defect that shipped:
 - R8-32 **done `6fa4089`** (with the deploy cluster; the other 43 variables stay
   unwired — they are tuning dials, not money). `MAX_JOB_COST_USD` — the ceiling that decides whether a job is HELD — is in
   no `--set-env-vars`, along with 43 other documented variables (G4-break F4).
-- R8-33 `929e8dd`'s stated reason for not using `.strict()` is false: replaying a
+- R8-33 **done (the docs pass that wrote this line)** `929e8dd`'s stated reason for not using `.strict()` is false: replaying a
   pre-`7a45269` job's stored params 400s anyway. The real reason is the
   unrelated-extra-key case (G4-break F5).
-- R8-34 A link TITLE (`[t](url "title")`) is unbounded in the viewer and raw Markdown
+- R8-34 **done `0250063`** A link TITLE (`[t](url "title")`) is unbounded in the viewer and raw Markdown
   in the PDF — the same split `1ce4893` claimed to close, and the same unbounded
   attacker text R7-24 bounded one element over (G3-break F6).
-- R8-35 The new Sources tooltip clips by UTF-16 unit in the batch that fixed exactly
+- R8-35 **done `0250063`** The new Sources tooltip clips by UTF-16 unit in the batch that fixed exactly
   that elsewhere, and its pin cannot reach the bound (G3-break F7).
-- R8-36 The seven directives never appear in the pre-flight summary — the last screen
+- R8-36 **done `4ba3bd4`** The seven directives never appear in the pre-flight summary — the last screen
   before payment — though six of them decide which listings get shortlisted
   (G3-break F4).
-- R8-37 `warnings` entries are undated (their `notes` twin is timestamped) and
+- R8-37 **done `4ba3bd4`** `warnings` entries are undated (their `notes` twin is timestamped) and
   `snapshot()` captures the array by reference (G4-break F6).
 
 ### Checked and TRUE by round 8 (do not re-check)

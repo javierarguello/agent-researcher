@@ -234,8 +234,17 @@ export interface ValidatedRequest {
  * no-cache index only fix the NEXT load, and this is a form people leave open.
  *
  * Rejected explicitly rather than with `.strict()`: strict would 400 every client
- * that sends any extra key, including tooling that round-trips stored params from
- * jobs created before these fields were retired.
+ * that sends any extra key — including one sending a field this model has never
+ * had, which is a request we want to accept and strip rather than refuse.
+ *
+ * The reason first given here was a different one and it was false: "tooling that
+ * round-trips stored params from jobs created before these fields were retired".
+ * Those are exactly the jobs whose stored params carry `instructions`, so replaying
+ * one 400s ANYWAY, on the line below (round 8, R8-33). An old job's params cannot be
+ * replayed as they are, and nothing in the repo tries: the admin's new-job modal
+ * builds params from the schema defaults, the buyer's SPA from the form, and the
+ * worker re-validates through `paramsSchema` rather than through this function, so
+ * an admin retry of an old job is unaffected.
  */
 const RETIRED_PARAMS: Record<string, string> = {
   instructions: 'This model no longer accepts free-text instructions.',

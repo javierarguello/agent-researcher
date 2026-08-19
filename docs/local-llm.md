@@ -67,6 +67,12 @@ APP_ENV=local npm run dev:api
 `APP_ENV=local` also bypasses JWT auth — identity comes from `x-app-id` /
 `x-user-id` headers — so you can call the API with plain `curl`.
 
+**You still need GCP credentials for Firestore**, even though nothing here calls a
+paid model: `gcloud auth application-default login`. The API's rate meter reads
+Firestore before `validateRequest` runs, so without ADC every request in §3 returns
+`500 {"error":"Something went wrong on our side."}` and the server log says
+`7 PERMISSION_DENIED`. There is no Firestore emulator wired up in this repo.
+
 ## 3. Exercise the review
 
 ```bash

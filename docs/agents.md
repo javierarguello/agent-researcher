@@ -64,8 +64,13 @@ A budgeted tool-calling loop over three tools:
   again. Anything that spends a turn, or hands the model a page body it has not
   been given twice, resets both. On the third such turn the plan result also tells
   the model to stop planning and `forceTools` is dropped, so it can say it is ready.
-- A loop that ends this way reports `gatherStop: 'stalled'` and the buyer's live
-  line reads `cut_off` ("stopped early"), never `stopped` ("research complete").
+- A loop that ends this way reports `gatherStop: 'stalled'` **when its turn
+  allowance was not spent**, and the buyer's live line reads `cut_off` ("stopped
+  early"), never `stopped` ("research complete"). A loop that spent the allowance
+  and then stalled is reclassified `budget` and closes `stopped`: once there are no
+  turns left every call buys nothing, so the breaker fires by construction, and only
+  a loop cut off with budget LEFT is half-done (`gather.ts`, the `stalled` +
+  `turnsUsed >= maxTurns` branch).
 - Every search result URL is added to the shared `Evidence.sources` (deduped);
   every successfully fetched page to `Evidence.extracted` (deduped). Search runs in
   **English** regardless of report language.
@@ -128,8 +133,10 @@ the rest. Two layers (`research-engine.ts` + `run-job.ts`):
    a `checkpoint.json` to GCS: the `report` so far, the shared `sources` and page
    bodies (`extracted`, capped — a `gathered` agent's own pages are kept first, and
    an agent whose pages could not all be kept loses `gathered` so it re-buys them),
-   `doneAgentIds`, `gatheredAgentIds`, `fetchedByAgent`, `handoffs`, `degraded`,
-   `warnings`, `writeFailures` and the accumulated `cost`. If agents are still
+   `doneAgentIds`, `gatheredAgentIds`, `fetchedByAgent`, `touchedByAgent`,
+   `agentTraces`, `handoffs`, `degraded`, `warnings`, `writeFailures` and the
+   accumulated `cost` — read the `Checkpoint` type for the current list; this
+   sentence went stale one commit after it was written. If agents are still
    failing when the in-run attempts are spent and this isn't the final job attempt,
    the run returns **`incomplete`**; the worker replies `503` so **Cloud Tasks
    re-dispatches** it, and the next run resumes from the checkpoint (done agents are

@@ -90,7 +90,7 @@ say otherwise"*, `florida-business-for-sale.ts:954`).
 
 ---
 
-## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014)`
+## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
 ("Your preferences", seven directive rows of chips) and 05 ("In your own words")
@@ -146,7 +146,12 @@ something inside without opening it, and the lead changes with the state (empty 
 filled → assist off). Canvas of the three options considered:
 https://claude.ai/code/artifact/4d732a3e-ab48-4d9e-ac29-9d66c0f97520
 
-**Built in `16e7014`.** Two things the design walked into, both found by building it
+**Built in `16e7014`, finished in `3397da8`.** The stamp used to name `16e7014`
+alone, which is the commit that collapses section 04 behind a link — the "never both
+at once" that titles this entry is `3397da8` ("one section, two ways — the box or
+the fields, never both"), with `2bf0b97` fixing the block that closed under the
+buyer's cursor and `c0805a7` in between (round 8, R8-31). Two things the design
+walked into, both found by building it
 rather than by reading: the preview key had to stop including the directive block
 (or every chip click would spend an assisted attempt re-approving a value we
 proposed), and `correctedParams` had to be applied field by field (or accepting a

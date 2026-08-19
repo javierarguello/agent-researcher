@@ -41,9 +41,7 @@ This layer alone is a complete preview. Everything below is an enhancement.
 A proposed value is then put through five gates before anyone sees it:
 
 1. the field must be on `preflight.correctable` (for the Florida model: only
-   `location` and `industry` — never a number). A separate list, `preflight.fillable`,
-   says which EMPTY fields the buyer's own words may fill — Florida lists `location`
-   and nothing else, and a fill needs a verbatim quote plus the buyer's tick;
+   `location` and `industry` — never a number);
 2. `sanitizeProposal` strips links, markup and control characters, and truncates
    to the schema's limit;
 3. it must not be longer than the original **+40 characters** (`MAX_EXPANSION`) — a
@@ -53,6 +51,22 @@ A proposed value is then put through five gates before anyone sees it:
    "Austin, Texas" doesn't;
 5. the whole params object, with the value applied, must re-validate against the
    template's Zod schema.
+
+A **fill** is a different path with different gates, and it was written here as a
+clause inside gate 1 — which reads as five gates plus a quote, when in fact a fill
+passes neither gate 3 nor gate 4 and cannot: there is no original to expand from or
+resemble. `preflight.fillable` says which EMPTY fields the buyer's own words may
+fill (Florida lists `location` and nothing else), and a fill must:
+
+- name a field that is empty — a value the buyer typed is never touched;
+- come with a quote that appears VERBATIM in what they wrote, and that quote must
+  contain some word of the value itself, so «una» cannot arrive as the evidence for
+  `Orlando, FL`;
+- survive `sanitizeProposal` and the field's own `maxLength` (measured on the raw
+  value, so one that does not fit is refused rather than trimmed into one that does);
+- re-validate as params, like gate 5.
+
+It then reaches the buyer UNTICKED, always: nothing is applied unless they say so.
 
 What survives is returned **as a diff**, plus a `correctedParams` object. Nothing
 is silently rewritten: the user sees `maimi dade → Miami-Dade County, FL` with a
