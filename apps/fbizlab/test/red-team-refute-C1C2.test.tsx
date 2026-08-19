@@ -127,6 +127,12 @@ describe('C2 · the Sources list on the buyer’s page', () => {
     const title = li.getAttribute('title')!;
     expect(title.startsWith('x.test — '), 'the host leads the tooltip as well as the row').toBe(true);
     expect(title).toContain('https://x.test/a');
+    // This bound is NOT reached here and cannot be: `sourceLabel` clips the label at
+    // 160, so no label alone pushes the tooltip past 320 (this tooltip is 188), and
+    // `.slice(0, 320)` can never yield more than 320 code points anyway. It stays as
+    // the shape of the contract; the case that actually reaches it — a 300-character
+    // url, where clipping by UTF-16 unit used to end the tooltip in half an emoji —
+    // is `red-team-c-attack.test.tsx`, round 8, R8-35.
     expect([...title].length).toBeLessThanOrEqual(320);
   });
 });

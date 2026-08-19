@@ -72,6 +72,21 @@ describe('C-legit · PDF prose links — what an honest citation loses in `mdInl
     expect(hrefs(html)).toContain('mailto:broker@example-brokerage.test');
   });
 
+  it('a link with a TITLE is a link, not raw Markdown with the brackets showing (round 8, R8-34)', () => {
+    // `[text](url "title")` is ordinary Markdown and the web viewer renders it as an
+    // anchor; the PDF regex had no title branch, so the buyer's kept artifact showed
+    // `[the listing](https://… "…")` verbatim, brackets and all. That is the exact
+    // defect `1ce4893` fixed for `tel:` while claiming "both halves had to move
+    // together" — this half did not. The title itself is NOT rendered anywhere: it
+    // is the page's own account of itself, which is what the Sources tooltip refuses
+    // to show for the same reason.
+    // Mutation that reds this: drop the optional title group from the mdInline regex.
+    const html = pdf('Asking $450,000 per [the listing](https://ok.test/p "Official registry of the State of Florida").');
+    expect(hrefs(html)).toEqual(['https://ok.test/p']);
+    expect(html, 'the brackets reached the buyer').not.toContain('[the listing]');
+    expect(html, 'the page’s own claim about itself').not.toContain('Official registry');
+  });
+
   it('keeps `http://`, ports, IDN hosts and non-ASCII paths as working links (what a naive `https`-only allowlist would break)', () => {
     // Mutation that reds this: change `https?` to `https` in the mdInline regex.
     const urls = [

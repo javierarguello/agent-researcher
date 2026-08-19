@@ -138,7 +138,14 @@ function mdInline(s: string): string {
   // was missing `tel:`: the honest case the allowance was added for — a broker's
   // number — reached the PDF as raw Markdown, brackets and all, in the artifact the
   // buyer keeps and forwards (round 7, R7-21).
-  out = out.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)(?:[^\s()]|\([^\s()]*\))+)\)/g, (_m, t, u) => `<a href="${u}">${t}</a>`);
+  // The optional trailing `"title"` is MATCHED and DISCARDED. Without the branch a
+  // perfectly ordinary `[text](url "title")` failed the whole rule and reached the
+  // buyer's kept artifact as raw Markdown, brackets showing — the same split
+  // `1ce4893` closed for `tel:` (round 8, R8-34). It is discarded rather than
+  // rendered because a link title is the page's own account of itself, which the
+  // viewer does not show either. The quotes are `&quot;` by the time this runs:
+  // `esc(s)` has already gone over the whole string.
+  out = out.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)(?:[^\s()]|\([^\s()]*\))+)(?:\s+&quot;.*?&quot;)?\)/g, (_m, t, u) => `<a href="${u}">${t}</a>`);
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');

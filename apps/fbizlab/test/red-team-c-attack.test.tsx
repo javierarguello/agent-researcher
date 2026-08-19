@@ -260,3 +260,46 @@ describe('C-attack · the derived sources section', () => {
     expect(container.querySelector('img')).toBeNull();
   });
 });
+
+describe('C-attack · what a link TITLE and a long url carry to the buyer (round 8, R8-34/R8-35)', () => {
+  const CLAIM = `Official registry of the State of Florida. ${'Verified by the Department of Business and Professional Regulation. '.repeat(70)}`;
+
+  it('a titled prose link carries no tooltip at all — the page’s own account of itself is not ours to display', () => {
+    // R7-24 bounded the Sources tooltip at 320 code points precisely because "an
+    // attacker page's 4,900-character claim about its own authority was one hover
+    // from being displayed exactly as written". The PROSE link's `title` reached the
+    // same three surfaces with no bound: react-markdown maps a Markdown title onto
+    // the attribute and `MD.a` spread it through. Bounding it would still print the
+    // page's account of itself; the Sources tooltip shows what WE composed — host,
+    // clipped label, url — and this shows nothing.
+    // Mutation that reds this: spread `p` into the anchor again.
+    const { container } = render(
+      <ReportViewer report={{ m: { text: `See the [official listing](https://attacker.test/p "${CLAIM}")` } }} sections={[{ key: 'm', title: 'M' }]} lang="en" />,
+    );
+    const a = container.querySelector('a[href="https://attacker.test/p"]')!;
+    expect(a, 'the link itself still works').toBeTruthy();
+    expect(a.getAttribute('title')).toBeNull();
+    expect(container.textContent).not.toContain('Official registry of the State of Florida');
+  });
+
+  it('the Sources tooltip clips by CODE POINT, and the bound is reachable — a long url used to end it in half an emoji', () => {
+    // `2c346de` fixed exactly this for `progress.detail` in the same batch, and
+    // `clientProgress` carries the comment "By CODE POINT, like `sourceLabel` and
+    // the handoff cut". This one `.slice(0, 320)` was the exception (R8-35). The
+    // fixture needs a long URL, not a long label: `sourceLabel` bounds the label at
+    // 160, so no label can push the tooltip to 320 on its own — which is why the
+    // old pin's 5,000-char label could not reach the bound it asserted.
+    // Mutation that reds this: `.slice(0, 320)` on the string instead of on its
+    // code points.
+    // 265 + the prefix puts unit 320 in the middle of a surrogate pair; the old
+    // `.slice` ended the tooltip in a lone high surrogate and the screen painted `�`.
+    const url = `https://x.test/${'a'.repeat(265)}${'🏖'.repeat(30)}`;
+    const { container } = render(
+      <ReportViewer report={{ sources: { items: [{ id: 1, url, label: 'Beach Laundromats' }] } }} sections={[{ key: 'sources', title: 'Sources' }]} lang="en" />,
+    );
+    const title = container.querySelector('ul.rv-sources li')!.getAttribute('title')!;
+    expect([...title], 'the bound is reached, not merely respected').toHaveLength(320);
+    const lastUnit = title.charCodeAt(title.length - 1);
+    expect(lastUnit >= 0xd800 && lastUnit <= 0xdbff, 'the tooltip ends in a lone high surrogate').toBe(false);
+  });
+});

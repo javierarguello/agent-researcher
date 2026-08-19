@@ -130,7 +130,14 @@ function ChartSpecRender({ spec, f }: { spec: ChartSpec; f: NumFmt }) {
 const MD = {
   // A link with no href left after `proseUrl` (an unsafe scheme) is its text, not a
   // dead anchor styled as a live one.
-  a: (p: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (p.href ? <a {...p} target="_blank" rel="noopener noreferrer" /> : <>{p.children}</>),
+  // `title` is dropped, not clipped. react-markdown maps `[t](url "title")` onto
+  // the attribute, and that string is the PAGE'S OWN ACCOUNT OF ITSELF, written
+  // after reading attacker-controlled evidence — 5,160 characters of "Official
+  // registry of the State of Florida" was one hover from being displayed exactly as
+  // written, unbounded, on all three surfaces. R7-24 bounded the Sources tooltip for
+  // this reason and kept what WE compose (host, clipped label, url); here there is
+  // nothing of ours to keep (round 8, R8-34).
+  a: ({ title: _title, ...p }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (p.href ? <a {...p} target="_blank" rel="noopener noreferrer" /> : <>{p.children}</>),
   img: () => null,
 };
 const Prose = ({ md }: { md: string }) => <div className="prose"><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{md}</Markdown></div>;
@@ -251,7 +258,10 @@ function SourceList({ items }: { items: Source[] }) {
     // the row shows (host first, label clipped) plus the url, so hovering cannot
     // reveal 4,900 characters of a title an attacker wrote about their own
     // authority — the thing `sourceLabel` exists to bound (round 7, R7-24).
-    <li key={i} title={`${sourceLabel(s)} — ${s.url}`.slice(0, 320)}>{safeHref(s.url)
+    // By CODE POINT: a `.slice(0, 320)` on the string ended a long url in a lone
+    // high surrogate and the screen painted `?` (round 8, R8-35). `sourceLabel`
+    // already cuts this way; this was the one line in the batch that did not.
+    <li key={i} title={Array.from(`${sourceLabel(s)} — ${s.url}`).slice(0, 320).join('')}>{safeHref(s.url)
       ? <a href={safeHref(s.url)!} target="_blank" rel="noreferrer"><span className="rv-src-arrow">↗</span>{sourceLabel(s)}</a>
       : <span><span className="rv-src-arrow">↗</span>{sourceLabel(s)}</span>}</li>
   ))}</ul>;
