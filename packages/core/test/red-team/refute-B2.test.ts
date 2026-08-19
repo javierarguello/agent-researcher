@@ -173,11 +173,18 @@ const LOTS: Page[] = Array.from({ length: 30 }, (_, i) => ({
 class Replay extends MockLlmProvider {
   private i = 0;
   private fetched: string[] = [];
+  /** What the LOOP handed back for each `update_plan` — the plan breaker's other half. */
+  readonly planResponses: Array<Record<string, unknown>> = [];
   constructor(private readonly seq: string, private readonly cachedUrl = LOTS[0]!.url) { super(); }
   override async generate(opts: GenerateOptions): Promise<GenerateResult> {
     this.calls += 1;
     const usage = { inputTokens: 100, outputTokens: 30 };
     if (!opts.tools?.length) return super.generate(opts);
+    for (const m of opts.messages) {
+      if (m.role !== 'tool' || m.toolResult?.name !== 'update_plan') continue;
+      const r = m.toolResult.response as Record<string, unknown>;
+      if (!this.planResponses.includes(r)) this.planResponses.push(r);
+    }
     const ch = this.seq[this.i++];
     if (!ch) return { text: 'Ready to write.', toolCalls: [], usage };
     let call: ToolCall;
@@ -242,8 +249,15 @@ describe('refute B2 · today’s gather on the real sequences', () => {
       expect(r.stop).toBe('stalled');
       expect(notes.some((n) => /Stopping research: 4 plan updates in a row/.test(n)), `${name}: the stop is said`).toBe(true);
       expect(notes.at(-1)).toMatch(/^Research loop ended: stalled \(0\/\d+ turns\)/);
-      // The nudge came first: on the third plan-only turn the plan result said stop planning.
       expect(notes.filter((n) => n.startsWith('Plan updated')).length).toBeLessThanOrEqual(seq.indexOf('PPPP') + 4);
+      // The nudge came first, ASSERTED. This comment used to sit over the note count
+      // above it, which says nothing about what the model was handed: deleting the
+      // whole `stopPlanning` block left the suite green (round 7, R7-31 / G1-verify
+      // F5). What the loop TELLS the model is the half of the breaker that offers it
+      // a way out; the other half (dropping `forceTools`) was already pinned.
+      expect(p.planResponses.some((r) => r.stopPlanning === true), `${name}: the model was told to stop planning`).toBe(true);
+      expect(String(p.planResponses.find((r) => r.stopPlanning)?.message)).toMatch(/web_search \/ fetch_page a NEW url now/);
+      expect(p.planResponses[0]?.stopPlanning, 'not on the first plan of the run').toBeUndefined();
     }
   });
 
@@ -362,7 +376,7 @@ describe('refute B2 · today’s gather on the real sequences', () => {
 // ============================================================================
 
 describe('refute B2 · what fits in one loop response', () => {
-  it('at gatherMaxOutputTokens=4096, ~150 minimal update_plan calls fit at most (≈27 tokens each); 400 in one turn is unreachable, and evicting the "Writing" note needs ≥299 notes from ONE agent', () => {
+  it('at gatherMaxOutputTokens=4096, ~227 minimal update_plan calls fit at most (≈18 tokens each — the number this test PRINTS; its title used to say ~150/≈27); 400 in one turn is unreachable, and evicting the "Writing" note needs ≥299 notes from ONE agent', () => {
     expect(config.llm.gatherMaxOutputTokens).toBe(4096);
     // A minimal call as the model must emit it: name + args JSON. ~4 chars/token is
     // generous for JSON punctuation; the real ratio is nearer 3, i.e. MORE tokens.

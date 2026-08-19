@@ -10,7 +10,8 @@
  * prompt. `rankEvidence` is the fix; these pin its properties, not a number.
  */
 import { describe, it, expect } from 'vitest';
-import { rankEvidence, urlsIn } from '../src/engine/prompt.js';
+import { rankEvidence, urlsIn, buildProducerSynthPrompt } from '../src/engine/prompt.js';
+import { z } from 'zod';
 
 const u = (host: string, n: number) => ({ url: `https://${host}/p/${n}` });
 const list = (host: string, n: number, from = 1) => Array.from({ length: n }, (_, i) => u(host, from + i));
@@ -124,5 +125,55 @@ describe('urlsIn · the URLs a writer is handed in its sections', () => {
     expect(found.size).toBe(3);
     expect(urlsIn(undefined).size).toBe(0);
     expect(urlsIn({}).size).toBe(0);
+  });
+});
+
+
+// --- The production caller (R7-31 / G1-verify F4) ------------------------------
+//
+// Every test above passes its OWN `perDomain`, so the per-host pass is pinned and
+// the values production actually uses are not: setting `FOREIGN_PER_DOMAIN_PAGES`
+// and `FOREIGN_PER_DOMAIN_SNIPPETS` to 999 — i.e. turning diversity-first off in
+// production — left the whole core suite green. That is standing lesson 1 in
+// miniature: the guard is tested, the caller is not. These go through the prompt
+// builder the engine calls, with no `perDomain` of their own.
+describe('the dossier a writer actually receives is diversity-first', () => {
+  const agent = { id: 'scout', role: 'producer' as const, objective: 'Find things.', produces: ['findings'] };
+  const sections = [{ key: 'findings', title: 'Findings', guidance: 'Write it.', schema: z.object({ text: z.string() }) }];
+  /** 20 pages from one host, then one page each from two others — the farm shape. */
+  const pages = [
+    ...Array.from({ length: 20 }, (_, i) => ({ url: `https://farm.example/p/${i + 1}`, ok: true, content: `FARM-${i + 1}` })),
+    { url: 'https://honest-a.example/p/1', ok: true, content: 'HONEST-A' },
+    { url: 'https://honest-b.example/p/1', ok: true, content: 'HONEST-B' },
+  ];
+  const results = pages.map((p, i) => ({ url: p.url, title: `T${i}`, snippet: `S${i}` }));
+
+  const prompt = () =>
+    buildProducerSynthPrompt({
+      agent, brief: 'Find things.', sections, evidence: results, extracted: pages, context: {}, lang: 'en',
+    } as never);
+
+  it('puts a minority host in front of the farm’s fourth page — the cap production runs with, through the builder', () => {
+    // Mutation that reds this: `FOREIGN_PER_DOMAIN_PAGES = 999`.
+    const order = [...prompt().matchAll(/\[P\d+\] Full page content — (\S+)/g)].map((m) => new URL(m[1]!).hostname);
+    expect(order.slice(0, 5)).toEqual(['farm.example', 'farm.example', 'farm.example', 'honest-a.example', 'honest-b.example']);
+  });
+
+  it('…and the same for snippets, whose cap is a different number', () => {
+    // Mutation that reds this: `FOREIGN_PER_DOMAIN_SNIPPETS = 999`. Eight, not three:
+    // a snippet is one line, so a store that is legitimately one marketplace still
+    // reads as one marketplace.
+    const hosts = [...prompt().matchAll(/\n\s+URL: (\S+)/g)].map((m) => new URL(m[1]!).hostname);
+    expect(hosts.slice(0, 10)).toEqual([
+      ...Array.from({ length: 8 }, () => 'farm.example'),
+      'honest-a.example',
+      'honest-b.example',
+    ]);
+  });
+
+  it('and the dossier is still FULL — the cap decides order, never volume', () => {
+    const p = prompt();
+    expect([...p.matchAll(/\[P\d+\] Full page content/g)]).toHaveLength(14);
+    expect([...p.matchAll(/\n\s+URL: /g)].length).toBe(22);
   });
 });
