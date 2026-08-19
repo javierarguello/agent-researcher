@@ -547,8 +547,10 @@ describe('F5 · a cached-fetch/plan-spam loop is cut off instead of growing to t
     console.log(`F5 loop calls: ${loop.length}, turnsUsed: ${out.turnsUsed}, total loop chars: ${total}, first: ${sizes[0]}, last: ${sizes.at(-1)}`);
 
     // The measurement this test exists for. With the general breaker reverted
-    // (`NO_PROGRESS_TURNS_LIMIT = 9999`) the same attack runs 54 calls / 838,702
-    // chars, its last request 22× its first; here it is 12 and ~50k. The
+    // (`NO_PROGRESS_TURNS_LIMIT = 9999`) the same attack runs 54 calls / 893,430
+    // chars, its last request 23× its first; here it is 12 and ~56k. (Both re-measured
+    // at production density, 8 results per query — they read 838,702 / 22× / ~48k
+    // while the fixture returned 5, R8-30.) The
     // per-request growth is unchanged (the conversation still accumulates, which is
     // what KEEP_FULL_PAGES does not bound) — what changed is how long it may go on.
     // 12, not R7-3's 13: the spam re-reads ONE url, whose second body-returning read

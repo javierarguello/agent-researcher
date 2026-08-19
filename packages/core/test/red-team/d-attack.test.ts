@@ -227,7 +227,7 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     expect(m.attempts).toEqual({ scout: 1, refiner: 1, advisor: 1 });
   });
 
-  it('measured: write-breaker → 9 structured calls (vs 3), both producers fail, findings LOST, 2.8× the chars sent to the writer', async () => {
+  it('measured: write-breaker → 9 structured calls (vs 3), both producers fail, findings LOST, 2.9× the chars sent to the writer', async () => {
     const base = await control();
     const mock = install([WRITE_BREAKER]);
     restore = poison([], [WRITE_BREAKER]);
@@ -254,7 +254,7 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     expect(m.loop).toBe(base.m.loop);
     // What the buyer receives: the placeholder, at full price.
     expect(out.meta.sections).toEqual([{ key: 'findings', status: 'lost' }]);
-    // Chars sent to the WRITER — the pro-priced call in the flagship — 2.8× control.
+    // Chars sent to the WRITER — the pro-priced call in the flagship — 2.9× control.
     // (`usd` here barely moves: at flash rates with this model's small dossier the
     // mock's bill is mostly search calls; the report prices the Florida writes.)
     expect(m.structuredChars).toBeGreaterThan(2.5 * base.m.structuredChars);

@@ -109,6 +109,19 @@ describe('the poisoned web', () => {
     }
   });
 
+  it('returns as many results per query as production does — 8, not 5', async () => {
+    // The fixture returned 5 while Brave asks for `count=8` and Tavily for
+    // `max_results: 8`, and that gap was not a rounding difference: at 8 a producer
+    // with six searches fills all 48 dossier snippet slots from its own results, so
+    // the `referenced` tier rendered nothing in production while every test passed
+    // (R7-2). It was then fixed for ONE test and left at 5 for every other
+    // end-to-end measurement — cost per turn, turns to exhaustion, what a writer
+    // sees — all taken at a density production never runs at (round 8, R8-30).
+    // A test that genuinely wants the sparse corpus asks with `__setResultsPerQuery(5)`.
+    const results = await searchWeb('laundromat for sale Miami');
+    expect(results).toHaveLength(8);
+  });
+
   it('crowd() produces distinct pages that all outrank the corpus', async () => {
     restore = __setExtraPages(crowd(60));
     const results = await searchWeb('laundromat for sale Miami');

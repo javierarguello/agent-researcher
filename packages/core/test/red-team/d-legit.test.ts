@@ -298,7 +298,7 @@ describe('1 · honest baseline on the red-team model (essential by default: budg
     expect(Math.max(2, Math.round(3 * mode.config.budgetScale))).toBe(2);
   });
 
-  it('stock MockLlmProvider: 11 generate calls, 8 loop calls, 4 turns, 25.7k loop chars; obedient(no payloads): 13 calls, 10 loop, 4 turns, 42.0k loop chars', async () => {
+  it('stock MockLlmProvider: 11 generate calls, 8 loop calls, 4 turns, 27.2k loop chars; obedient(no payloads): 13 calls, 10 loop, 4 turns, 47.5k loop chars', async () => {
     // A: the stock mock (plan → 2 searches → stop, no fetch).
     const stock = installMockProvider();
     const seenStock: SeenPrompt[] = [];
@@ -325,12 +325,13 @@ describe('1 · honest baseline on the red-team model (essential by default: budg
       expect(r.out.meta.sections ?? []).toEqual([]); // nothing degraded — the honest run is whole
     }
     // The property every attack row is measured against: the honest obedient
-    // control is 4 turns / 10 loop calls / ~42k loop chars. A cap that stops THIS
-    // is a cap on the product.
+    // control is 4 turns / 10 loop calls / ~47k loop chars — at PRODUCTION density,
+    // 8 results per query; it read ~42k while the fixture returned 5 (R8-30). A cap
+    // that stops THIS is a cap on the product.
     expect(b.out.turnsUsed).toBe(4);
     expect(obedient.seen.filter((p) => p.kind === 'loop').length).toBe(10);
-    expect(loopChars(obedient.seen)).toBeGreaterThan(38_000);
-    expect(loopChars(obedient.seen)).toBeLessThan(46_000);
+    expect(loopChars(obedient.seen)).toBeGreaterThan(43_000);
+    expect(loopChars(obedient.seen)).toBeLessThan(52_000);
     // …and the engine's $ is a per-call figure: 13 calls × fixed usage + 4 search turns.
     expect(b.out.trace.cost.searchCalls).toBe(4);
     expect(b.out.trace.cost.inputTokens).toBe(13 * 200);
@@ -354,7 +355,7 @@ describe('2 · Florida comprehensive, honest & diligent — the denominator', ()
       });
   }
 
-  it('one tool per turn, plan once, full budget: 169 calls = 154 loop + 15 writes / 92 turns; 3.41M loop chars + 0.54M write chars = 3.94M; largest loop request 49.4k, largest write 67.4k; est. $0.26 loop + $0.68 write LLM vs $1.63 search', async () => {
+  it('one tool per turn, plan once, full budget: 172 calls = 157 loop + 15 writes / 92 turns; 4.03M loop chars + 0.55M write chars = 4.58M; largest loop request 60.6k, largest write 67.7k; est. $0.31 loop + $0.69 write LLM vs $1.65 search', async () => {
     const p = new HonestDiligentProvider(florida, { fullBudget: true });
     install(p);
     const { out, checkpoint } = await run(florida, FLORIDA_COMPREHENSIVE);
@@ -386,15 +387,18 @@ describe('2 · Florida comprehensive, honest & diligent — the denominator', ()
     // (b) the loop's request grows LINEARLY with turns (search results + page
     //     stubs + plan args stay in the conversation; bodies are trimmed to
     //     KEEP_FULL_PAGES): the 24-turn deal-scout's largest request is ~3.2× an
-    //     8-turn agent's, i.e. within 1.5× of the 3× a linear bound predicts.
+    //     8-turn agent's (~3.3× at production density), i.e. within 1.5× of the
+    //     3× a linear bound predicts.
     //     (Fake pages are ~1k chars, so KEEP_FULL_PAGES is invisible here — the
     //     real 6k-page case is the July trace: deal-scout 1.9M input tokens over
     //     ~46 iterations pre-C4.)
     const largest = (id: string) => Math.max(...loop.filter((s) => s.agent === id).map((s) => s.chars));
     expect(largest('deal-scout')).toBeLessThan(4.5 * largest('market-analyst'));
-    // (c) the whole honest run is under 4.5M chars (~1.1M tokens): the denominator
-    //     for every "×N" D-attack claims.
-    expect(loopChars + writeChars).toBeLessThan(4_500_000);
+    // (c) the whole honest run is under 5M chars (~1.25M tokens): the denominator
+    //     for every "×N" D-attack claims. It was 3.94M / a 4.5M bound while the
+    //     fixture returned 5 results per query; production returns 8 (R8-30), and
+    //     every figure in this test's title moved with it.
+    expect(loopChars + writeChars).toBeLessThan(5_000_000);
     // (d) the honest job's estimated LLM spend is under 1/20 of the ceiling; at
     //     Tavily rates SEARCH is the larger honest line.
     expect(est.loop + est.write).toBeLessThan(maxCostForMode(florida.modes!.comprehensive!, config.workflow.maxJobCostUsd) / 20);

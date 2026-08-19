@@ -250,9 +250,13 @@ export function canExtractPages(): boolean {
  * the gap hid a real defect: at 8/query a producer with six searches fills all 48
  * dossier snippet slots with its own results, which is how the `referenced` tier
  * turned out to be unreachable in production while every test passed (R7-2).
- * Tests that measure density set it to 8.
+ * So the default IS production's 8 (round 8, R8-30). It was 5 while exactly one
+ * test set 8 for itself, which left every other end-to-end measurement — cost per
+ * turn, turns to exhaustion, what a writer sees — taken at a density production
+ * never runs at. A test that genuinely wants the sparse corpus asks for it with
+ * `__setResultsPerQuery(5)`.
  */
-let RESULTS_PER_QUERY = 5;
+let RESULTS_PER_QUERY = 8;
 
 /** Set the results-per-query for one test; returns the restore. */
 export function __setResultsPerQuery(n: number): () => void {
