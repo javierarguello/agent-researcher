@@ -116,7 +116,7 @@ class Searcher implements LlmProvider {
   }
 }
 
-describeMock('B1 refute · the SNIPPET half at production density (5 fresh results per query)', () => {
+describeMock('B1 refute · the SNIPPET half with a sparse corpus (5 matching pages per query)', () => {
   it('a wave-2 producer that searched 3× and fetched 1 page: its page AND all 15 of its own results render, first (before the fix: NONE of the 15 — the store head, wave 1, filled all 48)', async () => {
     restore = __setExtraPages(LOTS);
     const model = new Searcher();
@@ -358,6 +358,11 @@ describeMock('B1 refute · the REFERENCED tier at production density (8 results 
     // reaches (round 9, R9-8). It is pinned at the unit level and by nothing end to
     // end, and that is worth knowing rather than implying otherwise.
     expect(referencedVisible, 'the listings the enricher is told to fill gaps in').toBe(12);
+    // …and they are FIRST, which is the ordering itself rather than a count that
+    // survives it: the twelve reserved slots are the twelve shortlisted urls, in
+    // store order. A count can be reached by more than one arrangement; this cannot
+    // (round 9, R9-11).
+    expect(ref.snippets.slice(0, 12).sort()).toEqual([...SHORTLISTED].sort());
     // Eight of the twelve are also its OWN results, which is the point of the
     // overlap: they are counted once, in the referenced tier, and the slots left
     // still go to what it paid for. This number is NOT the evidence for the ordering

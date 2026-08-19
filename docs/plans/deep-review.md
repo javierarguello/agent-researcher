@@ -1782,7 +1782,8 @@ paid for by a defect that shipped:
 ### Checked and TRUE by round 8 (do not re-check)
 25/26 mutation counts in the engine group, 19/20 in the API group, 31/41 in the SPA
 group — exact. The end-to-end figures 54 / 838,702 → 13 / 53,674 reproduce to the
-character; the note flood 8 / 2 / 12 after; `refute-B2`'s 54 → 52; the Gemini census
+character **at the fixture's old density of 5**; at production's 8 the same pair is
+**54 / 893,430 → 12 / 55,928** (R8-30 moved both; R9-9 is why this line says so); the note flood 8 / 2 / 12 after; `refute-B2`'s 54 → 52; the Gemini census
 (17 `minItems`, 2 `maxItems`, 5 `maxLength`, zero `minimum`/`maximum`); the seven V8
 parse kinds; `SOURCE_LABEL_MAX`'s evidence (373 rows, p90 90, max 167, one clipped);
 Brave and Tavily both at 8 results. All three `90a355f` "(0 before)" claims verified

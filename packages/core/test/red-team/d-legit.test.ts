@@ -405,7 +405,7 @@ describe('2 · Florida comprehensive, honest & diligent — the denominator', ()
     expect(out.trace.cost.searchUsd).toBeGreaterThan(est.loop + est.write);
   });
 
-  it('re-planning after every step (what the real model does: plans ≈ turns+1 in out/*/trace.json) — 234 loop calls / 79 of 92 turns; 8 of 10 producers hit maxIterations = 2·budget+6 and never conclude; 5.07M loop chars (2.4× plan-once)', async () => {
+  it('re-planning after every step (what the real model does: plans ≈ turns+1 in out/*/trace.json) — 234 loop calls / 78 of 92 turns; 8 of 10 producers hit maxIterations = 2·budget+6 and never conclude; 5.69M loop chars (1.4× plan-once)', async () => {
     // Same honest script, plus one `update_plan` after each step — the tool
     // description ("then again as you learn"), the kickoff ("(3) revise the plan
     // as you learn"), and the two real July traces (market-analyst 7 plans / 6
@@ -781,7 +781,7 @@ describe('5 · the $20 ceiling vs an honest comprehensive job vs the harness wor
 // =============================================================================
 
 describe('6 · what an honest comprehensive job stores', () => {
-  it('checkpoint 174k chars here (7 pages, 137k report); real bound ≈ 200k report + 350k sources + 60 pages × 6k + 13 × 1.5k handoffs ≈ 0.94MB, all in GCS — Firestore carries only progress/cost/summary', async () => {
+  it('checkpoint 185k chars here (8 pages, 137k report); real bound ≈ 200k report + 350k sources + 60 pages × 6k + 13 × 1.5k handoffs ≈ 0.94MB, all in GCS — Firestore carries only progress/cost/summary', async () => {
     const p = new HonestDiligentProvider(florida, { replan: true, fullBudget: true });
     install(p);
     const { out, checkpoint } = await run(florida, FLORIDA_COMPREHENSIVE);
@@ -797,7 +797,7 @@ describe('6 · what an honest comprehensive job stores', () => {
       'real upper bound est.': `${k(200_000 + 360_000 + 60 * 6_000 + 13 * 1_500)} (report+sources+60×6k pages+handoffs)`,
     }]);
     // Properties: the checkpoint's page list is capped (mutation that reds it:
-    // CHECKPOINT_MAX_PAGES 60 → Infinity would not change THIS honest run — 26
+    // CHECKPOINT_MAX_PAGES 60 → Infinity would not change THIS honest run — 8
     // pages — so the cap is asserted directly against the constant's contract).
     expect(extracted.length).toBeLessThanOrEqual(60);
     // Handoffs are cut at MAX_HANDOFF_CHARS each — 13 agents × 1.5k = ≤ 19.5k.
@@ -814,7 +814,7 @@ describe('6 · what an honest comprehensive job stores', () => {
     expect(bytes).toBeLessThan(1_000_000);
   });
 
-  it('essential vs comprehensive honest turns: 40 vs 92 (Σ budgets × budgetScale, 8 vs 10 producers — D1\'s figures); est. $1.31 vs $2.58 all-in: essential is ~51% of the cost at 28% of the credits', async () => {
+  it('essential vs comprehensive honest turns: 40 vs 92 (Σ budgets × budgetScale, 8 vs 10 producers — D1\'s figures); est. $1.31 vs $2.65 all-in: essential is ~50% of the cost at 28% of the credits', async () => {
     const p = new HonestDiligentProvider(florida, { fullBudget: true });
     install(p);
     const c = await run(florida, FLORIDA_COMPREHENSIVE);

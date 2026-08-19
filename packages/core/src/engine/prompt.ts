@@ -213,7 +213,12 @@ export function urlsIn(value: unknown): Set<string> {
   const seen = new WeakSet<object>();
   const scan = (text: string): void => {
     // A URL in prose ends with the sentence's punctuation more often than not.
-    for (const m of text.matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) out.add(m[0].replace(/[.,;:!?]+$/, ''));
+    // `\` is excluded because no URL can contain one (RFC 3986 has no place for it
+    // and a browser rewrites it to `/`), so a match that keeps one matches nothing in
+    // the store — it can only ever MISS. That is the R8-18 failure in its remaining
+    // form: a model that JSON-escapes its own output writes `…/1\nhttps://…/2`, and
+    // both listings were lost in one match (round 9, R9-12).
+    for (const m of text.matchAll(/https?:\/\/[^\s"'<>)\]\\]+/g)) out.add(m[0].replace(/[.,;:!?]+$/, ''));
   };
   const visit = (v: unknown): void => {
     if (typeof v === 'string') scan(v);
@@ -272,8 +277,24 @@ export function rankEvidence<T extends { url: string }>(items: T[], max: number,
     // search also returned — is the refiner's normal case, not the odd one. Under
     // the old order it fell to `touched`, emitted in the later of the two tiers,
     // and was subtracted from the reserve that protects the listings left
-    // (round 8, R8-19). Nothing an honest run relies on gets worse: those items
-    // rank higher, never lower.
+    // (round 8, R8-19).
+    //
+    // It is a TRADE, not a free win — "nothing an honest run relies on gets worse"
+    // was written here and is false (round 9, R9-8). Promoting an overlapping item
+    // grows `reserve`, and the reserve is taken out of `fetched`, which is served
+    // `max - reserve` first. The SNIPPET call needs 37 fetched-and-in-store urls to
+    // feel that, which no budget reaches; the PAGES call (`max = MAX_PAGES = 14`)
+    // reaches it at EIGHT, and then pages the agent PAID to fetch leave the dossier
+    // to make room for listings it was handed. Measured, both sides, in
+    // `evidence-ranking.test.ts` — 10 own pages and 8 referenced gives 7 own + 7
+    // referenced here, against 10 own + 4 referenced before.
+    //
+    // Which side is right is a product question nobody has been asked: a listing the
+    // writer was told to fill gaps in probably should outrank a page it fetched on
+    // its own, and the two halves of `rankEvidence` share one reserve constant while
+    // wanting different ones. Left as it is, and written down, rather than changed
+    // quietly — capping the reserve by what `fetched` needs turns the R7-2 defence
+    // off for exactly the agents a re-dispatch produces.
     if (prefer?.fetched?.has(it.url)) fetched.push(it);
     else if (prefer?.referenced?.has(it.url)) referenced.push(it);
     else if (prefer?.touched?.has(it.url)) touched.push(it);

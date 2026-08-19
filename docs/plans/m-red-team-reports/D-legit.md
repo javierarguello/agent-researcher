@@ -1,5 +1,14 @@
 # D-legit — cost and waste inside the ceiling / LEGITIMATE USER
 
+> **Measured at the fixture's old search density of 5 results per query.** `8901f60`
+> (round 8, R8-30) moved the default to production's 8, and the figures moved with
+> it: the obedient control 42.0k → **47.5k** loop chars, the honest Florida
+> denominator 3.94M → **4.58M** total, the re-plan run 5.07M → **5.69M**, D1's write
+> ratio 2.80× → **2.86×**. The numbers below are the record of what was measured on
+> the day; the sentences that describe what the LIVE tests assert have been updated
+> in place (round 9, R9-9). A figure here that disagrees with a current test is this
+> banner, not a defect.
+
 ## Verdict for the surface: held by accident
 The ceiling ($20, both Florida modes) never touches an honest job (est. $2.6 today, $3.9 real pre-C4 → 5–8× headroom) and never touches the harness's worst spend payload either (plan-spam × all 10 producers = +$0.46 est., 2.3% of it) — what actually bounds waste is `maxIterations = 2·budget+6`, and that bound is a NUMBER, not a property: it already cuts honest, diligent agents (8 of 10 Florida producers in the mock; three agents at the bound in the two real July traces) before their paid budget is spent, and it is invisible in the trace.
 
@@ -70,9 +79,9 @@ Ceiling: `florida.modes.{comprehensive,essential}.maxCostUsd` undefined → `MAX
 ## Tests written
 `packages/core/test/red-team/d-legit.test.ts` — 16 tests, all green (one is `it.fails`), typecheck clean, ~0.4 s. Mock only; honest fake web; poisoned corpus used once (section 5 A/B).
 - `1 · … runs in ESSENTIAL mode …` — pins the harness's mode/budgets (mutation: give `redTeamModel` a `modes` with budgetScale 1 → red).
-- `1 · stock MockLlmProvider: 11 calls … obedient: 13 calls, 10 loop, 4 turns, 42.0k loop chars` — the harness control as a stable measurement; pins turns 4 / loop calls 10 / loop chars 38–46k / 13×200 input tokens (mutation: any change to the obedient default script or `KEEP_FULL_PAGES` → red).
-- `2 · one tool per turn, plan once, full budget: 169 calls … 92 turns … 3.94M chars …` — the flagship honest denominator; asserts turns == Σ budgets, no producer at the bound, deal-scout largest request < 4.5× an 8-turn agent's, total < 4.5M chars, est. LLM < ceiling/20, search > LLM, `meta.sections` empty (mutation: `maxIterations` → `maxTurns + 6` → red on "no producer at bound"; PROSE ignoring `maxLength` → red on `meta.sections`).
-- `2 · re-planning after every step … 79 of 92 turns; 8 of 10 producers hit maxIterations …` — measurement of today (pins 8 and 79, and that no note mentions the stall).
+- `1 · stock MockLlmProvider: 11 calls … obedient: 13 calls, 10 loop, 4 turns, 42.0k loop chars` — the harness control as a stable measurement; pins turns 4 / loop calls 10 / loop chars 43–52k / 13×200 input tokens (mutation: any change to the obedient default script or `KEEP_FULL_PAGES` → red).
+- `2 · one tool per turn, plan once, full budget: 172 calls … 92 turns … 4.58M chars …` — the flagship honest denominator; asserts turns == Σ budgets, no producer at the bound, deal-scout largest request < 4.5× an 8-turn agent's, total < 5M chars, est. LLM < ceiling/20, search > LLM, `meta.sections` empty (mutation: `maxIterations` → `maxTurns + 6` → red on "no producer at bound"; PROSE ignoring `maxLength` → red on `meta.sections`).
+- `2 · re-planning after every step … 78 of 92 turns; 8 of 10 producers hit maxIterations …` — measurement of today (pins 8 and 78, and that no note mentions the stall).
 - `2 · PROPERTY (fails today): an honest producer that re-plans once per step and re-reads ≤ 6 cached pages spends its whole budget …` — **`it.fails`**, F1; goes red (i.e. starts passing) when free iterations stop eating the paid budget.
 - `2 · honest re-planning is what the prompts ask for` — pins the three sentences that invite re-planning and the absence of any stated limit.
 - `3 · a 503 on the WRITE: +1 call, +0 turns …` — pins in-dispatch reuse (mutation `research.done = false` → red).

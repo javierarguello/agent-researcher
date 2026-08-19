@@ -110,6 +110,36 @@ describe('rankEvidence · the referenced reserve is not a free pass for one host
     expect(out).toHaveLength(10);
   });
 
+  it('the reserve is paid for by the writer’s OWN pages, and the PAGES call reaches that at 8 (round 9, R9-8)', () => {
+    // "Nothing an honest run relies on gets worse" was written about classifying
+    // `referenced` before `touched`, and it is false. Promoting an overlapping item
+    // GROWS the reserve, and the reserve is subtracted from `fetched`, which is
+    // served `max - reserve` first — so pages the agent paid to fetch leave the
+    // dossier to make room for listings it was handed.
+    //
+    // The SNIPPET call needs 37 fetched-and-in-store urls to feel it, which no
+    // research budget reaches. The PAGES call is `max = MAX_PAGES = 14`, and it
+    // reaches it at EIGHT — which every producer reaches. Measured here rather than
+    // described, because the comment that described it got the number wrong.
+    const own = list('mine.example', 10);
+    const shortlist = list('shortlist.example', 8);
+    const store = [...own, ...shortlist];
+    const prefer = {
+      fetched: new Set(own.map((x) => x.url)),
+      touched: new Set(shortlist.map((x) => x.url)),
+      referenced: new Set(shortlist.map((x) => x.url)),
+    };
+    const out = rankEvidence(store, 14, 3, prefer);
+    // reserve = min(8, 7) = 7, so `fetched` is served 14 − 7 = 7 of its 10.
+    expect(out.filter((x) => x.url.includes('mine.example')), 'three of its own pages are gone').toHaveLength(7);
+    expect(out.filter((x) => x.url.includes('shortlist.example'))).toHaveLength(7);
+    // The trade, stated: with the pre-`8ff7312` classification those same items were
+    // `touched`, the reserve was 0, and all ten of its own rendered.
+    const old = rankEvidence(store, 14, 3, { fetched: prefer.fetched, touched: prefer.touched });
+    expect(old.filter((x) => x.url.includes('mine.example'))).toHaveLength(10);
+    expect(old.filter((x) => x.url.includes('shortlist.example')), 'and half the listings did not').toHaveLength(4);
+  });
+
   it('and the writer’s OWN fetches are still uncapped — it paid for those', () => {
     // The tier boundary that matters: a scout that fetched twelve pages from one
     // marketplace sees all twelve. Mutation that reds this: spread `fetched` too.
@@ -202,11 +232,19 @@ describe('urlsIn · the URLs a writer is handed in its sections', () => {
     const found = urlsIn({ body: 'See https://acme-brokers.com/listing/9182\nNext line.' });
     expect(found.has('https://acme-brokers.com/listing/9182')).toBe(true);
     expect(found.size).toBe(1);
-    // The same for the other escapes a section value can carry. A REAL backslash
-    // in the string stays part of the match — it is a character the section
-    // contains, not an artifact of serializing it, which is the whole difference.
+    // The same for the other escapes a section value can carry — and a REAL
+    // backslash ends the match too. This used to keep it, on the reasoning that it
+    // is a character the section contains rather than an artifact of serializing it.
+    // True, and beside the point: the set is only ever used as a membership test
+    // against store urls, no url can contain a backslash, so a match that keeps one
+    // matches nothing. The shape it still lost is the one a model that JSON-escapes
+    // its own output produces (round 9, R9-12).
     expect(urlsIn({ a: 'https://a.example/x"quoted', b: 'https://b.example/y\tcol', c: 'https://c.example/z\\path' })).toEqual(
-      new Set(['https://a.example/x', 'https://b.example/y', 'https://c.example/z\\path']),
+      new Set(['https://a.example/x', 'https://b.example/y', 'https://c.example/z']),
+    );
+    // Two listings in one doubly-escaped string: both survive now, neither did.
+    expect(urlsIn({ body: 'https://a.example/1\\nhttps://b.example/2' })).toEqual(
+      new Set(['https://a.example/1', 'https://b.example/2']),
     );
   });
 });
