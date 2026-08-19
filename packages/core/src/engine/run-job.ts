@@ -520,6 +520,12 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // a synthesizer has none, and `0 · —` would read as a failure.
       ...(a.turnsUsed ? { turnsUsed: a.turnsUsed } : {}),
       ...(a.gatherStop ? { gatherStop: a.gatherStop } : {}),
+      // …and WHAT it is, which is the reason `AgentTrace.kind` was added — "so an
+      // admin can see why an agent has no turns: it is a writer". It reached the
+      // trace and no screen (round 8, R8-27): without it the Agents table prints the
+      // same `—` for a synthesizer that has no loop and a producer whose loop never
+      // ran, and those are different conversations.
+      ...(a.kind ? { kind: a.kind } : {}),
     }));
     const agentErrors = output.trace.agents
       .filter((a) => a.status === 'failed')

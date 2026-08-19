@@ -132,6 +132,29 @@ describe('a partial delivery says which parts', () => {
     expect(at('Cost')).toContain('0.38');
   });
 
+  it('says WHY an agent has no turns — it is a writer (R8-27)', async () => {
+    // `d1dab19` added `AgentTrace.kind` "so an admin can see why an agent has no
+    // turns: it is a writer". It reached the trace and no screen: `JobSummary.agents`
+    // carried six fields, `kind` was not one of them, and the Research cell printed
+    // `—` for a synthesizer exactly as it does for a producer whose loop never ran.
+    // Those are different conversations. Mutation that reds this: drop `kind` from
+    // the summary row in `run-job.ts`, or from the Research cell.
+    state.agents = [
+      { id: 'exec-summary', wave: 3, status: 'ok', durationMs: 900, attempts: 1, costUsd: 0.11, kind: 'writer' },
+      { id: 'deal-scout', wave: 1, status: 'ok', durationMs: 1000, attempts: 1, costUsd: 0.38, turnsUsed: 21, gatherStop: 'budget', kind: 'researcher' },
+    ];
+    show();
+
+    await waitFor(() => expect(screen.getAllByText('exec-summary').length).toBeGreaterThan(0));
+    const table = screen.getByText('Research').closest('table')!;
+    const headers = [...table.querySelectorAll('thead th')].map((h) => h.textContent);
+    const row = (i: number) => [...table.querySelectorAll('tbody tr')[i]!.querySelectorAll('td')].map((c) => c.textContent);
+    const writer = row(0);
+    expect(writer[headers.indexOf('Research')], 'a dash reads as "the loop did nothing"').toContain('writer');
+    // …and an agent that DID research still reads as it did.
+    expect(row(1)[headers.indexOf('Research')]).toContain('21 turns');
+  });
+
   it('shows nothing for a clean job', async () => {
     // The control: a panel that is always there is furniture, and an admin stops
     // reading it.

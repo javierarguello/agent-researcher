@@ -9,6 +9,7 @@
  * complete, useful preview.
  */
 import type { ResearchTemplate } from '../templates/types.js';
+import { directiveText } from '../templates/directives.js';
 import {
   coreIssueMessage,
   CORE_ISSUE_CODES,
@@ -98,7 +99,7 @@ export function renderPlan(
 ): string {
   if (template.preflight?.describePlan) {
     try {
-      return template.preflight.describePlan(params, ctx).trim();
+      return `${template.preflight.describePlan(params, ctx).trim()}${planDirectives(template, params, ctx.lang)}`;
     } catch {
       /* fall through to the generic renderer */
     }
@@ -109,6 +110,55 @@ export function renderPlan(
     .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
   const head = GENERIC_HEAD[ctx.lang] ?? GENERIC_HEAD.en;
   return `${head(template.name, ctx.modeLabel)}${filters.length ? ` — ${filters.join('; ')}.` : '.'}`;
+}
+
+/** "Preferences" — the lead-in for the directive clause. */
+const PREFS_LEAD: Record<Lang, string> = {
+  en: 'Preferences you set:',
+  es: 'Preferencias que indicaste:',
+  fr: 'Préférences que vous avez indiquées :',
+  pt: 'Preferências que você indicou:',
+};
+const PREFS_YESNO: Record<Lang, [string, string]> = {
+  en: ['yes', 'no'],
+  es: ['sí', 'no'],
+  fr: ['oui', 'non'],
+  pt: ['sim', 'não'],
+};
+
+/**
+ * The directives, appended to whatever the model's own `describePlan` wrote.
+ *
+ * Here and not in the template, because this is the last screen before payment and
+ * a template must not be able to forget it: `describePlan` rendered industry,
+ * location, price band, revenue, cash flow, SBA, real estate and keywords, and NO
+ * directive at all — while six of the seven decide which listings get shortlisted
+ * (round 8, R8-36). The page's proposals block lists them, but only while there
+ * are proposals: not after a second review that proposes nothing, and never for a
+ * value the buyer picked by hand.
+ *
+ * Still a pure function of the validated params, and still no user-authored text:
+ * every word here is a label from the manifest, in the buyer's language — the same
+ * strings the form showed them.
+ */
+function planDirectives(template: ResearchTemplate<any>, params: Record<string, unknown>, lang: Lang): string {
+  const spec = template.directives;
+  const set = spec ? (params[spec.key] as Record<string, unknown> | undefined) : undefined;
+  if (!spec || !set || typeof set !== 'object') return '';
+  const parts: string[] = [];
+  for (const field of spec.fields) {
+    const v = set[field.key];
+    if (v === undefined || v === null || (Array.isArray(v) && !v.length)) continue;
+    const text = directiveText(field, lang);
+    const label = (raw: string) => text.valueLabels?.[raw] ?? raw;
+    const shown =
+      typeof v === 'boolean' ? (PREFS_YESNO[lang] ?? PREFS_YESNO.en)[v ? 0 : 1]
+      : Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map(label).join(', ')
+      : typeof v === 'string' ? label(v)
+      : '';
+    if (shown) parts.push(`${text.label}: ${shown}`);
+  }
+  return parts.length ? ` ${PREFS_LEAD[lang] ?? PREFS_LEAD.en} ${parts.join('; ')}.` : '';
 }
 
 const GENERIC_HEAD: Record<Lang, (name: string, mode: string) => string> = {

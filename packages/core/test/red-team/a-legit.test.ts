@@ -473,6 +473,12 @@ describe('3a · the enricher’s current block, today and fenced', () => {
     expect(second.trace.warnings?.join('\n'), 'the delivering dispatch says what happened').toMatch(
       /Agent "refiner" rewrote "findings.listings": 3 item\(s\) where the current version had 6/,
     );
+    // …and it is DATED, like the `notes` twin it replaces. `warnings` rides the
+    // checkpoint and is seeded on resume, so an agent that shrinks the same array on
+    // two dispatches leaves two byte-identical lines and an admin cannot tell "it
+    // happened twice" from "we double-counted it" (round 8, R8-37). Mutation that
+    // reds this: drop the timestamp from the push.
+    expect(second.trace.warnings?.find((w) => /rewrote/.test(w))).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z Agent "refiner" rewrote/);
     // …and it is still not a buyer-facing degradation: the section is whole.
     expect(second.meta.sections ?? []).toEqual([]);
   });

@@ -142,6 +142,8 @@ export interface JobAgentSummary {
   turnsUsed?: number;
   /** How the loop ended: done · budget · stalled · ceiling. */
   gatherStop?: string;
+  /** `researcher` | `refiner` | `writer`; absent on traces written before it. */
+  kind?: string;
 }
 export interface JobSummary {
   mode?: string;

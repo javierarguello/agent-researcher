@@ -329,6 +329,12 @@ describe('what the admin dashboard is told about a partial delivery', () => {
     // failed agent to whoever is deciding about a refund.
     const advisor = summary.agents?.find((a) => a.id === 'advisor');
     if (advisor) expect(advisor.gatherStop).toBeUndefined();
+    // …and WHAT each one is, so the row that shows no turns says why it shows none.
+    // `AgentTrace.kind` was added for exactly that sentence and reached the trace
+    // and no screen, because this map did not copy it either (round 8, R8-27).
+    // Mutation that reds this: drop the `kind` spread in `run-job.ts`.
+    expect(scout.kind).toBe('researcher');
+    if (advisor) expect(advisor.kind, 'the agent with no loop is the one that needs saying').toBe('writer');
   });
 
   it('still counts one when a section really was lost', async () => {

@@ -47,8 +47,15 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
  * synthesizer (no loop at all), which is not the same as a loop that bought
  * nothing, and neither should render as blank.
  */
-function Research({ turnsUsed, gatherStop }: { turnsUsed?: number; gatherStop?: string }) {
-  if (!gatherStop && turnsUsed === undefined) return <Text size="sm" c="dimmed">—</Text>;
+function Research({ turnsUsed, gatherStop, kind }: { turnsUsed?: number; gatherStop?: string; kind?: string }) {
+  // No loop is not the same as a loop that did nothing. A synthesizer has no
+  // research at all — say which it is, which is the reason `kind` is written in the
+  // first place (round 8, R8-27). `—` stays for a trace written before the field.
+  if (!gatherStop && turnsUsed === undefined) {
+    return kind && kind !== 'researcher'
+      ? <Badge size="sm" variant="light" color="gray" tt="none">{kind}</Badge>
+      : <Text size="sm" c="dimmed">—</Text>;
+  }
   const turns = turnsUsed ?? 0;
   // `stalled` is a loop cut off; `ceiling` is the job's spend guard. Either with no
   // turns spent means the section was written from no research of its own.
@@ -423,7 +430,7 @@ export function JobDetail() {
                         `Duration` was reading the one to its left — the loop under
                         `Tries`, the cost under `Research`, an empty `Cost`, and the
                         retry count gone from the page (round 8, R8-8). */}
-                    <Table.Td><Research turnsUsed={a.turnsUsed} gatherStop={a.gatherStop} /></Table.Td>
+                    <Table.Td><Research turnsUsed={a.turnsUsed} gatherStop={a.gatherStop} kind={a.kind} /></Table.Td>
                     <Table.Td ta="right"><Mono size="sm">{usd(a.costUsd)}</Mono></Table.Td>
                   </Table.Tr>
                 ))}

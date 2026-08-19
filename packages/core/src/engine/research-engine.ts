@@ -552,11 +552,16 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       extracted: pages,
       doneAgentIds: [...done],
       gatheredAgentIds: gatheredIds,
-      fetchedByAgent,
-      touchedByAgent,
-      handoffs,
-      degraded,
-      warnings,
+      fetchedByAgent: { ...fetchedByAgent },
+      touchedByAgent: { ...touchedByAgent },
+      // Copied, not aliased. `snapshot()` used to hand out the live arrays and maps,
+      // so a push on the finalize tail mutated a checkpoint that had already been
+      // taken (round 8, R8-37). Harmless on today's paths — the caller serializes
+      // straight away — which is exactly the kind of aliasing that gets inherited by
+      // a caller that does not.
+      handoffs: { ...handoffs },
+      degraded: degraded.map((d) => ({ ...d })),
+      warnings: [...warnings],
       agentTraces: slimAgents(),
       cost: trace.cost,
       turnsUsed: counter.turns,
@@ -725,8 +730,15 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
                   // (round 7, R7-4). `warnings` is admin-only — the API redacts it
                   // for a buyer — and does NOT make the report degraded: an honest
                   // dedup must not tell a buyer their dossier is incomplete.
+                  // Timestamped like its `notes` twin one line up. `warnings` rides
+                  // the checkpoint and is seeded on resume, so an agent that shrinks
+                  // the same array on two dispatches left two byte-identical lines
+                  // and an admin could not tell "it happened twice" from "we
+                  // double-counted it" (round 8, R8-37). Not deduped: two shrinks of
+                  // one field on two dispatches is worse news than one, and
+                  // collapsing them hides it.
                   warnings.push(
-                    `Agent "${agent.id}" rewrote "${label}": ${after} item(s) where the current version had ${before}; ` +
+                    `${new Date().toISOString()} Agent "${agent.id}" rewrote "${label}": ${after} item(s) where the current version had ${before}; ` +
                       `the previous version is in that agent's trace output.`,
                   );
                 }

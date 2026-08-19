@@ -448,6 +448,30 @@ describe('deterministic review', () => {
     expect(es).toContain('$500,000');
   });
 
+  it('states the preferences that steer the shortlist — the last screen before payment (R8-36)', () => {
+    // "What we'll search" is the artefact the confirm step calls unforgeable, and
+    // it was silent about six of the seven directives that decide which listings get
+    // shortlisted. The proposals block on the page lists them only while there ARE
+    // proposals — not after a second review that proposes nothing, and never for a
+    // value the buyer picked by hand. So a buyer could pay with `absentee` and
+    // `financial_distress` in the request and nothing on that screen saying so.
+    // Mutation that reds this: drop the directive clause from `renderPlan`.
+    const p = params({ directives: { ownerInvolvement: 'absentee', reasonForSale: ['owner_retiring', 'estate_sale'] } });
+    const en = renderPlan(tpl, p, { lang: 'en', modeLabel: 'Essential' });
+    expect(en).toContain('Owner involvement');
+    expect(en).toContain('Absentee — a manager runs it');
+    expect(en).toContain('Owner retiring');
+    expect(en).toContain('Estate sale');
+    // In the buyer's language, from the same manifest text the form rendered.
+    const es = renderPlan(tpl, p, { lang: 'es', modeLabel: 'Esencial' });
+    expect(es).toContain('Participación del dueño');
+    expect(es).not.toContain('Owner involvement');
+    // …and a request with no preferences reads exactly as it did.
+    expect(renderPlan(tpl, params({}), { lang: 'en', modeLabel: 'Essential' })).toBe(
+      renderPlan(tpl, params({ directives: {} }), { lang: 'en', modeLabel: 'Essential' }),
+    );
+  });
+
   it('does not quote the user’s free text back into the summary', () => {
     const p = params({ instructions: 'SECRET-MARKER-XYZ prefer absentee owners' });
     expect(renderPlan(tpl, p, { lang: 'en', modeLabel: 'Essential' })).not.toContain('SECRET-MARKER-XYZ');

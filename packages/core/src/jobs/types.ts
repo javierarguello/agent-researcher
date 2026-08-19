@@ -197,6 +197,8 @@ export interface JobSummary {
     costUsd: number;
     turnsUsed?: number;
     gatherStop?: string;
+    /** `researcher` | `refiner` | `writer` — absent on traces written before it. */
+    kind?: string;
   }>;
   /** Warnings to review later (e.g. sections degraded after exhausting retries).
    *  INTERNAL: names agents and section keys, in English. Admin surfaces only. */
