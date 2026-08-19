@@ -90,6 +90,49 @@ say otherwise"*, `florida-business-for-sale.ts:954`).
 
 ---
 
+## P-4 · The mode belongs in the right-hand card, where the price is — `open`
+
+**Asked for by Javier, 2026-08-19**, with a screenshot of the current page. Today
+the mode is section **02** of the form — two wide `modecard` buttons carrying the
+label, the credit price and a one-line description
+(`apps/fbizlab/src/pages/NewReport.tsx:842-855`) — while the right-hand sticky card
+shows the mode as a read-only ROW (`:1001`) above `COST · 5 credits` and the
+GENERATE button (`:1009-1030`). So the thing that sets the price is a screen away
+from the price, and the card that adds up the order cannot change it.
+
+**What to build:** move the mode SELECTION into the summary card, the way a checkout
+lets you pick a plan or tick add-ons next to the running total — pick it where you
+see what it costs. The reference Javier gave is a checkout's add-on/mode selector.
+
+**What it touches** (read, not built):
+- `NewReport.tsx` section 02 (`:842-864`) — the mode picker leaves it; the report
+  LANGUAGE toggle currently lives in the same section and would be left alone in a
+  renamed 02, or moved with it. That is a decision, not a detail: language does not
+  change the price, so it may not belong next to the total.
+- The summary card (`:994-1030`) — `nr-sumrows`' mode row becomes a control. It is
+  the same `modes` array (`credits` per mode) that already feeds `cost` at `:359`.
+- `nr-summary` / `nr-sumcard` / `modecards` / `modecard` CSS — the two wide cards do
+  not fit a ~300px column; this needs a compact form (stacked rows with the price on
+  the right, or a segmented control) that still shows each mode's price before the
+  buyer commits, since that is the whole point of moving it.
+- **The mobile path, which is where the real work is.** The summary card is
+  `{!isMobile && (…)}` (`:993`): on a phone it does not render AT ALL, and the
+  confirm dialog is what reviews everything. So moving the picker into that card
+  DELETES the mode picker on mobile unless the mobile flow gets its own home for it
+  — a step in the wizard, or a persistent bottom bar with the total. Javier's
+  "responsive todo" is this.
+- The confirm dialog and the pre-flight summary already state the mode; both read
+  from the params, so neither changes.
+
+**Product decisions, unresolved:** whether the language toggle travels with the mode
+or stays in the form; what the mobile home for the picker is (wizard step vs sticky
+bottom bar); whether the compact picker keeps the one-line description of each mode
+or only its name and price.
+
+**Not started.** No code exists for this.
+
+---
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
