@@ -1172,9 +1172,9 @@ cache leaves the free-text box outside it.
 
 ### Fixed (2026-08-18) — eight commits, one per cluster
 All twelve P1 items. Every commit is
-revert-verified with MEASURED mutation counts in its message; suite 974 → 1023 here
-(a clean clone counts 12 fewer — see step 2). `npm test` + `npm run typecheck` green
-in the MAIN checkout after each.
+revert-verified with MEASURED mutation counts in its message; suite 974 → 1022 here
+(a clean clone counts **6** fewer — see the round 8 record below; "12" was wrong when
+it was written). `npm test` + `npm run typecheck` green in the MAIN checkout after each.
 
 | item | commit | what changed |
 |---|---|---|
@@ -1219,10 +1219,12 @@ Everything else in round 7 (the whole P2 batch, R7-11..R7-28, R7-31) is untouche
    gone). Then `git show` the commit each finding names.
 2. Fix in the order below, one commit per cluster, revert-verified, counts
    MEASURED not estimated (round 7 caught four wrong counts). Run
-   `npm test` + `npm run typecheck` in the MAIN checkout. Note: a fresh worktree
-   lacks `apps/fbizlab/.env.local` (gitignored) and 5 `rate-limit-copy` tests go
-   red for that reason alone; and 6 red-team tests are gated on `out/*/trace.json`
-   (only in Javier's checkout), so a clean clone shows 968, not 974.
+   `npm test` + `npm run typecheck` in the MAIN checkout. Note: 6 red-team tests are
+   gated on `out/*/trace.json` (only in Javier's checkout), so a clean clone shows
+   968, not 974. (The `.env.local` half of this note is obsolete: `60c92a0` gave the
+   fbizlab suite its own `vitest.config.ts` env, so a fresh worktree no longer reds
+   5 `rate-limit-copy` tests — which is what made "~16 fewer" wrong from that commit
+   onwards.)
 3. Update this section with the commit per item; then run round 8 against the
    fixes (two lenses, worktrees reset to HEAD).
 
@@ -1692,3 +1694,40 @@ default (4096 / 1024), so the `LLM_GATHER_*` wiring is NOT an incident. The
 `reconstructed` naive fix (mark it `lost`) reds 3 tests, so keeping the body is
 pinned. `cut_off` cannot fire for a loop that spent its allowance — that path is
 `budget`/`stopped`, deliberately.
+
+### Fixed (2026-08-19) — the P0 and all fourteen P1 items
+
+Suite 1071 → **1093**, measured with `npm test` in the main checkout at each commit
+(6 fewer in a clean clone — the trace-gated red-team tests). Every commit is
+revert-verified with the mutation counts in its message, and where a mutation
+measured **0 red** the message says so rather than dropping the line.
+
+| item | commit | what changed |
+|---|---|---|
+| R8-1 + R8-32 | `6fa4089` | the prod workflow passes every secret `deploy.sh` reads; `deploy.sh` REFUSES a prod deploy with an empty auth/Stripe-webhook secret; `MAX_JOB_COST_USD` joins `COMMON_ENV` |
+| R8-2, R8-3, R8-16 | `7d2e7b8` | `slice(-0)` kept the whole array, so the checkpoint's page cap switched itself off at the cap; `fetchedByAgent` is bounded by the same number, so a gathered agent stops re-buying its loop on every dispatch; the checkpoint carries `turnsUsed` instead of inferring it from billed calls |
+| R8-4, R8-7 | `f4491a5` | a cached read is progress only the first time this loop sees that URL (rotation no longer resets the breaker); the loop reads the marker-stripped tool calls everywhere, so the `web_search` result stops echoing the raw query |
+| R8-5, R8-6 | `a33a578` | `cutJson` takes a boundary only when it keeps ≥80% of the extract; the `referenced` reserve is sized from `current` alone and ordered per-host like the foreign tier |
+| R8-8, R8-13, R8-14 | `31bf481` | the admin's `Tries` cell is back (and the test reads every value through its header); every declared `focus` must appear in that agent's kickoff; a Google script that never loads no longer prints internal English over the buyer's error |
+| R8-9..R8-12 | `c5c037e` | the confirm dialog renders directive rows from the FORM, not the frozen proposals; a proposal whose sentence was deleted is dropped; the assist-off view can be left (Edit works, and the caption that is false there is gone); a stale review's correction applies only where `c.from` still matches, and a basic only fills an empty field |
+
+**R8-15, recorded rather than rewritten.** Fourteen of the previous batch's 22
+commit messages state a wrong suite total (twelve by one, `c0805a7` by two,
+`3397da8` by two, `90a355f` by three), and eight state a wrong `+N tests`. G4-verify
+re-measured all 22 in a scratch worktree calibrated to reproduce 974 and 1071
+exactly. Those commits are on main; the correction lives here. The rule that
+produces it is always the same one R7-28 named — a total carried from
+`previous + estimate` instead of re-read from the command that just ran — and it
+survived `2c346de` correcting two instances because the other twelve were never
+re-measured.
+
+**And the constant those numbers were reconciled against was wrong.** A clean clone
+counts **6** fewer than the main checkout, not 12, not "the same", not "~16": the
+six red-team tests gated on `out/*/trace.json`. "~16" was an accurate description of
+the world before `60c92a0` (6 gated + 5 `.env.local` + 4 admin) and was written
+three commits AFTER `60c92a0` removed nine of it — then repeated into round 8's own
+brief, where it would have made a reviewer measuring 1065 "confirm" a number five
+too low. Measured at four commits (`3d6aad8`, `3397da8`, `1ce4893`, `4b61242`).
+
+**Still open:** the 22 P2 items above, then round 9 — with a private scratchpad
+subdirectory per reviewer (two of round 8's overwrote each other's scripts).
