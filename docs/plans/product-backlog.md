@@ -133,6 +133,60 @@ or only its name and price.
 
 ---
 
+## P-5 · Documentation the BUYER can read, inside the app — `open`
+
+**Asked for by Javier, 2026-08-19.** A couple of pages, behind the login, that
+explain the model: what each param actually does to the search, what comes out at
+the end and how, and what the two tiers differ in. Today none of that is readable
+by the person paying for it — the form's help texts are one line each and appear
+only next to the field, and everything longer lives in `docs/`, which is written for
+whoever is extending the code.
+
+**What exists to build on** (verified by reading):
+- The manifest already carries, per field and in FOUR languages, a `label`, a
+  `help` line, a `placeholder` and suggestion chips
+  (`florida-business-for-sale.ts:1059` for `paramsUi`, `:1109` for `i18n`), and the
+  SPA already renders forms from it (`docs/model-ui.md`). A docs page that DERIVES
+  from the manifest inherits every new param and every translation for free.
+- The report's shape is equally declared: `sections`
+  (`florida-business-for-sale.ts:504`) with a title and notes per section, `modes`
+  with the credit price per tier, and `DIRECTIVE_FIELDS` with the closed
+  vocabularies. "What comes out" is a rendering of `sections`, not new prose.
+- `docs/models/florida-business-for-sale.md` covers much of the same ground for a
+  developer, and is the warning as much as the head start: its params table still
+  lists `keywords` as client input, which since `29f8593` is a hard error
+  (`packages/core/src/index.ts:285`). A second hand-written copy of a moving thing
+  drifts the same way — this is the defect the review rounds keep finding.
+
+**What to build:** two or three pages, in the SPA, behind auth:
+1. **The inputs** — every param, what it does to the research (not what it is),
+   what happens when it is left empty, and which ones cost money to change. Derived
+   from `paramsUi` + `i18n`, with a longer body per field kept next to the field's
+   declaration so it moves with it.
+2. **What you get** — the sections in the order they appear, what each is written
+   from, how long it takes, and what a degraded section means when one is missing
+   (the `sectionsNotice` copy the buyer already sees is the seam to explain).
+3. **Essential vs comprehensive** — the two tiers side by side with their credit
+   prices, read from `modes`.
+
+**Product decisions, unresolved:**
+- **Generated or written?** Deriving from the manifest is the anti-drift answer and
+  the reason the manifest exists; prose that explains WHY a param matters is not in
+  the manifest and would have to live somewhere new (a `docs` block per field in the
+  template, or MDX per model with a test that pins it against the manifest's keys).
+- **Behind the login or public?** Javier asked for internal, for authenticated
+  users. The same pages are the strongest thing this product could show a stranger,
+  so this is a real choice, not a default.
+- **Which languages.** The app runs in four; a page that exists only in English
+  inside a Spanish form is worse than a link. If the body prose is hand-written,
+  four languages is the recurring cost.
+- **A sample report.** The clearest possible answer to "what comes out" is one real
+  dossier. It needs an anonymised fixture and a decision about hosting it.
+
+**Not started.** No code exists for this.
+
+---
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04

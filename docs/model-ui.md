@@ -128,7 +128,7 @@ paramsUi: {
     ['industry', 'location'],
     ['askingPriceMin', 'askingPriceMax'],   // paired min/max on one line
     ['minRevenue', 'minCashFlow'],
-    ['keywords'],
+    ['sbaFriendly', 'includeRealEstate'],
   ],
   fields: {
     industry: {

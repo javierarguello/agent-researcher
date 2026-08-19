@@ -12,8 +12,9 @@ checklist, growth playbook, financing, and next steps.
   fabricate listings/figures/URLs; every quantitative claim sourced; stay in
   Florida; be diligence-minded; cross-check; long-form; produce only assigned
   sections as JSON). The client's structured **directives** are appended; the
-  buyer's free text never is (it fills the directives and keywords through the
-  preflight assist).
+  buyer's free text never is (it fills the directives, and the `fillable` basics,
+  through the preflight assist — no longer the keywords: `hasKeywordsField` returns
+  false for an internal param, `enrich.ts:515`).
 
 ## Params (client input)
 
@@ -21,7 +22,7 @@ checklist, growth playbook, financing, and next steps.
 |---|---|---|
 | `location` | string | Defaults to "State of Florida, USA". |
 | `industry` | string? | e.g. "laundromats", "HVAC". |
-| `keywords` | string[] | Extra narrowing terms (default `[]`). |
+| `keywords` | string[] | **Internal since `29f8593`** — declared in the schema for a server-side caller, `internalParams` at `florida-business-for-sale.ts:1030`, stripped from the manifest and a hard error if a client sends it (`packages/core/src/index.ts:285`). |
 | `askingPriceMin` / `askingPriceMax` | int? | USD band. |
 | `minRevenue`, `minCashFlow` | int? | Floors in USD. |
 | `sbaFriendly` | bool | Prefer SBA 7(a)-eligible deals (default false). |
