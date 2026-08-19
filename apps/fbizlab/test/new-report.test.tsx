@@ -311,6 +311,39 @@ describe('the directive block comes entirely from the manifest', () => {
     expect(screen.queryByTestId('free-text')).toBeNull();
   });
 
+  it('…but they can still edit and delete their own words, and nothing claims those were read (R8-11)', async () => {
+    // `picking = way === 'pick' || assistOff` made the Edit link inert: the buyer's
+    // 2,000 characters were on screen, quoted, still sent with every later preflight,
+    // and unreachable. Two sentences also disagreed about them — the red line said
+    // they were not read, the caption under the quote said "we read them when you
+    // continue". Mutation that reds this: `picking = way === 'pick' || assistOff`.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [],
+      assist: { state: 'off_attempts' },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.type(screen.getByTestId('free-text'), 'sunshine please');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+
+    // Forced onto the fields, with their notes quoted above — and NOT told those
+    // notes will be read.
+    expect(screen.getByTestId('notes-collapsed').textContent).toContain('sunshine please');
+    expect(screen.queryByText(/we read them when you continue/i)).toBeNull();
+
+    // Edit works: the box comes back with their text in it, and they can empty it.
+    await userEvent.click(screen.getByTestId('toggle-notes'));
+    const box = screen.getByTestId('free-text') as HTMLTextAreaElement;
+    expect(box.value).toBe('sunshine please');
+    await userEvent.clear(box);
+    expect((screen.getByTestId('free-text') as HTMLTextAreaElement).value).toBe('');
+    // …and the way back to the fields is there, or they would be stuck in the box.
+    await userEvent.click(screen.getByTestId('toggle-preferences'));
+    expect(screen.getByRole('button', { name: 'Sunshine' })).toBeTruthy();
+  });
+
   it('starts collapsed — the page opens with the box, not with thirty chips', async () => {
     // P-3, and the reason for all of it: 04 and 05 fill the SAME params, so both
     // open at once asked the buyer to do one job twice and opened the funnel's main
@@ -459,6 +492,46 @@ describe('a rate-limited preview does not become an order', () => {
 
     await waitFor(() => expect(hooks.createJob).toHaveBeenCalled());
   });
+
+  it('…with the PREVIOUS review applied only where it still fits (R8-12)', async () => {
+    // The fallback submits with the review already in state — that is the point of
+    // it — and applied every ticked correction and basic unconditionally. So a field
+    // the buyer retyped after that review came back was overwritten by a correction
+    // proposed for the OLD value, and a basic they filled by hand was replaced by the
+    // one from their notes. Mutation that reds this: drop the `base[c.field] ===
+    // c.from` guard, or fill a basic without checking the field is empty.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok',
+      issues: [], corrections: [{ field: 'gridRegion', from: 'ERCOT Wst', to: 'ERCOT West' }],
+      assist: { state: 'on' },
+      proposals: { directives: {}, keywords: [], basics: { parcelUse: 'from my notes' }, quotes: { parcelUse: 'notes' } },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT Wst');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await screen.findByTestId('proposals');
+    await userEvent.click(screen.getByTestId('accept-basic-parcelUse'));
+
+    // Back to the form; fix the typo their own way and fill the empty basic by hand.
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    const region = screen.getByPlaceholderText('e.g. ERCOT West');
+    await userEvent.clear(region);
+    await userEvent.type(region, 'MISO Zone 1');
+    const parcel = screen.getByText('Parcel use').closest('.field')!.querySelector('input')!;
+    await userEvent.clear(parcel);
+    await userEvent.type(parcel, 'my own answer');
+
+    // The second preview breaks, so the stale review is what `submit()` gets.
+    hooks.preflight.mockRejectedValue(new ApiError(500, 'boom', {}));
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+
+    await waitFor(() => expect(hooks.createJob).toHaveBeenCalled());
+    const params = (hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> }).params;
+    expect(params.gridRegion, 'the correction was for a value they no longer have').toBe('MISO Zone 1');
+    expect(params.parcelUse, 'a basic fills an EMPTY field, and it is not empty').toBe('my own answer');
+  });
 });
 
 
@@ -551,6 +624,61 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     await userEvent.click(screen.getByTestId('accept-colours'));
     const params = await order();
     expect(params.directives).toEqual({ colours: ['red'] });
+  });
+
+  it('a hand edit wins over the suggestion that filled the field, and the dialog says so (R8-9)', async () => {
+    // The directive block is deliberately OUT of the preview cache key, so editing a
+    // field the notes filled does not force another preflight — which means the
+    // dialog re-opens with the frozen `pf.proposals` still ticked. It rendered the
+    // stale value, so it stated a value that would not be sent; and unticking that
+    // row ran `setDir(k, undefined)` on the buyer's own choice, deleting it.
+    // Mutation that reds this: render `v` and `!!accepted[k]` again.
+    await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } }, 'sunshine please');
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Rain' }));
+    // The ✎ tag is gone from the form: the field is theirs now.
+    expect(screen.queryByTestId('from-notes-weather')).toBeNull();
+
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    const block = await screen.findByTestId('proposals');
+    expect(block.textContent, 'their value, not the frozen suggestion').toContain('Rain');
+    expect(block.textContent).not.toContain('«sunshine»');
+    expect((screen.getByTestId('accept-weather') as HTMLInputElement).checked).toBe(true);
+    expect((await order()).directives).toEqual({ weather: 'rain' });
+  });
+
+  it('…and unticking that row removes the value they chose, once, and nothing bounces back (R8-9)', async () => {
+    // The other outcome of the same row: with their own value on it, unticking reads
+    // as "drop this", and it has to actually stick — a `checked` derived from the
+    // frozen `accepted` map would tick itself again over an empty field.
+    await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } }, 'sunshine please');
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Rain' }));
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await screen.findByTestId('proposals');
+    await userEvent.click(screen.getByTestId('accept-weather'));
+    expect((screen.getByTestId('accept-weather') as HTMLInputElement).checked).toBe(false);
+    expect((await order()).directives).toBeUndefined();
+  });
+
+  it('a directive kept from a sentence the buyer then DELETED is not ordered (R8-10)', async () => {
+    // R7-7 cleared those out of `pf`; `16e7014` then moved the kept value into
+    // `params`, where clearing the notes cannot reach it — and the ✎ tag went on
+    // quoting a sentence that no longer exists. So the second preview, which knows
+    // nothing about `weather`, still ordered it. Mutation that reds this: drop the
+    // `stale` block from `runPreflight`.
+    await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } }, 'sunshine please');
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    expect(screen.getByTestId('from-notes-weather').textContent).toContain('sunshine');
+
+    await userEvent.click(screen.getByTestId('toggle-notes'));
+    await userEvent.clear(screen.getByTestId('free-text'));
+    await userEvent.type(screen.getByTestId('free-text'), 'actually I want RAIN');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    // The default mock proposes nothing, so nothing may survive from the old text.
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    expect(screen.queryByTestId('from-notes-weather')).toBeNull();
+    expect((await order()).directives).toBeUndefined();
   });
 
   it('never fills an empty BASIC without an explicit tick, however clear the quote', async () => {

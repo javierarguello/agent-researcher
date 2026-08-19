@@ -19,7 +19,7 @@ const T = {
     s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences and keywords for you to confirm — the text itself is not part of the request. It does not set the price, the location or the filters: those stay yours, above.',
     sdPick: 'Pick them yourself', sdHide: 'Write it instead', sdTitle: 'Your preferences',
     sdBoth: 'Two ways to fill the same fields. Describe what you’re after and we propose a value for each one, for you to confirm — or pick them yourself. Either way it does not set the price, the location or the filters: those stay yours, above.',
-    notesKept: 'Your notes are still sent — we read them when you continue.', fromNotes: 'from your notes', notesShow: 'Edit',
+    notesKept: 'Your notes are still sent — we read them when you continue.', fromNotes: 'from your notes', notesShow: 'Edit', yourChoice: 'your own choice',
     sdFilled: 'Filled from your notes — check them and change anything. A field you touch becomes yours; we will not fill it again.',
     sdOff: 'Your notes were not read this time, so these fields are the way to say it. Everything here is optional.',
     s4Off: 'Your notes were not read this time. Pick your preferences by hand — they carry the same information.', proposalsTitle: 'Suggested from your notes', proposalsHint: 'Tick what you recognise. Anything we inferred rather than read comes unticked.', applyProposals: 'Apply suggestions', kw: 'Keywords', basicsTitle: 'From your notes, for a field you left empty',
@@ -50,7 +50,7 @@ const T = {
     s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias y palabras clave para que las confirmes — el texto en sí no forma parte del pedido. No define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
     sdPick: 'Elígelos tú mismo', sdHide: 'Mejor lo escribo', sdTitle: 'Tus preferencias',
     sdBoth: 'Dos formas de llenar los mismos campos. Describe lo que buscas y proponemos un valor para cada uno, para que los confirmes — o elígelos tú mismo. En cualquier caso no define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
-    notesKept: 'Tus notas se siguen enviando — las leemos al continuar.', fromNotes: 'de tus notas', notesShow: 'Editar',
+    notesKept: 'Tus notas se siguen enviando — las leemos al continuar.', fromNotes: 'de tus notas', notesShow: 'Editar', yourChoice: 'tu propia elección',
     sdFilled: 'Llenados desde tus notas — revísalos y cambia lo que quieras. Un campo que tocas pasa a ser tuyo; no lo volvemos a llenar.',
     sdOff: 'Tus notas no se leyeron esta vez, así que estos campos son la forma de decirlo. Todo aquí es opcional.',
     s4Off: 'Tus notas no se leyeron esta vez. Elige tus preferencias a mano — llevan la misma información.', proposalsTitle: 'Sugerido a partir de tus notas', proposalsHint: 'Marca lo que reconozcas. Lo que dedujimos en vez de leer viene sin marcar.', applyProposals: 'Aplicar sugerencias', kw: 'Palabras clave', basicsTitle: 'De tus notas, para un campo que dejaste vacío',
@@ -81,7 +81,7 @@ const T = {
     s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences et en mots-clés que vous confirmez — le texte lui-même ne fait pas partie de la demande. Il ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
     sdPick: 'Les choisir vous-même', sdHide: 'Je préfère l’écrire', sdTitle: 'Vos préférences',
     sdBoth: 'Deux façons de remplir les mêmes champs. Décrivez ce que vous cherchez et nous proposons une valeur pour chacun, que vous confirmez — ou choisissez-les vous-même. Dans les deux cas, cela ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
-    notesKept: 'Vos notes sont toujours envoyées — nous les lisons à l’étape suivante.', fromNotes: 'd’après vos notes', notesShow: 'Modifier',
+    notesKept: 'Vos notes sont toujours envoyées — nous les lisons à l’étape suivante.', fromNotes: 'd’après vos notes', notesShow: 'Modifier', yourChoice: 'votre propre choix',
     sdFilled: 'Remplis d’après vos notes — vérifiez-les et changez ce que vous voulez. Un champ que vous touchez devient le vôtre ; nous ne le remplirons plus.',
     sdOff: 'Vos notes n’ont pas été lues cette fois : ces champs sont donc le moyen de le dire. Tout ici est optionnel.',
     s4Off: 'Vos notes n’ont pas été lues cette fois. Choisissez vos préférences à la main — elles portent la même information.', proposalsTitle: 'Suggéré d’après vos notes', proposalsHint: 'Cochez ce que vous reconnaissez. Ce que nous avons déduit plutôt que lu arrive décoché.', applyProposals: 'Appliquer les suggestions', kw: 'Mots-clés', basicsTitle: 'D’après vos notes, pour un champ laissé vide',
@@ -112,7 +112,7 @@ const T = {
     s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências e palavras-chave para você confirmar — o texto em si não faz parte do pedido. Ele não define preço, localização nem filtros: isso continua com você, acima.',
     sdPick: 'Escolher você mesmo', sdHide: 'Prefiro escrever', sdTitle: 'Suas preferências',
     sdBoth: 'Duas formas de preencher os mesmos campos. Descreva o que você procura e propomos um valor para cada um, para você confirmar — ou escolha você mesmo. De qualquer forma, não define preço, localização nem filtros: isso continua com você, acima.',
-    notesKept: 'Suas notas continuam sendo enviadas — nós as lemos ao continuar.', fromNotes: 'das suas notas', notesShow: 'Editar',
+    notesKept: 'Suas notas continuam sendo enviadas — nós as lemos ao continuar.', fromNotes: 'das suas notas', notesShow: 'Editar', yourChoice: 'sua própria escolha',
     sdFilled: 'Preenchidos a partir das suas notas — confira e mude o que quiser. Um campo que você toca passa a ser seu; não o preenchemos de novo.',
     sdOff: 'Suas notas não foram lidas desta vez, então estes campos são o jeito de dizer isso. Tudo aqui é opcional.',
     s4Off: 'Suas notas não foram lidas desta vez. Escolha suas preferências à mão — elas levam a mesma informação.', proposalsTitle: 'Sugerido a partir das suas notas', proposalsHint: 'Marque o que você reconhecer. O que deduzimos em vez de ler vem desmarcado.', applyProposals: 'Aplicar sugestões', kw: 'Palavras-chave', basicsTitle: 'Das suas notas, para um campo que você deixou vazio',
@@ -205,8 +205,13 @@ function mergeProposals(params: Props, proposals: Proposals, dirKey: string): Pr
   }
   // A basic FILLS a field the buyer left empty — only the ones they ticked, and
   // never through the API's `proposedParams`, which a client older than this one
-  // would submit without ever having rendered the row.
-  for (const [f, v] of Object.entries(proposals.basics ?? {})) out[f] = v;
+  // would submit without ever having rendered the row. "Left empty" is CHECKED here,
+  // not assumed: the tick survives into the stale-review fallback, where the field
+  // may have been filled by hand in between (round 8, R8-12).
+  for (const [f, v] of Object.entries(proposals.basics ?? {})) {
+    const have = out[f];
+    if (have === undefined || have === null || (typeof have === 'string' && !have.trim())) out[f] = v;
+  }
   return out;
 }
 /** On mobile the long form becomes a step-by-step wizard. */
@@ -278,6 +283,14 @@ export function NewReport() {
    * quoted on one line rather than nothing at all.
    */
   const [way, setWay] = useState<'write' | 'pick'>('write');
+  /**
+   * The buyer asked to see their own notes AFTER the assist went off.
+   *
+   * Separate from `way` on purpose: with the assist off the fields are forced, and
+   * `way` is still `write` from before the first preview — so reusing it would open
+   * the dead box by default. This only ever goes true by their own click on Edit.
+   */
+  const [notesOpen, setNotesOpen] = useState(false);
   // What the user typed in their own words. NOT a param: it goes to the preflight,
   // which reads it and proposes preferences and keywords; the job never sees it.
   const [freeText, setFreeText] = useState('');
@@ -414,7 +427,17 @@ export function NewReport() {
    * offered back.
    */
   const assistOff = !!pf && pf.assist?.state !== 'on';
-  const picking = way === 'pick' || assistOff;
+  /**
+   * The fields, not the box.
+   *
+   * `way === 'pick' || assistOff` made the assist-off view unleaveable: the Edit
+   * link beside the quoted notes calls `setWay('write')`, and `assistOff` overrode
+   * it — so the buyer could not edit or delete their own 2,000 characters, which
+   * are still sent with every later preflight (round 8, R8-11). With the assist off
+   * the fields stay the default and the box is not offered as the way IN; what
+   * changes is that Edit now works.
+   */
+  const picking = assistOff ? !notesOpen : way === 'pick';
   const setDir = (k: string, v: unknown) => {
     const next: Record<string, unknown> = { ...dirVals };
     if (v === undefined || (Array.isArray(v) && v.length === 0)) delete next[k];
@@ -630,6 +653,29 @@ export function NewReport() {
     try {
       const text = previewText;
       const res = await preflight.mutateAsync({ template: model!.id, params: cleanParams(), ...(text ? { freeText: text } : {}), draftId: draftId(), captcha: await captcha.current?.getToken() });
+      // A directive kept from a sentence the buyer has since DELETED is not theirs
+      // any more. R7-7 cleared those out of `pf`; `16e7014` then moved the kept value
+      // into `params`, where clearing the notes cannot reach it, and `fromNotes` went
+      // on quoting text that no longer exists (round 8, R8-10). Checked against the
+      // text this request actually carried, because that is what the review is about.
+      const stale = Object.entries(fromNotes).filter(([, q]) => q && !text.includes(q)).map(([k]) => k);
+      if (stale.length) {
+        setParams((p) => {
+          const next = { ...((p[dirKey] as Record<string, unknown> | undefined) ?? {}) };
+          for (const k of stale) delete next[k];
+          return { ...p, [dirKey]: next };
+        });
+        setFromNotes((n) => {
+          const next = { ...n };
+          for (const k of stale) delete next[k];
+          return next;
+        });
+        setAccepted((a) => {
+          const next = { ...a };
+          for (const k of stale) delete next[k];
+          return next;
+        });
+      }
       const useful = (res.summary?.trim().length ?? 0) > 0 || res.issues.length > 0 || res.corrections.length > 0 || !!res.proposals;
       if (useful) {
         setPf(res);
@@ -713,7 +759,11 @@ export function NewReport() {
       // silently undo anything the buyer changed afterwards — which, since P-3, is
       // exactly what they are invited to do.
       const base = cleanParams();
-      if (applyFixes) for (const c of review?.corrections ?? []) base[c.field] = c.to;
+      // …and only where the value it was proposed FOR is still there. The 5xx
+      // "generate anyway" path submits with the PREVIOUS review — that is the point
+      // of it — so an un-gated correction rewrote a field the buyer had typed since
+      // (round 8, R8-12).
+      if (applyFixes) for (const c of review?.corrections ?? []) if (base[c.field] === c.from) base[c.field] = c.to;
       // The proposals ride on top of whichever base the user kept — the ones they
       // TICKED, merged here. `proposedParams` (the API's everything-applied variant)
       // is no longer used: with per-field acceptance it is only ever right by
@@ -848,14 +898,17 @@ export function NewReport() {
                         {Object.keys(dirVals).length}/{directives.length}
                       </span>
                     )}
-                    {/* Not offered back when the assist cannot run: an input that can
-                        do nothing is worse than no input. */}
-                    {directives.length > 0 && !assistOff && (
+                    {/* Not offered as the way IN when the assist cannot run — an input
+                        that can do nothing is worse than no input — but the way BACK
+                        from the box is always there, or a buyer who opened their own
+                        notes to edit them would be stuck in a view whose only button
+                        is gone (R8-11). */}
+                    {directives.length > 0 && (!assistOff || !picking) && (
                       <button
                         type="button"
                         className="btn btn--outline btn--sm"
                         data-testid="toggle-preferences"
-                        onClick={() => setWay(picking ? 'write' : 'pick')}
+                        onClick={() => { setWay(picking ? 'write' : 'pick'); setNotesOpen(picking); }}
                       >
                         {picking ? t.sdHide : t.sdPick}
                       </button>
@@ -878,14 +931,19 @@ export function NewReport() {
                         <span className="soft" data-testid="notes-collapsed" style={{ fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           “{freeText.trim()}”
                         </span>
-                        <span className="mono muted" style={{ fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{t.notesKept}</span>
+                        {/* "We read them when you continue" is FALSE once the assist
+                            is off, and it was rendered three lines under the sentence
+                            that says they were not read (R8-11). The red line above
+                            covers this case; two answers to the same question is
+                            worse than one. */}
+                        {!assistOff && <span className="mono muted" style={{ fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{t.notesKept}</span>}
                       </span>
                       <button
                         type="button"
                         className="nr-hint"
                         data-testid="toggle-notes"
                         style={{ background: 'none', border: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        onClick={() => setWay('write')}
+                        onClick={() => { setWay('write'); setNotesOpen(true); }}
                       >
                         {t.notesShow}
                       </button>
@@ -1027,20 +1085,31 @@ export function NewReport() {
                         {Object.entries(pf.proposals.directives).map(([k, v]) => {
                           const field = directives.find((d) => d.key === k);
                           const labelOf = (x: unknown) => field?.options?.find((o) => o.value === x)?.label ?? String(x);
-                          const shown = Array.isArray(v) ? v.map(labelOf).join(', ') : typeof v === 'boolean' ? (v ? t.yes : '—') : labelOf(v);
-                          const quote = pf.proposals!.quotes?.[k];
+                          // `pf.proposals` is frozen at the last preflight; the FORM is
+                          // what will be sent. A field the buyer has since edited by
+                          // hand showed the stale proposal here, so the dialog stated a
+                          // value that was not going to run — and unticking that stale
+                          // row deleted the buyer's own choice (round 8, R8-9). A row
+                          // showing their value, labelled as theirs, makes unticking
+                          // the deliberate delete it reads as.
+                          const mine = fromNotes[k] === undefined && dirVals[k] !== undefined;
+                          const cur = mine ? dirVals[k] : v;
+                          const shown = cur === undefined ? '—' : Array.isArray(cur) ? cur.map(labelOf).join(', ') : typeof cur === 'boolean' ? (cur ? t.yes : '—') : labelOf(cur);
+                          const quote = mine ? undefined : pf.proposals!.quotes?.[k];
                           return (
                             <li key={k} style={{ marginBottom: 6 }}>
                               <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
                                 <input
                                   type="checkbox"
                                   data-testid={`accept-${k}`}
-                                  checked={!!accepted[k]}
+                                  checked={mine || !!accepted[k]}
                                   onChange={(e) => keepProposal(k, v, quote, e.target.checked)}
                                 />
                                 <span>
                                   <span className="mono muted">{field?.label ?? k}: </span><b>{shown}</b>
-                                  {quote && <span className="soft" style={{ fontSize: 12.5 }}> — «{quote}»</span>}
+                                  {mine
+                                    ? <span className="soft" style={{ fontSize: 12.5 }}> — {t.yourChoice}</span>
+                                    : quote && <span className="soft" style={{ fontSize: 12.5 }}> — «{quote}»</span>}
                                 </span>
                               </label>
                             </li>
