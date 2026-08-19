@@ -77,7 +77,7 @@ describe('a reconstructed section keeps its body and its own line', () => {
 
   it('does not claim the section was researched', () => {
     render(<ReportViewer report={report} sections={sections} meta={meta} lang="en" />);
-    expect(screen.queryByText(/pass that adds extra depth/i)).toBeNull();
+    expect(screen.queryByText(/step that adds extra depth/i)).toBeNull();
     expect(screen.getByText(/step that researches this section did not finish/i)).toBeTruthy();
   });
 });
@@ -98,7 +98,7 @@ describe('an unenriched section keeps its body on screen', () => {
     render(
       <ReportViewer report={report} sections={sections} meta={{ sections: [{ key: 'market', status: 'unenriched' }] }} lang="en" />,
     );
-    expect(screen.getByText(/pass that adds extra depth/i)).toBeTruthy();
+    expect(screen.getByText(/step that adds extra depth/i)).toBeTruthy();
   });
 
   it('suppresses the same section when it is lost — the control', () => {

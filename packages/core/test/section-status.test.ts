@@ -21,8 +21,9 @@ vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 import { runResearch } from '../src/engine/research-engine.js';
 import { installMockProvider } from './mocks/llm.js';
 import { sectionsNotice } from '../src/jobs/report-copy.js';
-import { normalizeSectionStatuses } from '../src/engine/section-status.js';
+import { KNOWN_STATUSES, normalizeSectionStatuses, type SectionStatus } from '../src/engine/section-status.js';
 import { LEGACY_SHAPES } from './fixtures/legacy-section-shapes.js';
+import { SECTION_LINES, SECTION_STATUSES, WRONG_STEP_WORDS } from './fixtures/section-lines.js';
 import type { ResearchTemplate } from '../src/templates/types.js';
 import type { Checkpoint } from '../src/engine/research-engine.js';
 
@@ -174,7 +175,7 @@ describe('an unenriched section reaches the PDF whole', () => {
     // Keeping the body silently would be the old defect in reverse: full price,
     // less depth than the tier bought, and nothing said.
     const html = await call([{ key: 'market', status: 'unenriched' }]);
-    expect(html).toMatch(/pass that adds extra depth/i);
+    expect(html).toMatch(/step that adds extra depth/i);
   });
 
   it('suppresses the body when the same section is lost', async () => {
@@ -351,6 +352,61 @@ describe('a reconstructed section in the PDF', () => {
     // The line BESIDE the section, not the cover notice: `/did not finish/` alone
     // is satisfied by the cover, so deleting the per-section line left 0 red.
     expect(html).toMatch(/researches this section did not finish/i);
-    expect(html, 'the unenriched line would claim it was researched').not.toMatch(/pass that adds extra depth/i);
+    expect(html, 'the unenriched line would claim it was researched').not.toMatch(/step that adds extra depth/i);
+  });
+});
+
+describe('the three copies of the per-section line say the same thing', () => {
+  // The sentence under an incomplete section exists in the PDF and in the buyer's
+  // on-screen viewer, and the notice above the report says the same thing in its
+  // own words. A wording fix landed in the notice alone: `sectionsNotice('fr')`
+  // stopped saying `la passe`, the test above pinned exactly that call, and the
+  // French buyer went on reading a sports pass under the section itself — in the
+  // viewer and in the PDF they download and forward. Same for `a passagem`.
+  //
+  // So both per-section tables are held to ONE fixture. The buyer app is a static
+  // bundle with no dependency on core, so it cannot import the strings; it asserts
+  // the same table from its own suite (`section-copy-parity.test.tsx`).
+  it('the PDF prints the canonical line, key for key, language for language', async () => {
+    const { RL: pdf } = await import('../src/pdf/report-html.js');
+    for (const [lang, lines] of Object.entries(SECTION_LINES)) {
+      for (const [key, sentence] of Object.entries(lines)) {
+        expect(pdf[lang as 'en']?.[key], `${lang}.${key}`).toBe(sentence);
+      }
+    }
+  });
+
+  it('and calls a processing step a step there too, not a sports pass', async () => {
+    const { RL: pdf } = await import('../src/pdf/report-html.js');
+    for (const [lang, wrong] of Object.entries(WRONG_STEP_WORDS)) {
+      expect(pdf[lang as 'es']?.unenrichedSection, lang).not.toMatch(wrong);
+    }
+  });
+
+  it('the notice and the section line agree on the word for the step', () => {
+    // Not the same sentence — the notice counts sections and the line does not —
+    // but they name the same internal step, one above the other in one document.
+    for (const [lang, wrong] of Object.entries(WRONG_STEP_WORDS)) {
+      expect(sectionsNotice(lang, [{ status: 'unenriched' }]), lang).not.toMatch(wrong);
+    }
+  });
+});
+
+describe('a status no renderer knows must not reach a buyer before the renderer does', () => {
+  // R8-17: the coercion is asymmetric and only one side of it is safe. A reader
+  // meeting an unrecognised status suppresses the body — right for every shape
+  // that predates `status`, wrong for a browser holding a bundle from before
+  // `reconstructed` existed, which hid a section with real content under "we could
+  // not complete this section" while the server-rendered PDF of the same report
+  // showed it. Nothing can fix a bundle already in a cache; what is fixable is the
+  // next one, so the writer's set of statuses is pinned to both readers' sets.
+  it('the engine writes exactly the statuses this fixture lists', () => {
+    // A `Record` over the union: a fourth status is a type error HERE first.
+    const written: Record<SectionStatus['status'], true> = { lost: true, unenriched: true, reconstructed: true };
+    expect(Object.keys(written).sort()).toEqual([...SECTION_STATUSES].sort());
+  });
+
+  it('and core’s reader recognises all of them', () => {
+    expect([...KNOWN_STATUSES].sort()).toEqual([...SECTION_STATUSES].sort());
   });
 });

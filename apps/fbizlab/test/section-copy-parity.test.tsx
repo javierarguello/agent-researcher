@@ -1,0 +1,46 @@
+/**
+ * The viewer's per-section lines, held to core's table.
+ *
+ * The same sentence exists three times — the notice above the report, the PDF the
+ * buyer downloads, and this viewer — and a wording fix landed in one of them. The
+ * French buyer kept reading `la passe`, a sports pass, under the section on
+ * screen and in the PDF they forward; the Portuguese one `a passagem`, a
+ * passageway. The core test that was meant to pin the fix only read the notice,
+ * so both remaining copies stayed wrong and green.
+ *
+ * This app is a static bundle with no dependency on `@agent-researcher/core`, so
+ * it cannot import the strings — it imports the FIXTURE across the workspace
+ * boundary, the way `section-status-parity.test.tsx` already imports
+ * `LEGACY_SHAPES`. Edit one copy and the other suite goes red.
+ */
+import { describe, it, expect } from 'vitest';
+import { RL } from '../src/components/ReportViewer';
+import { KNOWN_STATUSES } from '../src/lib/section-status';
+import { SECTION_LINES, SECTION_STATUSES, WRONG_STEP_WORDS } from '../../../packages/core/test/fixtures/section-lines';
+
+describe('the viewer prints the canonical section line', () => {
+  it.each(Object.entries(SECTION_LINES))('%s says what core says, key for key', (lang, lines) => {
+    for (const [key, sentence] of Object.entries(lines)) {
+      expect(RL[lang as 'en']?.[key], `${lang}.${key}`).toBe(sentence);
+    }
+  });
+
+  it('calls a processing step a step, not a sports pass or a passageway', () => {
+    for (const [lang, wrong] of Object.entries(WRONG_STEP_WORDS)) {
+      expect(RL[lang as 'es']?.unenrichedSection, lang).not.toMatch(wrong);
+    }
+  });
+});
+
+describe('this bundle knows every status the engine can write', () => {
+  // R8-17: an unrecognised status is coerced to `lost`, and `lost` is the one
+  // status whose body is SUPPRESSED. A browser holding a bundle from before
+  // `reconstructed` existed therefore hid a section with real content, under a
+  // sentence saying everything else was researched as usual, while the
+  // server-rendered PDF of the same report showed it. Nothing fixes a bundle
+  // already in a cache; this pins the next one — a status added to the engine is
+  // red here until this reader knows it.
+  it('recognises exactly core’s set', () => {
+    expect([...KNOWN_STATUSES].sort()).toEqual([...SECTION_STATUSES].sort());
+  });
+});

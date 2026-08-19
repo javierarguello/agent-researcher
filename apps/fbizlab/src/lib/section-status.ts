@@ -11,7 +11,13 @@
  * pinned by the SAME fixture table, `LEGACY_SHAPES`, asserted in this app's
  * suite and in core's. Change one copy and the other suite goes red.
  *
- * Read the core file for why an unrecognised status coerces to `lost`.
+ * Read the core file for why an unrecognised status coerces to `lost` — and for
+ * what that costs HERE, which is where it costs anything: this bundle is cached
+ * by the browser, so this reader can be older than the writer, and an unknown
+ * status suppresses a body the PDF of the same report still shows (R8-17). The
+ * set of statuses the engine writes is pinned against `KNOWN_STATUSES` below
+ * from `test/section-copy-parity.test.tsx`, so a new one is red here before it
+ * is live.
  */
 
 export interface SectionStatus {
@@ -19,7 +25,7 @@ export interface SectionStatus {
   status: 'lost' | 'unenriched' | 'reconstructed';
 }
 
-const KNOWN = new Set(['lost', 'unenriched', 'reconstructed']);
+export const KNOWN_STATUSES = new Set(['lost', 'unenriched', 'reconstructed']);
 
 export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
   const out: SectionStatus[] = [];
@@ -37,7 +43,7 @@ export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
       } else if (entry && typeof entry === 'object') {
         const { key, status } = entry as { key?: unknown; status?: unknown };
         if (typeof key !== 'string') continue;
-        push(key, typeof status === 'string' && KNOWN.has(status) ? (status as SectionStatus['status']) : 'lost');
+        push(key, typeof status === 'string' && KNOWN_STATUSES.has(status) ? (status as SectionStatus['status']) : 'lost');
       }
     }
   }

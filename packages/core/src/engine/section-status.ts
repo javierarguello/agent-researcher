@@ -40,7 +40,7 @@ export interface SectionStatus {
   status: 'lost' | 'unenriched' | 'reconstructed';
 }
 
-const KNOWN = new Set(['lost', 'unenriched', 'reconstructed']);
+export const KNOWN_STATUSES = new Set(['lost', 'unenriched', 'reconstructed']);
 
 /**
  * Read section statuses out of anything a store may hold, in priority order —
@@ -49,11 +49,26 @@ const KNOWN = new Set(['lost', 'unenriched', 'reconstructed']);
  * Accepts `SectionStatus[]`, the legacy `string[]`, and mixtures, and drops
  * entries with no usable key rather than inventing one.
  *
- * **An unrecognised `status` becomes `lost`**, deliberately. Every shape that
- * can actually reach this from a store predates `status` and meant exactly
- * "lost"; a genuinely new state would ship with the renderers that understand
- * it. Guessing `unenriched` on old data is the failure this function exists to
- * stop — it renders the fabricated body.
+ * **An unrecognised `status` becomes `lost`**, deliberately — and the choice is
+ * a trade, not a free safety. It is right in the direction this function was
+ * written for: every shape that can actually reach it from a STORE predates
+ * `status` and meant exactly "lost", and guessing `unenriched` there renders the
+ * fabricated body — a recommendation the engine never made, at a price of zero,
+ * in the artifact the buyer keeps.
+ *
+ * It is wrong in the other direction, and that direction is real. The buyer app
+ * is a static bundle a browser CACHES, so a reader can be older than the writer:
+ * when `reconstructed` shipped, a browser one bundle behind coerced it to `lost`,
+ * SUPPRESSED a section that had real content, and printed "everything else was
+ * researched as usual" — while the server-rendered PDF of the same report showed
+ * the section. Two artifacts of one purchase disagreeing (round 8, R8-17).
+ *
+ * Keeping the body for an unknown status would trade that for the worse failure
+ * above, so the coercion stays. What is pinned instead is the writer: the set of
+ * statuses the engine emits is asserted against BOTH readers' `KNOWN_STATUSES`
+ * (`test/fixtures/section-lines.ts`), so a fourth status is red in every renderer
+ * that does not know it yet, and shipping one is a decision about deploy order
+ * rather than an accident a cached bundle discovers for us.
  */
 export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
   const out: SectionStatus[] = [];
@@ -71,7 +86,7 @@ export function normalizeSectionStatuses(...raws: unknown[]): SectionStatus[] {
       } else if (entry && typeof entry === 'object') {
         const { key, status } = entry as { key?: unknown; status?: unknown };
         if (typeof key !== 'string') continue;
-        push(key, typeof status === 'string' && KNOWN.has(status) ? (status as SectionStatus['status']) : 'lost');
+        push(key, typeof status === 'string' && KNOWN_STATUSES.has(status) ? (status as SectionStatus['status']) : 'lost');
       }
     }
   }
