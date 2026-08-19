@@ -178,6 +178,36 @@ describe('an unenriched section reaches the PDF whole', () => {
     expect(html).toMatch(/step that adds extra depth/i);
   });
 
+  it('says "everything else was researched as usual" ONCE, and only when it is true (round 9, R9-7)', async () => {
+    // The reassurance was the second sentence of the per-section line, so it was
+    // printed under EVERY lost section: a report with two gaps told the buyer twice
+    // that everything else came out fine, once under each gap, each time about a
+    // report that included the other. With one lost and one shallow section it
+    // contradicted itself a screen apart — the shallow one's own line says the depth
+    // pass did not finish. `sectionsNotice` was split into `ALL_ELSE_OK` for exactly
+    // this ("it used to be part of the sentence above, so a report with one lost
+    // section and one shallow one told the buyer 'Everything else is complete.' and
+    // then, in the next sentence, that it was not"); the per-section copy never was.
+    // Mutation that reds this: render `allElseOk` unconditionally again.
+    const { buildReportHtml } = await import('../src/pdf/report-html.js');
+    const { getPdfTheme } = await import('../src/pdf/theme.js');
+    const html = async (statuses: unknown) => buildReportHtml({
+      report: { a: { text: 'x' }, b: { text: 'y' }, c: { text: 'real' } },
+      sections: [{ key: 'a', title: 'A' }, { key: 'b', title: 'B' }, { key: 'c', title: 'C' }],
+      meta: { sections: statuses }, lang: 'en', theme: getPdfTheme('fbizlab'),
+    } as never);
+    const count = (h: string) => (h.match(/Everything else was researched and written as usual/g) ?? []).length;
+
+    expect(count(await html([{ key: 'a', status: 'lost' }, { key: 'b', status: 'lost' }])), 'two gaps').toBe(0);
+    expect(count(await html([{ key: 'a', status: 'lost' }, { key: 'b', status: 'unenriched' }])), 'a gap and a shallow one').toBe(0);
+    // …and the case it exists for keeps it: one section, nothing else to report.
+    expect(count(await html([{ key: 'a', status: 'lost' }])), 'the only thing wrong').toBe(1);
+    // The apology itself is always there — only the reassurance is conditional.
+    for (const st of [[{ key: 'a', status: 'lost' }], [{ key: 'a', status: 'lost' }, { key: 'b', status: 'lost' }]]) {
+      expect(await html(st)).toMatch(/could not complete this section/i);
+    }
+  });
+
   it('suppresses the body when the same section is lost', async () => {
     // The control. Without it, "keeps the body" passes on a renderer that
     // suppresses nothing at all.

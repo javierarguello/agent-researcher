@@ -14,7 +14,8 @@
  * `LEGACY_SHAPES`. Edit one copy and the other suite goes red.
  */
 import { describe, it, expect } from 'vitest';
-import { RL } from '../src/components/ReportViewer';
+import { render } from '@testing-library/react';
+import { ReportViewer, RL } from '../src/components/ReportViewer';
 import { KNOWN_STATUSES } from '../src/lib/section-status';
 import { SECTION_LINES, SECTION_STATUSES, WRONG_STEP_WORDS } from '../../../packages/core/test/fixtures/section-lines';
 
@@ -29,6 +30,24 @@ describe('the viewer prints the canonical section line', () => {
     for (const [lang, wrong] of Object.entries(WRONG_STEP_WORDS)) {
       expect(RL[lang as 'es']?.unenrichedSection, lang).not.toMatch(wrong);
     }
+  });
+});
+
+describe('the reassurance is conditional, on this surface too (round 9, R9-7)', () => {
+  it('is not repeated under every gap, and is not said when something else is wrong either', () => {
+    // The PDF half is pinned in core; this is the same rule on the screen the buyer
+    // reads first. Mutation that reds this: render `allElseOk` unconditionally.
+    const report = { a: { text: 'x' }, b: { text: 'y' } };
+    const sections = [{ key: 'a', title: 'A' }, { key: 'b', title: 'B' }];
+    const count = (meta: unknown) => {
+      const { container, unmount } = render(<ReportViewer report={report} sections={sections} meta={meta as never} lang="en" />);
+      const n = (container.textContent?.match(/Everything else was researched and written as usual/g) ?? []).length;
+      unmount();
+      return n;
+    };
+    expect(count({ sections: [{ key: 'a', status: 'lost' }, { key: 'b', status: 'lost' }] }), 'two gaps').toBe(0);
+    expect(count({ sections: [{ key: 'a', status: 'lost' }, { key: 'b', status: 'unenriched' }] }), 'a gap and a shallow one').toBe(0);
+    expect(count({ sections: [{ key: 'a', status: 'lost' }] }), 'the only thing wrong').toBe(1);
   });
 });
 
