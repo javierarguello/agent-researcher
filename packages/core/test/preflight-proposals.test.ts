@@ -189,6 +189,36 @@ describe('the quote that says whose words a proposal is', () => {
     expect(ok.quotes?.riskAppetite).toBe('lavandería');
   });
 
+  it('a two-word fragment is not a phrase either — «de la», «of the», «en el» (round 9, R9-4)', () => {
+    // R8-26 raised the tick bar to "8+ characters OR contains a space", and the
+    // second branch re-admitted the class the first was written to refuse: `de la`,
+    // `of the`, `en el` are in every note a buyer types, exactly like `una`. Worse,
+    // that branch was pinned by NOTHING — deleting it measured 0 red, because the
+    // test that claimed to cover it asserted two quotes that both clear the length
+    // rule on their own.
+    //
+    // The rule is now one dimension, and a linguistic property rather than a
+    // threshold: a quote must contain a WORD OF FIVE LETTERS OR MORE. Function words
+    // in the four languages this product speaks are almost all four letters or less
+    // (`the`, `for`, `una`, `los`, `que`, `de`, `la`, `en`, `el`, `dans`, `com`);
+    // content words are almost all five or more. A raw character count is not
+    // language-fair — it let `de la` tick while refusing `ausente`, which is the
+    // exact word a Spanish buyer would write.
+    // Mutation that reds this: bring back `|| /\s/.test(q)`.
+    const filler = 'Busco una lavandería, uno de los negocios de la zona, con algo de deuda.';
+    for (const q of ['de la', 'de los', 'una']) {
+      const out = acceptProposals(florida, base, { directives: { riskAppetite: { value: 'opportunistic', quote: q } }, keywords: [] }, filler);
+      expect(out.directives.riskAppetite, `${q}: the proposal still stands`).toBe('opportunistic');
+      expect(out.quotes?.riskAppetite, `${q} ticked a directive by default`).toBeUndefined();
+    }
+    // …and the words that carry meaning still tick, at the length a Spanish or
+    // Portuguese buyer actually writes them.
+    for (const q of ['lavandería', 'deuda']) {
+      const out = acceptProposals(florida, base, { directives: { riskAppetite: { value: 'balanced', quote: q } }, keywords: [] }, filler);
+      expect(out.quotes?.riskAppetite, q).toBe(q);
+    }
+  });
+
   it('reads a bare value from an older model answer exactly as before', () => {
     // The shape is what we ASK for, not what we can rely on getting: a model that
     // answers with the old flat value still proposes, it is just never quoted.
@@ -274,6 +304,41 @@ describe('a basic must be quoted by something that names it (R8-26)', () => {
     );
     expect(out.basics?.location).toBeUndefined();
     expect(out.quotes?.location).toBeUndefined();
+  });
+
+  it('and keeps the ones a model normalises — an accent, an abbreviation it expands (round 9, R9-5)', () => {
+    // The anchor was a raw substring over 3-character tokens, which broke in the one
+    // direction a model actually normalises. `St. Pete → St. Petersburg, FL` and
+    // `à Orléans → Orleans, FL` were REFUSED — and for a basic the quote is a hard
+    // gate, so the proposal did not fall back to unticked, it vanished, and the
+    // buyer submitted a state-wide search for the same money.
+    // Mutation that reds this: compare tokens without folding accents, or drop the
+    // shared-prefix match.
+    const cases: Array<[string, string, string]> = [
+      ['Laundromat in St. Pete, budget 500k.', 'St. Petersburg, FL', 'in St. Pete'],
+      ['Je cherche une laverie à Orléans, FL.', 'Orleans, FL', 'à Orléans'],
+      ['Busco una lavandería en Hialeah, presupuesto máximo 500k.', 'Hialeah, FL', 'lavandería en Hialeah'],
+    ];
+    for (const [text, value, quote] of cases) {
+      const out = acceptProposals(florida, empty, { directives: {}, keywords: [], basics: { location: { value, quote } } }, text);
+      expect(out.basics?.location, `${quote} → ${value}`).toBe(value);
+      expect(out.quotes?.location, quote).toBe(quote);
+    }
+  });
+
+  it('and still refuses a three-letter word that happens to be IN the value (round 9, R9-13)', () => {
+    // R8-26's own example with the value swapped: `«the»` bought `The Villages, FL`,
+    // a real Florida city, for a buyer who wrote Hialeah — the anchor matched on the
+    // article. An anchor token must be four letters or more, on both sides.
+    // Mutation that reds this: lower the anchor floor back to 3.
+    for (const [value, quote] of [['The Villages, FL', 'the'], ['Los Angeles, CA', 'los'], ['San Juan, PR', 'san']]) {
+      const out = acceptProposals(
+        florida, empty,
+        { directives: {}, keywords: [], basics: { location: { value: value!, quote: quote! } } },
+        'Busco una lavandería en Hialeah; los negocios de la zona, san o no.',
+      );
+      expect(out.basics?.location, `${quote} → ${value}`).toBeUndefined();
+    }
   });
 
   it('and keeps the normalised one the buyer really did name', () => {

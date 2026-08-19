@@ -287,37 +287,77 @@ const QUOTE_MAX_LEN = 140;
 /** Shorter than this and a "quote" matches almost any text by accident. */
 const QUOTE_MIN_LEN = 3;
 /**
- * …and shorter than THIS it still does. `una`, `the`, `for`, `sale` appear in
- * almost every note a buyer types, and a quote is what makes the client tick a
- * proposal by default: three characters were enough to pre-tick a directive the
- * buyer never asked for (round 8, R8-26). One word of eight characters, or two
- * words of any length, is a phrase; below that the proposal still stands, it is
- * just shown unticked — which is the designed fallback for an inference with no
- * literal quote.
+ * A quote is evidence when it contains a WORD, not when it is long enough.
+ *
+ * R8-26 raised the bar to "8+ characters OR contains a space", and the second half
+ * re-admitted exactly what the first refused: `de la`, `of the`, `en el` are in
+ * every note a buyer types, just like `una` — and they ticked a directive by
+ * default. The length half was not language-fair either, refusing `ausente`,
+ * `riesgo`, `deuda`, which is how a Spanish or Portuguese buyer writes the thing
+ * the directive is about (round 9, R9-4).
+ *
+ * So: one content word. Function words in the four languages this product speaks
+ * are almost all four letters or fewer (`the`, `for`, `and`, `una`, `los`, `que`,
+ * `de`, `la`, `en`, `el`, `dans`, `pour`, `com`, `uma`); content words are almost
+ * all five or more. That is a property of the languages rather than a threshold
+ * someone picked, which is why it holds in all four at once.
+ *
+ * Below the bar the proposal still stands — it is shown UNTICKED, the designed
+ * lane for an inference with no literal quote ("que se maneje sola" → `absentee`).
  */
-const QUOTE_TICK_MIN_LEN = 8;
-const isEvidence = (q: string): boolean => q.trim().length >= QUOTE_TICK_MIN_LEN || /\s/.test(q.trim());
+const CONTENT_WORD_LEN = 5;
+const words = (s: string): string[] => fold(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+const isEvidence = (q: string): boolean => words(q).some((w) => w.length >= CONTENT_WORD_LEN);
 
 /**
- * A quote is evidence for a VALUE only if it contains something of the value.
+ * How long a word has to be to ANCHOR a quote to a value. One less than a content
+ * word, because an anchor is corroborated by matching the value while a tick
+ * stands alone — and because `Pete` is four letters.
+ */
+const ANCHOR_WORD_LEN = 4;
+
+/**
+ * A quote is evidence for a VALUE only if it names the value.
  *
  * For a directive there is nothing to compare — the value is one of OURS and the
- * honest case has no literal quote ("que se maneje sola" → `absentee`). For a
- * BASIC the value is the model's own string, and `verbatim()` alone let
- * `{ value: 'Orlando, FL', quote: 'una' }` through for a buyer who wrote Hialeah:
- * the quote was in the text, the value was from anywhere on earth, and «una» was
- * shown to the buyer as the evidence for Orlando. Any word of the value that the
- * quote also contains is enough of an anchor — the model still gets to normalise
- * `Hialeah` into `Hialeah, FL`.
+ * honest case has no literal quote at all. For a BASIC the value is the model's
+ * own string, and `verbatim()` alone let `{ value: 'Orlando, FL', quote: 'una' }`
+ * through for a buyer who wrote Hialeah: the quote was in the text, the value was
+ * from anywhere on earth, and «una» was shown as the evidence for Orlando (R8-26).
+ *
+ * The first version of this anchor was a raw substring over three-letter tokens,
+ * and it broke in both directions (round 9, R9-5 and R9-13):
+ *  - `«the»` still bought `The Villages, FL` and `«los»` `Los Angeles, CA` — a
+ *    real city each, anchored on an article. Hence four letters, on BOTH sides.
+ *  - `St. Pete → St. Petersburg, FL` and `à Orléans → Orleans, FL` were REFUSED,
+ *    and for a basic the quote is a hard gate, so those did not fall back to
+ *    unticked — they vanished, and the buyer paid for a state-wide search. Hence
+ *    accents folded (a model normalising `Orléans` to `Orleans` is the normal
+ *    case) and a shared PREFIX counted as a match (`pete` ↔ `petersburg`).
+ *
+ * What it still refuses, knowingly: an abbreviation with no shared prefix (`Jax` →
+ * `Jacksonville`), a translation (`Cayo Hueso` → `Key West`), and a value whose
+ * words are all shorter than four letters (`LA`, and any CJK place name — the
+ * flagship is Florida-only, so nothing ships against that today). Those are not
+ * anchorable by string comparison at all; the honest options are to lose them or
+ * to offer basics with no evidence shown, and losing them keeps R8-26 closed.
  */
 function quoteNames(quote: string, value: string): boolean {
-  const q = flatten(quote);
-  const tokens = flatten(value).split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 3);
-  return tokens.length > 0 && tokens.some((t) => q.includes(t));
+  const qs = words(quote).filter((w) => w.length >= ANCHOR_WORD_LEN);
+  const vs = words(value).filter((w) => w.length >= ANCHOR_WORD_LEN);
+  const shares = (a: string, b: string) => a === b || a.startsWith(b) || b.startsWith(a);
+  return vs.some((v) => qs.some((q) => shares(v, q)));
 }
 
 /** Case- and whitespace-insensitive: a model re-types a quote, it does not copy bytes. */
 const flatten = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
+/**
+ * …and accent-insensitive, for COMPARING a quote with a value. Not used by
+ * `verbatim()`, which must stay literal — what the buyer typed is what is quoted
+ * back to them. Used where a model's own normalisation is the normal case:
+ * `Orléans` → `Orleans` is a model doing its job, and it broke the anchor.
+ */
+const fold = (s: string): string => flatten(s).normalize('NFD').replace(/\p{M}+/gu, '');
 
 /**
  * The buyer's words, if these really are the buyer's words.
