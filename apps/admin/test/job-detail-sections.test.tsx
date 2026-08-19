@@ -155,6 +155,28 @@ describe('a partial delivery says which parts', () => {
     expect(row(1)[headers.indexOf('Research')]).toContain('21 turns');
   });
 
+  it('tells a producer whose loop never ran from an agent that never had one (round 9, R9-20)', async () => {
+    // `agentKind` returns `refiner` for a producer-refiner AND for a synthesizer
+    // one — the flagship ships three of the first and one of the second — so gating
+    // the badge on `kind !== 'researcher'` printed the same word for "this loop
+    // threw before its first turn" and "this agent has no loop". Different
+    // conversations, and one of them is a refund.
+    // Mutation that reds this: gate the cell on `kind` again.
+    state.agents = [
+      { id: 'market-refiner', wave: 2, status: 'failed', durationMs: 90, attempts: 3, costUsd: 0.02, kind: 'refiner', hadLoop: true },
+      { id: 'chart-refiner', wave: 3, status: 'ok', durationMs: 900, attempts: 1, costUsd: 0.11, kind: 'refiner', hadLoop: false },
+    ];
+    show();
+
+    await waitFor(() => expect(screen.getAllByText('market-refiner').length).toBeGreaterThan(0));
+    const table = screen.getByText('Research').closest('table')!;
+    const headers = [...table.querySelectorAll('thead th')].map((h) => h.textContent);
+    const cell = (i: number) => [...table.querySelectorAll('tbody tr')[i]!.querySelectorAll('td')][headers.indexOf('Research')]!.textContent;
+    expect(cell(0), 'a loop that bought nothing').toContain('no turns');
+    expect(cell(1), 'an agent with no loop at all').toContain('refiner');
+    expect(cell(1)).not.toContain('no turns');
+  });
+
   it('shows nothing for a clean job', async () => {
     // The control: a panel that is always there is furniture, and an admin stops
     // reading it.

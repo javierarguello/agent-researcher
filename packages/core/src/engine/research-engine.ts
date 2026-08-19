@@ -547,8 +547,13 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   const snapshot = (): Checkpoint => {
     const { pages, gatheredIds } = carry();
     return {
-      report,
-      sources: evidence.sources,
+      // `report` and `sources` are copied too, and they are the two that made the
+      // claim "copies its arrays and maps" false: `sources` is the LARGEST array on
+      // the checkpoint and both keep being written after a snapshot is taken (round
+      // 9, R9-18). Shallow — a section body edited in place is still shared — which
+      // is the honest bound: the top level is frozen, the leaves are not.
+      report: { ...report },
+      sources: [...evidence.sources],
       extracted: pages,
       doneAgentIds: [...done],
       gatheredAgentIds: gatheredIds,
@@ -563,9 +568,9 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       degraded: degraded.map((d) => ({ ...d })),
       warnings: [...warnings],
       agentTraces: slimAgents(),
-      cost: trace.cost,
+      cost: { ...trace.cost },
       turnsUsed: counter.turns,
-      writeFailures,
+      writeFailures: { ...writeFailures },
     };
   };
 

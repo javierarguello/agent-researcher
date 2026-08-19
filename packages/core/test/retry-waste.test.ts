@@ -553,6 +553,36 @@ describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
     expect(write, 'the store head took a slot the loop’s own results had paid for').not.toContain('https://x/0');
   });
 
+  it('a checkpoint handed to a caller does not keep growing (round 9, R9-18)', async () => {
+    // `snapshot()` used to hand out the live `report`, `sources`, `cost` and
+    // `writeFailures`, so an object a caller held across an agent boundary changed
+    // under it — and the commit that copied the other five said it had copied "its
+    // arrays and maps", which is how the two biggest ones stayed aliased. Invisible
+    // today because every caller serializes immediately; that is a property of
+    // today's callers, not of the function.
+    // Mutation that reds this: hand out `report` / `sources` live again.
+    installMockProvider();
+    // HOLD the object and read it at the END — reading it inside the callback proves
+    // nothing, because a live object and a copy give the same answer at that moment.
+    // `at` records what each snapshot said when it was taken; `held` is the object
+    // itself, re-read after the run finished.
+    const held: Array<Record<string, unknown>> = [];
+    const at: Array<{ sections: number; sources: number }> = [];
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'snap1', generatedAt: 't',
+      onCheckpoint: async (cp: Record<string, unknown>) => {
+        held.push(cp);
+        at.push({ sections: Object.keys((cp.report ?? {}) as object).length, sources: ((cp.sources ?? []) as unknown[]).length });
+      },
+    } as never);
+    expect(held.length, 'more than one checkpoint, or this proves nothing').toBeGreaterThan(1);
+    expect(at[at.length - 1]!.sections, 'the run really did grow between snapshots').toBeGreaterThan(at[0]!.sections);
+    for (const [i, cp] of held.entries()) {
+      expect(Object.keys((cp.report ?? {}) as object).length, `snapshot ${i} report grew after it was taken`).toBe(at[i]!.sections);
+      expect(((cp.sources ?? []) as unknown[]).length, `snapshot ${i} sources grew after it was taken`).toBe(at[i]!.sources);
+    }
+  });
+
   it('records what a loop was SHOWN, not only what it fetched — the half a resume reads', async () => {
     // The write side of the same field. Seeding it in a test proves the read; this
     // proves there is anything to read. Mutation that reds this: stop recording

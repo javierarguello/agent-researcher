@@ -335,6 +335,10 @@ describe('what the admin dashboard is told about a partial delivery', () => {
     // Mutation that reds this: drop the `kind` spread in `run-job.ts`.
     expect(scout.kind).toBe('researcher');
     if (advisor) expect(advisor.kind, 'the agent with no loop is the one that needs saying').toBe('writer');
+    // …and whether it HAD a loop, which `kind` cannot say for a refiner (round 9,
+    // R9-20). Mutation that reds this: drop the `hadLoop` spread in `run-job.ts`.
+    expect(scout.hadLoop).toBe(true);
+    if (advisor) expect(advisor.hadLoop).toBe(false);
   });
 
   it('still counts one when a section really was lost', async () => {

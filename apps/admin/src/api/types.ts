@@ -144,6 +144,8 @@ export interface JobAgentSummary {
   gatherStop?: string;
   /** `researcher` | `refiner` | `writer`; absent on traces written before it. */
   kind?: string;
+  /** Whether it had a research loop; `kind` alone cannot say for a refiner. */
+  hadLoop?: boolean;
 }
 export interface JobSummary {
   mode?: string;

@@ -486,6 +486,26 @@ describe('deterministic review', () => {
     );
   });
 
+  it('renders only DECLARED directive values, and no `[object Object]` on the generic path (round 9, R9-17/R9-19)', () => {
+    // Two things a reviewer found by calling the exported function directly rather
+    // than through the API: a value that skipped validation printed verbatim on the
+    // buyer's confirm screen, and a model with no `describePlan` printed its whole
+    // directives object as `[object Object]` in the filter list. `renderPlan` is
+    // exported from the package index, so "nothing reaches it unvalidated today" is
+    // a property of today's callers, not of the function.
+    // Mutation that reds this: drop the `allowed.has(x)` re-check, or the `dirKey`
+    // skip in the generic renderer.
+    const bad = params({ directives: { ownerInvolvement: 'PWNED <script>alert(1)</script>', reasonForSale: ['owner_retiring', 'INJECT me'] } });
+    expect(planPreferences(tpl, bad, 'en')).toEqual([{ label: 'Reason for sale', value: 'Owner retiring' }]);
+
+    const generic = { ...tpl, preflight: undefined } as typeof tpl;
+    const line = renderPlan(generic, params({ directives: { ownerInvolvement: 'absentee' } }), { lang: 'en', modeLabel: 'Essential' });
+    expect(line).not.toContain('[object Object]');
+    // …and they are not lost: the pairs render for every template, whichever branch
+    // wrote the summary.
+    expect(planPreferences(generic, params({ directives: { ownerInvolvement: 'absentee' } }), 'en')).toHaveLength(1);
+  });
+
   it('does not quote the user’s free text back into the summary', () => {
     const p = params({ instructions: 'SECRET-MARKER-XYZ prefer absentee owners' });
     expect(renderPlan(tpl, p, { lang: 'en', modeLabel: 'Essential' })).not.toContain('SECRET-MARKER-XYZ');

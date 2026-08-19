@@ -25,6 +25,7 @@ import { retryAsync } from '../util/retry.js';
 import { releaseJobSlot } from '../jobs/slots.js';
 import { sectionsNotice } from '../jobs/report-copy.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
+import { hasResearchLoop } from '../templates/types.js';
 import type { JobFile, JobHold, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
 import { createCostSink, emptyCost } from '../cost.js';
@@ -526,6 +527,8 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // same `—` for a synthesizer that has no loop and a producer whose loop never
       // ran, and those are different conversations.
       ...(a.kind ? { kind: a.kind } : {}),
+      // …and whether it had a loop at all, which `kind` cannot say for a refiner.
+      ...(a.kind ? { hadLoop: hasResearchLoop({ role: a.role }) } : {}),
     }));
     const agentErrors = output.trace.agents
       .filter((a) => a.status === 'failed')

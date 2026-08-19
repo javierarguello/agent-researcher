@@ -199,6 +199,15 @@ export interface JobSummary {
     gatherStop?: string;
     /** `researcher` | `refiner` | `writer` — absent on traces written before it. */
     kind?: string;
+    /**
+     * Whether this agent HAD a research loop — `role === 'producer'`. `kind` alone
+     * cannot say: the flagship ships three producer-refiners with loops and one
+     * synthesizer-refiner without, and both render `refiner`, so a producer whose
+     * loop threw before its first turn was indistinguishable from an agent that
+     * never had one (round 9, R9-20). Different conversations, and one of them is a
+     * refund.
+     */
+    hadLoop?: boolean;
   }>;
   /** Warnings to review later (e.g. sections degraded after exhausting retries).
    *  INTERNAL: names agents and section keys, in English. Admin surfaces only. */

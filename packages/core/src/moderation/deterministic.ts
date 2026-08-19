@@ -104,9 +104,14 @@ export function renderPlan(
       /* fall through to the generic renderer */
     }
   }
-  // Generic fallback: subject + scope + the filters that are actually set.
+  // Generic fallback: subject + scope + the filters that are actually set. The
+  // directives key is skipped — it is an object, so `String(v)` printed literally
+  // `directives: [object Object]` on the last screen before payment for any model
+  // with no `describePlan` (round 9, R9-17). They are not lost: `planPreferences`
+  // renders them as pairs for every template, whichever branch wrote the summary.
+  const dirKey = template.directives?.key ?? 'directives';
   const filters = Object.entries(params)
-    .filter(([k, v]) => k !== 'mode' && k !== 'language' && v != null && v !== '' && v !== false && !(Array.isArray(v) && !v.length))
+    .filter(([k, v]) => k !== 'mode' && k !== 'language' && k !== dirKey && v != null && v !== '' && v !== false && !(Array.isArray(v) && !v.length))
     .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
   const head = GENERIC_HEAD[ctx.lang] ?? GENERIC_HEAD.en;
   return `${head(template.name, ctx.modeLabel)}${filters.length ? ` — ${filters.join('; ')}.` : '.'}`;
@@ -157,11 +162,20 @@ export function planPreferences(
     const v = set[field.key];
     if (v === undefined || v === null || (Array.isArray(v) && !v.length)) continue;
     const text = directiveText(field, lang);
+    // Only a DECLARED value renders, and the array is cut at the field's own bound —
+    // the same re-check `renderDirectives` does one module over, for the same
+    // reason: "`directivesSchema` already enforces this; re-checking here means a
+    // caller that skipped validation still cannot get an arbitrary string into a
+    // prompt". `renderPlan` is exported from the package index, and this string goes
+    // to a buyer rather than to a prompt, which is not a weaker place to put a
+    // stranger's text (round 9, R9-19).
+    const allowed = new Set(field.values ?? []);
+    const ok = (x: unknown): x is string => typeof x === 'string' && (field.kind === 'boolean' || allowed.has(x));
     const label = (raw: string) => text.valueLabels?.[raw] ?? raw;
     const shown =
       typeof v === 'boolean' ? (PREFS_YESNO[lang] ?? PREFS_YESNO.en)[v ? 0 : 1]
-      : Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map(label).join(', ')
-      : typeof v === 'string' ? label(v)
+      : Array.isArray(v) ? v.filter(ok).slice(0, field.maxSelected ?? allowed.size).map(label).join(', ')
+      : ok(v) ? label(v)
       : '';
     if (shown) out.push({ label: text.label, value: shown });
   }
