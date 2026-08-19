@@ -311,6 +311,17 @@ export interface Checkpoint {
   /** Accumulated cost across prior dispatches (agents + headline) — restored so the
    *  final job cost isn't undercounted to just the last dispatch's steps. */
   cost?: Cost;
+  /**
+   * Research turns this job has spent, across dispatches.
+   *
+   * R7-13 seeded this from `cost.searchCalls`, which counts BILLED calls: a turn
+   * that reached no backend — an empty url, a fetch with no search key configured,
+   * a provider that failed before it charged — was still forgotten on resume, so
+   * the per-agent rows an admin reads still did not sum to the figure above them
+   * (round 8, R8-16). Absent on a checkpoint written before this field existed, and
+   * `searchCalls` remains the fallback there: the old approximation beats a reset.
+   */
+  turnsUsed?: number;
 }
 
 export interface ResearchOutput {
@@ -431,10 +442,11 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
    * on every resume made the job summary disagree with its own cost (`searchCalls`
    * counts every dispatch, this counted the last one), made the per-agent rows an
    * admin reads stop summing to the "Search turns" figure above them, and restarted
-   * the buyer's turn count at zero mid-job (round 7, R7-13). The checkpoint carries
-   * the paid calls, so it carries the count of them too.
+   * the buyer's turn count at zero mid-job (round 7, R7-13). The checkpoint now
+   * carries the count itself — `searchCalls` counts what was BILLED, which is a
+   * different number whenever a turn reached no backend (round 8, R8-16).
    */
-  const counter = { turns: input.resume?.cost?.searchCalls ?? 0 };
+  const counter = { turns: input.resume?.turnsUsed ?? input.resume?.cost?.searchCalls ?? 0 };
   const finalize = input.finalize ?? true;
 
   // Seed evidence sources from the checkpoint (feeds the derived `sources` section).
@@ -517,7 +529,15 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     const rest = evidence.extracted.filter((p) => !owned.has(p.url));
     // Own pages first, then the newest of the others, then back into store order:
     // the dossier's tiers read this list, and store order is what they assume.
-    const keep = new Set([...mine.slice(-CHECKPOINT_MAX_PAGES), ...rest.slice(-Math.max(0, CHECKPOINT_MAX_PAGES - mine.length))]);
+    //
+    // `room` is computed from what was actually kept, not from `mine.length`:
+    // `rest.slice(-Math.max(0, CAP - mine.length))` is `slice(-0)` once an agent
+    // owns the whole cap, and `-0 === 0`, so `slice(-0)` returns the ENTIRE array.
+    // The bound switched itself off at exactly the size it exists to bound, and
+    // this runs after every agent (round 8, R8-2).
+    const own = mine.slice(-CHECKPOINT_MAX_PAGES);
+    const room = CHECKPOINT_MAX_PAGES - own.length;
+    const keep = new Set([...own, ...(room > 0 ? rest.slice(-room) : [])]);
     const pages = evidence.extracted.filter((p) => keep.has(p));
     const kept = new Set(pages.map((p) => p.url));
     const gatheredIds = [...gathered].filter((id) => (fetchedByAgent[id] ?? []).every((u) => kept.has(u)));
@@ -539,6 +559,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       warnings,
       agentTraces: slimAgents(),
       cost: trace.cost,
+      turnsUsed: counter.turns,
       writeFailures,
     };
   };
@@ -760,8 +781,16 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         // What it fetched, carried across dispatches: the checkpoint keeps those
         // pages ahead of everyone else's, and a resumed writer ranks them first in
         // its own dossier (see `Checkpoint.fetchedByAgent`).
+        // Bounded by the same number that bounds the pages, because `carry()` keeps
+        // `gathered` only for an agent ALL of whose recorded urls survived: an agent
+        // with 61 recorded urls could never satisfy that test, lost `gathered` on
+        // every snapshot, and re-bought its whole loop on all eight dispatches — the
+        // permanent version of the cost M-D1 was filed to stop (round 8, R8-3).
         if (research.fetched.size) {
-          fetchedByAgent[agent.id] = [...new Set([...(fetchedByAgent[agent.id] ?? []), ...research.fetched])];
+          const all = [...new Set([...(fetchedByAgent[agent.id] ?? []), ...research.fetched])];
+          fetchedByAgent[agent.id] = all.slice(-CHECKPOINT_MAX_PAGES);
+          const capped = `${agent.id}: fetched ${all.length} pages, more than the ${CHECKPOINT_MAX_PAGES} a checkpoint carries; a resumed dispatch writes from the newest ${CHECKPOINT_MAX_PAGES} of its own.`;
+          if (all.length > CHECKPOINT_MAX_PAGES && !warnings.includes(capped)) warnings.push(capped);
         }
         if (research.touched.size) {
           touchedByAgent[agent.id] = [...new Set([...(touchedByAgent[agent.id] ?? []), ...research.touched])].slice(-MAX_SEEN_PER_AGENT);

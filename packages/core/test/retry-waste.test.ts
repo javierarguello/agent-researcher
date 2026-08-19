@@ -413,6 +413,53 @@ describe('a re-dispatch does not re-buy a finished loop', () => {
   });
 });
 
+describe('the job\'s turn count survives a resume (R8-16)', () => {
+  const resumeWith = (extra: Record<string, unknown>) => ({
+    template: compactModel, params: params(), jobId: 'turns', generatedAt: 't',
+    resume: { report: {}, sources: [], extracted: [], doneAgentIds: [], degraded: [], ...extra } as never,
+  });
+
+  it('counts the turns it actually took, not the search calls it was billed for', async () => {
+    // R7-13 seeded the counter from `cost.searchCalls` — the BILLED calls. A turn
+    // that reached no backend (an empty url, a fetch with no search key, a provider
+    // that failed before charging) was billed as 0 and forgotten on resume, so the
+    // admin's per-agent rows still did not sum to the "Search turns" above them.
+    // Mutation that reds this: seed from `cost.searchCalls` again.
+    installMockProvider();
+    const carried = await runResearch(resumeWith({
+      turnsUsed: 9,
+      cost: { usd: 0, llmUsd: 0, searchUsd: 0, inputTokens: 0, outputTokens: 0, searchCalls: 2 },
+    }));
+    installMockProvider();
+    const billed = await runResearch(resumeWith({
+      cost: { usd: 0, llmUsd: 0, searchUsd: 0, inputTokens: 0, outputTokens: 0, searchCalls: 2 },
+    }));
+    // Same dispatch, same work: the only difference is what each was seeded with.
+    expect(carried.turnsUsed - billed.turnsUsed).toBe(7);
+  });
+
+  it('and a checkpoint written before the field existed still resumes from the billed count', async () => {
+    // The migration half: `turnsUsed` is absent on every checkpoint in flight when
+    // this ships, and the old approximation beats restarting the buyer's count at
+    // zero. Mutation that reds this: drop the `?? input.resume?.cost?.searchCalls`.
+    installMockProvider();
+    const legacy = await runResearch(resumeWith({
+      cost: { usd: 0, llmUsd: 0, searchUsd: 0, inputTokens: 0, outputTokens: 0, searchCalls: 5 },
+    }));
+    installMockProvider();
+    const fresh = await runResearch(resumeWith({}));
+    expect(legacy.turnsUsed - fresh.turnsUsed).toBe(5);
+  });
+
+  it('and the count it carries forward is the one the next dispatch resumes from', async () => {
+    // Mutation that reds this: drop `turnsUsed: counter.turns` from `snapshot()`.
+    installMockProvider();
+    const out = await runResearch(resumeWith({ turnsUsed: 4 }));
+    expect(out.checkpoint.turnsUsed).toBe(out.turnsUsed);
+    expect(out.checkpoint.turnsUsed).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
   it('its own pages survive the checkpoint cap, and it is still trusted not to re-buy them', async () => {
     // The cap drops the OLDEST pages, which are the earliest agent's — and an agent
@@ -442,9 +489,15 @@ describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
     expect(out.checkpoint.gatheredAgentIds).toContain('scout');
   });
 
-  it('and when they cannot all be kept, it loses `gathered` instead of writing from evidence it never gathered', async () => {
-    // Paying twice beats writing from someone else's research. Mutation that reds
-    // this: keep `gatheredAgentIds: [...gathered]` unconditionally.
+  it('and when it fetched MORE than a checkpoint can carry, it keeps its own newest and no foreign page (R8-3)', async () => {
+    // R7-11 made this case drop `gathered` — pay the loop twice rather than write
+    // from someone else's research. That rule cost money for nothing: re-buying
+    // cannot carry more than the cap either, so the agent paid a second loop to
+    // arrive at the same 60 pages, and could be cut off and made to pay again on
+    // every dispatch (round 8, R8-3). What the rule was protecting is enforced
+    // directly instead — the pages it resumes from are its OWN, newest first, and
+    // no foreign page displaces one. Mutation that reds this: drop the
+    // `.slice(-CHECKPOINT_MAX_PAGES)` on the resumed `fetchedByAgent`.
     const pages = Array.from({ length: 80 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
     installMockProvider();
     const out = await runResearch({
@@ -452,10 +505,14 @@ describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
       resume: {
         report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
         gatheredAgentIds: ['scout'],
-        fetchedByAgent: { scout: pages.map((p) => p.url) }, // all 80: more than the cap
+        fetchedByAgent: { scout: pages.slice(0, 80).map((p) => p.url) }, // all 80: more than the cap
       } as never,
     });
-    expect(out.checkpoint.gatheredAgentIds ?? []).not.toContain('scout');
+    expect(out.checkpoint.gatheredAgentIds ?? [], 'settles instead of re-buying').toContain('scout');
+    const carried = out.checkpoint.extracted ?? [];
+    expect(carried.length).toBeLessThanOrEqual(60);
+    // Its own newest 60 — pages 20..79 — and nothing else.
+    expect(carried.map((p) => p.url)).toEqual(pages.slice(20).map((p) => p.url));
   });
 
   it('a RESUMED writer still ranks the pages it paid for first (R7-31 F9)', async () => {
@@ -530,6 +587,130 @@ describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
     const hosts = [...write.matchAll(/\n\s+URL: (\S+)/g)].map((m) => new URL(m[1]!).hostname);
     expect(hosts.length).toBe(48);
     expect(hosts.every((h) => h === 'bizbuysell.test'), 'its own results, not a diversity cut').toBe(true);
+  });
+
+  it('carries at most 60 pages when a gathered agent owns 60 of them (R8-2)', async () => {
+    // `rest.slice(-Math.max(0, 60 - mine.length))` is `slice(-0)` once `mine` reaches
+    // the cap — and `-0 === 0`, so `slice(-0)` returns the WHOLE array. The cap
+    // turned itself off exactly when it was needed most, and the checkpoint is
+    // re-uploaded after every agent. Both existing fixtures sit outside the branch:
+    // one has 10 owned pages, the other 80 owned of 80 (so `rest` is empty).
+    // Mutation that reds this: `rest.slice(-Math.max(0, CHECKPOINT_MAX_PAGES - mine.length))`.
+    const pages = Array.from({ length: 100 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    installMockProvider();
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'cap60', generatedAt: 't',
+      resume: {
+        report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
+        gatheredAgentIds: ['scout'], fetchedByAgent: { scout: pages.slice(0, 60).map((p) => p.url) },
+      } as never,
+    });
+    expect((out.checkpoint.extracted ?? []).length).toBeLessThanOrEqual(60);
+  });
+
+  it('and when a gathered agent owns MORE than the cap, it keeps its own and drops the foreign (R8-2)', async () => {
+    // The second half of the same line: with 70 owned of 100 the old code kept all 30
+    // FOREIGN pages and dropped ten of the agent's own oldest — the exact inverse of
+    // the rule this function exists to enforce.
+    const pages = Array.from({ length: 100 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    installMockProvider();
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'cap70', generatedAt: 't',
+      resume: {
+        report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
+        gatheredAgentIds: ['scout'], fetchedByAgent: { scout: pages.slice(0, 70).map((p) => p.url) },
+      } as never,
+    });
+    const carried = out.checkpoint.extracted ?? [];
+    expect(carried.length).toBeLessThanOrEqual(60);
+    expect(carried.every((p) => Number(p.url.split('/').pop()) < 70), 'no foreign page beat an owned one').toBe(true);
+  });
+
+  it('a dispatch that spends NOTHING still leaves the gathered agent gathered (R8-3)', async () => {
+    // The shape that made this permanent: the checkpoint is re-written after every
+    // dispatch, including one that is held at the ceiling before any agent runs. An
+    // agent with 61+ recorded urls could never satisfy `carry()`'s "all of its own
+    // survived" test, so every one of those snapshots dropped it from
+    // `gatheredAgentIds` and the next dispatch re-bought a loop it had already paid
+    // for. Nothing here re-runs it, so only the resumed list being capped can save it.
+    // A dispatch held at the ceiling calls no provider, and the recorded list is
+    // still capped on the way out — the agent's own seeded urls go through the same
+    // record path a finished loop does. Mutation that reds this: record `all`.
+    const pages = Array.from({ length: 80 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    const mock = installMockProvider();
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'held', generatedAt: 't', finalize: false,
+      costCeilingUsd: 1,
+      resume: {
+        report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
+        gatheredAgentIds: ['scout'],
+        fetchedByAgent: { scout: pages.map((p) => p.url) },
+        cost: { usd: 5, llmUsd: 5, searchUsd: 0, inputTokens: 0, outputTokens: 0, searchCalls: 0 },
+      } as never,
+    });
+    expect(mock.calls, 'the premise: this dispatch ran nothing').toBe(0);
+    expect(out.checkpoint.gatheredAgentIds ?? []).toContain('scout');
+  });
+
+  it('an agent already at the cap that fetches one more page keeps the NEWEST (R8-3)', async () => {
+    // The other half: a loop cut off mid-way accumulates across dispatches, so the
+    // recorded list crosses the cap while the agent is still running. Trimming only
+    // what the checkpoint was loaded with would let this dispatch's own snapshot go
+    // over again. Mutation that reds this: record `all` instead of
+    // `all.slice(-CHECKPOINT_MAX_PAGES)`.
+    const fresh = 'https://example-marketplace.test/listing/sunshine-coin-laundry';
+    const old = Array.from({ length: 60 }, (_, i) => `https://x/${i}`);
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    mock.generate = async (opts) => {
+      if (opts.tools?.length) {
+        const toolMsgs = opts.messages.filter((m) => m.role === 'tool').length;
+        if (toolMsgs === 0) return { text: '', usage: { inputTokens: 1, outputTokens: 1 }, toolCalls: [{ id: 'f1', name: 'fetch_page', args: { url: fresh } }] };
+        return { text: 'Ready to write.', toolCalls: [], usage: { inputTokens: 1, outputTokens: 1 } };
+      }
+      return base(opts);
+    };
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'atcap', generatedAt: 't', finalize: false,
+      resume: {
+        report: {}, sources: [], extracted: [], doneAgentIds: [], degraded: [],
+        fetchedByAgent: { scout: old },
+      } as never,
+    });
+    const recorded = out.checkpoint.fetchedByAgent?.scout ?? [];
+    expect(recorded, 'the premise: it fetched the new page').toContain(fresh);
+    expect(recorded.length).toBeLessThanOrEqual(60);
+    expect(recorded).not.toContain('https://x/0'); // the oldest went, not the newest
+    // And an admin can see that it happened: a section written from 60 of an agent's
+    // 61 pages is a fine outcome, but a silent one is how "it read everything" gets
+    // believed. Mutation that reds this: drop the `warnings.push`.
+    expect((out.checkpoint.warnings ?? []).join('\n')).toMatch(/scout: fetched 61 pages, more than the 60/);
+  });
+
+  it('a gathered agent that recorded more URLs than the cap re-buys its loop ONCE, not on every dispatch (R8-3)', async () => {
+    // `gatheredIds` kept an agent only if EVERY url in `fetchedByAgent` survived the
+    // 60-page cap, and nothing trimmed that list — so an agent with 61+ recorded URLs
+    // could never satisfy it and re-bought its whole loop on all eight dispatches.
+    // M-D1, re-opened. Mutation that reds this: drop the `.slice(-CHECKPOINT_MAX_PAGES)`
+    // when recording, or compare against the untrimmed list.
+    const pages = Array.from({ length: 80 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    installMockProvider();
+    const first = await runResearch({
+      template: compactModel, params: params(), jobId: 'regath', generatedAt: 't', finalize: false,
+      resume: {
+        report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
+        gatheredAgentIds: ['scout'], fetchedByAgent: { scout: pages.map((p) => p.url) },
+      } as never,
+    });
+    // It gave up `gathered` once — its evidence did not fit — but what it carries
+    // forward is now consistent with the cap, so the next dispatch can settle.
+    expect((first.checkpoint.fetchedByAgent?.scout ?? []).length).toBeLessThanOrEqual(60);
+    installMockProvider();
+    const second = await runResearch({
+      template: compactModel, params: params(), jobId: 'regath', generatedAt: 't', finalize: false,
+      resume: { ...first.checkpoint, doneAgentIds: [] } as never,
+    });
+    expect(second.checkpoint.gatheredAgentIds, 'settles instead of re-buying forever').toContain('scout');
   });
 
   it('a checkpoint from before the field resumes exactly as it did — newest pages, no preference', async () => {
