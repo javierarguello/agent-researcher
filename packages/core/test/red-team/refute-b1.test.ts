@@ -212,36 +212,64 @@ const REF_MODEL: ResearchTemplate<Record<string, unknown>> = {
   modes: { comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 1 } },
   sections: [
     {
+      key: 'market',
+      title: 'Market',
+      guidance: 'ROLE-MARKET',
+      schema: z.object({ text: z.string() }),
+    },
+    {
       key: 'shortlist',
       title: 'Shortlist',
       guidance: 'ROLE-SHORTLIST',
       schema: z.object({ listings: z.array(z.object({ name: z.string(), sourceUrl: z.string() })) }),
     },
   ],
+  // Three waves, because two cannot express the thing this measures. With ONE
+  // agent ahead of the refiner, everything that agent saw IS the store's first 48 —
+  // so the shortlist is inside the head whatever it contains, and "render the store
+  // in order" surfaces all twelve for free (round 9, R9-6). A peer that searched
+  // first is also the shape R7-2 is about: "one steered scout floods the store and
+  // an honest peer's own results are in the checkpoint but not in its prompt".
   agents: [
-    { id: 'scout', role: 'producer', objective: 'ROLE-SCOUT', produces: ['shortlist'], researchBudget: 12, model: 'flash', gatherModel: 'gather' },
+    { id: 'peer', role: 'producer', objective: 'ROLE-PEER', produces: ['market'], researchBudget: 12, model: 'flash', gatherModel: 'gather' },
+    { id: 'scout', role: 'producer', objective: 'ROLE-SCOUT', produces: ['shortlist'], dependsOn: ['peer'], researchBudget: 12, model: 'flash', gatherModel: 'gather' },
     { id: 'refiner', role: 'producer', objective: 'ROLE-REFINER', enriches: ['shortlist'], dependsOn: ['scout'], researchBudget: 12, model: 'flash', gatherModel: 'gather' },
   ],
   buildBrief: () => 'Find laundromats for sale in Miami.',
 };
 
-/** The 12 listings the scout shortlists — what the refiner is handed to rewrite. */
-const SHORTLISTED = Array.from({ length: 12 }, (_, i) => lotUrl(i + 1));
+/**
+ * The 12 listings the scout shortlists — what the refiner is handed to rewrite.
+ *
+ * Lots 37-48: the last twelve the SCOUT itself searched up, so it shortlists what it
+ * saw. Their POSITION in the shared store is the point — the peer's 48 results went
+ * in first, so these sit at places 85-96 and the naive "render the store's first 48"
+ * contains none of them.
+ *
+ * They used to be lots 1-12 with a single wave-1 agent, and after `8ff7312` moved
+ * the refiner's searches to overlap them, insertion order alone already held every
+ * answer this test asserts — the whole thing passed with `rankEvidence` deleted from
+ * the snippet dossier (round 9, R9-6). A fixture whose premise is "the ranking is
+ * what surfaces these" has to be one where store order does not.
+ */
+const SHORTLISTED = Array.from({ length: 12 }, (_, i) => lotUrl(37 + i));
 
 class Density implements LlmProvider {
   readonly name = 'refute-b1-ref';
-  // The refiner's searches return the FIRST EIGHT listings it was handed, then
-  // fresh lots. This used to be `20` — "the refiner's own results never overlap
-  // the shortlist" — which excluded by construction the production shape it stands
-  // in for: an agent told "fill the gaps in these listings" searches for those
-  // listings, and the backend returns them (round 8, R8-19).
-  private nextLot = 5;
+  // The refiner's first search returns eight of the twelve listings it was handed
+  // (lots 41-48), then fresh ones. Eight and not twelve on purpose: if its own
+  // results could supply the whole shortlist, emitting the tier last would surface
+  // all twelve anyway and the ORDER would stop being measurable. The overlap is the production shape: an agent
+  // told "fill the gaps in these listings" searches for those listings, and the
+  // backend returns them (round 8, R8-19). It was `20` — "the refiner's own results
+  // never overlap the shortlist" — which excluded that shape by construction.
+  private nextLot = 41;
   readonly searchedBy = new Map<string, string[]>();
   readonly writes = new Map<string, { pages: string[]; snippets: string[] }>();
 
   private roleOf(opts: GenerateOptions): string {
     const text = opts.messages.map((m) => m.text ?? '').join('\n');
-    return /ROLE-(SCOUT|REFINER)/.exec(text)?.[1] ?? '?';
+    return /ROLE-(PEER|SCOUT|REFINER)/.exec(text)?.[1] ?? '?';
   }
 
   async generate(opts: GenerateOptions): Promise<GenerateResult> {
@@ -255,7 +283,7 @@ class Density implements LlmProvider {
       });
       // The scout writes the shortlist it found; the refiner rewrites it unchanged.
       const value = sampleFromSchema(opts.responseSchema as Record<string, unknown>) as Record<string, unknown>;
-      value.shortlist = { listings: SHORTLISTED.map((url, i) => ({ name: `Lot ${i + 1}`, sourceUrl: url })) };
+      if (role !== 'PEER') value.shortlist = { listings: SHORTLISTED.map((url, i) => ({ name: `Lot ${37 + i}`, sourceUrl: url })) };
       return { text: JSON.stringify(value), toolCalls: [], usage };
     }
     if (!opts.tools?.length) return { text: 'ok', toolCalls: [], usage };
@@ -264,16 +292,20 @@ class Density implements LlmProvider {
     const res = last?.response as { stop?: boolean; turnsLeft?: number } | undefined;
     if (res?.stop || res?.turnsLeft === 0) return { text: 'Ready to write.', toolCalls: [], usage };
     const done = (this.searchedBy.get(role) ?? []).length / 8;
-    // Six searches each: 48 results — exactly the dossier's snippet budget.
+    // Six searches each — 48 results, exactly the dossier's snippet budget, so any
+    // one of them could fill it alone. The PEER goes first and its 48 take the whole
+    // head of the store; the scout's 48 land behind them.
     if (done >= 6) return { text: 'Ready to write.', toolCalls: [], usage };
-    const eight = role === 'SCOUT' ? Array.from({ length: 8 }, (_, i) => i + 1 + done * 8) : Array.from({ length: 8 }, () => this.nextLot++);
+    const eight = role === 'PEER' ? Array.from({ length: 8 }, (_, i) => 49 + i + done * 8)
+      : role === 'SCOUT' ? Array.from({ length: 8 }, (_, i) => i + 1 + done * 8)
+      : Array.from({ length: 8 }, () => this.nextLot++);
     this.searchedBy.set(role, [...(this.searchedBy.get(role) ?? []), ...eight.map(lotUrl)]);
     return { text: '', usage, toolCalls: [{ id: `s${toolMsgs.length}`, name: 'web_search', args: { query: eight.map((n) => `rlotq${n}z`).join(' ') } }] };
   }
 }
 
 describeMock('B1 refute · the REFERENCED tier at production density (8 results per query)', () => {
-  it('a wave-2 enricher sees all 12 listings it is rewriting, with 48 results of its own in hand — eight of them those same listings (with the tier last: 8 of 12, and only the eight it happened to search up)', async () => {
+  it('a wave-3 enricher sees all 12 listings it is rewriting, none of which the store’s first 48 contains — and all 48 results of its own', async () => {
     const restoreDensity = __setResultsPerQuery(8);
     // `__setExtraPages(p)` captures the CURRENT corpus and returns a restorer to
     // it, so calling it inside the teardown captured `LOTS` and put the 120 lot
@@ -306,19 +338,32 @@ describeMock('B1 refute · the REFERENCED tier at production density (8 results 
     // eslint-disable-next-line no-console
     console.log(`refiner: ${referencedVisible}/12 shortlisted listings and ${ownVisible}/48 of its own results rendered as [S]`);
 
-    // Mutation that reds this: put `touched` back above `referenced` in the OUTPUT
-    // order. Not `const reserve = 0` — that was written here and it is false: this
-    // refiner never fetches, so its `fetched` tier is empty and the reserve holds
-    // back slots nothing is competing for. The reserve only bites when `fetched`
-    // alone could fill `max - reserve` — 37 of 48 URLs both fetched by this loop
-    // and present in the store — which no research budget reaches; it is pinned by
-    // `evidence-ranking.test.ts` at the unit level and by nothing end to end, and
-    // that is worth knowing rather than implying otherwise.
+    // Two mutations red this, and they are the two this fixture exists for:
+    //   - drop `rankEvidence` from the snippet dossier and render the store in
+    //     order → **0 of 12**, because the peer's 48 results are the whole head.
+    //     That detection is the point of the three-wave shape (round 9, R9-6): with
+    //     one agent ahead of the refiner, everything it saw IS the first 48 and this
+    //     test passed with the ranking deleted.
+    //   - emit `touched` above `referenced` → **8 of 12**, the eight the refiner
+    //     happened to search up. Which is why its searches overlap only eight: if
+    //     its own results could supply the whole shortlist, the ORDER would stop
+    //     being measurable here.
+    //
+    // NOT `const reserve = 0` — measured, full suite: 2 red, both in
+    // `evidence-ranking.test.ts`. This refiner never fetches, so its `fetched` tier
+    // is empty and the reserve holds back slots nothing competes for. The reserve
+    // bites only when `fetched` alone could fill `max - reserve`: 37 of 48 URLs both
+    // fetched by this loop and in the store for the SNIPPET call, which no budget
+    // reaches — but only **8** for the 14-slot PAGES call, which every producer
+    // reaches (round 9, R9-8). It is pinned at the unit level and by nothing end to
+    // end, and that is worth knowing rather than implying otherwise.
     expect(referencedVisible, 'the listings the enricher is told to fill gaps in').toBe(12);
-    // Eight of the twelve are also its OWN results now, which is the point of the
+    // Eight of the twelve are also its OWN results, which is the point of the
     // overlap: they are counted once, in the referenced tier, and the slots left
-    // still go to what it paid for. What this proves is the ORDER; what it does not
-    // prove is which tier an overlapping url landed in — both render it here.
+    // still go to what it paid for. This number is NOT the evidence for the ordering
+    // — it moves 44 → 40 when the ranking is dropped and stays 44 when the tiers are
+    // reordered — so read `referencedVisible` for that and this for "it did not give
+    // up what it paid for" (round 9, R9-11).
     expect(ownVisible).toBe(44);
   });
 });
