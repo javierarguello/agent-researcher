@@ -15,6 +15,12 @@
 #       roles/artifactregistry.writer, roles/iam.serviceAccountUser
 #       (to act as the runtime SAs), roles/storage.admin (Cloud Build staging).
 #   TAVILY_API_KEY_DEV / TAVILY_API_KEY_PROD   (optional web-search key)
+#   STRIPE_SECRET_KEY_*, STRIPE_WEBHOOK_SECRET_*, AUTH_JWT_SECRET_*,
+#   POSTMARK_SERVER_TOKEN_*, TURNSTILE_SECRET_*, BRAVE_API_KEY_*
+#       Every one of these must exist for the env being deployed. `--set-env-vars`
+#       REPLACES the service environment, so a secret this workflow does not pass is
+#       ERASED from the running service — `deploy.sh` refuses a prod deploy without
+#       the two that take the site down (auth, Stripe webhook).
 #
 # One-time infra per env (run locally by an owner, not in CI):
 #   ENV=dev  bash infra/setup-gcp.sh
@@ -61,8 +67,25 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Build & deploy
+        # EVERY secret `deploy.sh` reads, because `--set-env-vars` REPLACES the
+        # service's environment rather than merging into it: a name missing here is
+        # not "left as it was", it is deleted from the running service. This block
+        # used to carry three of them, so the first prod release would have shipped
+        # `AUTH_JWT_SECRET=""` (the API throws on every sign AND every verify — no
+        # login, every live session dead), both Stripe keys empty (checkout 503, and
+        # a webhook that cannot verify a signature: money in, no credits out) and no
+        # Postmark. `deploy-dev.yml` has always passed the full set (round 8, R8-1).
         env:
           ENV: ${{ steps.env.outputs.name }}
           TAVILY_API_KEY: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.TAVILY_API_KEY_PROD || secrets.TAVILY_API_KEY_DEV }}
           TURNSTILE_SECRET: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.TURNSTILE_SECRET_PROD || secrets.TURNSTILE_SECRET_DEV }}
+          STRIPE_SECRET_KEY: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.STRIPE_SECRET_KEY_PROD || secrets.STRIPE_SECRET_KEY_DEV }}
+          STRIPE_WEBHOOK_SECRET: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.STRIPE_WEBHOOK_SECRET_PROD || secrets.STRIPE_WEBHOOK_SECRET_DEV }}
+          AUTH_JWT_SECRET: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.AUTH_JWT_SECRET_PROD || secrets.AUTH_JWT_SECRET_DEV }}
+          POSTMARK_SERVER_TOKEN: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.POSTMARK_SERVER_TOKEN_PROD || secrets.POSTMARK_SERVER_TOKEN_DEV }}
+          SEARCH_COST_PER_CALL_USD: ${{ vars.SEARCH_COST_PER_CALL_USD_PROD || vars.SEARCH_COST_PER_CALL_USD_DEV }}
+          BRAVE_API_KEY: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.BRAVE_API_KEY_PROD || secrets.BRAVE_API_KEY_DEV }}
+          BRAVE_COST_PER_CALL_USD: ${{ vars.BRAVE_COST_PER_CALL_USD_PROD || vars.BRAVE_COST_PER_CALL_USD_DEV }}
+          MAX_JOB_COST_USD: ${{ vars.MAX_JOB_COST_USD_PROD || vars.MAX_JOB_COST_USD_DEV }}
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS_PROD || '*' }}
         run: bash infra/deploy.sh

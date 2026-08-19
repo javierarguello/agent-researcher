@@ -40,6 +40,10 @@ TAVILY_API_KEY="${TAVILY_API_KEY:-}"
 # Run drops an env var set to the empty string, which is what we want here.
 LLM_GATHER_MAX_OUTPUT_TOKENS="${LLM_GATHER_MAX_OUTPUT_TOKENS:-}"
 LLM_GATHER_THINKING_BUDGET="${LLM_GATHER_THINKING_BUDGET:-}"
+# The per-job ceiling decides whether a job is HELD — credits spent, checkpoint kept,
+# waiting on a human. It was documented as deployable and passed by nothing, which is
+# the same defect R7-31 filed against the two above (round 8, R8-32).
+MAX_JOB_COST_USD="${MAX_JOB_COST_USD:-}"
 STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}"
 STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}"
 AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-}"
@@ -56,7 +60,26 @@ API_SA_EMAIL="${PREFIX}-api@${PROJECT_ID}.iam.gserviceaccount.com"
 WORKER_SA_EMAIL="${PREFIX}-worker@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # Env vars shared by API + worker (comma-delimited).
-COMMON_ENV="ENV=${ENV},GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},RESEARCH_BUCKET=${BUCKET},FIRESTORE_DATABASE=${DATABASE},RESEARCH_MAX_TURNS=${MAX_TURNS},BRAVE_API_KEY=${BRAVE_API_KEY},TAVILY_API_KEY=${TAVILY_API_KEY},SEARCH_COST_PER_CALL_USD=${SEARCH_COST_PER_CALL_USD},BRAVE_COST_PER_CALL_USD=${BRAVE_COST_PER_CALL_USD},POSTMARK_SERVER_TOKEN=${POSTMARK_SERVER_TOKEN},LLM_GATHER_MAX_OUTPUT_TOKENS=${LLM_GATHER_MAX_OUTPUT_TOKENS},LLM_GATHER_THINKING_BUDGET=${LLM_GATHER_THINKING_BUDGET}"
+COMMON_ENV="ENV=${ENV},GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},RESEARCH_BUCKET=${BUCKET},FIRESTORE_DATABASE=${DATABASE},RESEARCH_MAX_TURNS=${MAX_TURNS},BRAVE_API_KEY=${BRAVE_API_KEY},TAVILY_API_KEY=${TAVILY_API_KEY},SEARCH_COST_PER_CALL_USD=${SEARCH_COST_PER_CALL_USD},BRAVE_COST_PER_CALL_USD=${BRAVE_COST_PER_CALL_USD},POSTMARK_SERVER_TOKEN=${POSTMARK_SERVER_TOKEN},LLM_GATHER_MAX_OUTPUT_TOKENS=${LLM_GATHER_MAX_OUTPUT_TOKENS},LLM_GATHER_THINKING_BUDGET=${LLM_GATHER_THINKING_BUDGET},MAX_JOB_COST_USD=${MAX_JOB_COST_USD}"
+
+# `--set-env-vars` REPLACES the service environment: a name absent from COMMON_ENV
+# is deleted from the running service, not left alone. That makes a missing secret a
+# silent outage rather than a failed deploy — an empty AUTH_JWT_SECRET throws on every
+# sign AND every verify (nobody logs in, every live session dies), and an empty
+# STRIPE_WEBHOOK_SECRET means a payment we already took can never grant credits
+# (round 8, R8-1). Loud beats silent, and only for the env where it is unrecoverable.
+if [[ "${ENV}" == "prod" ]]; then
+  missing=()
+  [[ -z "${AUTH_JWT_SECRET}" ]] && missing+=("AUTH_JWT_SECRET")
+  [[ -z "${STRIPE_SECRET_KEY}" ]] && missing+=("STRIPE_SECRET_KEY")
+  [[ -z "${STRIPE_WEBHOOK_SECRET}" ]] && missing+=("STRIPE_WEBHOOK_SECRET")
+  [[ -z "${POSTMARK_SERVER_TOKEN}" ]] && missing+=("POSTMARK_SERVER_TOKEN")
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "!! [prod] refusing to deploy: ${missing[*]} would be ERASED from the live service." >&2
+    echo "!! --set-env-vars replaces the environment; set these in the workflow, not on the service." >&2
+    exit 1
+  fi
+fi
 
 echo ">> [${ENV}] Building worker image..."
 gcloud builds submit --config infra/cloudbuild.worker.yaml \

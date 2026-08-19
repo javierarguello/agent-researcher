@@ -78,8 +78,14 @@ config (`TASKS_QUEUE`, `TASKS_REGION`, `TASKS_INVOKER_SA` = the API SA),
 - **`deploy.yml`** — on push to `deploy-prod`. Auths via **Workload Identity
   Federation** (`WIF_PROVIDER_PROD` / `DEPLOY_SA_PROD`), then `deploy.sh` only
   (prod resources must be provisioned once manually with `ENV=prod
-  setup-gcp.sh`). Only passes `TAVILY_API_KEY_PROD` in the shown workflow — set
-  the other prod secrets (Stripe/auth) on the service or extend the workflow.
+  setup-gcp.sh`). It passes the **whole** secret set, and it has to:
+  `deploy.sh` deploys with `--set-env-vars`, which REPLACES the service
+  environment, so a secret the workflow does not pass is **erased** from the
+  running service. "Set it on the service" is not an option — the next deploy
+  removes it. `deploy.sh` refuses a `prod` deploy whose `AUTH_JWT_SECRET`,
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` or `POSTMARK_SERVER_TOKEN` is
+  empty, because each of those is a silent outage rather than a failed request
+  (round 8, R8-1).
 
 ## Environment variables (from `config.ts`)
 
