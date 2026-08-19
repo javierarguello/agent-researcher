@@ -413,6 +413,91 @@ describe('a re-dispatch does not re-buy a finished loop', () => {
   });
 });
 
+describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
+  it('its own pages survive the checkpoint cap, and it is still trusted not to re-buy them', async () => {
+    // The cap drops the OLDEST pages, which are the earliest agent's — and an agent
+    // marked `gathered` never runs its loop again, so anything of its own that fell
+    // out was gone for good: it wrote from pages it had never fetched, and could not
+    // buy them back. `Checkpoint.extracted`'s doc called that "a cache miss, not a
+    // correctness problem", which stopped being true when `gatheredAgentIds` landed.
+    // Mutation that reds this: `extracted: evidence.extracted.slice(-CHECKPOINT_MAX_PAGES)`.
+    const pages = Array.from({ length: 80 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    installMockProvider();
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'keep1', generatedAt: 't',
+      resume: {
+        report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
+        // The scout fetched the ten OLDEST pages and finished its loop.
+        gatheredAgentIds: ['scout'],
+        fetchedByAgent: { scout: pages.slice(0, 10).map((p) => p.url) },
+      } as never,
+    });
+
+    const carried = out.checkpoint.extracted ?? [];
+    expect(carried.length).toBeLessThanOrEqual(60);
+    for (const p of pages.slice(0, 10)) {
+      expect(carried.some((c) => c.url === p.url), `the scout's own ${p.url} was dropped`).toBe(true);
+    }
+    // …and it stays gathered, because nothing of its own was lost.
+    expect(out.checkpoint.gatheredAgentIds).toContain('scout');
+  });
+
+  it('and when they cannot all be kept, it loses `gathered` instead of writing from evidence it never gathered', async () => {
+    // Paying twice beats writing from someone else's research. Mutation that reds
+    // this: keep `gatheredAgentIds: [...gathered]` unconditionally.
+    const pages = Array.from({ length: 80 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    installMockProvider();
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'keep2', generatedAt: 't',
+      resume: {
+        report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
+        gatheredAgentIds: ['scout'],
+        fetchedByAgent: { scout: pages.map((p) => p.url) }, // all 80: more than the cap
+      } as never,
+    });
+    expect(out.checkpoint.gatheredAgentIds ?? []).not.toContain('scout');
+  });
+
+  it('a RESUMED writer still ranks the pages it paid for first (R7-31 F9)', async () => {
+    // The dossier's first tier is "pages this writer's own loop fetched", and
+    // `research.fetched` was a per-dispatch local — so a re-dispatched writer's own
+    // evidence ranked like everyone else's and it wrote from store order. The
+    // checkpoint carries the URLs now. Mutation that reds this: seed `fetched` with
+    // an empty set again.
+    const pages = Array.from({ length: 20 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    const mine = pages[17]!; // late in the store, so store order would not surface it
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    const prompts: string[] = [];
+    mock.generate = async (opts) => {
+      if (opts.responseSchema) prompts.push(opts.messages.map((m) => m.text ?? '').join('\n'));
+      return base(opts);
+    };
+    await runResearch({
+      template: compactModel, params: params(), jobId: 'own1', generatedAt: 't',
+      resume: {
+        report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
+        gatheredAgentIds: ['scout'], fetchedByAgent: { scout: [mine.url] },
+      } as never,
+    });
+    const write = prompts.find((p) => p.includes('[P1] Full page content'))!;
+    expect(write, 'the writer got a dossier').toBeTruthy();
+    expect(write).toContain(`[P1] Full page content — ${mine.url}`);
+  });
+
+  it('a checkpoint from before the field resumes exactly as it did — newest pages, no preference', async () => {
+    const pages = Array.from({ length: 80 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
+    installMockProvider();
+    const out = await runResearch({
+      template: compactModel, params: params(), jobId: 'keep3', generatedAt: 't',
+      resume: { report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [] } as never,
+    });
+    const carried = out.checkpoint.extracted ?? [];
+    expect(carried.length).toBeLessThanOrEqual(60);
+    expect(carried.some((c) => c.url === 'https://x/0'), 'nothing owned it, so the oldest still go').toBe(false);
+  });
+});
+
 describe('the dispatch that finishes early says what it is doing', () => {
   it('emits the ASSEMBLING phase, not planning — the phase is what the buyer’s client looks up', async () => {
     // Finalize-in-place emitted `phase: 'planning'` with `kind: 'assembling'`, and a

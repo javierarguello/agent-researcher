@@ -241,6 +241,26 @@ export interface Checkpoint {
    */
   gatheredAgentIds?: string[];
   /**
+   * URLs each agent's loop actually fetched, by agent id.
+   *
+   * Two jobs, both about a `gathered` agent — one that will not run its loop again:
+   *
+   *   - the page cap below drops the OLDEST pages, which are exactly an early
+   *     agent's, so a gathered agent could write from a store its own evidence had
+   *     fallen out of and could no longer buy back. The doc for `extracted` called
+   *     that "a cache miss, not a correctness problem"; with `gatheredAgentIds` it
+   *     stopped being one (round 7, R7-11). `snapshot()` keeps these pages first,
+   *     and an agent whose pages could not all be kept is un-gathered so its loop
+   *     runs again rather than writing from evidence it never gathered.
+   *   - the dossier ranks a writer's OWN pages first, and `research.fetched` was a
+   *     per-dispatch local, so a resumed writer's own pages ranked like anyone
+   *     else's (R7-31 F9). Restored from here.
+   *
+   * Absent on checkpoints written before it existed: those resume exactly as they
+   * did, keeping the newest pages and no preference.
+   */
+  fetchedByAgent?: Record<string, string[]>;
+  /**
    * The last VALIDATION failure of each agent's write, by agent id: what failed
    * (`StructuredOutputError.signature`) and on how many consecutive dispatches it
    * failed that way. Two is the bound: an agent whose write fails the same way on
@@ -362,6 +382,8 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Producers whose loop finished on an earlier dispatch. Their evidence is the
   // `sources`/`extracted` seeded below; a resumed attempt writes from that.
   const gathered = new Set<string>(input.resume?.gatheredAgentIds ?? []);
+  /** What each agent's loop fetched, carried across dispatches (see `Checkpoint`). */
+  const fetchedByAgent: Record<string, string[]> = { ...(input.resume?.fetchedByAgent ?? {}) };
   // The last signed write failure per agent, carried across dispatches. An agent
   // whose entry says "exhausted" is not run again on any later dispatch, approved
   // or not: it degrades with the rest of the unfinished steps.
@@ -370,7 +392,18 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Seeded from the checkpoint: a warning is about the JOB, not about the dispatch
   // that happened to notice it.
   const warnings: string[] = [...(input.resume?.warnings ?? [])];
-  const counter = { turns: 0 };
+  /**
+   * Research turns this JOB has spent, across dispatches.
+   *
+   * Seeded from the checkpoint like `jobSpend` is, and for the same reason: it is
+   * what `output.turnsUsed` reports and what the live line shows. Starting it at 0
+   * on every resume made the job summary disagree with its own cost (`searchCalls`
+   * counts every dispatch, this counted the last one), made the per-agent rows an
+   * admin reads stop summing to the "Search turns" figure above them, and restarted
+   * the buyer's turn count at zero mid-job (round 7, R7-13). The checkpoint carries
+   * the paid calls, so it carries the count of them too.
+   */
+  const counter = { turns: input.resume?.cost?.searchCalls ?? 0 };
   const finalize = input.finalize ?? true;
 
   // Seed evidence sources from the checkpoint (feeds the derived `sources` section).
@@ -436,19 +469,47 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Slim agent traces for the checkpoint: drop `output` (already in `report`) and
   // `notes` to keep checkpoint.json small; keep status/cost/timing for the summary.
   const slimAgents = (): AgentTrace[] => trace.agents.map((a) => ({ ...a, output: undefined, notes: [] }));
-  const snapshot = (): Checkpoint => ({
-    report,
-    sources: evidence.sources,
-    extracted: evidence.extracted.slice(-CHECKPOINT_MAX_PAGES),
-    doneAgentIds: [...done],
-    gatheredAgentIds: [...gathered],
-    handoffs,
-    degraded,
-    warnings,
-    agentTraces: slimAgents(),
-    cost: trace.cost,
-    writeFailures,
-  });
+  /**
+   * The pages to carry, and which agents may still call their loop finished.
+   *
+   * Newest-first was the whole rule, and the oldest pages belong to the earliest
+   * agents — the ones most likely to be `gathered`. A gathered agent does not run
+   * its loop again, so anything of its own that fell out was gone for good and it
+   * wrote from pages it had never fetched. Its pages are kept first now; if they
+   * still do not fit, it loses `gathered` instead, and re-buys its evidence on the
+   * next dispatch — paying twice beats writing from someone else's research.
+   */
+  const carry = (): { pages: ExtractedPage[]; gatheredIds: string[] } => {
+    const owned = new Set<string>();
+    for (const id of gathered) for (const u of fetchedByAgent[id] ?? []) owned.add(u);
+    const mine = evidence.extracted.filter((p) => owned.has(p.url));
+    const rest = evidence.extracted.filter((p) => !owned.has(p.url));
+    // Own pages first, then the newest of the others, then back into store order:
+    // the dossier's tiers read this list, and store order is what they assume.
+    const keep = new Set([...mine.slice(-CHECKPOINT_MAX_PAGES), ...rest.slice(-Math.max(0, CHECKPOINT_MAX_PAGES - mine.length))]);
+    const pages = evidence.extracted.filter((p) => keep.has(p));
+    const kept = new Set(pages.map((p) => p.url));
+    const gatheredIds = [...gathered].filter((id) => (fetchedByAgent[id] ?? []).every((u) => kept.has(u)));
+    return { pages, gatheredIds };
+  };
+
+  const snapshot = (): Checkpoint => {
+    const { pages, gatheredIds } = carry();
+    return {
+      report,
+      sources: evidence.sources,
+      extracted: pages,
+      doneAgentIds: [...done],
+      gatheredAgentIds: gatheredIds,
+      fetchedByAgent,
+      handoffs,
+      degraded,
+      warnings,
+      agentTraces: slimAgents(),
+      cost: trace.cost,
+      writeFailures,
+    };
+  };
 
   // Checkpoint writes are last-writer-wins in storage, and a wave finishes several
   // agents concurrently — so two overlapping saves can land in the wrong order and
@@ -515,7 +576,9 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
           // …and its loop, for the same reason: an agent resuming on evidence it
           // gathered last dispatch (`gatheredAgentIds`) runs no loop now, and a row
           // saying "0 turns, no stop" would describe a write from nothing. A loop
-          // that does run again overwrites both.
+          // that does run again ADDS its turns to the row (`72d2777`) and overwrites
+          // `gatherStop` — this comment said "overwrites both" for a batch after
+          // that stopped being true (round 7, R7-13).
           at.turnsUsed = trace.agents[prior]!.turnsUsed ?? 0;
           if (trace.agents[prior]!.gatherStop) at.gatherStop = trace.agents[prior]!.gatherStop;
           trace.agents[prior] = at;
@@ -545,7 +608,14 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         // the same reason: the evidence a finished loop bought is in the store this
         // dispatch was seeded from, and a re-dispatch after a failed write used to
         // buy it all again — eight times over (M-D1).
-        const research = { done: gathered.has(agent.id), touched: new Set<string>(), fetched: new Set<string>() };
+        // `fetched` is seeded from the checkpoint so a RESUMED writer still ranks the
+        // pages it paid for above everyone else's; it was a per-dispatch local, so a
+        // re-dispatched writer fell back to store order (round 7, R7-31 F9).
+        const research = {
+          done: gathered.has(agent.id),
+          touched: new Set<string>(fetchedByAgent[agent.id] ?? []),
+          fetched: new Set<string>(fetchedByAgent[agent.id] ?? []),
+        };
         // The last VALIDATION failure any attempt of this dispatch ended on, if one
         // did — what the signature bookkeeping below compares across dispatches. A
         // provider error or the ceiling leaves it alone: they say nothing about what
@@ -654,6 +724,12 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         // A loop that finished stays finished: whatever happened to the write, the
         // next dispatch must not buy this evidence again.
         if (research.done) gathered.add(agent.id);
+        // What it fetched, carried across dispatches: the checkpoint keeps those
+        // pages ahead of everyone else's, and a resumed writer ranks them first in
+        // its own dossier (see `Checkpoint.fetchedByAgent`).
+        if (research.fetched.size) {
+          fetchedByAgent[agent.id] = [...new Set([...(fetchedByAgent[agent.id] ?? []), ...research.fetched])];
+        }
         // The cross-dispatch record. Kept only for a validation failure; a success,
         // a provider error or the ceiling clears it (see `writeFailureAfter`). An
         // agent that never got an attempt (the ceiling was already spent) said

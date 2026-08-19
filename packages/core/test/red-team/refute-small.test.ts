@@ -143,4 +143,29 @@ describe('D2 · turnsUsed accounting', () => {
     expect(writing.turnsUsed).toBe(scout.turnsUsed);
     console.log(`D2: scout turnsUsed=${scout.turnsUsed}; during-loop events=${during.length}, all at 0; Writing at ${writing.turnsUsed}`);
   });
+
+  it('a RESUMED dispatch keeps counting where the job left off — the summary and its own cost used to disagree (R7-13)', async () => {
+    // `jobSpend` was seeded from the checkpoint and the turn counter was not, so on
+    // every re-dispatch `output.turnsUsed` reported that dispatch's turns while
+    // `cost.searchCalls` reported the job's: the admin's per-agent rows stopped
+    // summing to the "Search turns" figure above them, and the buyer's live count
+    // restarted at zero mid-job. Mutation that reds this: `const counter = { turns: 0 }`.
+    const { installObedientProvider } = await import('../mocks/obedient-llm.js');
+    const { redTeamModel } = await import('../fixtures/red-team-model.js');
+    const params = redTeamModel.paramsSchema.parse({}) as Record<string, unknown>;
+
+    installObedientProvider([]);
+    const first = await runResearch({ template: redTeamModel, params, jobId: 'refute-d2b', generatedAt: 't', finalize: false });
+    expect(first.turnsUsed, 'the premise: dispatch 1 spent turns').toBeGreaterThan(0);
+    expect(first.turnsUsed).toBe(first.trace.cost.searchCalls);
+
+    installObedientProvider([]);
+    const second = await runResearch({
+      template: redTeamModel, params, jobId: 'refute-d2b', generatedAt: 't',
+      resume: { ...first.checkpoint, doneAgentIds: [], gatheredAgentIds: [] },
+    });
+    // The job's own two numbers, which describe the same paid calls.
+    expect(second.turnsUsed).toBe(second.trace.cost.searchCalls);
+    expect(second.turnsUsed).toBeGreaterThan(first.turnsUsed);
+  });
 });
