@@ -107,6 +107,31 @@ describe('a partial delivery says which parts', () => {
     expect(screen.getByText('—')).toBeTruthy();
   });
 
+  it('every column holds what its header says — the row has a cell per header (R8-8)', async () => {
+    // `6780c94` added the `Research` header and REPLACED the `Tries` cell instead of
+    // adding one: seven headers over six cells, so every column after `Duration`
+    // read the one to its left — the loop under `Tries`, the cost under `Research`,
+    // an empty `Cost` — and the retry count, with its `attempts > 1` warning colour,
+    // was gone from the page. Its own test asserted presence and never position,
+    // which is how a commit whose subject is "a field no admin page can read"
+    // shipped by making another one unreadable. Mutation that reds this: delete the
+    // `Tries` cell again.
+    state.agents = [
+      { id: 'deal-scout', wave: 1, status: 'ok', durationMs: 1000, attempts: 3, costUsd: 0.38, turnsUsed: 21, gatherStop: 'budget' },
+    ];
+    show();
+
+    await waitFor(() => expect(screen.getAllByText('deal-scout').length).toBeGreaterThan(0));
+    const table = screen.getByText('Research').closest('table')!;
+    const headers = [...table.querySelectorAll('thead th')].map((h) => h.textContent);
+    const cells = [...table.querySelectorAll('tbody tr')[0]!.querySelectorAll('td')].map((c) => c.textContent);
+    expect(cells.length, `${headers.join('|')} vs ${cells.join('|')}`).toBe(headers.length);
+    const at = (name: string) => cells[headers.indexOf(name)];
+    expect(at('Tries'), 'the retry count is back, under its own header').toBe('3');
+    expect(at('Research')).toContain('21 turns');
+    expect(at('Cost')).toContain('0.38');
+  });
+
   it('shows nothing for a clean job', async () => {
     // The control: a panel that is always there is furniture, and an admin stops
     // reading it.

@@ -28,6 +28,25 @@ describe('templates', () => {
     }
   });
 
+  it('…and an agent that DOES declare one reads it — every live `focus` reaches the kickoff (R8-13)', async () => {
+    // The positive half, which `d1dab19` left out: deleting the `FOCUS:` line from
+    // `buildAgentKickoff` left the suite 1071/1071 green, while eight of the
+    // flagship's producers carry a live focus. Generic over the registry, so the
+    // field cannot go dead for a second model either. Mutation that reds this: drop
+    // `(agent.focus ? \`FOCUS: ...\` : '')` from `buildAgentKickoff`.
+    const { buildAgentKickoff } = await import('../src/engine/prompt.js');
+    let checked = 0;
+    for (const t of listTemplates()) {
+      for (const a of t.agents) {
+        if (!a.focus) continue;
+        checked += 1;
+        const kickoff = buildAgentKickoff({ agent: a, brief: 'b', sections: [], maxTurns: 4, handoffs: {} });
+        expect(kickoff, `${t.id}/${a.id}`).toContain(a.focus);
+      }
+    }
+    expect(checked, 'the premise: the registry declares focuses to check').toBeGreaterThan(0);
+  });
+
   it('what a synthesizer must know reaches the prompt it actually gets — through the section guidance', async () => {
     // The other half of moving those sentences: `guidance` is rendered by every
     // write builder, which is why it is the right home for an agent with no loop.

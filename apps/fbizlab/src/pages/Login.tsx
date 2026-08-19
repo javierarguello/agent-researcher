@@ -198,7 +198,19 @@ export function Login() {
       }
     })
       .then((id) => { if (!cancelled && btnRef.current) renderGoogleButton(id, btnRef.current); })
-      .catch((e) => !cancelled && setError(e.message));
+      // Same rule as the missing-client-id branch above, which is the branch this
+      // one sat next to unchanged: a script that never loaded is our problem, not
+      // the buyer's. `setError(e.message)` put "Google Identity Services failed to
+      // load." — internal English, untranslated — on their screen, and it arrived
+      // on the loader's 8-second timeout, so it landed OVER the rate-limit or
+      // wrong-password sentence they were reading (round 8, R8-14). Hide the button
+      // we cannot render; the email/password form below still works.
+      .catch((e: Error) => {
+        if (cancelled) return;
+        setGoogleReady(false);
+        // eslint-disable-next-line no-console
+        console.warn(`Google sign-in is unavailable: ${e.message}`);
+      });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loginWithGoogle, t.denied]);

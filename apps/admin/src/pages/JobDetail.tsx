@@ -414,9 +414,15 @@ export function JobDetail() {
                     <Table.Td ta="right"><Mono size="sm">{a.wave}</Mono></Table.Td>
                     <Table.Td><Badge size="sm" variant="light" color={AGENT_COLOR[a.status] ?? 'gray'} tt="none">{a.status}</Badge></Table.Td>
                     <Table.Td ta="right"><Mono size="sm">{secs(a.durationMs)}</Mono></Table.Td>
+                    <Table.Td ta="right"><Mono size="sm" c={a.attempts > 1 ? 'yellow' : undefined}>{a.attempts}</Mono></Table.Td>
                     {/* What the loop did, next to what it cost. Without it an agent
                         that made 22 plan updates and zero searches read exactly like
-                        one that did 21 real turns: `ok · 1 try · $0.38` (R7-30). */}
+                        one that did 21 real turns: `ok · 1 try · $0.38` (R7-30).
+                        ADDED, not swapped for `Tries`: `6780c94` replaced that cell,
+                        so seven headers ran over six cells and every column after
+                        `Duration` was reading the one to its left — the loop under
+                        `Tries`, the cost under `Research`, an empty `Cost`, and the
+                        retry count gone from the page (round 8, R8-8). */}
                     <Table.Td><Research turnsUsed={a.turnsUsed} gatherStop={a.gatherStop} /></Table.Td>
                     <Table.Td ta="right"><Mono size="sm">{usd(a.costUsd)}</Mono></Table.Td>
                   </Table.Tr>

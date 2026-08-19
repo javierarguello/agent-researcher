@@ -297,4 +297,26 @@ describe('a build with Google sign-in not configured', () => {
     at('/login', <Login />);
     expect(document.querySelector('.auth-gbtn')).toBeTruthy();
   });
+
+  it('and a script that never loads is our problem, not the buyer’s (R8-14)', async () => {
+    // The branch next door, left unchanged by the fix above: `initGoogleAuth`
+    // rejects with "Google Identity Services failed to load." — internal English,
+    // untranslated — and `.catch(e => setError(e.message))` put it on the screen.
+    // It arrives on the loader's 8-second timeout, so it lands OVER the sentence the
+    // buyer is reading. Mutation that reds this: `setError(e.message)` again.
+    const google = await import('../src/auth/google');
+    vi.mocked(google.initGoogleAuth).mockRejectedValueOnce(new Error('Google Identity Services failed to load.'));
+    loginWithPassword.mockRejectedValue(apiError(429, RATE_LIMITED));
+
+    at('/login', <Login />);
+    await userEvent.type(screen.getByLabelText(/email/i), 'a@x.com');
+    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/about 3 minutes/)).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('.auth-gbtn')).toBeNull());
+    expect(screen.queryByText(/Identity Services/)).toBeNull();
+    // …and their own error survived the button disappearing.
+    expect(screen.getByText(/about 3 minutes/)).toBeTruthy();
+  });
 });
