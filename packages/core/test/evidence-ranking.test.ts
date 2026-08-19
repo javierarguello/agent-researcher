@@ -94,6 +94,25 @@ describe('rankEvidence · the per-domain cap decides ORDER in the foreign tier, 
     expect(out.slice(0, 11).map((x) => new URL(x.url).hostname).filter((h) => h === 'loopnet.example')).toHaveLength(3);
   });
 
+  it('…and when the store is LARGER than the cap, order is volume: the majority host loses slots', () => {
+    // The test above has 48 items and `max = 48`, so the cap cannot bite and it
+    // proves length, not selection. For a store larger than the cap — the real
+    // shape, ~190 sources — the diversity pass decides WHICH survive, and "the cap
+    // decides order, never volume" is only true when nothing is cut (round 7,
+    // R7-12). This is the honest statement of the trade.
+    const store = [...list('bizbuysell.example', 170), ...list('loopnet.example', 10), ...list('bizquest.example', 10)];
+    const out = rankEvidence(store, 48, 8, {});
+    const majority = out.filter((x) => x.url.includes('bizbuysell.example')).length;
+    expect(out).toHaveLength(48);
+    expect(majority, 'diversity costs the majority host real slots').toBeLessThan(45);
+    expect(majority).toBeGreaterThan(20);
+    // …which is why an agent's OWN evidence must survive a resume: with a preference
+    // it never reaches this pass at all.
+    const mine = new Set(list('bizbuysell.example', 60).map((x) => x.url));
+    const preferred = rankEvidence(store, 48, 8, { touched: mine });
+    expect(preferred.every((x) => mine.has(x.url))).toBe(true);
+  });
+
   it('the cap does not touch the writer’s own tier: twelve listings it fetched from one marketplace all render', () => {
     const own = list('bizbuysell.example', 12);
     const store = [...list('other.example', 10), ...own];

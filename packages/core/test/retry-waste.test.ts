@@ -485,6 +485,53 @@ describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
     expect(write).toContain(`[P1] Full page content — ${mine.url}`);
   });
 
+  it('records what a loop was SHOWN, not only what it fetched — the half a resume reads', async () => {
+    // The write side of the same field. Seeding it in a test proves the read; this
+    // proves there is anything to read. Mutation that reds this: stop recording
+    // `research.touched`.
+    installMockProvider();
+    const out = await runResearch({ template: compactModel, params: params(), jobId: 'seen2', generatedAt: 't', finalize: false });
+    const seen = out.checkpoint.touchedByAgent?.scout ?? [];
+    const fetched = out.checkpoint.fetchedByAgent?.scout ?? [];
+    expect(seen.length, 'its search results').toBeGreaterThan(0);
+    // Everything it fetched, it also saw — the sets nest, which is what makes
+    // `touched` the second tier and `fetched` the first.
+    for (const u of fetched) expect(seen).toContain(u);
+  });
+
+  it('a RESUMED writer keeps the SNIPPETS its loop was shown, not a diversity cut of the shared store (R7-12)', async () => {
+    // Both preference sets were empty on a resume, so everything was the foreign
+    // tier — where the per-host cap applies. On a July-shaped store (190 sources,
+    // 90% one marketplace) a resumed deal-scout got 35 of its 48 snippet slots
+    // instead of 43: eight listings displaced by diversity it never asked for, in
+    // the writer whose job is a shortlist of listings. Mutation that reds this:
+    // seed `touched` from `fetchedByAgent` alone.
+    const market = Array.from({ length: 170 }, (_, i) => ({ url: `https://bizbuysell.test/l/${i}`, title: `Listing ${i}`, snippet: `S${i}` }));
+    const others = ['blog.test', 'directory.test', 'news.test', 'forum.test'].flatMap((h, k) =>
+      Array.from({ length: 5 }, (_, i) => ({ url: `https://${h}/p/${k}${i}`, title: `Other ${k}${i}`, snippet: 'x' })),
+    );
+    const mock = installMockProvider();
+    const base = mock.generate.bind(mock);
+    const prompts: string[] = [];
+    mock.generate = async (opts) => {
+      if (opts.responseSchema) prompts.push(opts.messages.map((m) => m.text ?? '').join('\n'));
+      return base(opts);
+    };
+    await runResearch({
+      template: compactModel, params: params(), jobId: 'seen1', generatedAt: 't',
+      resume: {
+        report: {}, sources: [...market, ...others], extracted: [], doneAgentIds: [], degraded: [],
+        gatheredAgentIds: ['scout'],
+        // What its loop saw last dispatch: its own marketplace results.
+        touchedByAgent: { scout: market.slice(0, 60).map((r) => r.url) },
+      } as never,
+    });
+    const write = prompts.find((p) => p.includes('URL: '))!;
+    const hosts = [...write.matchAll(/\n\s+URL: (\S+)/g)].map((m) => new URL(m[1]!).hostname);
+    expect(hosts.length).toBe(48);
+    expect(hosts.every((h) => h === 'bizbuysell.test'), 'its own results, not a diversity cut').toBe(true);
+  });
+
   it('a checkpoint from before the field resumes exactly as it did — newest pages, no preference', async () => {
     const pages = Array.from({ length: 80 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
     installMockProvider();

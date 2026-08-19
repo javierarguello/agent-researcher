@@ -269,6 +269,21 @@ export interface Checkpoint {
    */
   fetchedByAgent?: Record<string, string[]>;
   /**
+   * URLs each agent's loop was SHOWN — its own search results — by agent id.
+   *
+   * The sibling of `fetchedByAgent`, and the other half of the same defect: the
+   * dossier's second tier is "results this writer's loop saw", so a resumed agent
+   * with both sets empty had EVERYTHING in the foreign tier, where the per-host cap
+   * applies. Measured on a July-shaped store (190 sources, 90% one marketplace): a
+   * resumed deal-scout got 35 of its 48 snippet slots instead of 43, losing eight
+   * listings to diversity it never asked for (round 7, R7-12).
+   *
+   * Bounded per agent, because a 24-turn loop sees ~192 results and this is written
+   * after every agent: the newest `MAX_SEEN_PER_AGENT` survive, which are the ones a
+   * resumed write is most likely to cite.
+   */
+  touchedByAgent?: Record<string, string[]>;
+  /**
    * The last VALIDATION failure of each agent's write, by agent id: what failed
    * (`StructuredOutputError.signature`) and on how many consecutive dispatches it
    * failed that way. Two is the bound: an agent whose write fails the same way on
@@ -346,6 +361,13 @@ const MAX_NOTES = 300;
  */
 const CHECKPOINT_MAX_PAGES = 60;
 
+/**
+ * URLs remembered per agent for `touchedByAgent`. A 24-turn loop is shown ~192
+ * results; the checkpoint is written after every agent, so this is a bound on a
+ * per-agent index, not on the evidence itself (which `sources` already carries).
+ */
+const MAX_SEEN_PER_AGENT = 300;
+
 
 export async function runResearch(input: RunResearchInput): Promise<ResearchOutput> {
   const { template, params, jobId, generatedAt, onProgress, onTrace } = input;
@@ -390,8 +412,9 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Producers whose loop finished on an earlier dispatch. Their evidence is the
   // `sources`/`extracted` seeded below; a resumed attempt writes from that.
   const gathered = new Set<string>(input.resume?.gatheredAgentIds ?? []);
-  /** What each agent's loop fetched, carried across dispatches (see `Checkpoint`). */
+  /** What each agent's loop fetched / was shown, carried across dispatches (see `Checkpoint`). */
   const fetchedByAgent: Record<string, string[]> = { ...(input.resume?.fetchedByAgent ?? {}) };
+  const touchedByAgent: Record<string, string[]> = { ...(input.resume?.touchedByAgent ?? {}) };
   // The last signed write failure per agent, carried across dispatches. An agent
   // whose entry says "exhausted" is not run again on any later dispatch, approved
   // or not: it degrades with the rest of the unfinished steps.
@@ -510,6 +533,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
       doneAgentIds: [...done],
       gatheredAgentIds: gatheredIds,
       fetchedByAgent,
+      touchedByAgent,
       handoffs,
       degraded,
       warnings,
@@ -622,7 +646,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         // re-dispatched writer fell back to store order (round 7, R7-31 F9).
         const research = {
           done: gathered.has(agent.id),
-          touched: new Set<string>(fetchedByAgent[agent.id] ?? []),
+          touched: new Set<string>([...(touchedByAgent[agent.id] ?? []), ...(fetchedByAgent[agent.id] ?? [])]),
           fetched: new Set<string>(fetchedByAgent[agent.id] ?? []),
         };
         // The last VALIDATION failure any attempt of this dispatch ended on, if one
@@ -738,6 +762,9 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         // its own dossier (see `Checkpoint.fetchedByAgent`).
         if (research.fetched.size) {
           fetchedByAgent[agent.id] = [...new Set([...(fetchedByAgent[agent.id] ?? []), ...research.fetched])];
+        }
+        if (research.touched.size) {
+          touchedByAgent[agent.id] = [...new Set([...(touchedByAgent[agent.id] ?? []), ...research.touched])].slice(-MAX_SEEN_PER_AGENT);
         }
         // The cross-dispatch record. Kept only for a validation failure; a success,
         // a provider error or the ceiling clears it (see `writeFailureAfter`). An
