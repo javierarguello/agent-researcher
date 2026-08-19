@@ -381,6 +381,10 @@ export function NewReport() {
   };
   /** A hand edit takes the field back: it stops being "from your notes". */
   const editDir = (k: string, v: unknown) => {
+    // …and pins the block open. Without this, unpicking the LAST value while
+    // browsing the fields drops `dirVals` to empty and the whole section snaps shut
+    // underneath the buyer's cursor — the auto-open rule reading as a bug.
+    setDirOpen(true);
     setDir(k, v);
     setFromNotes((n) => {
       if (!(k in n)) return n;
