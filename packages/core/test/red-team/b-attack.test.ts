@@ -548,10 +548,12 @@ describe('F5 · a cached-fetch/plan-spam loop is cut off instead of growing to t
 
     // The measurement this test exists for. With the general breaker reverted
     // (`NO_PROGRESS_TURNS_LIMIT = 9999`) the same attack runs 54 calls / 838,702
-    // chars, its last request 22× its first; here it is 13 / 53,674 and 5×. The
+    // chars, its last request 22× its first; here it is 12 and ~50k. The
     // per-request growth is unchanged (the conversation still accumulates, which is
     // what KEEP_FULL_PAGES does not bound) — what changed is how long it may go on.
-    expect(loop.length, 'the loop is cut, not run to 2·24+6').toBe(13);
+    // 12, not R7-3's 13: the spam re-reads ONE url, whose second body-returning read
+    // used to buy a breaker reset of its own (round 8, R8-4).
+    expect(loop.length, 'the loop is cut, not run to 2·24+6').toBe(12);
     expect(out.turnsUsed).toBeLessThanOrEqual(3);
     expect(total).toBeLessThan(150_000);
     // And it is in the trace: an admin reading a $0 agent can see it was cut off

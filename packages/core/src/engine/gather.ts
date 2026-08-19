@@ -310,6 +310,19 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   let noProgressTurns = 0;
   /** Full-text returns per cached URL, this loop. */
   const cachedReads = new Map<string, number>();
+  /**
+   * Cached URLs whose body this loop has already returned.
+   *
+   * `cachedReads` is per-URL, and any body-returning read reset `noProgressTurns` —
+   * so every distinct page in the shared store was worth two free resets and the
+   * breaker's real bound was `8 × 2 × |distinct cached pages|`. Four pages already
+   * cleared the iteration ceiling: the July `(Pc)*` shape ran 54 LLM calls and
+   * 808,868 prompt characters on zero turns and zero search spend, which is free of
+   * SEARCH money and not free of ours (round 8, R8-4). A page is new to this loop
+   * once; reading it again teaches the model nothing, whichever page it alternates
+   * with.
+   */
+  const readThisLoop = new Set<string>();
   // Assume the worst until the loop ends for a reason: an unexpected exit is a
   // half-finished pass, and a half-finished pass must not be handed to a retry as
   // if it were research already done.
@@ -355,11 +368,13 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     // Its ARGS too, not only its text: a plan step is model output written after
     // reading pages, it rides in every later request of this loop, and it was the
     // one model-authored string on this path that went back unstripped (R7-17).
-    messages.push({
-      role: 'model',
-      text: stripFenceMarker(res.text),
-      toolCalls: res.toolCalls.map((c) => ({ ...c, args: stripFenceMarkerDeep(c.args) })),
-    });
+    // …and the loop READS this copy from here on, not `res.toolCalls`. R7-17 stripped
+    // what went back into `messages` and left every consumer reading the raw args, so
+    // the `web_search` tool result echoed the raw `query` twelve lines below the strip
+    // and put the marker back in the conversation for the rest of the loop — with an
+    // odd count, which is the invariant `a-attack` measures (round 8, R8-7).
+    const toolCalls = res.toolCalls.map((c) => ({ ...c, args: stripFenceMarkerDeep(c.args) }));
+    messages.push({ role: 'model', text: stripFenceMarker(res.text), toolCalls });
 
     // Classified BEFORE the calls run, so the loop can end without paying for the
     // turn — the same shape as the plan-only rule this replaces. Every branch below
@@ -371,15 +386,18 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
         if (turnsUsed >= maxTurns) return true;
         const url = String((c.args as any).url ?? '').trim();
         // A cached page we are about to answer with the stub teaches the model
-        // nothing it has not already been told twice. A first or second read does.
-        if (url && evidence.extractedUrls.has(url)) return (cachedReads.get(url) ?? 0) + 1 > MAX_SAME_URL_CACHED_READS;
+        // nothing it has not already been told twice — and neither does one whose
+        // body this loop has already handed over, however many turns ago (R8-4).
+        if (url && evidence.extractedUrls.has(url)) {
+          return readThisLoop.has(url) || (cachedReads.get(url) ?? 0) + 1 > MAX_SAME_URL_CACHED_READS;
+        }
         return false; // a paid fetch
       }
       return true; // unknown tool: an error string back, nothing bought
     };
-    const noProgress = res.toolCalls.length > 0 && res.toolCalls.every(buysNothing);
+    const noProgress = toolCalls.length > 0 && toolCalls.every(buysNothing);
     noProgressTurns = noProgress ? noProgressTurns + 1 : 0;
-    const planOnly = res.toolCalls.length > 0 && res.toolCalls.every((c) => c.name === 'update_plan');
+    const planOnly = toolCalls.length > 0 && toolCalls.every((c) => c.name === 'update_plan');
     planOnlyTurns = planOnly ? planOnlyTurns + 1 : 0;
     // The nudge below was delivered on an earlier turn and the model asked for
     // nothing again. Nothing it can plan or re-read will change without new
@@ -395,7 +413,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
       break;
     }
 
-    if (res.toolCalls.length === 0) {
+    if (toolCalls.length === 0) {
       if (turnsUsed === 0 && nudges < 2) {
         nudges += 1;
         messages.push({
@@ -420,7 +438,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     let planNoted = false;
     let cachedReused = 0;
     let cachedDeclined = 0;
-    for (const call of res.toolCalls) {
+    for (const call of toolCalls) {
       if (call.name === 'update_plan') {
         plan = Array.isArray((call.args as any).steps) ? ((call.args as any).steps as PlanStep[]) : plan;
         const response: Record<string, unknown> = { ok: true, turnsLeft: Math.max(0, maxTurns - turnsUsed) };
@@ -520,6 +538,7 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
           cachedReads.set(url, reads);
           const cached = evidence.extracted.find((p) => p.url === url);
           const content = reads > MAX_SAME_URL_CACHED_READS ? CACHED_STUB : stripFenceMarker(cached?.content ?? '');
+          if (content !== CACHED_STUB) readThisLoop.add(url);
           messages.push({
             role: 'tool',
             toolResult: {

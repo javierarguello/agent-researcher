@@ -227,7 +227,7 @@ describe('refute B2 · today’s gather on the real sequences', () => {
     expect(gatherCompleted(r)).toBe(true);
   });
 
-  it('the two real plan-loops end at the breaker, not at the bound: deep-dive-refiner (PcPcPcPc + 18 P, was 26/26 with 0 searches) and risk-analyst (16 P, was 16/16) — ended after 4 plan-only turns, `stalled`, and the trace says why', async () => {
+  it('the two real plan-loops end at the breaker, not at the bound: deep-dive-refiner (PcPcPcPc + 18 P, was 26/26 with 0 searches) ends on the no-progress rule and risk-analyst (16 P, was 16/16) after 4 plan-only turns — `stalled`, and the trace says which', async () => {
     restore = __setExtraPages(LOTS);
     // The literal orders from out/local-aa4b3edf. Both loops sat at exactly 2·budget+6
     // iterations having searched nothing; under Gemini's mode ANY the model could not
@@ -247,7 +247,15 @@ describe('refute B2 · today’s gather on the real sequences', () => {
       expect(p.calls, `${name}: iterations`).toBeLessThanOrEqual(seq.indexOf('PPPP') + 4);
       expect(r.turns).toBe(0);
       expect(r.stop).toBe('stalled');
-      expect(notes.some((n) => /Stopping research: 4 plan updates in a row/.test(n)), `${name}: the stop is said`).toBe(true);
+      // WHICH breaker fires depends on the shape, and the refiner's changed with
+      // R8-4: its `c`s all re-read the one seeded page, and a re-read of a page this
+      // loop has already been handed is no longer progress — so the no-progress rule
+      // now trips two iterations before the plan rule would have (10, not 12). Both
+      // are the same verdict; the trace has to say which one, and it does.
+      const expected = name === 'risk-analyst'
+        ? /Stopping research: 4 plan updates in a row/
+        : /Stopping research: 8 turns in a row with no new evidence/;
+      expect(notes.some((n) => expected.test(n)), `${name}: the stop is said`).toBe(true);
       expect(notes.at(-1)).toMatch(/^Research loop ended: stalled \(0\/\d+ turns\)/);
       expect(notes.filter((n) => n.startsWith('Plan updated')).length).toBeLessThanOrEqual(seq.indexOf('PPPP') + 4);
       // The nudge came first, ASSERTED. This comment used to sit over the note count
@@ -277,11 +285,13 @@ describe('refute B2 · today’s gather on the real sequences', () => {
     __setProviderForTests('ollama', p);
     const r = await gather({ model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }], maxTurns: 24, evidence, onNote: (n) => { notes.push(n); } });
 
-    // The first two re-reads return the page body (progress); from the third the
-    // body is refused, and eight such turns in a row end the loop. Mutation that
-    // reds this: `NO_PROGRESS_TURNS_LIMIT` past the bound, or `buysNothing()`
-    // returning false for a stubbed cached read.
-    expect(p.calls).toBe(12);
+    // The FIRST re-read returns the page body (progress); every later one is a page
+    // this loop has already been handed, and eight such turns in a row end the loop.
+    // 10 iterations, where R7-3 took 12 — the second body-returning read used to buy
+    // a reset too, which is the per-URL hole R8-4 closed. Mutation that reds this:
+    // `NO_PROGRESS_TURNS_LIMIT` past the bound, or `buysNothing()` returning false
+    // for a stubbed cached read.
+    expect(p.calls).toBe(10);
     expect(p.calls).toBeLessThan(2 * 24 + 6);
     expect(r.turns).toBe(0);
     expect(r.stop).toBe('stalled');
@@ -301,6 +311,44 @@ describe('refute B2 · today’s gather on the real sequences', () => {
     expect(h.calls, 'every turn of the honest sequence ran, plus the one that says "ready"').toBe(8);
     expect(honest.turns, 'its one paid fetch').toBe(1);
     expect(honest.stop).toBe('done');
+  });
+
+  it('rotating cached URLs no longer buys a reset each: `(c1 c2 c3 c4)*` ends at the breaker, not the 54 bound (R8-4)', async () => {
+    restore = __setExtraPages(LOTS);
+    // R7-3 made a body-returning cached read count as progress, and `cachedReads` is
+    // per URL — so the breaker's real bound was `8 × 2 × |distinct cached pages|` and
+    // a model alternating four pages in the shared store cleared the iteration
+    // ceiling outright: 54 LLM calls, 808,868 prompt characters, zero turns, zero
+    // search spend (round 8, R8-4). Ours is the money that shape spends.
+    // Mutation that reds this: drop `readThisLoop.has(url)` from `buysNothing`.
+    const evidence = createEvidence();
+    const urls = LOTS.slice(0, 4).map((p) => p.url);
+    for (const u of urls) {
+      evidence.extractedUrls.add(u);
+      evidence.extracted.push({ url: u, ok: true, content: LOTS.find((p) => p.url === u)!.content });
+    }
+    class Rotate extends MockLlmProvider {
+      private i = 0;
+      override async generate(opts: GenerateOptions): Promise<GenerateResult> {
+        this.calls += 1;
+        if (!opts.tools?.length) return super.generate(opts);
+        const url = urls[this.i++ % urls.length]!;
+        return { text: '', toolCalls: [{ id: `c${this.i}`, name: 'fetch_page', args: { url } }], usage: { inputTokens: 100, outputTokens: 30 } };
+      }
+    }
+    const p = new Rotate();
+    __setProviderForTests('gemini-vertex', p);
+    __setProviderForTests('ollama', p);
+    const notes: string[] = [];
+    const r = await gather({ model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }], maxTurns: 24, evidence, onNote: (n) => { notes.push(n); } });
+
+    // Four pages are new to this loop, once each; from the fifth turn nothing is,
+    // and eight of those in a row end it. 4 + 8 = 12, against a 54 bound.
+    expect(p.calls).toBe(12);
+    expect(p.calls).toBeLessThan(2 * 24 + 6);
+    expect(r.turns).toBe(0);
+    expect(r.stop).toBe('stalled');
+    expect(notes.some((n) => /Stopping research: 8 turns in a row with no new evidence/.test(n))).toBe(true);
   });
 
   it('after three plan-only turns the next call is NOT forced to call a tool — under Gemini mode ANY that was the only way out of a plan-loop the loop itself offered none for', async () => {
