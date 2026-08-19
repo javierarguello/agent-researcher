@@ -23,7 +23,7 @@ import {
 } from '../jobs/firestore.js';
 import { retryAsync } from '../util/retry.js';
 import { releaseJobSlot } from '../jobs/slots.js';
-import { sectionsNotice, heldNotice } from '../jobs/report-copy.js';
+import { sectionsNotice } from '../jobs/report-copy.js';
 import { deleteObject, downloadObject, uploadObject } from '../storage/gcs.js';
 import type { JobFile, JobHold, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
@@ -402,7 +402,9 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
           return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
         }
         await setProgress(input.jobId, {
-          phase: 'held', message: heldNotice(output.language), kind: 'held',
+          // English and internal, like every other `message`: the buyer reads the
+          // KIND, localized by their client.
+          phase: 'held', message: 'Held for review; nothing more is being spent.', kind: 'held',
           turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
         }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
         log.error('job.held', {
@@ -444,7 +446,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         return { files: [], reportBytes: 0, sourcesFound: output.sources.length, status: 'superseded' };
       }
       await setProgress(input.jobId, {
-        phase: 'held', message: heldNotice(output.language), kind: 'held',
+        phase: 'held', message: 'Held for review; nothing more is being spent.', kind: 'held',
         turnsUsed: output.turnsUsed, sourcesFound: output.sources.length, updatedAt: new Date().toISOString(),
       }).catch((err) => log.warn('progress.save_failed', { message: (err as Error).message }));
       log.error('job.held', {

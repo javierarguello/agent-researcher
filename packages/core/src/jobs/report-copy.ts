@@ -139,23 +139,12 @@ export function sectionsNotice(lang: unknown, statuses: Array<{ status: 'lost' |
   return parts.join(' ');
 }
 
-const HELD_NOTICE: Copy = {
-  en: 'Paused while we review it. Nothing more is being spent, and we will come back to you.',
-  es: 'En pausa mientras lo revisamos. No se está gastando nada más y volvemos contigo.',
-  fr: 'En pause pendant que nous l’examinons. Rien de plus n’est dépensé, et nous revenons vers vous.',
-  pt: 'Em pausa enquanto revisamos. Nada mais está sendo gasto e voltaremos a você.',
-};
-
-/**
- * The progress line a buyer sees on a parked job.
- *
- * It is rendered raw by the client, so it has to be the buyer's language and it
- * must not name an internal limit — "held at the cost ceiling" tells a customer
- * about our budget, which is neither their business nor their problem.
- */
-export function heldNotice(lang: unknown): string {
-  return pick(HELD_NOTICE, asLang(lang));
-}
+// `heldNotice` lived here: a localized "paused while we review it" that `run-job`
+// wrote into `progress.message`. It has had no reader since `9850bdf` — the API
+// hands a buyer the KIND and never the message, and the SPA renders `held` from its
+// own table. Two copies of one sentence in four languages, which had already drifted
+// in two of them (round 7, R7-22). The kind carries it; the message is the admin's,
+// in English, like every other one.
 
 const RATE_LIMIT_USER: Copy = {
   en: 'You have reached the limit of reports per hour. Please try again shortly.',

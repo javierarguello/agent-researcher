@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
-import { pick, useLang } from '../i18n';
+import { pick, useLang, LANGS, type Lang } from '../i18n';
 import { useJob, useJobReport, useTemplate } from '../api/hooks';
 import { downloadFile } from '../api/client';
 import { ReportViewer } from '../components/ReportViewer';
@@ -76,8 +76,15 @@ export function JobView() {
           {step?.description && <p className="soft" style={{ fontSize: 14, margin: '6px 0 0' }}>{step.description}</p>}
           {(() => {
             // The engine's English sentence never reaches this client; the API hands
-            // it the KIND of step (and a search's query), rendered in the UI language.
-            const line = progressLine(job.progress, lang);
+            // it the KIND of step (and a search's query), rendered in the language of
+            // the card it sits in.
+            //
+            // `reportLang`, not `lang`: the bold step label above comes from the
+            // manifest, which is fetched in the REPORT's language, so a buyer who
+            // switched the UI mid-wait read the label in one language and this line
+            // in another, in the same card (round 7, R7-23). The same argument as
+            // the request card below.
+            const line = progressLine(job.progress, (LANGS as readonly string[]).includes(reportLang) ? (reportLang as Lang) : lang);
             return line ? <p className="muted mono" style={{ fontSize: 12, marginTop: 6 }}>{line}</p> : null;
           })()}
         </div>

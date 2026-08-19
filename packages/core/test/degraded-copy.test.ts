@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 
 import { runResearch } from '../src/engine/research-engine.js';
-import { sectionsNotice, degradedSectionNote, heldNotice } from '../src/jobs/report-copy.js';
+import { sectionsNotice, degradedSectionNote } from '../src/jobs/report-copy.js';
 import { getTemplate } from '../src/templates/registry.js';
 import { installMockProvider } from './mocks/llm.js';
 import type { MockLlmProvider } from './mocks/llm.js';
@@ -57,18 +57,11 @@ describe('the copy itself', () => {
     expect(sectionsNotice('es', lost(2))).toMatch(/^2 secciones/);
   });
 
-  it('tells a buyer their job is paused without naming our budget', () => {
-    for (const lang of ['en', 'es', 'fr', 'pt']) {
-      const text = heldNotice(lang);
-      expect(text.length).toBeGreaterThan(20);
-      // It is rendered raw by the client, so it has to be their language — and
-      // "held at the cost ceiling" tells a customer about our budget, which is
-      // neither their business nor their problem.
-      expect(text).not.toMatch(/ceiling|budget|cost|held|presupuesto|techo/i);
-    }
-    expect(heldNotice('es')).toMatch(/en pausa/i);
-    expect(heldNotice('de')).toBe(heldNotice('en'));
-  });
+  // The held sentence used to be here too, in four languages, and had already
+  // drifted from the one the SPA renders. It is the SPA's now: a buyer gets
+  // `kind: 'held'` and their client localizes it (round 7, R7-22). What must not
+  // name our budget is that line, and `apps/fbizlab/test/job-view.test.tsx` asserts
+  // it where it is rendered.
 
   it('says nothing at all when nothing degraded', () => {
     expect(sectionsNotice('en', lost(0))).toBe('');

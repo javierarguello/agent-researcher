@@ -91,6 +91,14 @@ export const PROGRESS_KINDS = [
   'fetched',
   'cached',
   'stopped',
+  /**
+   * The loop was CUT OFF: it stopped because we stopped paying, not because it was
+   * finished. `stopped` says "research for this step is complete", and it was being
+   * emitted for `stalled` and `ceiling` too — so a loop force-stopped after four
+   * plan-only turns with ZERO searches told the buyer its research was complete,
+   * twice (round 7, R7-22 / R7-31).
+   */
+  'cut_off',
   'ceiling',
   'writing',
   'composing',
@@ -142,7 +150,11 @@ export interface JobProgress {
  * model's own words. `detail` only for `searched`, clipped.
  */
 export function clientProgress(p: JobProgress): { phase: string; kind?: ProgressKind; detail?: string; updatedAt: string } {
-  const detail = p.kind === 'searched' && p.detail ? p.detail.slice(0, PROGRESS_DETAIL_MAX) : undefined;
+  // By CODE POINT, like `sourceLabel` and the handoff cut: slicing UTF-16 units
+  // through a surrogate pair left a lone surrogate in the one string a hostile page
+  // chooses, and the buyer's screen painted it as a replacement glyph (R7-22).
+  const detail =
+    p.kind === 'searched' && p.detail ? Array.from(p.detail).slice(0, PROGRESS_DETAIL_MAX).join('') : undefined;
   // A document written before `kind` existed still has to say something. `held` is
   // the case that matters: a parked job is the one kind of job that deliberately
   // outlives a deploy, and without a kind the buyer's page showed a pulsing dot and

@@ -413,6 +413,30 @@ describe('a re-dispatch does not re-buy a finished loop', () => {
   });
 });
 
+describe('the dispatch that finishes early says what it is doing', () => {
+  it('emits the ASSEMBLING phase, not planning — the phase is what the buyer’s client looks up', async () => {
+    // Finalize-in-place emitted `phase: 'planning'` with `kind: 'assembling'`, and a
+    // client renders the phase's manifest label in bold over the kind's line: the
+    // buyer read "Planning" above "Assembling the report." (round 7, R7-19).
+    // Mutation that reds this: `emit('planning', …)` again.
+    scoutWrites('not json');
+    const first = await dispatch('ph1');
+    expect(first.trace.status, 'the premise: dispatch 1 asks to be resumed').toBe('incomplete');
+
+    scoutWrites('still not json');
+    const events: Array<{ phase: string; kind: string }> = [];
+    await runResearch({
+      template: compactModel, params: params(), jobId: 'ph1', generatedAt: 't', finalize: false,
+      resume: first.checkpoint,
+      onProgress: (p) => { events.push({ phase: p.phase, kind: p.kind }); },
+    });
+    const finalizing = events.find((e) => e.kind === 'assembling');
+    expect(finalizing, 'the finalize-in-place line').toBeTruthy();
+    expect(finalizing!.phase).toBe('assembling');
+    expect(events.some((e) => e.phase === 'planning' && e.kind === 'assembling')).toBe(false);
+  });
+});
+
 describe('a write that fails the same way on two dispatches is given up on', () => {
   it('the second identical failure ends the job: the section degrades, the warning names the repeated failure, no third dispatch is asked for', async () => {
     scoutWrites('not json');

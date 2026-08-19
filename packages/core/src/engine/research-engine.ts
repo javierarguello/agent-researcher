@@ -563,10 +563,12 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
           if (budget.exceeded) {
             const err = new BudgetExceededError(budget.spentUsd, budget.limitUsd ?? 0);
             at.status = 'failed';
-            // `message` here, `detail` in the note. Not because of degraded sections —
-            // those carry our localized note, never this — but because `emit` below
-            // lands in `job.progress.message`, which the API hands to the buyer raw.
-            // The figures stay in the note, which is admin-side.
+            // `message` here, `detail` in the note. The reason used to be that
+            // `emit` lands in `job.progress.message` and the API handed that to the
+            // buyer raw — `9850bdf` ended that, and this comment outlived it by a
+            // batch (round 7, R7-22). What remains true is the split it describes:
+            // the spend figures belong in the note, which is admin-side, and the
+            // message is the sentence an admin reads in the trace.
             at.error = err.message;
             at.notes.push(`${new Date().toISOString()} ${err.detail}`);
             trace.budgetExceeded = true;
@@ -712,7 +714,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   let finalizing = finalize;
   if (!finalizing && pendingAgents().length && !jobSpend.budget().exceeded && !retryable().length) {
     finalizing = true;
-    await emit('planning', 'No unfinished step can still be retried; finishing the report now.', 'assembling');
+    // `assembling`, not `planning`: the phase is what a client looks up in the
+    // manifest for its step label, so the buyer read "Planning" in bold over a line
+    // that said "Assembling the report." (round 7, R7-19).
+    await emit('assembling', 'No unfinished step can still be retried; finishing the report now.', 'assembling');
     await runWaves(true);
   }
 

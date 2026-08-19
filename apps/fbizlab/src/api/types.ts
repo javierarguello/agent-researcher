@@ -81,7 +81,7 @@ export interface JobListItem {
  */
 export type ProgressKind =
   | 'starting' | 'wave' | 'researching' | 'reusing' | 'plan' | 'searched' | 'search_failed' | 'fetched' | 'cached'
-  | 'stopped' | 'ceiling' | 'writing' | 'composing' | 'retry' | 'failed' | 'assembling' | 'done' | 'held' | 'incomplete';
+  | 'stopped' | 'cut_off' | 'ceiling' | 'writing' | 'composing' | 'retry' | 'failed' | 'assembling' | 'done' | 'held' | 'incomplete';
 export interface JobProgress {
   phase: string;
   /** Absent on jobs written before the field existed — the phase alone is shown then. */

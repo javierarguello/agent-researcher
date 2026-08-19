@@ -380,11 +380,11 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
     // `stalled`, not `done`: it was cut off, and with the allowance unspent there
     // is nothing worth reusing anyway.
     if (planOnlyTurns >= PLAN_TURNS_LIMIT) {
-      await note(`Stopping research: ${planOnlyTurns} plan updates in a row with no search or fetch.`, 'stopped');
+      await note(`Stopping research: ${planOnlyTurns} plan updates in a row with no search or fetch.`, 'cut_off');
       break;
     }
     if (noProgressTurns >= NO_PROGRESS_TURNS_LIMIT) {
-      await note(`Stopping research: ${noProgressTurns} turns in a row with no new evidence (no search, no new page).`, 'stopped');
+      await note(`Stopping research: ${noProgressTurns} turns in a row with no new evidence (no search, no new page).`, 'cut_off');
       break;
     }
 
@@ -585,6 +585,9 @@ export async function gather(input: GatherInput): Promise<GatherResult> {
   // Say why it ended. Two real agent-runs reached the iteration bound with zero
   // searches and nothing in the trace said so; an admin reading it could not tell
   // a section written from research from one written from none.
-  await note(`Research loop ended: ${stop} (${turnsUsed}/${maxTurns} turns).`, 'stopped');
+  // The KIND carries which of the two it was. `stopped` is "research for this step
+  // is complete", and it was fired for every exit — including the loop we cut off
+  // and the one that hit the job's cost ceiling, i.e. exactly when it is not true.
+  await note(`Research loop ended: ${stop} (${turnsUsed}/${maxTurns} turns).`, stop === 'done' || stop === 'budget' ? 'stopped' : 'cut_off');
   return { turns: turnsUsed, stop };
 }

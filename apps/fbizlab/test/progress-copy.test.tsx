@@ -6,9 +6,13 @@
 import { describe, it, expect } from 'vitest';
 import { progressLine } from '../src/lib/progress-copy';
 import { LANGS } from '../src/i18n';
+import { PROGRESS_KINDS } from '../../../packages/core/src/jobs/types';
 import type { ProgressKind } from '../src/api/types';
 
-const KINDS: ProgressKind[] = ['starting', 'wave', 'researching', 'reusing', 'plan', 'searched', 'search_failed', 'fetched', 'cached', 'stopped', 'ceiling', 'writing', 'composing', 'retry', 'failed', 'assembling', 'done', 'held', 'incomplete'];
+// Read from core, not copied again: this list was the fifth hand-written copy of the
+// same union, and a hand-written list here can only catch what it already knows
+// about (round 7, R7-6).
+const KINDS = PROGRESS_KINDS as readonly ProgressKind[];
 
 describe('progressLine', () => {
   it('every kind has a line in every language, and no language borrows English', () => {
@@ -32,5 +36,26 @@ describe('progressLine', () => {
     expect(progressLine({}, 'en')).toBeNull();
     expect(progressLine(null, 'es')).toBeNull();
     expect(progressLine({ kind: 'nope' as ProgressKind }, 'en')).toBeNull();
+  });
+});
+
+describe('a line that would be a lie', () => {
+  it('does not tell the buyer the research finished when we cut it off', () => {
+    // `stopped` is "research for this step is complete"; the engine now emits
+    // `cut_off` for a loop that was force-stopped or hit the cost ceiling, and the
+    // two must not read the same (round 7, R7-22 / R7-31).
+    for (const lang of LANGS) {
+      const cut = progressLine({ kind: 'cut_off' }, lang)!;
+      expect(cut, lang).not.toBe(progressLine({ kind: 'stopped' }, lang));
+      expect(cut, lang).toMatch(/interromp|stopped early|detuvo|antes do fim/i);
+    }
+  });
+
+  it('does not claim we re-read a page we refused to send again', () => {
+    // The `cached` kind covers both branches — the second read, which we serve, and
+    // the third, which we decline — and it is the one of these lines that dwells
+    // long enough to be read. "Re-reading a source" was false half the time.
+    for (const lang of LANGS) expect(progressLine({ kind: 'cached' }, lang), lang).not.toMatch(/re-read|relee|releyendo|relendo|relecture/i);
+    expect(progressLine({ kind: 'cached' }, 'en')).toMatch(/already gathered/i);
   });
 });

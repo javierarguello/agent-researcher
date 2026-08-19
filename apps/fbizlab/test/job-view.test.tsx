@@ -88,6 +88,18 @@ describe('a job parked for a decision', () => {
     expect(screen.getByText(/en pausa mientras lo revisamos/i)).toBeTruthy();
   });
 
+  it('reads the live line in the REPORT’s language, like the label above it', async () => {
+    // The bold step label comes from the manifest, fetched in the report's language;
+    // the line under it was rendered in the UI's. A buyer who switched the switcher
+    // mid-wait read the two halves of one card in two languages (round 7, R7-23).
+    // Mutation that reds this: `progressLine(job.progress, lang)`.
+    tpl.current = { steps: [{ id: 'deal-scout', label: 'Buscador de negocios' }], modes: [], sections: [] };
+    show({ status: 'running', params: { language: 'es' }, progress: { phase: 'deal-scout', kind: 'writing', updatedAt: 't' }, summary: null }, 'en');
+    expect(screen.getByText('Buscador de negocios')).toBeTruthy();
+    expect(screen.getByText(/redactando esta sección/i)).toBeTruthy();
+    expect(screen.queryByText(/writing this section/i)).toBeNull();
+  });
+
   it('counts a held job as live, so the page keeps polling', async () => {
     // Asserted where the predicate actually lives. This page mocks `useJob`
     // wholesale, so a test rendered through it can say "still looks live" and mean

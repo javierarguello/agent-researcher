@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
 import { runResearch, type ResearchProgress } from '../src/engine/research-engine.js';
 import { clientProgress, PROGRESS_KINDS, PROGRESS_DETAIL_MAX, type ProgressKind } from '../src/jobs/types.js';
+import type { GenerateOptions, GenerateResult } from '../src/llm/provider.js';
 import { LIFECYCLE_OTHER, phaseLabel } from '../src/templates/phases.js';
 import { installMockProvider } from './mocks/llm.js';
 import { compactModel } from './fixtures/compact-model.js';
@@ -87,6 +88,67 @@ describe('clientProgress — the buyer-facing shape', () => {
     expect(clientProgress({ ...base, phase: 'deal-scout', message: 'Searched: q' })).toEqual({ phase: 'deal-scout', updatedAt: 't' });
     // A kind already on the document always wins.
     expect(clientProgress({ ...base, phase: 'held', message: 'x', kind: 'ceiling' }).kind).toBe('ceiling');
+  });
+});
+
+describe('a kind is what happened, not what we would rather say', () => {
+  it('a loop that was CUT OFF does not tell the buyer its research is complete', async () => {
+    // `stopped` — "Research for this step is complete." — was fired for every exit,
+    // including the loop we force-stopped after four plan-only turns with ZERO
+    // searches, and the one that hit the job's cost ceiling. Two lines, both false,
+    // one right after the other (round 7, R7-22 / R7-31). Mutation that reds this:
+    // `'stopped'` unconditionally at the end of `gather`.
+    const { gather, createEvidence } = await import('../src/engine/gather.js');
+    const { resolveModel, __setProviderForTests } = await import('../src/llm/models.js');
+    const { MockLlmProvider } = await import('./mocks/llm.js');
+
+    /** A model that only ever re-plans: the shape both real July plan-loops had. */
+    class Planner extends MockLlmProvider {
+      override async generate(opts: GenerateOptions): Promise<GenerateResult> {
+        if (!opts.tools?.length) return super.generate(opts);
+        return { text: '', toolCalls: [{ id: 'p', name: 'update_plan', args: { steps: [{ task: 'plan', status: 'doing' }] } }], usage: { inputTokens: 10, outputTokens: 5 } };
+      }
+    }
+    const p = new Planner();
+    for (const n of ['gemini-vertex', 'ollama']) __setProviderForTests(n, p);
+    const kinds: string[] = [];
+    const res = await gather({
+      model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }],
+      maxTurns: 2, evidence: createEvidence(), onNote: (_m: string, kind: string) => { kinds.push(kind); },
+    } as never);
+
+    expect(res.stop, 'the premise: cut off, not finished').toBe('stalled');
+    expect(res.turns).toBe(0);
+    expect(kinds).toContain('cut_off');
+    expect(kinds, 'nothing here may say the research is complete').not.toContain('stopped');
+  });
+
+  it('…and one that finished, or spent its allowance, still does', async () => {
+    // The control: `cut_off` must not swallow the honest ending.
+    const { gather, createEvidence } = await import('../src/engine/gather.js');
+    const { resolveModel } = await import('../src/llm/models.js');
+    const { installMockProvider } = await import('./mocks/llm.js');
+    installMockProvider();
+    const kinds: string[] = [];
+    const res = await gather({
+      model: resolveModel('gather'), system: 's', messages: [{ role: 'user', text: 'go' }],
+      maxTurns: 2, evidence: createEvidence(), onNote: (_m: string, kind: string) => { kinds.push(kind); },
+    } as never);
+    expect(['done', 'budget']).toContain(res.stop);
+    expect(kinds).toContain('stopped');
+    expect(kinds).not.toContain('cut_off');
+  });
+
+  it('clips a search query by code point, so a hostile one cannot end in half a character', () => {
+    // The rest of the batch cuts by code point (`sourceLabel`, the handoff); this one
+    // sliced UTF-16 units, and the one string a hostile page chooses is exactly where
+    // that leaves a lone surrogate for the buyer's screen to paint as `�` (R7-22).
+    const q = `${'x'.repeat(PROGRESS_DETAIL_MAX - 1)}🏦 and more`;
+    const out = clientProgress({ phase: 'scout', message: `Searched: ${q}`, kind: 'searched', detail: q, turnsUsed: 1, sourcesFound: 1, updatedAt: 't' });
+    expect([...(out.detail ?? '')]).toHaveLength(PROGRESS_DETAIL_MAX);
+    expect(out.detail!.endsWith('🏦'), 'the whole character or none of it').toBe(true);
+    // Mutation that reds this: `.slice(0, PROGRESS_DETAIL_MAX)`.
+    expect(/[\uD800-\uDBFF]$/.test(out.detail ?? ''), 'no lone surrogate').toBe(false);
   });
 });
 

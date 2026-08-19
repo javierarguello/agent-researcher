@@ -23,8 +23,13 @@ const KIND: Record<ProgressKind, Copy> = {
   searched: { en: 'Searching for', es: 'Buscando', fr: 'Recherche de', pt: 'Pesquisando' },
   search_failed: { en: 'A search did not go through; retrying.', es: 'Una búsqueda no respondió; reintentando.', fr: 'Une recherche n’a pas abouti ; nouvel essai.', pt: 'Uma busca não respondeu; tentando de novo.' },
   fetched: { en: 'Reading a source in full.', es: 'Leyendo una fuente completa.', fr: 'Lecture d’une source en entier.', pt: 'Lendo uma fonte na íntegra.' },
-  cached: { en: 'Re-reading a source already gathered.', es: 'Releyendo una fuente ya recopilada.', fr: 'Relecture d’une source déjà rassemblée.', pt: 'Relendo uma fonte já reunida.' },
+  // True for BOTH cached branches. It used to say "re-reading", which was said
+  // when the loop asked for a page a third time and we refused to send it again
+  // (round 7, R7-22) — the one of these lines that dwells long enough to be read.
+  cached: { en: 'Working from a source already gathered.', es: 'Trabajando con una fuente ya recopilada.', fr: 'Travail à partir d’une source déjà rassemblée.', pt: 'Trabalhando com uma fonte já reunida.' },
   stopped: { en: 'Research for this step is complete.', es: 'La investigación de este paso está completa.', fr: 'La recherche de cette étape est terminée.', pt: 'A pesquisa desta etapa está concluída.' },
+  // …and the same moment when it is NOT complete: we stopped paying for it.
+  cut_off: { en: 'Research for this step was stopped early.', es: 'La investigación de este paso se detuvo antes de tiempo.', fr: 'La recherche de cette étape a été interrompue.', pt: 'A pesquisa desta etapa foi interrompida antes do fim.' },
   ceiling: { en: 'Pausing this step for review.', es: 'Pausando este paso para revisión.', fr: 'Mise en pause de cette étape pour révision.', pt: 'Pausando esta etapa para revisão.' },
   writing: { en: 'Writing this section.', es: 'Redactando esta sección.', fr: 'Rédaction de cette section.', pt: 'Redigindo esta seção.' },
   composing: { en: 'Composing this section from the findings.', es: 'Componiendo esta sección a partir de los hallazgos.', fr: 'Composition de cette section à partir des résultats.', pt: 'Compondo esta seção a partir dos achados.' },

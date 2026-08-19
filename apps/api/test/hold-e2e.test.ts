@@ -246,7 +246,10 @@ describe('a job held for budget, decided over the API', () => {
     expect(paused.json().progress?.kind).toBe('held');
     expect(paused.json().progress?.message).toBeUndefined();
     const adminView = await app.inject({ method: 'GET', url: `/research/${jobId}`, headers: auth(adminToken) });
-    expect(adminView.json().progress?.message ?? '').toMatch(/pausa|paused/i);
+    // English, and internal, like every other `message`: the buyer's line comes from
+    // the KIND now, so the localized sentence that used to live here was a second
+    // copy of the SPA's — and had already drifted from it (round 7, R7-22).
+    expect(adminView.json().progress?.message ?? '').toMatch(/held for review/i);
     expect(adminView.json().progress?.kind).toBe('held');
 
     await app.inject({ method: 'POST', url: `/admin/jobs/${jobId}/approve`, headers: auth(adminToken) });
