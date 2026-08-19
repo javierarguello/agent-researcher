@@ -29,6 +29,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 vi.mock('../../src/tools/web-search.js', () => import('../fixtures/fake-web.js'));
 
 import { z } from 'zod';
+import { chartSchema } from '../../src/templates/chart.js';
 import { __setExtraPages, type Page } from '../fixtures/fake-web.js';
 import { PAYLOADS, payload, poisonPages, setKeyEverywhere, type Payload } from '../fixtures/poisoned-web.js';
 import { ObedientMockProvider } from '../mocks/obedient-llm.js';
@@ -371,7 +372,7 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     expect(config.llm.maxOutputTokens).toBe(32768);
   });
 
-  it('jsonSchemaToGemini forwards every bound the schema declares — array, number AND string — to the decoder', () => {
+  it('jsonSchemaToGemini forwards the array and number bounds to the decoder, and withholds `maxLength` on purpose', () => {
     // Was the tripwire pinning the DROP: `risks: z.array(...).min(1)`, `metrics.min(1)`,
     // `keyFindings.min(1)`, `periods.min(2)` reached Zod and not the decoder, so
     // "this listing has no risks; report an empty list" was a schema-valid answer for
@@ -404,6 +405,20 @@ describe('D1 · a page that makes the write fail is paid for twice per attempt, 
     expect((gem.properties.labels?.items as Record<string, unknown>)?.maxLength, 'the decoder must not be told where to stop a label').toBeUndefined();
     // …and Zod still holds it: the bound is enforced, just after the fact.
     expect(z.object({ l: z.string().max(80) }).safeParse({ l: 'x'.repeat(81) }).success).toBe(false);
+    // …and the bound still reaches the model, in the only channel left: its own
+    // description. Withholding `maxLength` removed the decoder's copy of it, and
+    // `unit` — eight characters, the tightest — had no description at all, so
+    // nothing anywhere told the model it existed and an over-long one cost a repair
+    // round or, on a second failure, the agent's whole slice (round 9, R9-14).
+    // Mutation that reds this: drop the bound from a chart field's `.describe()`.
+    type Node = { description?: string; items?: Node; properties?: Record<string, Node> };
+    const chart = jsonSchemaToGemini(z.toJSONSchema(chartSchema) as never) as unknown as { properties: Record<string, Node> };
+    expect(chart.properties.title?.description).toMatch(/160 characters/);
+    expect(chart.properties.description?.description).toMatch(/500 characters/);
+    expect(chart.properties.unit?.description).toMatch(/8 characters/);
+    expect(chart.properties.labels?.items?.description).toMatch(/80 characters/);
+    expect(chart.properties.series?.items?.properties?.name?.description).toMatch(/80 characters/);
+
     // `pattern` rides along the same way when a schema declares one.
     const pat = jsonSchemaToGemini(z.toJSONSchema(z.object({ code: z.string().regex(/^[A-Z]{2}$/) })) as never) as unknown as { properties: Record<string, Record<string, unknown>> };
     expect(pat.properties.code?.pattern).toBe('^[A-Z]{2}$');

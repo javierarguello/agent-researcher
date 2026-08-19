@@ -91,7 +91,12 @@ export interface AgentSpec {
   enriches?: string[];
   /** Agent ids whose section outputs are injected as read-only context. */
   dependsOn?: string[];
-  /** Web-search/fetch budget for producers (ignored for synthesizers). */
+  /**
+   * Web-search/fetch budget for producers. Declaring it on an agent with no
+   * research loop is a validation ERROR, not a field that is ignored —
+   * `assertTemplatesValid` runs at module load, so it fails the boot rather than
+   * the request (round 9, R9-15; the guard is round 8, R8-20).
+   */
   researchBudget?: number;
   /** Model alias for structured synthesis. Default: `config.llm.defaultSynthModel`. */
   model?: string;
@@ -111,7 +116,9 @@ export interface AgentSpec {
   /**
    * Domains this producer's `web_search` is scoped to (e.g. `bizbuysell.com`).
    * Merged (union) with the template-level `sites`. Bare hostnames — no scheme
-   * or `www.`. Ignored for synthesizers (they don't search).
+   * or `www.`. Declaring it on an agent with no research loop is a validation
+   * ERROR: it renders as "SUGGESTED SOURCES" in the kickoff, which a synthesizer
+   * never reads, so it would be a directive that looks obeyed and is not.
    */
   sites?: string[];
 }

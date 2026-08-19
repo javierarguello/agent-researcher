@@ -24,8 +24,12 @@ Add an `AgentSpec` to `agents`. Give it `produces` (and/or `enriches`),
 [agents.md](agents.md#suggested-sources-sites--additive-in-the-workflow-definition)).
 The executor recomputes waves automatically. Validation
 rejects: unknown section/agent refs, two agents producing the same section,
-enriching a section nobody produces, self-enrichment, unknown model aliases, and
-dependency cycles.
+enriching a section nobody produces, self-enrichment, unknown model aliases,
+dependency cycles, and **any of `focus` / `sites` / `researchBudget` /
+`gatherModel` on an agent with no research loop** — only a producer has one, and
+all four are read only inside it, so on a synthesizer they are a sentence the model
+never reads. Validation runs at module load, so this fails the boot rather than a
+request.
 
 ## Add a structured directive to a model
 

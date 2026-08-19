@@ -268,7 +268,13 @@ export function jsonSchemaToGemini(
   // invalid one for us: a repair round, then a retry, then a re-dispatch (M-D1).
   // `minItems`/`maxItems` are int64 strings in `@google/genai`'s `Schema`.
   //
-  // The string bounds ride along now. They were withheld on the SDK's list of what
+  // `minLength` and `pattern` ride along; `maxLength` does NOT — see the note below
+  // it, which is the current position. What follows is the history that produced
+  // both halves, and it ends where that note begins (round 9, R9-16: this paragraph
+  // used to run to its own opposite conclusion, so a reader met the superseded one
+  // first).
+  //
+  // The string bounds were withheld on the SDK's list of what
   // `responseJsonSchema` honours — and that is a DIFFERENT field: this provider
   // sends `responseSchema` (the SDK only moves a schema to the other path when it
   // carries `$schema`, which `jsonSchemaToGemini` never emits), and the `Schema`
@@ -278,7 +284,8 @@ export function jsonSchemaToGemini(
   // `minItems`, 2 `maxItems`, 5 `maxLength`, and zero `minimum`/`maximum` — i.e. the
   // half of the original change that was kept is dead for the flagship today and the
   // half that was dropped is the live one, and `.max(80)` on a label was costing a
-  // repair round. Zod still enforces every one of them after the fact.
+  // repair round. Zod still enforces every one of them after the fact — which is
+  // what made withholding `maxLength` again the safer half of the trade.
   if (typeof base.minItems === 'number') out.minItems = String(base.minItems);
   if (typeof base.maxItems === 'number') out.maxItems = String(base.maxItems);
   if (typeof base.minimum === 'number') out.minimum = base.minimum;

@@ -16,15 +16,24 @@ interface AgentSpec {
   produces?: string[];             // section keys it authors from scratch
   enriches?: string[];             // section keys (produced upstream) it refines in place
   dependsOn?: string[];            // agent ids whose section output it needs as read-only context
-  researchBudget?: number;         // web_search/fetch_page budget (producers only; default config.search.maxTurns)
+  researchBudget?: number;         // web_search/fetch_page budget (default config.search.maxTurns)
   model?: string;                  // alias for synthesis   (default: config.llm.defaultSynthModel = 'pro')
   gatherModel?: string;            // alias for research loop (default: config.llm.defaultGatherModel = 'gather')
-  focus?: string;                  // extra RESEARCH guidance (which sources to prefer). Only agents with a
-                                   // research loop read it — `validateTemplate` refuses it on a synthesizer.
+  focus?: string;                  // extra RESEARCH guidance (which sources to prefer)
                                    // Writing guidance goes in the section's `guidance`.
   sites?: string[];                // suggested (ADDITIVE) source domains — unioned with the template's `sites`
 }
 ```
+
+**Four of those are loop-only, and declaring one on an agent with no research loop
+is a validation ERROR — not a field that is ignored:** `focus`, `sites`,
+`researchBudget` and `gatherModel`. Only a producer has a loop, and each of them is
+read only inside it, so on a synthesizer they are a sentence the model never sees —
+`sites` in particular becomes "SUGGESTED SOURCES" in the kickoff, so it looks obeyed
+and is not. `assertTemplatesValid` runs at module load, so a template that declares
+one fails the BOOT of the API and the worker, not a request (round 8 R8-20; the docs
+said "ignored for synthesizers" until round 9, R9-15). What a synthesizer needs to
+be told belongs in the `guidance` of the section it writes.
 
 ## Roles
 
