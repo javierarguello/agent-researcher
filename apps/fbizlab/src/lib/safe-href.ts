@@ -14,12 +14,32 @@ export function safeHref(url: unknown): string | null {
   return typeof url === 'string' && /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
 }
 
-/** react-markdown `urlTransform`: keep http(s), mailto and tel; anything else becomes no href. */
+/**
+ * react-markdown `urlTransform`: keep http(s), mailto and tel — nothing else.
+ *
+ * The `/^[^:]*$/` that used to sit here passed anything with no scheme, which is
+ * every RELATIVE and PROTOCOL-RELATIVE url: `[the official listing](//attacker/p)`
+ * written by a prompt-injected model was a live `target="_blank"` anchor to another
+ * origin in the buyer's viewer, the shared read link and the admin's view-in-app —
+ * the same three surfaces the image-beacon fix enumerated, whose own reasoning
+ * ("react-markdown's default lets protocol-relative and same-origin srcs through,
+ * which is why the fix is at the ELEMENT") had been applied to `img` and not to `a`
+ * (round 7, R7-21). A report never links to a relative path honestly: every source
+ * it cites is somewhere else.
+ */
 export function proseUrl(url: string): string {
-  return /^(https?:\/\/|mailto:|tel:)/i.test(url) || /^[^:]*$/.test(url) ? url : '';
+  return /^(https?:\/\/|mailto:|tel:)/i.test(url.trim()) ? url : '';
 }
 
-/** How much of a source's name a row shows before it is cut. Real listing titles: ≤130. */
+/**
+ * How much of a source's name a row shows before it is cut.
+ *
+ * Measured over the 373 source rows of the two real July runs: p90 90 code
+ * points, max 167 — one row over the cap, an `Fla. Admin. Code` title whose
+ * identifying half survives the cut. The comment used to say "real listing
+ * titles: ≤130", which was true of one run and not of the other (round 7,
+ * R7-24). The cap is right; the evidence quoted for it was half the evidence.
+ */
 export const SOURCE_LABEL_MAX = 160;
 
 /**

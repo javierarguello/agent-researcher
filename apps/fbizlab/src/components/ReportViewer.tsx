@@ -247,7 +247,11 @@ interface Source { url: string; label?: string; id?: number }
 const isSourceList = (v: unknown): v is { items: Source[] } => !!v && typeof v === 'object' && Array.isArray((v as { items?: unknown }).items) && typeof ((v as { items: Source[] }).items[0]?.url) === 'string';
 function SourceList({ items }: { items: Source[] }) {
   return <ul className="rv-sources">{items.map((s, i) => (
-    <li key={i} title={s.label || s.url}>{safeHref(s.url)
+    // The tooltip is the row again, not the page's own account of itself: whatever
+    // the row shows (host first, label clipped) plus the url, so hovering cannot
+    // reveal 4,900 characters of a title an attacker wrote about their own
+    // authority — the thing `sourceLabel` exists to bound (round 7, R7-24).
+    <li key={i} title={`${sourceLabel(s)} — ${s.url}`.slice(0, 320)}>{safeHref(s.url)
       ? <a href={safeHref(s.url)!} target="_blank" rel="noreferrer"><span className="rv-src-arrow">↗</span>{sourceLabel(s)}</a>
       : <span><span className="rv-src-arrow">↗</span>{sourceLabel(s)}</span>}</li>
   ))}</ul>;

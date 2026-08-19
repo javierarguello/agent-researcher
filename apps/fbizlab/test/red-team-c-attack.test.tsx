@@ -95,6 +95,29 @@ describe('C-attack · raw HTML in prose', () => {
   });
 });
 
+describe('C-attack · the Sources tooltip (R7-24)', () => {
+  it('carries the host and a bounded label, not the page’s whole self-declared title', () => {
+    // C2's defence is "the host is the one thing about a source its author does not
+    // choose" — and the row's `title` attribute had neither the host nor a bound, so
+    // the authority claim an attacker page makes about itself was one hover away
+    // from being displayed exactly as written, all 4,983 characters of it.
+    // Mutation that reds this: `title={s.label || s.url}`.
+    const label = `Florida Department of Business Regulation — Official Registry${'Z'.repeat(4900)}`;
+    const { container } = render(
+      <ReportViewer
+        report={{ sources: { items: [{ id: 1, url: 'https://ok.test/p', label }] } }}
+        sections={[{ key: 'sources', title: 'Sources' }]}
+        meta={{}}
+        lang="en"
+      />,
+    );
+    const title = container.querySelector('ul.rv-sources li')?.getAttribute('title') ?? '';
+    expect(title.startsWith('ok.test — '), 'the host it did not choose comes first').toBe(true);
+    expect(title.length).toBeLessThan(400);
+    expect(title).not.toContain('ZZZZZZZZZZZZZZZZZZZZ'.repeat(5));
+  });
+});
+
 describe('C-attack · raw hrefs with no protocol allowlist', () => {
   it('FIXED · DealCard `sourceUrl` = javascript: renders NO "source ↗" anchor at all (before the fix: <a href="javascript:…">; mutation: `href={url}` instead of `safeHref(url)`)', () => {
     render(
@@ -159,6 +182,45 @@ describe('C-attack · raw hrefs with no protocol allowlist', () => {
     expect(screen.getByText(/the canonical listing/)).toBeTruthy();
     expect(screen.getByText(/the canonical listing/).closest('a')).toBeNull();
     expect(document.querySelector('a[href^="javascript:"]')).toBeNull();
+  });
+});
+
+describe('C-attack · what a prose link may point at (R7-21)', () => {
+  /** Anchors the PROSE produced — the page's own `#sec-…` nav links are not it. */
+  const proseLinks = (md: string): string[] => {
+    const { container } = render(
+      <ReportViewer
+        report={{ findings: { overview: md } }}
+        sections={[{ key: 'findings', title: 'Findings' }]}
+        meta={{}}
+        lang="en"
+      />,
+    );
+    return [...container.querySelectorAll('a')]
+      .map((a) => a.getAttribute('href') ?? '')
+      .filter((h) => !h.startsWith('#'));
+  };
+
+  it('a PROTOCOL-RELATIVE link is not a link — `//attacker/p` was a live target="_blank" anchor to another origin', () => {
+    // `73a4e79` fixed exactly this reasoning for `img` — react-markdown's default
+    // transform "lets protocol-relative and same-origin srcs through, which is why
+    // the fix is at the ELEMENT" — and `proseUrl` kept `/^[^:]*$/`, so the same hole
+    // stayed open for `a`, on the three surfaces that commit enumerated: the buyer's
+    // viewer, the shared read link and the admin's "view in the app" (round 7,
+    // R7-21). Mutation that reds this: put the relative alternative back.
+    const hrefs = proseLinks('Vea el [listado oficial](//pz.attacker.test/p) aquí.');
+    expect(screen.getByText(/listado oficial/), 'the words survive; the link does not').toBeTruthy();
+    expect(hrefs).toEqual([]);
+  });
+
+  it('…and neither is a same-origin path: a report never links to our own app', () => {
+    expect(proseLinks('Vaya a [su panel](/app/logout) para continuar.')).toEqual([]);
+  });
+
+  it('http(s), mailto and tel still are — the honest cases the allowance exists for', () => {
+    expect(
+      proseLinks('Llame al [+1 305 555 0100](tel:+13055550100), escriba a [el broker](mailto:b@x.test) o vea el [listado](https://ok.test/p).'),
+    ).toEqual(['tel:+13055550100', 'mailto:b@x.test', 'https://ok.test/p']);
   });
 });
 

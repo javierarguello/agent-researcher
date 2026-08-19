@@ -113,11 +113,20 @@ describe('C2 · the Sources list on the buyer’s page', () => {
     expect(li.textContent).toMatch(/^↗attacker\.test — Florida Department of Business Regulation/);
   });
 
-  it('a 5,000-char title is clipped to 160 code points with an ellipsis; the full title stays in the row’s `title` attribute (before the fix: a 5,000-char <li>)', () => {
+  it('a 5,000-char title is clipped to 160 code points with an ellipsis — and the TOOLTIP is bounded too (it used to carry the whole 5,000)', () => {
+    // The `title` attribute keeping the full label was disclosed as a trade-off when
+    // this was written, and round 7 (R7-24) named it the wrong half to keep: C2's
+    // defence is "the host is the one thing about a source its author does not
+    // choose", and the tooltip had neither the host nor a bound — so an attacker's
+    // claim about their own authority was one hover from being displayed verbatim.
+    // Mutation that reds this: `title={s.label || s.url}`.
     const long = 'A'.repeat(5000);
     const { container } = render(<ReportViewer report={{ sources: { items: [{ id: 1, url: 'https://x.test/a', label: long }] } }} sections={[{ key: 'sources', title: 'Sources' }]} lang="en" />);
     const li = container.querySelector('ul.rv-sources li')!;
     expect(li.textContent).toBe(`↗x.test — ${'A'.repeat(159)}…`);
-    expect(li.getAttribute('title')).toBe(long);
+    const title = li.getAttribute('title')!;
+    expect(title.startsWith('x.test — '), 'the host leads the tooltip as well as the row').toBe(true);
+    expect(title).toContain('https://x.test/a');
+    expect([...title].length).toBeLessThanOrEqual(320);
   });
 });

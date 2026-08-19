@@ -133,9 +133,12 @@ function mdInline(s: string): string {
   // link annotation carried it, and a click sent a parameter named `amp;ref`
   // while the same URL in the Sources list (escaped once) was right. The URL may
   // hold one level of balanced parentheses (`…/Hialeah,_Florida_(city)`) and may
-  // be a `mailto:` — the same set the web viewer's Markdown allows, so the two
-  // artifacts agree on what is a link.
-  out = out.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)(?:[^\s()]|\([^\s()]*\))+)\)/g, (_m, t, u) => `<a href="${u}">${t}</a>`);
+  // be a `mailto:` or a `tel:` — the same set the web viewer's Markdown allows, so
+  // the two artifacts agree on what is a link. They did NOT agree while this rule
+  // was missing `tel:`: the honest case the allowance was added for — a broker's
+  // number — reached the PDF as raw Markdown, brackets and all, in the artifact the
+  // buyer keeps and forwards (round 7, R7-21).
+  out = out.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)(?:[^\s()]|\([^\s()]*\))+)\)/g, (_m, t, u) => `<a href="${u}">${t}</a>`);
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -307,7 +310,15 @@ export function safeHref(url: unknown): string | null {
   return typeof url === 'string' && /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
 }
 
-/** How much of a source's name a row shows before it is cut. Real listing titles: ≤130. */
+/**
+ * How much of a source's name a row shows before it is cut.
+ *
+ * Measured over the 373 source rows of the two real July runs: p90 90 code
+ * points, max 167 — one row over the cap, an `Fla. Admin. Code` title whose
+ * identifying half survives the cut. The comment used to say "real listing
+ * titles: ≤130", which was true of one run and not of the other (round 7,
+ * R7-24). The cap is right; the evidence quoted for it was half the evidence.
+ */
 const SOURCE_LABEL_MAX = 160;
 
 /**

@@ -24,6 +24,35 @@ describe('C2 · PDF Sources row', () => {
   });
 });
 
+describe('C2 · the clip, in the renderer that prints it (R7-24)', () => {
+  it('a 5,000-character title is cut in the PDF too — the web copy was the only one proving it', () => {
+    // `SOURCE_LABEL_MAX = 100_000` left the whole core suite green: the clip was
+    // asserted only in `apps/fbizlab`, i.e. for the OTHER copy of `sourceLabel`, and
+    // these two implementations live in different packages and are the pair most
+    // likely to drift. A 5,000-character `<title>` from a poisoned page is one `<li>`
+    // of a printed dossier. Mutation that reds this: raise `SOURCE_LABEL_MAX`.
+    const label = `Florida Department of Business Regulation — Official Registry${'Z'.repeat(4900)}`;
+    const html = pdf({ sources: { items: [{ id: 1, url: 'https://attacker.test/p', label }] } });
+    const visible = html.match(/<ul class="sources">(.*?)<\/ul>/s)![1]!.replace(/<[^>]+>/g, '');
+    expect([...visible].length, 'host + 160 + the arrow, not five thousand').toBeLessThan(200);
+    expect(visible).toMatch(/…$/);
+    expect(visible.startsWith('↗attacker.test — ')).toBe(true);
+  });
+
+  it('and the honest long row survives it: the identifying half is what is kept', () => {
+    // The longest real label across the two July runs (373 rows): 167 code points,
+    // the only one over the cap. The number in the comment justifying 160 said "real
+    // listing titles: ≤130", which is true of one run and not of the other (R7-24) —
+    // the cap is right, the evidence quoted for it was not.
+    const real = 'Fla. Admin. Code Ann. R. 62-660.801 - General Permit for a Wastewater Disposal System for a Laundromat | State Regulations | US Law | LII / Legal Information Institute';
+    expect([...real].length).toBe(167);
+    const html = pdf({ sources: { items: [{ id: 1, url: 'https://www.law.cornell.edu/regulations/florida/62-660-801', label: real }] } });
+    const visible = html.match(/<ul class="sources">(.*?)<\/ul>/s)![1]!.replace(/<[^>]+>/g, '');
+    expect(visible).toContain('law.cornell.edu — Fla. Admin. Code Ann. R. 62-660.801');
+    expect(visible).toMatch(/…$/);
+  });
+});
+
 describe('C2 · F4 shape — which PRODUCTION templates derive `[{title,url}]`', () => {
   it('MEASURE · every registered template with a derived `sources` derives `{items:[{id,url,label}]}`; the `[{title,url}]` shape exists only in test fixtures', () => {
     const src = [{ title: 'T', url: 'https://x.test/a', snippet: '' }];

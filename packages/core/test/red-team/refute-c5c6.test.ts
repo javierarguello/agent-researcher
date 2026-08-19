@@ -48,6 +48,30 @@ describe('refute C5 · the same real URL, cited in prose and listed in Sources, 
   });
 });
 
+describe('refute C5 · the two artifacts agree on what a link is (R7-21)', () => {
+  it('a `tel:` citation is a LINK in the PDF, not raw Markdown with the brackets showing', () => {
+    // The claim `245811f` made — "the same set the web viewer's Markdown allows, so
+    // the two artifacts agree on what is a link" — was false for the one scheme that
+    // commit had just added on the web side. The honest case it exists for (a
+    // broker's number) reached the buyer's PDF as `[+1 305 555 0100](tel:…)`, in the
+    // artifact they keep and forward. Mutation that reds this: drop `tel:` from
+    // `mdInline`'s alternation.
+    const html = pdf({ f: { overview: 'Llame al [+1 305 555 0100](tel:+13055550100) para agendar.' } }, [{ key: 'f', title: 'F' }]);
+    expect(hrefs(html)).toEqual(['tel:+13055550100']);
+    expect(html, 'no raw source in the buyer’s copy').not.toContain('[+1 305 555 0100]');
+  });
+
+  it('and a protocol-relative or same-origin target is a link in NEITHER', () => {
+    // The web half of R7-21. The PDF never accepted these (its rule has always been
+    // an explicit alternation), which is what made the disagreement visible.
+    const html = pdf(
+      { f: { overview: 'Vea el [listado oficial](//pz.attacker.test/p) y [su panel](/app/logout).' } },
+      [{ key: 'f', title: 'F' }],
+    );
+    expect(hrefs(html)).toEqual([]);
+  });
+});
+
 describe('refute C5 · numbered lists in the shape the model ACTUALLY writes', () => {
   it('list lines attached to a prose line (`Esto implicaría:\\n1. …`) — the shape the model writes — render as a paragraph followed by an <ol> (a whole-block `lines.every(ol)` branch would NOT have fixed this; mutation: require the whole block to be list lines)', () => {
     const md = "Esto implicaría:\n1.  Comprar el negocio por su ubicación.\n2.  Deshacerse del equipo antiguo.\n3.  Invertir capital nuevo.";
