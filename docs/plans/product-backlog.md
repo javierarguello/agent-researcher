@@ -134,7 +134,7 @@ still in it. The dialog keeps listing the proposals with their per-field ticks â
 ticking there is what writes them onto the form, so the two views are one state, not
 two.
 
-**Refined in `HASH` (option B of a frontend review).** Collapsing 04 left a bare
+**Refined in `c0805a7` (option B of a frontend review).** Collapsing 04 left a bare
 header with a 10px link â€” "a section that failed to load", in Javier's words. The
 review found the real cause: the RESULT sat above its CAUSE (and, on a phone, a whole
 wizard step before it), and the sentence explaining the whole flow was passed to
