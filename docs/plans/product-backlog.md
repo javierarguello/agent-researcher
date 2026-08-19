@@ -90,7 +90,7 @@ say otherwise"*, `florida-business-for-sale.ts:954`).
 
 ---
 
-## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `open`
+## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
 ("Your preferences", seven directive rows of chips) and 05 ("In your own words")
@@ -129,9 +129,13 @@ are what it produced, and stay editable by hand afterwards.
   must not be silently dropped: that is the R7-7 class of defect (input given,
   charged for, never used).
 
-**Open:** does the box stay visible after it has filled the fields (so notes can be
-rewritten and re-validated, spending the second attempt), or collapse into a "from
-your notes" line? And does the confirm dialog still list the proposals, or only the
-summary once they are already on the form?
+**Decided (Javier, 2026-08-19):** the box stays VISIBLE but collapsed, with the text
+still in it. The dialog keeps listing the proposals with their per-field ticks —
+ticking there is what writes them onto the form, so the two views are one state, not
+two.
 
-**Not started.**
+**Built in `16e7014`.** Two things the design walked into, both found by building it
+rather than by reading: the preview key had to stop including the directive block
+(or every chip click would spend an assisted attempt re-approving a value we
+proposed), and `correctedParams` had to be applied field by field (or accepting a
+typo fix at the end would silently revert every edit made after validating).
