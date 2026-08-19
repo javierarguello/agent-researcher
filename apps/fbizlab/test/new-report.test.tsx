@@ -118,6 +118,19 @@ import { NewReport } from '../src/pages/NewReport';
 import { ApiError } from '../src/api/client';
 import { LangProvider } from '../src/i18n';
 
+/**
+ * Render the form and open the preferences block.
+ *
+ * Since P-3 section 04 starts collapsed: the notes box is the way in, and the
+ * fields are what it produced. These tests are about the fields themselves, so
+ * they open it the way a buyer who prefers to pick by hand does.
+ */
+async function renderWithPreferences() {
+  const r = renderForm();
+  await userEvent.click(screen.getByTestId('toggle-preferences'));
+  return r;
+}
+
 function renderForm() {
   return render(
     <MemoryRouter initialEntries={['/app/new']}>
@@ -175,8 +188,8 @@ beforeEach(() => {
 });
 
 describe('the directive block comes entirely from the manifest', () => {
-  it('renders fields, help text and options the client has never heard of', () => {
-    renderForm();
+  it('renders fields, help text and options the client has never heard of', async () => {
+    await renderWithPreferences();
 
     expect(screen.getByText('Preferred weather')).toBeTruthy();
     expect(screen.getByText('Nothing to do with business.')).toBeTruthy();
@@ -186,8 +199,24 @@ describe('the directive block comes entirely from the manifest', () => {
     expect(screen.getByRole('button', { name: 'Blue' })).toBeTruthy();
   });
 
-  it('shows the cap the model declared, and stops at it', async () => {
+  it('starts collapsed — the page opens with the box, not with thirty chips', async () => {
+    // P-3, and the reason for all of it: 04 and 05 fill the SAME params, so both
+    // open at once asked the buyer to do one job twice and opened the funnel's main
+    // page with a wall. Mutation that reds this: `dirExpanded = true`.
     renderForm();
+    expect(screen.queryByRole('button', { name: 'Sunshine' }), 'the chips').toBeNull();
+    expect(screen.queryByText('Preferred weather')).toBeNull();
+    // …but the way in is on the page from the first render, not hidden behind an
+    // error state: a buyer who prefers to pick by hand must not have to guess.
+    expect(screen.getByTestId('toggle-preferences')).toBeTruthy();
+    expect(screen.getByTestId('free-text'), 'the box is what the page asks for').toBeTruthy();
+
+    await userEvent.click(screen.getByTestId('toggle-preferences'));
+    expect(screen.getByRole('button', { name: 'Sunshine' })).toBeTruthy();
+  });
+
+  it('shows the cap the model declared, and stops at it', async () => {
+    await renderWithPreferences();
     expect(screen.getByText(/\(pick up to 2\)/i)).toBeTruthy();
 
     await userEvent.click(screen.getByRole('button', { name: 'Red' }));
@@ -200,7 +229,7 @@ describe('the directive block comes entirely from the manifest', () => {
   });
 
   it('previews the picks under the key the manifest named', async () => {
-    renderForm();
+    await renderWithPreferences();
     await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
     await userEvent.click(screen.getByRole('button', { name: 'Red' }));
 
@@ -212,7 +241,7 @@ describe('the directive block comes entirely from the manifest', () => {
     // for the submit — `createJob` was mocked and never looked at, so the params
     // could have been dropped between validating and ordering and nothing would
     // have said so.
-    renderForm();
+    await renderWithPreferences();
     await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
     await userEvent.click(screen.getByRole('button', { name: 'Red' }));
 
@@ -220,7 +249,7 @@ describe('the directive block comes entirely from the manifest', () => {
   });
 
   it('clears a single-choice field when its option is clicked again', async () => {
-    renderForm();
+    await renderWithPreferences();
     await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
     await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
 
@@ -230,7 +259,7 @@ describe('the directive block comes entirely from the manifest', () => {
   });
 
   it('sends no directives key at all when the buyer touched nothing', async () => {
-    renderForm();
+    await renderWithPreferences();
     const params = await previewedParams();
 
     // An untouched set is ABSENT, not `{}`: it keeps the request identical to never
@@ -352,10 +381,18 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     return screen.findByTestId('proposals');
   }
 
-  /** Past the confirm step: what the job was actually created with. */
+  /**
+   * Past the confirm step: what the job was actually created with.
+   *
+   * Two clicks when the dialog is closed (the page CTA opens it, the modal's CTA
+   * orders), one when it is already open — the tests below do both, since P-3 sends
+   * the buyer back to the form to edit what the notes filled.
+   */
   async function order(): Promise<Record<string, unknown>> {
-    const ctas = await screen.findAllByRole('button', { name: /generate dossier/i });
-    await userEvent.click(ctas.at(-1)!);
+    for (let i = 0; i < 2 && !hooks.createJob.mock.calls.length; i += 1) {
+      const ctas = await screen.findAllByRole('button', { name: /generate dossier/i });
+      await userEvent.click(ctas.at(-1)!);
+    }
     return (hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> }).params;
   }
 
@@ -446,6 +483,10 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
 
     // Back to the form, rewrite the notes, reopen the dialog.
     await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    // The box folded away once it had been read (P-3); it is still on the page,
+    // with the text in it, one click from being edited.
+    expect(screen.getByTestId('notes-collapsed').textContent).toContain('I want sunshine');
+    await userEvent.click(screen.getByTestId('toggle-notes'));
     await userEvent.clear(screen.getByTestId('free-text'));
     await userEvent.type(screen.getByTestId('free-text'), 'actually I want RAIN, forget the sunshine');
     await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
@@ -483,6 +524,10 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     // Nothing to review the second time round: no summary, no issues, no proposals.
     hooks.preflight.mockResolvedValueOnce({ ok: true, summary: '', quality: 'ok', issues: [], corrections: [], assist: { state: 'on' } } as never);
     await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    // The box folded away once it had been read (P-3); it is still on the page,
+    // with the text in it, one click from being edited.
+    expect(screen.getByTestId('notes-collapsed').textContent).toContain('I want sunshine');
+    await userEvent.click(screen.getByTestId('toggle-notes'));
     await userEvent.clear(screen.getByTestId('free-text'));
     await userEvent.type(screen.getByTestId('free-text'), 'forget all of that');
     await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
@@ -510,6 +555,82 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
     await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
     expect((hooks.preflight.mock.calls.at(-1)?.[0] as { freeText?: string }).freeText).toBe('absentee owners only, please');
+  });
+
+  it('lands on the FORM, tagged with the words it came from, and the buyer changes it by hand', async () => {
+    // P-3. The two sections fill the same seven params, so the page used to ask for
+    // the same job twice and open with a wall of chips. The box is the way in; the
+    // fields are what it produced — and the buyer meets them on the form, not for
+    // the first time in the modal where they are about to pay.
+    await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } });
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+
+    // Open, because it now holds something. Mutation that reds this: `dirExpanded`
+    // ignoring `dirVals`.
+    expect(screen.getByRole('button', { name: 'Sunshine' }).className).toContain('sel');
+    expect(screen.getByTestId('from-notes-weather').textContent).toContain('«sunshine»');
+
+    // Changed by hand: the field stops being ours, and the tag goes with it.
+    await userEvent.click(screen.getByRole('button', { name: 'Rain' }));
+    expect(screen.queryByTestId('from-notes-weather')).toBeNull();
+    const params = await order();
+    expect(params.directives).toEqual({ weather: 'rain' });
+  });
+
+  it('editing a chip does not send the buyer back through validation', async () => {
+    // The trap this design walks into if the preview key keeps the directives: every
+    // chip click flips the dialog back to "Validate & continue" and spends one of
+    // the two assisted attempts to re-approve a value we proposed ourselves.
+    // Mutation that reds this: put the directive block back in `paramsKey`.
+    await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } });
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Rain' }));
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+
+    expect(screen.queryByRole('button', { name: /validate & continue/i })).toBeNull();
+    expect(hooks.preflight).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the preferences by itself when the assist could not run', async () => {
+    // No credits, cooldown, attempts spent, disabled: the box can do nothing for
+    // them, so the fields are the only way to say any of this. Mutation that reds
+    // this: drop `assistOff` from `dirExpanded`.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [],
+      assist: { state: 'off_no_credits', message: 'No credits for the assisted review.' },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+
+    expect(screen.getByRole('button', { name: 'Sunshine' })).toBeTruthy();
+  });
+
+  it('a correction accepted at the end does not undo an edit made after validating', async () => {
+    // `correctedParams` is a SNAPSHOT of the params as they were when the review
+    // ran. Submitting it wholesale silently reverted anything changed since — which,
+    // since P-3, is exactly what the buyer is invited to do. Corrections are applied
+    // field by field now. Mutation that reds this: `base = review.correctedParams`.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [],
+      corrections: [{ field: 'gridRegion', from: 'ERCOT West', to: 'ERCOT West (Texas)' }],
+      correctedParams: { gridRegion: 'ERCOT West (Texas)', parcelUse: 'Somewhere', language: 'es', mode: 'essential' },
+      assist: { state: 'on' },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+
+    // An edit AFTER the review: a preference the snapshot never saw.
+    await userEvent.click(screen.getByTestId('toggle-preferences'));
+    await userEvent.click(screen.getByRole('button', { name: 'Rain' }));
+    const params = await order();
+    expect(params.gridRegion, 'the typo fix survived').toBe('ERCOT West (Texas)');
+    expect(params.directives, 'and so did the edit').toEqual({ weather: 'rain' });
   });
 
   it('…and orders WITHOUT a quoted one when the buyer unticks it', async () => {

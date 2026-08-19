@@ -17,7 +17,7 @@ const T = {
     s2: 'Dossier mode', s2h: 'How deep you want it.',
     s3: 'Deal filters', s3h: 'All optional — leave blank if not relevant.',
     s4: 'In your own words', s4h: 'Tell us what you’re after. We turn it into your preferences and keywords for you to confirm — the text itself is not part of the request. It does not set the price, the location or the filters: those stay yours, above.',
-    proposalsTitle: 'Suggested from your notes', proposalsHint: 'Tick what you recognise. Anything we inferred rather than read comes unticked.', applyProposals: 'Apply suggestions', kw: 'Keywords', basicsTitle: 'From your notes, for a field you left empty',
+    sdShow: 'Or pick them yourself', sdHide: 'Hide these', fromNotes: 'from your notes', notesShow: 'Edit', notesHide: 'Hide', proposalsTitle: 'Suggested from your notes', proposalsHint: 'Tick what you recognise. Anything we inferred rather than read comes unticked.', applyProposals: 'Apply suggestions', kw: 'Keywords', basicsTitle: 'From your notes, for a field you left empty',
     sd: 'Your preferences', sdh: 'Optional. Tells the analysts what to weigh — it never shortens the dossier.', sdCap: 'pick up to',
     s5: 'Advanced', show: '+ Show', hide: '− Hide', step: 'Step', of: 'of', back: 'Back', next: 'Next',
     reportLanguage: 'Dossier language', reportLangHelp: 'The language the final dossier is written in.',
@@ -43,7 +43,7 @@ const T = {
     s2: 'Modo del dossier', s2h: 'Qué tan a fondo lo quieres.',
     s3: 'Filtros del deal', s3h: 'Todos opcionales — deja en blanco si no aplica.',
     s4: 'En tus palabras', s4h: 'Cuéntanos qué buscas. Lo convertimos en tus preferencias y palabras clave para que las confirmes — el texto en sí no forma parte del pedido. No define el precio, la ubicación ni los filtros: eso queda en tus manos, arriba.',
-    proposalsTitle: 'Sugerido a partir de tus notas', proposalsHint: 'Marca lo que reconozcas. Lo que dedujimos en vez de leer viene sin marcar.', applyProposals: 'Aplicar sugerencias', kw: 'Palabras clave', basicsTitle: 'De tus notas, para un campo que dejaste vacío',
+    sdShow: 'O elegilas vos', sdHide: 'Ocultar', fromNotes: 'de tus notas', notesShow: 'Editar', notesHide: 'Ocultar', proposalsTitle: 'Sugerido a partir de tus notas', proposalsHint: 'Marca lo que reconozcas. Lo que dedujimos en vez de leer viene sin marcar.', applyProposals: 'Aplicar sugerencias', kw: 'Palabras clave', basicsTitle: 'De tus notas, para un campo que dejaste vacío',
     sd: 'Tus preferencias', sdh: 'Opcional. Le dice a los analistas qué priorizar — nunca acorta el dossier.', sdCap: 'elige hasta',
     s5: 'Avanzado', show: '+ Mostrar', hide: '− Ocultar', step: 'Paso', of: 'de', back: 'Atrás', next: 'Siguiente',
     reportLanguage: 'Idioma del dossier', reportLangHelp: 'El idioma en que se escribe el dossier final.',
@@ -69,7 +69,7 @@ const T = {
     s2: 'Mode du dossier', s2h: 'Le niveau de profondeur.',
     s3: 'Filtres du deal', s3h: 'Tous optionnels — laissez vide si non pertinent.',
     s4: 'Avec vos mots', s4h: 'Dites-nous ce que vous cherchez. Nous le traduisons en préférences et en mots-clés que vous confirmez — le texte lui-même ne fait pas partie de la demande. Il ne fixe ni le prix, ni le lieu, ni les filtres : cela reste à vous, ci-dessus.',
-    proposalsTitle: 'Suggéré d’après vos notes', proposalsHint: 'Cochez ce que vous reconnaissez. Ce que nous avons déduit plutôt que lu arrive décoché.', applyProposals: 'Appliquer les suggestions', kw: 'Mots-clés', basicsTitle: 'D’après vos notes, pour un champ laissé vide',
+    sdShow: 'Ou choisissez-les vous-même', sdHide: 'Masquer', fromNotes: 'd’après vos notes', notesShow: 'Modifier', notesHide: 'Masquer', proposalsTitle: 'Suggéré d’après vos notes', proposalsHint: 'Cochez ce que vous reconnaissez. Ce que nous avons déduit plutôt que lu arrive décoché.', applyProposals: 'Appliquer les suggestions', kw: 'Mots-clés', basicsTitle: 'D’après vos notes, pour un champ laissé vide',
     sd: 'Vos préférences', sdh: 'Optionnel. Indique aux analystes quoi privilégier — cela ne raccourcit jamais le dossier.', sdCap: 'choisissez jusqu’à',
     s5: 'Avancé', show: '+ Afficher', hide: '− Masquer', step: 'Étape', of: 'de', back: 'Retour', next: 'Suivant',
     reportLanguage: 'Langue du dossier', reportLangHelp: 'La langue de rédaction du dossier final.',
@@ -95,7 +95,7 @@ const T = {
     s2: 'Modo do dossiê', s2h: 'O quão a fundo você quer.',
     s3: 'Filtros do deal', s3h: 'Todos opcionais — deixe em branco se não se aplica.',
     s4: 'Com suas palavras', s4h: 'Conte o que você procura. Transformamos isso em preferências e palavras-chave para você confirmar — o texto em si não faz parte do pedido. Ele não define preço, localização nem filtros: isso continua com você, acima.',
-    proposalsTitle: 'Sugerido a partir das suas notas', proposalsHint: 'Marque o que você reconhecer. O que deduzimos em vez de ler vem desmarcado.', applyProposals: 'Aplicar sugestões', kw: 'Palavras-chave', basicsTitle: 'Das suas notas, para um campo que você deixou vazio',
+    sdShow: 'Ou escolha você mesmo', sdHide: 'Ocultar', fromNotes: 'das suas notas', notesShow: 'Editar', notesHide: 'Ocultar', proposalsTitle: 'Sugerido a partir das suas notas', proposalsHint: 'Marque o que você reconhecer. O que deduzimos em vez de ler vem desmarcado.', applyProposals: 'Aplicar sugestões', kw: 'Palavras-chave', basicsTitle: 'Das suas notas, para um campo que você deixou vazio',
     sd: 'Suas preferências', sdh: 'Opcional. Diz aos analistas o que priorizar — nunca encurta o dossiê.', sdCap: 'escolha até',
     s5: 'Avançado', show: '+ Mostrar', hide: '− Ocultar', step: 'Passo', of: 'de', back: 'Voltar', next: 'Próximo',
     reportLanguage: 'Idioma do dossiê', reportLangHelp: 'O idioma em que o dossiê final é escrito.',
@@ -235,6 +235,22 @@ export function NewReport() {
    * verified: what the buyer actually wrote is ticked, what was inferred is not.
    */
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  /**
+   * Which directive fields the NOTES filled, and with which words.
+   *
+   * The two sections used to sit open one under the other, asking for the same
+   * seven params twice — the box exists only to fill them. Now the box is the way
+   * in and the fields are what it produced: a proposal the buyer keeps is written
+   * into the form, tagged with the words that justified it, and editable by hand
+   * from that moment on (product backlog P-3). A field the buyer edits stops being
+   * ours: `acceptProposals` skips anything already set, so a later validation
+   * cannot take it back.
+   */
+  const [fromNotes, setFromNotes] = useState<Record<string, string>>({});
+  /** Explicit open/close for the preferences block; `null` = decide from content. */
+  const [dirOpen, setDirOpen] = useState<boolean | null>(null);
+  /** The notes box collapses once it has been read — visible, with the text inside. */
+  const [notesOpen, setNotesOpen] = useState(true);
   // What the user typed in their own words. NOT a param: it goes to the preflight,
   // which reads it and proposes preferences and keywords; the job never sees it.
   const [freeText, setFreeText] = useState('');
@@ -353,17 +369,46 @@ export function NewReport() {
   const directives = model?.directives ?? [];
   const dirKey = model?.directivesKey ?? 'directives';
   const dirVals = (params[dirKey] as Record<string, unknown>) ?? {};
+  /** The assist could not run, so the fields are the buyer's only way to say this. */
+  const assistOff = !!pf && pf.assist?.state !== 'on';
+  /** Open when the buyer asked, or when there is anything to see. */
+  const dirExpanded = dirOpen ?? (Object.keys(dirVals).length > 0 || assistOff);
   const setDir = (k: string, v: unknown) => {
     const next: Record<string, unknown> = { ...dirVals };
     if (v === undefined || (Array.isArray(v) && v.length === 0)) delete next[k];
     else next[k] = v;
     setParams((p) => ({ ...p, [dirKey]: next }));
   };
+  /** A hand edit takes the field back: it stops being "from your notes". */
+  const editDir = (k: string, v: unknown) => {
+    setDir(k, v);
+    setFromNotes((n) => {
+      if (!(k in n)) return n;
+      const next = { ...n };
+      delete next[k];
+      return next;
+    });
+  };
+  /**
+   * Keep (or drop) a proposed directive: the FORM is where it lands, so the buyer
+   * can see it among their own choices and change it.
+   */
+  const keepProposal = (k: string, value: unknown, quote: string | undefined, on: boolean) => {
+    setAccepted((a) => ({ ...a, [k]: on }));
+    setDir(k, on ? value : undefined);
+    setFromNotes((n) => {
+      const next = { ...n };
+      if (on) next[k] = quote ?? '';
+      else delete next[k];
+      return next;
+    });
+  };
+
   const dirField = (f: DirectiveFieldInfo) => {
     if (f.kind === 'boolean') {
       return (
         <label className="checkcard" key={f.key}>
-          <input type="checkbox" checked={!!dirVals[f.key]} onChange={(e) => setDir(f.key, e.target.checked || undefined)} />
+          <input type="checkbox" checked={!!dirVals[f.key]} onChange={(e) => editDir(f.key, e.target.checked || undefined)} />
           <div>
             <div style={{ fontWeight: 700, fontSize: 14 }}>{f.label}</div>
             {f.description && <div className="desc" style={{ marginTop: 3 }}>{f.description}</div>}
@@ -371,6 +416,7 @@ export function NewReport() {
         </label>
       );
     }
+    const said = fromNotes[f.key];
     const picked = f.kind === 'multi' ? ((dirVals[f.key] as string[]) ?? []) : [];
     const atCap = f.kind === 'multi' && f.maxSelected != null && picked.length >= f.maxSelected;
     return (
@@ -396,8 +442,8 @@ export function NewReport() {
                 disabled={!on && atCap}
                 onClick={() =>
                   f.kind === 'multi'
-                    ? setDir(f.key, on ? picked.filter((x) => x !== o.value) : [...picked, o.value])
-                    : setDir(f.key, on ? undefined : o.value) // clicking the picked one clears it
+                    ? editDir(f.key, on ? picked.filter((x) => x !== o.value) : [...picked, o.value])
+                    : editDir(f.key, on ? undefined : o.value) // clicking the picked one clears it
                 }
               >
                 {o.label}
@@ -406,6 +452,14 @@ export function NewReport() {
           })}
         </div>
         {f.description && <div className="desc">{f.description}</div>}
+        {/* Whose choice this is. A value the notes filled says so, with the words
+            it came from; the moment the buyer touches a chip it is theirs, and the
+            tag goes (`setDir` clears it below). */}
+        {said !== undefined && (
+          <div className="desc" data-testid={`from-notes-${f.key}`} style={{ marginTop: 3 }}>
+            ✎ {t.fromNotes}{said ? ` — «${said}»` : ''}
+          </div>
+        )}
       </div>
     );
   };
@@ -427,7 +481,14 @@ export function NewReport() {
   // paid for (round 7, R7-7). Trimmed and clipped exactly as `runPreflight` sends
   // them, so trailing whitespace does not spend an assisted attempt.
   const previewText = freeText.trim().slice(0, FREE_TEXT_MAX);
-  const paramsKey = JSON.stringify([cleanParams(), previewText]);
+  // The DIRECTIVES are left out of the key: their values come from vocabularies we
+  // authored, they are not moderated text, and the whole point of P-3 is that the
+  // buyer edits them by hand after the notes filled them. Keyed on, every chip
+  // click would flip the dialog's button back to "Validate & continue" and spend
+  // one of the two assisted attempts to re-approve a choice we already offered.
+  // Everything the buyer TYPES — including keywords — stays in the key.
+  const keyParams = (() => { const { [dirKey]: _dir, ...rest } = cleanParams(); return rest; })();
+  const paramsKey = JSON.stringify([keyParams, previewText]);
   const validated = validatedKey === paramsKey && pf != null; // already previewed these exact params + notes
   const canGo = !needsSubject && !hasLive && !blocked && !create.isPending && !preflight.isPending;
   const insufficient = typeof bal === 'number' && bal < cost;
@@ -519,7 +580,23 @@ export function NewReport() {
         setPf(res);
         setValidatedKey(paramsKey);
         setApplyFixes(res.corrections.length > 0); // proposed fixes are opt-out, not silent
-        setAccepted(defaultAccepted(res.proposals));
+        const acc = defaultAccepted(res.proposals);
+        setAccepted(acc);
+        // Straight onto the form, where the buyer can see them next to their own
+        // choices and change them — not only inside the modal where they pay.
+        const kept: Record<string, unknown> = {};
+        const tags: Record<string, string> = {};
+        for (const [k, v] of Object.entries(res.proposals?.directives ?? {})) {
+          if (!acc[k]) continue;
+          kept[k] = v;
+          tags[k] = res.proposals?.quotes?.[k] ?? '';
+        }
+        if (Object.keys(kept).length) {
+          setParams((p) => ({ ...p, [dirKey]: { ...((p[dirKey] as Record<string, unknown> | undefined) ?? {}), ...kept } }));
+          setFromNotes(tags);
+        }
+        // Read, so it folds away — visible, with the text still in it.
+        if (previewText) setNotesOpen(false);
       } else {
         // Nothing to review — but the PREVIOUS review may still be in state, and
         // submitting with it would apply proposals derived from text this request no
@@ -575,12 +652,19 @@ export function NewReport() {
   async function submit(review: typeof pf | null = pf) {
     setError(null);
     try {
-      const base = applyFixes && review?.correctedParams ? review.correctedParams : cleanParams();
+      // Field by field, not the API's whole snapshot: `correctedParams` was built
+      // from the params AS THEY WERE at validation time, so submitting it would
+      // silently undo anything the buyer changed afterwards — which, since P-3, is
+      // exactly what they are invited to do.
+      const base = cleanParams();
+      if (applyFixes) for (const c of review?.corrections ?? []) base[c.field] = c.to;
       // The proposals ride on top of whichever base the user kept — the ones they
       // TICKED, merged here. `proposedParams` (the API's everything-applied variant)
       // is no longer used: with per-field acceptance it is only ever right by
       // coincidence, and it does not carry basics at all.
-      const chosen = review?.proposals ? pickAccepted(review.proposals, accepted) : undefined;
+      // Directives are already IN `base` (the form holds them since P-3); only the
+      // keywords and the basics are still merged at submit.
+      const chosen = review?.proposals ? { ...pickAccepted(review.proposals, accepted), directives: {} } : undefined;
       const params = chosen && (Object.keys(chosen.directives).length || chosen.keywords.length || Object.keys(chosen.basics ?? {}).length)
         ? mergeProposals(base, chosen, dirKey)
         : base;
@@ -681,22 +765,81 @@ export function NewReport() {
               <div className="nr-row">{filterKeys.filter(isBoolean).map((k) => checkField(k))}</div>
             </section>
 
-            {/* 04 Your preferences (structured directives) */}
+            {/* 04 Your preferences (structured directives).
+
+                Collapsed until there is something in it. These seven fields and the
+                box below fill the SAME params — the box exists only to fill them —
+                so both open at once asked the buyer to do one job twice, and opened
+                the page with a wall of chips. The way in is the box; this is what it
+                produced, and it opens by itself the moment it holds anything: a
+                value the notes filled, a value the buyer picked, or an assist that
+                could not run (no credits, cooldown, attempts spent, disabled), in
+                which case the box can do nothing for them and the fields are the
+                only way to say any of this. */}
             {directives.length > 0 && (
               <section className="nr-sec" style={stepOf(2)}>
-                <SecHead n="04" title={t.sd} hint={t.sdh} />
-                <div className="stack" style={{ gap: 18 }}>{directives.map(dirField)}</div>
+                <SecHead
+                  n="04"
+                  title={t.sd}
+                  right={
+                    <button
+                      type="button"
+                      className="nr-hint"
+                      data-testid="toggle-preferences"
+                      style={{ background: 'none', border: 0, cursor: 'pointer' }}
+                      onClick={() => setDirOpen(!dirExpanded)}
+                    >
+                      {dirExpanded ? t.sdHide : t.sdShow}
+                    </button>
+                  }
+                />
+                {dirExpanded && (
+                  <>
+                    <div className="nr-hint" style={{ marginBottom: 12 }}>{t.sdh}</div>
+                    <div className="stack" style={{ gap: 18 }}>{directives.map(dirField)}</div>
+                  </>
+                )}
               </section>
             )}
 
-            {/* 05 In your own words — feeds the assist; never a param */}
+            {/* 05 In your own words — feeds the assist; never a param.
+
+                It folds away once it has been read, but stays on the page with the
+                text still in it: rewriting notes is rare, and finding out you cannot
+                is worse. */}
             <section className="nr-sec" style={stepOf(3)}>
-              <SecHead n={directives.length ? '05' : '04'} title={t.s4} hint={t.s4h} />
-              <textarea className="textarea" rows={6} maxLength={FREE_TEXT_MAX} value={freeText} onChange={(e) => setFreeText(e.target.value)} data-testid="free-text" />
-              <div className="between" style={{ marginTop: 6 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>{t.optionalUseful}</span>
-                <span className="mono muted" style={{ fontSize: 10.5 }}>{freeText.length} / {FREE_TEXT_MAX}</span>
-              </div>
+              <SecHead
+                n={directives.length ? '05' : '04'}
+                title={t.s4}
+                right={
+                  notesOpen ? (
+                    <span className="nr-hint">{t.s4h}</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="nr-hint"
+                      data-testid="toggle-notes"
+                      style={{ background: 'none', border: 0, cursor: 'pointer' }}
+                      onClick={() => setNotesOpen(true)}
+                    >
+                      {t.notesShow}
+                    </button>
+                  )
+                }
+              />
+              {notesOpen ? (
+                <>
+                  <textarea className="textarea" rows={6} maxLength={FREE_TEXT_MAX} value={freeText} onChange={(e) => setFreeText(e.target.value)} data-testid="free-text" />
+                  <div className="between" style={{ marginTop: 6 }}>
+                    <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>{t.optionalUseful}</span>
+                    <span className="mono muted" style={{ fontSize: 10.5 }}>{freeText.length} / {FREE_TEXT_MAX}</span>
+                  </div>
+                </>
+              ) : (
+                <p className="soft" data-testid="notes-collapsed" style={{ fontSize: 13.5, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  “{freeText.trim()}”
+                </p>
+              )}
             </section>
 
             {/* 06 Advanced */}
@@ -831,7 +974,7 @@ export function NewReport() {
                                   type="checkbox"
                                   data-testid={`accept-${k}`}
                                   checked={!!accepted[k]}
-                                  onChange={(e) => setAccepted((a) => ({ ...a, [k]: e.target.checked }))}
+                                  onChange={(e) => keepProposal(k, v, quote, e.target.checked)}
                                 />
                                 <span>
                                   <span className="mono muted">{field?.label ?? k}: </span><b>{shown}</b>
