@@ -1855,7 +1855,7 @@ gets worse", "no budget reaches", "a template cannot forget", "nothing else move
 "copies its arrays", "the two artifacts now agree".
 
 ### P0
-- **R9-1 · The confirm dialog states a preference the request will not carry, and
+- **[done `c1397a9`] R9-1 · The confirm dialog states a preference the request will not carry, and
   stays silent about one it will.** `renderPlan` is pure in the params it is CALLED
   with, but `NewReport.tsx` deliberately keeps the directives out of `paramsKey` —
   pinned and commented, because putting them back burns an assisted-review attempt
@@ -1871,17 +1871,17 @@ gets worse", "no budget reaches", "a template cannot forget", "nothing else move
   real money.
 
 ### P1
-- **R9-2 · `0250063`'s title branch turned a poisoned image back into a live link in
+- **[done `0ff22ef`] R9-2 · `0250063`'s title branch turned a poisoned image back into a live link in
   the PDF.** FIXED `0ff22ef`. The image strip's url class ends at the first space so
   it never matched a TITLED image; the widened link rule did, and `![alt](url "t")`
   became `!` + an anchor at the attacker's url labelled with their alt text — the
   click-beacon the strip exists to stop, in the artifact the buyer keeps, while the
   viewer rendered nothing (G3-break F1). Reproduced a second time while fixing it,
   for the paren form; the title is now one shared definition used by both rules.
-- **R9-3 · A malformed link title silently DELETED the rest of the paragraph from the
+- **[done `0ff22ef`] R9-3 · A malformed link title silently DELETED the rest of the paragraph from the
   PDF**, including a second real link, where the viewer kept every character. FIXED
   `0ff22ef` (G3-break F3). `.*?` over a joined paragraph.
-- **R9-4 · Any two-word fragment still pre-ticks a directive.** `«de la»`, `«of the»`,
+- **[done `d77ffb3`] R9-4 · Any two-word fragment still pre-ticks a directive.** `«de la»`, `«of the»`,
   `«en el»` — reproduced against the real template. R8-26's threshold is `length ≥ 8
   OR contains a space`, and the second branch re-admits exactly the filler class the
   first was written to refuse. **Deleting that branch is 0 red**: the shipped rule's
@@ -1889,20 +1889,20 @@ gets worse", "no budget reaches", "a template cannot forget", "nothing else move
   quotes that both clear the length rule on their own. Mirror image: a real one-word
   quote under 8 characters no longer ticks (`ausente`, `riesgo`, `deuda`), which
   falls hardest on the three non-English languages (G2-break F1).
-- **R9-5 · The basics anchor drops honest proposals with no unticked lane.**
+- **[done `d77ffb3`] R9-5 · The basics anchor drops honest proposals with no unticked lane.**
   `St. Pete → St. Petersburg, FL`, `Jax → Jacksonville, FL`, `Orléans → Orleans, FL`
   (the model's own ASCII normalisation breaks the anchor), any value whose tokens are
   all under 3 characters, and every CJK value. For a BASIC the quote is a hard gate,
   so the proposal VANISHES — while `enrich.ts`'s comment one screen above advertises
   the unticked fallback. A buyer who wrote "Jax" now submits a statewide search for
   the same money (G2-break F2).
-- **R9-6 · The density e2e lost the only end-to-end detection the evidence tiers had.**
+- **[done `5a7b844`] R9-6 · The density e2e lost the only end-to-end detection the evidence tiers had.**
   `nextLot` 20 → 5 made the store's insertion order already equal the answer, so the
   test passes **with `rankEvidence` deleted from the snippet dossier**; at `nextLot =
   20` it did not. The fixture needs BOTH the overlap (R8-19's shape) and a shortlist
   that store order does not hand over — e.g. shortlist the far end of the scout's
   range (G1-break F1).
-- **R9-7 · Every lost section tells the buyer "Everything else was researched and
+- **[done `dcfeedf`] R9-7 · Every lost section tells the buyer "Everything else was researched and
   written as usual"** — false as soon as a second section is degraded, in all four
   languages, in both copies, and self-contradicting one section apart when the other
   is `unenriched`. `sectionsNotice` was split into `ALL_ELSE_OK` for exactly this;
@@ -1935,7 +1935,7 @@ gets worse", "no budget reaches", "a template cannot forget", "nothing else move
   one, so the match can only ever miss; the doubly-escaped shape a model that
   JSON-escapes its own output produces still loses both listings. Add `\\` to the
   excluded class and flip the expectation (G1-break F6).
-- R9-13 `«the»` still buys `The Villages, FL` for a buyer who wrote Hialeah, with
+- R9-13 **done `d77ffb3`** `«the»` still buys `The Villages, FL` for a buyer who wrote Hialeah, with
   «the» printed as the evidence — R8-26's own example with the value swapped. The
   token floor `>= 3` that gives the anchor whatever strength it has is **0 red**.
   `isEvidence` is applied to directives only, not to the field the code calls
@@ -2026,9 +2026,11 @@ against an unreachable 320. There is no unpinned third reader of section statuse
 
 ### How to continue (for the next agent)
 
-**Two of the round's own findings are already fixed:** R9-2 and R9-3, in `0ff22ef`,
-which also closes G3-verify F2 (the other two title delimiters). Nothing else from
-round 9 is done.
+**The P0 and all six P1 items are FIXED**, `0ff22ef..dcfeedf`, each revert-verified:
+`0ff22ef` R9-2 + R9-3 (and G3-verify F2, the other two title delimiters) ·
+`c1397a9` R9-1 · `d77ffb3` R9-4 + R9-5 + R9-13 · `5a7b844` R9-6 · `dcfeedf` R9-7.
+Suite **1135 passed, 0 failed** (main checkout; a clean clone counts 6 fewer),
+`npm run typecheck` clean. The 20 P2 items below are open.
 
 **Order of work.** R9-1 first — it is the only P0 and it is on the last screen before
 payment. Then R9-4/R9-5 together (they are one function and they pull in opposite
