@@ -72,6 +72,7 @@ import { Credits } from '../src/pages/Credits';
 import { ApiAccess } from '../src/pages/ApiAccess';
 import { ResetPassword } from '../src/pages/ResetPassword';
 import { LangProvider, type Lang } from '../src/i18n';
+import { config } from '../src/config';
 
 const ENGLISH_BODY = /Too many requests\. Please wait a moment and try again\./;
 
@@ -258,5 +259,42 @@ describe('the reset-password page', () => {
     await submit(apiError(400));
     await waitFor(() => expect(screen.getByText(/invalid or has expired/)).toBeTruthy());
     expect(screen.queryByText(/still valid/)).toBeNull();
+  });
+});
+
+// --- A build with no Google client id -----------------------------------------
+//
+// Why this is in THIS file: the five tests above failed on every machine without a
+// gitignored `.env.local`, CI included — so `verify` was red for a config reason,
+// the deploy jobs that depend on it never ran, and nothing in the repo said so. The
+// suite now provides its own env (`vitest.config.ts`), and this is the behaviour
+// that env was hiding.
+describe('a build with Google sign-in not configured', () => {
+  it('does not put an environment variable name on the buyer’s screen, and does not eat their error', async () => {
+    // `setError('VITE_GOOGLE_CLIENT_ID is not configured.')` ran in an effect with a
+    // dependency that changes every render, so it overwrote the rate-limit sentence
+    // a moment after it appeared. Mutation that reds this: setError in that branch.
+    // The value the BUILD baked in, blanked for this render: `config` is read at
+    // module load, so stubbing the env after the import would change nothing.
+    const had = config.googleClientId;
+    config.googleClientId = '';
+    loginWithPassword.mockRejectedValue(apiError(429, RATE_LIMITED));
+
+    at('/login', <Login />);
+    await userEvent.type(screen.getByLabelText(/email/i), 'a@x.com');
+    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/about 3 minutes/)).toBeTruthy();
+    expect(screen.queryByText(/VITE_GOOGLE_CLIENT_ID/)).toBeNull();
+    expect(screen.queryByText(ENGLISH_BODY)).toBeNull();
+    // …and the button we cannot render is not on the page either.
+    expect(document.querySelector('.auth-gbtn')).toBeNull();
+    config.googleClientId = had;
+  });
+
+  it('control: the configured build still offers the Google button', () => {
+    at('/login', <Login />);
+    expect(document.querySelector('.auth-gbtn')).toBeTruthy();
   });
 });

@@ -129,6 +129,8 @@ export function Login() {
     return from && from.startsWith('/app') ? from : '/app';
   };
   const btnRef = useRef<HTMLDivElement>(null);
+  /** Whether this BUILD can offer Google sign-in at all (see the effect below). */
+  const [googleReady, setGoogleReady] = useState(!!config.googleClientId);
   const captcha = useRef<TurnstileHandle>(null);
   // Gate the submit on the widget. Starts ready when Turnstile isn't configured,
   // so the form is never dead in an environment without it.
@@ -167,7 +169,18 @@ export function Login() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!config.googleClientId) { setError('VITE_GOOGLE_CLIENT_ID is not configured.'); return; }
+    // A build with no Google client id has no Google sign-in — but it still has the
+    // email/password form, which works. This used to `setError(...)` the NAME OF AN
+    // ENVIRONMENT VARIABLE onto the buyer's screen, and it did it on every render:
+    // so a 429 or a wrong password was overwritten by "VITE_GOOGLE_CLIENT_ID is not
+    // configured." a moment after it appeared. Hide the button we cannot render,
+    // say so where a developer looks, and leave the buyer's errors alone.
+    if (!config.googleClientId) {
+      setGoogleReady(false);
+      // eslint-disable-next-line no-console
+      console.warn('Google sign-in is disabled: VITE_GOOGLE_CLIENT_ID is not set in this build.');
+      return;
+    }
     initGoogleAuth(config.googleClientId, async (idToken) => {
       setError(null);
       try {
@@ -285,7 +298,7 @@ export function Login() {
                   </div>
                 )}
 
-                {mode !== 'forgot' && (
+                {mode !== 'forgot' && googleReady && (
                   <>
                     <div className="auth-gbtn" ref={btnRef} />
                     <div className="auth-or">{t.orEmail}</div>
