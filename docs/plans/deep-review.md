@@ -1465,3 +1465,230 @@ URLs fail `safeHref`; the 1,214 strings of the two real reports render 20 change
 all better, 0 regressions; the free-text channel is closed in the engine (whole-
 string equality); `freeText` is moderated before the assist; the four SPA toggle
 combinations produce valid params; `mergeProposals` = `applyProposals`.
+
+## Round 8 — eight Opus reviewers against the 2026-08-19 batch (`3d6aad8..4b61242`)
+
+Run 2026-08-19. Four groups × two lenses, each in its own worktree started at
+`4b61242` (the brief said the sha and every reviewer confirmed it — round 7's problem
+did not recur). Raw reports: `m-red-team-reports/round8/` (brief + 8, complete).
+Nothing from this round is fixed yet.
+
+**Verdict of the round in one line:** the batch's mechanisms are real and its
+mutation counts are almost all honest (25/26, 19/20, 31/41 exact) — and three of the
+fixes shipped a hole of their own, two of them in the code that was written to close
+a hole. The `slice(-0)` and the admin table are one-line defects that two reviewers
+each found independently; `cutJson` and the `referenced` reserve are design errors
+that the batch's own new tests PIN in place; and the suite arithmetic is wrong in 14
+of 22 commit messages.
+
+### How to continue (for the next agent)
+1. Read this section, then the eight reports. Each finding carries its reproduction
+   inline — port it into a real test BEFORE fixing.
+2. Fix in the order below, one commit per cluster, revert-verified. **Measure the
+   suite with the command, in the main checkout, and paste the number** — do not
+   carry the previous commit's claimed total (that is how 14 of 22 went wrong).
+   A clean clone counts **6** fewer, not 12/16/"the same": the six red-team tests
+   gated on `out/*/trace.json`. Measured at four commits.
+3. Then round 9, and give the reviewers a private scratchpad subdirectory — two of
+   round 8's overwrote each other's scripts.
+
+### P0
+- **R8-1 · A push to `deploy-prod` blanks four production secrets.** `deploy.yml`
+  exports `ENV`, `TAVILY_API_KEY`, `TURNSTILE_SECRET` and nothing else; `deploy.sh`
+  defaults the rest to `""` and passes the lot with `--set-env-vars`, which REPLACES
+  the service's environment. So a first prod release lands with `AUTH_JWT_SECRET=""`
+  (`tokens.ts` throws on both sign and verify → nobody logs in, every session dies),
+  both Stripe keys empty (checkout 503; a webhook that cannot verify a signature, so
+  money in and no credits out), and Postmark empty. `deploy-dev.yml` passes all of
+  them — the gap is prod-only. `deployment.md:81-82` prescribes the one remedy that
+  cannot work ("set the other prod secrets on the service"): the next deploy erases
+  it. Predates the batch; `90a355f` widened `COMMON_ENV` on this mechanism without
+  noticing. Reasoned from the files + gcloud's documented flag semantics
+  (G4-break F1). **Not urgent-urgent: `deploy-prod` does not exist yet.** Fix before
+  the first release: pass the same secret set as dev, and refuse `ENV=prod` with an
+  empty `AUTH_JWT_SECRET`/`STRIPE_WEBHOOK_SECRET`.
+
+### P1 — fix first
+- **R8-2 · `carry()` disables the 60-page cap the moment gathered agents own 60
+  pages.** `rest.slice(-Math.max(0, 60 - mine.length))` → `slice(-0)` → `slice(0)` →
+  the WHOLE array. Measured: 100 pages carried against a cap of 60; at 70 owned, all
+  30 foreign pages kept and ten of the agent's OWN oldest dropped — the exact inverse
+  of the rule `90d6fdf` states, and it then loses `gathered` and re-buys them.
+  Checkpoint measured at 1.5 MB, re-uploaded after every agent. Both existing tests
+  sit exactly outside the branch (10 owned; 80 owned of 80 with `rest` empty).
+  Reproduced twice, independently (G1-break F2, G1-verify F1).
+  Fix: `const room = Math.max(0, CHECKPOINT_MAX_PAGES - mine.length); ... room ? rest.slice(-room) : []`.
+- **R8-3 · `fetchedByAgent` is unbounded while the page cap is 60, so an agent with
+  61+ recorded URLs loses `gathered` on EVERY dispatch and re-buys its whole loop —
+  M-D1 re-opened.** `gatheredIds` keeps an agent only if every one of its URLs
+  survived the cap; nothing trims the list, and `fetched.add(url)` fires even for a
+  cached re-read we then REFUSE. Reproduced across three dispatches (G1-break F3).
+  Fix: bound the list, and record only URLs whose body was actually returned.
+- **R8-4 · The no-progress breaker is defeated by rotating cached URLs.**
+  `cachedReads` is per-URL and any body-returning read resets `noProgressTurns`, so
+  each distinct page in the store is worth two free resets: the real bound is
+  `8 × 2 × |distinct cached pages|`. At four pages it exceeds the iteration ceiling.
+  Reproduced: the July `(Pc)*` shape still runs **54 LLM calls / 808,868 prompt chars
+  on 0 turns and $0 of search**, against `93b132e`'s headline of 13 / 53,674 — which
+  is a property of its one-page fixture (G1-break F1). Fix: a body-returning read
+  resets only if that URL is new to this loop.
+- **R8-5 · `cutJson` is an information regression: 16 characters of a 60,026-char
+  section, labelled `[cut]`.** Preferring ANY boundary over the raw cut means a
+  section whose long prose is not its first field loses everything after the first
+  structural comma. Measured on the flagship's real `executive_summary` shape: 465 of
+  3,333 available characters, no `overview`, no `keyFindings`, under a heading that
+  says "Use these for exact figures". **The batch's own new test asserts the
+  collapse** (`a-legit`: `expect(extract).toBe('{"note":"short",')`). Reproduced
+  (G2-break F2) and verified in the main checkout. Fix: take the boundary only when
+  it retains most of the head (~80%), else the raw cut with the honest
+  `[cut mid-value]` label the same commit added.
+- **R8-6 · The `referenced` reserve hands a poisoned host half the dossier, exempt
+  from the per-domain cap.** The producer builder passes `urlsIn({current, context})`
+  — `context` is OTHER agents' sections, not "the sections this writer is rewriting"
+  — and the referenced tier is the only tier with no per-host cap. Measured: a host
+  cited in an upstream section goes 0 → 24 of 48 snippets and 0 → 7 of 14 pages,
+  while the honest scout's own results drop 48 → 24 (G2-break F1). Fix: size the
+  reserve from `current` alone and put `referenced` under the same first-pass
+  per-domain ordering as `rest`.
+- **R8-7 · R7-17 stripped the tool ARGS and left the tool RESULT.** `gather.ts`
+  echoes the raw `query` back in the `web_search` tool result twelve lines below the
+  strip, so the marker survives in `messages` for the rest of the loop and makes the
+  count odd — the invariant `a-attack` asserts. Reproduced (G2-break F3). Fix: read
+  `query`/`url` from the stripped `toolCalls` copy.
+- **R8-8 · The admin agents table lost a cell.** `6780c94` added a `Research` header
+  and REPLACED the `Tries` cell instead of adding one: 7 headers, 6 cells. An admin
+  reads the loop under **Tries**, the cost under **Research**, an empty **Cost**, and
+  the retry count — with its `attempts > 1` warning colour — is gone from the page.
+  The commit whose whole subject is "a field the engine writes that no admin page can
+  read". Its own test asserts presence, never position. Reproduced twice
+  (G4-break F2, G1-verify F2). Fix: restore the cell, and assert
+  `cells.length === headers.length`.
+- **R8-9 · Unticking a suggestion in the confirm dialog DELETES the buyer's
+  hand-picked value, and the dialog states a value that will not be sent.** After a
+  hand edit the directive block is out of the preview key (by design), so the dialog
+  re-opens showing the ticked ORIGINAL proposal; unticking it runs
+  `setDir(k, undefined)` on the buyer's own choice. Reproduced (G3-break F1). Fix:
+  only clear a field still owned (`fromNotes[k] !== undefined`), and render the row
+  from the form, not from the frozen `pf.proposals`.
+- **R8-10 · R7-7 restored by another route: proposals from a DELETED sentence are
+  still ordered.** `16e7014` moved the kept proposal from `pf` into `params`, where
+  clearing the notes cannot reach it — and `fromNotes` still quotes text that no
+  longer exists. Reproduced (G3-break F5). Fix: on a preflight whose text no longer
+  contains the quote, drop the still-tagged entries.
+- **R8-11 · With the assist off, the buyer cannot edit or delete their own 2,000
+  characters, and two sentences contradict each other.** `picking` overrides
+  `setWay('write')`, so the Edit button is inert; the text is still sent on every
+  later preflight while `s4Off` says it was not read. Reproduced (G3-break F2).
+- **R8-12 · The 5xx "generate anyway" fallback applies the PREVIOUS review to the
+  CURRENT params**, overwriting a hand-typed field with a stale correction and a
+  stale ticked basic (`location`). Reproduced (G3-break F3). Fix: gate on
+  `base[c.field] === c.from`, and on the basic still being empty.
+- **R8-13 · Nothing asserts that a producer's `focus` reaches its prompt.** Deleting
+  the `FOCUS:` line from `buildAgentKickoff` leaves the suite 1071/1071 GREEN.
+  `d1dab19` pinned the negative half and left the positive one — eight flagship
+  producers carry a live focus (G2-verify F1).
+- **R8-14 · The sign-in page still puts an internal English sentence on the buyer's
+  screen and eats their error.** `60c92a0` closed the env-var branch; the adjacent
+  `.catch((e) => setError(e.message))` renders "Google Identity Services failed to
+  load." 8 seconds later, over their own rate-limit sentence. Reproduced
+  (G4-break F3).
+- **R8-15 · Fourteen of the batch's 22 suite totals are wrong**, twelve by one and
+  never corrected, and the drift RESTARTS after `2c346de` corrected two of them —
+  whose own "before" (1045) contradicts the correction printed four lines above it
+  (1046). Every "after" re-measured in a scratch worktree calibrated to reproduce
+  974 and 1071 exactly (G4-verify F1). And **"a clean clone counts ~16 fewer" is
+  false — it is 6** — written three commits after `60c92a0` removed 9 of it, and
+  repeated in round 8's own brief (G4-verify F2).
+
+### P2 — batch
+- R8-16 The turn counter is seeded from `cost.searchCalls` (BILLED calls), so a fetch
+  that reached no backend — an empty url, or any fetch with no `TAVILY_API_KEY` — is
+  still forgotten on resume and the per-agent rows still do not sum. R7-13's symptom,
+  reproduced at HEAD (G1-break F4, G1-verify F4). Fix: carry `turnsUsed` in the
+  checkpoint.
+- R8-17 A browser holding the pre-`c9065e3` bundle coerces `reconstructed` → `lost`,
+  SUPPRESSES a section that has real content and prints "everything else was
+  researched as usual", while the server-rendered PDF of the same report shows it.
+  The "coercing to lost is the safe direction" reasoning is wrong for the one status
+  whose design point is that the body stays (G1-verify F5).
+- R8-18 `urlsIn` drops any URL followed by a JSON escape (`\n`, `\"`), so a bare
+  prose URL at end of line never reaches `referenced` (G2-break F4).
+- R8-19 A URL that is both `touched` and `referenced` is classified `touched` and
+  loses the reserve; the shipped e2e fixture excludes the case by an explicit line
+  (`nextLot = 20; // the refiner's own results never overlap the shortlist`)
+  (G2-break F5).
+- R8-20 `validateTemplate` guards `focus` and not `sites`/`researchBudget`/
+  `gatherModel` — a synthesizer declaring `sites` still ships a sentence that reaches
+  no prompt (G2-break F6).
+- R8-21 Forwarding `maxLength` may turn a caught error into a silently truncated
+  buyer-visible string (a chart `title`/`description` cut at the bound instead of
+  re-planned). Reasoned; needs a paid-tier check (G2-break F7).
+- R8-22 The `unenriched` sentence exists in THREE copies (core notice, viewer, PDF)
+  and the "la passe / a passagem" fix landed in one. The fr/pt buyer still reads a
+  sports pass and a passageway in the viewer and in the PDF they keep; en/es diverge
+  too (G3-verify F1). Fix: a shared fixture like `LEGACY_SHAPES`.
+- R8-23 `rate-limit-copy.test.tsx` restores `config.googleClientId` inline, so the
+  "control" test fails as a cascade — `60c92a0`'s "2 red" is 1 independent
+  (G3-verify F2).
+- R8-24 `progress-kind-pin`'s title promises "in every language" and cannot see a
+  missing one (`progressLine` falls back to English); the property is covered next
+  door (G3-verify F3).
+- R8-25 `2bf0b97`'s test and four comments name `setDirOpen`/`dirExpanded`, deleted
+  by `3397da8` three commits later. Dead test, unperformable mutation (G3-verify F4).
+- R8-26 `verbatim()` proves PROVENANCE, not support: `riskAppetite: opportunistic`
+  quoting «bajo riesgo» passes, arrives ticked and is written onto the form. Correct
+  for basics, over-claimed for directives in the message and the code comment
+  (G3-break F8, G3-verify F5).
+- R8-27 `AgentTrace.kind` reaches no admin screen — the reason `d1dab19` gives for
+  adding it (G2-verify F4).
+- R8-28 Three mutation counts of mine are wrong: `90d6fdf`'s "a resumed writer
+  forgets its own pages 1 red" is **0 red** (the test cannot tell `fetched` from
+  `touched`); `929e8dd`'s "preview key ignores the notes 2 red" is **3**; the persona
+  named for the honest 6-turn maximum is `d-legit`, not `b-legit` (which reaches 4),
+  and the cached-note figure is 296, not 298 (G1-verify F3/F6, G4-verify F3).
+- R8-29 The density test's inline "mutation that reds this" is false (`reserve = 0`
+  still passes — the tier ORDER carries it), and its `afterEach` restores the fixture
+  corpus to the polluted value (G2-verify F2/F3).
+- R8-30 The fixture still defaults to 5 results per query; flipping it to production's
+  8 reds exactly 2 printed measurement pins (G2-verify F5).
+- R8-31 Docs: `agents.md`'s checkpoint list omits `touchedByAgent` (added one commit
+  later, same batch) and `agentTraces`; its breaker outcome sentence is wrong for a
+  loop that spent its allowance (`budget`/`stopped`, not `stalled`/`cut_off`);
+  `request-review.md` folds `fillable` into gate 1 of five gates it does not pass;
+  `local-llm.md` §3 cannot be run as written (every curl 500s without ADC — the rate
+  meter reads Firestore first); `deep-review.md` declares "P2 is closed" without
+  citing `a84878d` and `e3e8e3b`, and its section totals are wrong at both ends;
+  `product-backlog.md` stamps P-3 `done (16e7014)` when `3397da8` delivered its title
+  (G4-verify F4/F5/F6/F7/F8/F9).
+- R8-32 `MAX_JOB_COST_USD` — the ceiling that decides whether a job is HELD — is in
+  no `--set-env-vars`, along with 43 other documented variables (G4-break F4).
+- R8-33 `929e8dd`'s stated reason for not using `.strict()` is false: replaying a
+  pre-`7a45269` job's stored params 400s anyway. The real reason is the
+  unrelated-extra-key case (G4-break F5).
+- R8-34 A link TITLE (`[t](url "title")`) is unbounded in the viewer and raw Markdown
+  in the PDF — the same split `1ce4893` claimed to close, and the same unbounded
+  attacker text R7-24 bounded one element over (G3-break F6).
+- R8-35 The new Sources tooltip clips by UTF-16 unit in the batch that fixed exactly
+  that elsewhere, and its pin cannot reach the bound (G3-break F7).
+- R8-36 The seven directives never appear in the pre-flight summary — the last screen
+  before payment — though six of them decide which listings get shortlisted
+  (G3-break F4).
+- R8-37 `warnings` entries are undated (their `notes` twin is timestamped) and
+  `snapshot()` captures the array by reference (G4-break F6).
+
+### Checked and TRUE by round 8 (do not re-check)
+25/26 mutation counts in the engine group, 19/20 in the API group, 31/41 in the SPA
+group — exact. The end-to-end figures 54 / 838,702 → 13 / 53,674 reproduce to the
+character; the note flood 8 / 2 / 12 after; `refute-B2`'s 54 → 52; the Gemini census
+(17 `minItems`, 2 `maxItems`, 5 `maxLength`, zero `minimum`/`maximum`); the seven V8
+parse kinds; `SOURCE_LABEL_MAX`'s evidence (373 rows, p90 90, max 167, one clipped);
+Brave and Tavily both at 8 results. All three `90a355f` "(0 before)" claims verified
+at `1ce4893`. All 56 commit hashes in the two backlog docs resolve and are ancestors
+of HEAD. The CI claim is true measured both ways (with and without `.env.local`:
+1071 either way). `PROGRESS_KINDS` and `LEGACY_SHAPES` are real cross-package pins.
+`warnings` reaches no buyer by any of the five routes checked. The three checkpoint
+migrations are safe in both directions. `int()` treats an empty env var as the code
+default (4096 / 1024), so the `LLM_GATHER_*` wiring is NOT an incident. The
+`reconstructed` naive fix (mark it `lost`) reds 3 tests, so keeping the body is
+pinned. `cut_off` cannot fire for a loop that spent its allowance — that path is
+`budget`/`stopped`, deliberately.
