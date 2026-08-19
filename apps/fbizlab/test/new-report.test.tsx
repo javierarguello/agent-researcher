@@ -199,6 +199,55 @@ describe('the directive block comes entirely from the manifest', () => {
     expect(screen.getByRole('button', { name: 'Blue' })).toBeTruthy();
   });
 
+  it('explains itself: the box comes first, and its explanation is prose, not a 10px uppercase strip', async () => {
+    // The complaint this answers: collapsed, the preferences section was a bare
+    // header and a rule, and the sentence that explains the whole flow was passed to
+    // `SecHead`'s `right` slot — `nr-hint`, mono, 10px, uppercase, right-aligned.
+    // Mutations that red this: put the explanation back in `right`; or restore the
+    // old section order.
+    const { container } = renderForm();
+    const lead = container.querySelector('.nr-lead');
+    expect(lead?.textContent, 'the flow is explained where it can be read').toMatch(/turn it into your preferences/i);
+
+    // Order is the argument: the box is the cause, the fields are the result.
+    const sections = [...container.querySelectorAll('.nr-sec')];
+    const box = sections.findIndex((el) => el.querySelector('[data-testid="free-text"]'));
+    const prefs = sections.findIndex((el) => el.querySelector('[data-testid="toggle-preferences"]'));
+    expect(box).toBeGreaterThan(-1);
+    expect(prefs).toBeGreaterThan(box);
+  });
+
+  it('an empty preferences section says what will land in it, and offers the way in', async () => {
+    // Not a bare header: the empty state names what arrives, when, and that they can
+    // fill it themselves now. Mutation that reds this: render nothing when collapsed.
+    renderForm();
+    expect(screen.getByText(/what you write above lands here when you continue/i)).toBeTruthy();
+    expect(screen.getByTestId('dir-count').textContent).toBe('0/2');
+
+    await userEvent.click(screen.getByTestId('pick-by-hand'));
+    expect(screen.getByRole('button', { name: 'Sunshine' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Sunshine' }));
+    expect(screen.getByTestId('dir-count').textContent, 'the counter is the other half of the empty state').toBe('1/2');
+  });
+
+  it('says the notes were not read when the assist could not run', async () => {
+    // The box is inert and the fields are the only way to say any of this — on the
+    // FORM, not only in the modal. Mutation that reds this: drop the `assistOff`
+    // line, or the `sdOff` lead.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [],
+      assist: { state: 'off_no_credits', message: 'No credits for the assisted review.' },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+
+    expect(screen.getByTestId('assist-off').textContent).toMatch(/not read this time/i);
+    expect(screen.getByText(/these fields are the way to say it/i)).toBeTruthy();
+  });
+
   it('starts collapsed — the page opens with the box, not with thirty chips', async () => {
     // P-3, and the reason for all of it: 04 and 05 fill the SAME params, so both
     // open at once asked the buyer to do one job twice and opened the funnel's main
@@ -555,6 +604,17 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
     await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
     expect((hooks.preflight.mock.calls.at(-1)?.[0] as { freeText?: string }).freeText).toBe('absentee owners only, please');
+  });
+
+  it('the section’s lead changes once the notes have filled it', async () => {
+    // Empty → "what you write above lands here"; filled → "check them and change
+    // anything; a field you touch becomes yours". Mutation that reds this: one
+    // static lead. 
+    await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } });
+    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
+    expect(screen.getByText(/filled from your notes/i)).toBeTruthy();
+    expect(screen.queryByText(/lands here when you continue/i)).toBeNull();
+    expect(screen.getByTestId('dir-count').textContent).toBe('1/2');
   });
 
   it('lands on the FORM, tagged with the words it came from, and the buyer changes it by hand', async () => {

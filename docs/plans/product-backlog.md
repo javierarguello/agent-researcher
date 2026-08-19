@@ -134,6 +134,18 @@ still in it. The dialog keeps listing the proposals with their per-field ticks �
 ticking there is what writes them onto the form, so the two views are one state, not
 two.
 
+**Refined in `HASH` (option B of a frontend review).** Collapsing 04 left a bare
+header with a 10px link — "a section that failed to load", in Javier's words. The
+review found the real cause: the RESULT sat above its CAUSE (and, on a phone, a whole
+wizard step before it), and the sentence explaining the whole flow was passed to
+`SecHead`'s `right` slot, styled `nr-hint` — mono, 10px, uppercase, right-aligned.
+Fine for three words; decoration for forty. So: the box is section 04, the
+preferences are 05, the explanation is a `.nr-lead` paragraph, the empty state names
+what will land there and offers a real button, a `n/7` counter shows there is
+something inside without opening it, and the lead changes with the state (empty →
+filled → assist off). Canvas of the three options considered:
+https://claude.ai/code/artifact/4d732a3e-ab48-4d9e-ac29-9d66c0f97520
+
 **Built in `16e7014`.** Two things the design walked into, both found by building it
 rather than by reading: the preview key had to stop including the directive block
 (or every chip click would spend an assisted attempt re-approving a value we
