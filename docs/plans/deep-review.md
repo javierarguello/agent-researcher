@@ -1314,6 +1314,33 @@ Everything else in round 7 (the whole P2 batch, R7-11..R7-28, R7-31) is untouche
   `turnsUsed` + `gatherStop` on `JobSummary.agents[]` + one admin column. (Same
   class as R7-4.)
 
+### P2 — batch · **eight commits so far (2026-08-19)**, measured and revert-verified
+Done: **R7-21 + R7-24** `1ce4893` (prose links may only leave for somewhere else; the
+Sources tooltip is bounded; the PDF's clip is pinned in the renderer that prints it).
+**R7-31** `90a355f` (the per-host caps and the `stopPlanning` instruction were held by
+NO test; the two documented `LLM_GATHER_*` knobs were in no deploy). **R7-22 + R7-19 +
+R7-23** `2c346de` (`cut_off` for a loop we stopped paying for; `cached` stops claiming
+a re-read we refused; the finalize pass says `assembling`; the live line speaks the
+report's language; `detail` clipped by code point; `heldNotice` deleted as duplicated
+copy). **R7-16 + R7-17** `7772772` (the trimmed extract stops cutting through figures
+in prose, says `[cut mid-value]` when it must, and `trimmedExtract`'s three tautologies
+are real assertions; the loop strips its own tool args). **R7-11 + R7-13 + R7-31 F9**
+`90d6fdf` (a gathered agent's own pages survive the checkpoint or it loses `gathered`;
+a resumed writer ranks its own pages again; the job keeps counting turns across
+dispatches). **R7-14 + R7-15 + R7-20** `b72de29` (one bucket per parse failure — the
+kind was 73.4% honest; the string bounds reach Gemini; the buyer-facing summary
+redaction is asserted at last).
+
+Suite 1029 → 1063 in this checkout. Four mutations came back 0 red on the first
+measurement and each got its own test before the count was recorded: the early-boundary
+cut, the resumed writer's own-page preference, the `stopPlanning` instruction, and the
+per-host caps through the production caller.
+
+**Still open in P2:** R7-12, R7-18 (needs a decision: render `agent.focus` in the write
+builders or delete it), R7-25, R7-26, R7-27 (docs), R7-28 (the wrong counts are in
+commit messages already on main — record the correction here rather than rewriting
+history).
+
 ### P2 — batch
 - R7-11 `gatheredAgentIds` × `CHECKPOINT_MAX_PAGES=60`: a gathered agent's evicted
   pages are gone for good and it writes from pages it never gathered; the doc
