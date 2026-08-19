@@ -12,7 +12,7 @@
  * wrong fix: that the localized sentence is there, AND that the English body
  * string is not. A page that renders both has not fixed anything.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -270,13 +270,26 @@ describe('the reset-password page', () => {
 // suite now provides its own env (`vitest.config.ts`), and this is the behaviour
 // that env was hiding.
 describe('a build with Google sign-in not configured', () => {
+  // `config` is read at module load, so the blanking below is a module-level write
+  // and the restore has to survive a failed assertion. It used to be the last
+  // statement of the test body: one unrelated failure above it left
+  // `googleClientId` empty, and the CONTROL below then failed as a cascade — two
+  // reds reported where there is one independent piece of evidence (round 8,
+  // R8-23). A control that can only fail with its neighbour proves nothing.
+  let had: string;
+  beforeEach(() => {
+    had = config.googleClientId;
+  });
+  afterEach(() => {
+    config.googleClientId = had;
+  });
+
   it('does not put an environment variable name on the buyer’s screen, and does not eat their error', async () => {
     // `setError('VITE_GOOGLE_CLIENT_ID is not configured.')` ran in an effect with a
     // dependency that changes every render, so it overwrote the rate-limit sentence
     // a moment after it appeared. Mutation that reds this: setError in that branch.
-    // The value the BUILD baked in, blanked for this render: `config` is read at
-    // module load, so stubbing the env after the import would change nothing.
-    const had = config.googleClientId;
+    // The value the BUILD baked in, blanked for this render (restored in the
+    // `afterEach` above): stubbing the env after the import would change nothing.
     config.googleClientId = '';
     loginWithPassword.mockRejectedValue(apiError(429, RATE_LIMITED));
 
@@ -290,7 +303,6 @@ describe('a build with Google sign-in not configured', () => {
     expect(screen.queryByText(ENGLISH_BODY)).toBeNull();
     // …and the button we cannot render is not on the page either.
     expect(document.querySelector('.auth-gbtn')).toBeNull();
-    config.googleClientId = had;
   });
 
   it('control: the configured build still offers the Google button', () => {

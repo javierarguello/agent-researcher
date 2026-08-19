@@ -519,10 +519,20 @@ describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
     // The dossier's first tier is "pages this writer's own loop fetched", and
     // `research.fetched` was a per-dispatch local — so a re-dispatched writer's own
     // evidence ranked like everyone else's and it wrote from store order. The
-    // checkpoint carries the URLs now. Mutation that reds this: seed `fetched` with
-    // an empty set again.
+    // checkpoint carries the URLs now.
+    //
+    // The two seeds are given DIFFERENT observable consequences on purpose. With
+    // one fetched url and nothing else, "seed `fetched` with an empty set again"
+    // measured 0 red (round 8, R8-28): `touched` is seeded from the same
+    // `fetchedByAgent` map and its tier is taken immediately after, so the page was
+    // `[P1]` either way. So: 15 urls this loop merely SAW, all late in the store,
+    // and one of them it also fetched.
+    //   - seed `fetched` empty → `[P1]` is the first touched page, not `mine`.
+    //   - seed `touched` empty → the head of the store (`/0`) takes a slot the
+    //     writer's own results should have.
     const pages = Array.from({ length: 20 }, (_, i) => ({ url: `https://x/${i}`, ok: true, content: `PAGE-${i}` }));
     const mine = pages[17]!; // late in the store, so store order would not surface it
+    const seen = pages.slice(5).map((p) => p.url); // 15 > MAX_PAGES: the store head must not fit
     const mock = installMockProvider();
     const base = mock.generate.bind(mock);
     const prompts: string[] = [];
@@ -534,12 +544,13 @@ describe('a gathered agent keeps the evidence it paid for (R7-11)', () => {
       template: compactModel, params: params(), jobId: 'own1', generatedAt: 't',
       resume: {
         report: {}, sources: [], extracted: pages, doneAgentIds: [], degraded: [],
-        gatheredAgentIds: ['scout'], fetchedByAgent: { scout: [mine.url] },
+        gatheredAgentIds: ['scout'], fetchedByAgent: { scout: [mine.url] }, touchedByAgent: { scout: seen },
       } as never,
     });
     const write = prompts.find((p) => p.includes('[P1] Full page content'))!;
     expect(write, 'the writer got a dossier').toBeTruthy();
     expect(write).toContain(`[P1] Full page content — ${mine.url}`);
+    expect(write, 'the store head took a slot the loop’s own results had paid for').not.toContain('https://x/0');
   });
 
   it('records what a loop was SHOWN, not only what it fetched — the half a resume reads', async () => {

@@ -1,5 +1,5 @@
 /**
- * Every progress kind the ENGINE can emit has a line in this app's language.
+ * Every progress kind the ENGINE can emit has a line in this app.
  *
  * The direction that ships a broken page is not the one the existing tests watch.
  * `packages/core/test/progress-kinds.test.ts` catches the engine emitting a kind
@@ -20,7 +20,17 @@ import { progressLine } from '../src/lib/progress-copy';
 import type { ProgressKind } from '../src/api/types';
 
 describe('the progress vocabulary this app can render', () => {
-  it('covers every kind the engine has, in every language it offers', () => {
+  it('covers every kind the engine has', () => {
+    // It says "every kind", not "every kind in every language", because that is all
+    // it can see: `progressLine` falls back to English for a language the table is
+    // missing (`copy[lang] ?? copy.en`), so a deleted `es` line returns the English
+    // sentence and this filter finds nothing. Measured: dropping one kind's `es`
+    // entry reds `progress-copy.test.tsx` and NOT this test (round 8, R8-24).
+    //
+    // The per-language property is asserted next door — `every kind has a line in
+    // every language, and no language borrows English` compares the four sentences
+    // for distinctness, which the fallback cannot satisfy. What THIS pin is for is
+    // the cross-package direction: core growing a kind no client knows.
     const missing = PROGRESS_KINDS.filter((k) =>
       LANGS.some((l) => progressLine({ phase: 'x', kind: k as ProgressKind, updatedAt: 't' }, l) == null),
     );

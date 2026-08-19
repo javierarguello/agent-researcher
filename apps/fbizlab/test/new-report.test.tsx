@@ -347,7 +347,7 @@ describe('the directive block comes entirely from the manifest', () => {
   it('starts collapsed — the page opens with the box, not with thirty chips', async () => {
     // P-3, and the reason for all of it: 04 and 05 fill the SAME params, so both
     // open at once asked the buyer to do one job twice and opened the funnel's main
-    // page with a wall. Mutation that reds this: `dirExpanded = true`.
+    // page with a wall. Mutation that reds this: `way` initialised to `'pick'`.
     renderForm();
     expect(screen.queryByRole('button', { name: 'Sunshine' }), 'the chips').toBeNull();
     expect(screen.queryByText('Preferred weather')).toBeNull();
@@ -814,8 +814,8 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } });
     await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
 
-    // Open, because it now holds something. Mutation that reds this: `dirExpanded`
-    // ignoring `dirVals`.
+    // Showing the fields, because the review produced something to show. Mutation
+    // that reds this: drop `setWay('pick')` from the branch that keeps proposals.
     expect(screen.getByRole('button', { name: 'Sunshine' }).className).toContain('sel');
     expect(screen.getByTestId('from-notes-weather').textContent).toContain('«sunshine»');
 
@@ -826,19 +826,15 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     expect(params.directives).toEqual({ weather: 'rain' });
   });
 
-  it('does not snap shut when the buyer clears the last thing the notes filled', async () => {
-    // The auto-open rule read backwards. The block opened because it HELD something;
-    // clearing that one value emptied it, so the section closed under the cursor,
-    // mid-edit, with no way back except the toggle they never used. Mutation that
-    // reds this: drop `setDirOpen(true)` from `editDir`.
-    await toProposals({ directives: { weather: 'sun' }, keywords: [], quotes: { weather: 'sunshine' } });
-    await userEvent.click(screen.getByRole('button', { name: /go back|back/i }));
-    // Auto-open, never toggled by hand — the state this test is about.
-    await userEvent.click(screen.getByRole('button', { name: 'Sunshine' })); // clicking the picked one clears it
-
-    expect(screen.getByRole('button', { name: 'Sunshine' }), 'the fields are still there').toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Rain' })).toBeTruthy();
-  });
+  // Deleted (round 8, R8-25): `does not snap shut when the buyer clears the last
+  // thing the notes filled`. It tested an auto-open rule that read `dirVals` —
+  // `3397da8` replaced that state with the `way: 'write' | 'pick'` toggle three
+  // commits after the test was written, and at HEAD `editDir` only clears the
+  // `fromNotes` tag while visibility hangs on `picking`, so clearing a chip cannot
+  // close anything. Its stated mutation (`drop setDirOpen(true) from editDir`) named
+  // a call that no longer exists, i.e. it could not be performed. No mutation reds
+  // it alone; the two that touch it red it at its FIRST line, because the fields are
+  // not on screen at all, which is asserted more directly by the tests above.
 
   it('editing a chip does not send the buyer back through validation', async () => {
     // The trap this design walks into if the preview key keeps the directives: every
@@ -857,7 +853,7 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
   it('opens the preferences by itself when the assist could not run', async () => {
     // No credits, cooldown, attempts spent, disabled: the box can do nothing for
     // them, so the fields are the only way to say any of this. Mutation that reds
-    // this: drop `assistOff` from `dirExpanded`.
+    // this: drop `assistOff` from `picking`.
     hooks.preflight.mockResolvedValueOnce({
       ok: true, summary: 'We will research X.', quality: 'ok', issues: [], corrections: [],
       assist: { state: 'off_no_credits', message: 'No credits for the assisted review.' },
