@@ -324,7 +324,24 @@ export interface PricingEconomics {
   expectedProfitPct: number;
   /** The deployment-wide clamp. A per-model ceiling can never exceed it. */
   maxJobCostUsd: number;
-  ceilings: Array<{ key: string; ceilingUsd: number }>;
+  /**
+   * Per tier: the price, what it earns, what a job of it may spend, and what that
+   * money BUYS — turns, agents, sections. The last three come from the engine's own
+   * mode filter (`modeShapes`), not from a second implementation here.
+   */
+  ceilings: Array<{
+    key: string;
+    label?: string;
+    credits: number;
+    earnsUsd: number;
+    ceilingUsd: number;
+    budgetScale: number;
+    depth: string;
+    sections: number;
+    agents: number;
+    researchers: number;
+    maxTurns: number;
+  }>;
 }
 export interface PricingView {
   templateId: string;

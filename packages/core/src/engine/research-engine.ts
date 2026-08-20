@@ -12,6 +12,7 @@ import { config } from '../config.js';
 import { BudgetExceededError, addCost, createCostSink, emptyCost, type Cost, type CostSink } from '../cost.js';
 import { resolveDepthProfile, type DepthProfile } from '../depth.js';
 import { maxCostForMode, resolveMode } from '../mode.js';
+import { agentTurns, effectiveTemplate } from '../mode-shape.js';
 import { resolveModel, type ResolvedModel } from '../llm/index.js';
 import type { ExtractedPage, SearchResult } from '../tools/web-search.js';
 import {
@@ -406,18 +407,10 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // the effective (mode-filtered) template + params used for the rest of the run.
   const mode = resolveMode(template.modes, (params as Record<string, unknown>).mode);
   const effParams: Record<string, unknown> = { ...params, ...(mode.config.params ?? {}) };
-  const exclude = new Set(mode.config.exclude ?? []);
-  const effTemplate: ResearchTemplate<any> = {
-    ...template,
-    sections: template.sections.filter((s) => !exclude.has(s.key)),
-    agents: template.agents
-      .map((a) => ({
-        ...a,
-        produces: (a.produces ?? []).filter((k) => !exclude.has(k)),
-        enriches: (a.enriches ?? []).filter((k) => !exclude.has(k)),
-      }))
-      .filter((a) => a.produces.length + a.enriches.length > 0),
-  };
+  // Shared with `modeShapes`, which is what tells an admin what a tier buys. Two
+  // copies of this filter would be two answers to "how many turns does essential
+  // get", and only one of them would be the one that runs.
+  const effTemplate: ResearchTemplate<any> = effectiveTemplate(template, mode.config);
   const depth: DepthProfile = { ...resolveDepthProfile(mode.config.depth), budgetScale: mode.config.budgetScale };
 
   const system = buildSystemPrompt(effTemplate, effParams);
@@ -1184,7 +1177,7 @@ async function runAgent(ctx: {
 
   if (hasResearchLoop(agent)) {
     const gatherModel: ResolvedModel = resolveModel(agent.gatherModel ?? config.llm.defaultGatherModel);
-    const budget = Math.max(2, Math.round((agent.researchBudget ?? config.search.maxTurns) * depth.budgetScale));
+    const budget = agentTurns(agent.researchBudget, depth.budgetScale);
     const sites = effectiveSites(template, agent);
     if (sites.length) await note(`Suggested sources (additive): ${sites.join(', ')}.`, 'researching');
     // A retry after a failed WRITE reuses what the last attempt bought. The

@@ -3,8 +3,9 @@ import { Alert, Badge, Button, Card, Divider, Group, Loader, NumberInput, Select
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
-import { useApps, usePricing, useRefreshCreditFloor, useSetPricing, useTemplates } from '../api/hooks';
+import { useApps, usePreviewPricing, usePricing, useRefreshCreditFloor, useSetPricing, useTemplates } from '../api/hooks';
 import { CreditPacks } from '../components/CreditPacks';
+import type { PricingView } from '../api/types';
 import { ApiError } from '../api/client';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -13,6 +14,25 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
   const pricing = usePricing(templateId);
   const save = useSetPricing();
   const refresh = useRefreshCreditFloor();
+  const preview = usePreviewPricing();
+  /**
+   * The tier table, recomputed by the API for whatever is on screen.
+   *
+   * Without it every number below describes the SAVED pricing while the inputs
+   * above show something else — which is the shape of screen where someone changes
+   * a price, reads a ceiling that has not moved, and concludes it did not matter.
+   */
+  const [live, setLive] = useState<PricingView['economics'] | null>(null);
+  const shown = live ?? pricing.data?.economics;
+
+  function repreview(next: { modes?: Record<string, number>; creditFloorUsd?: number; expectedProfitPct?: number }) {
+    preview
+      .mutateAsync({ templateId, body: { modes, creditFloorUsd: floor, expectedProfitPct: profit, ...next } })
+      .then((v) => setLive(v.economics))
+      // A failed preview leaves the last good figures rather than blanking the
+      // table: stale-but-labelled beats empty, and the SAVE is what is authoritative.
+      .catch(() => {});
+  }
   const [modes, setModes] = useState<Record<string, number>>({});
   const [addons, setAddons] = useState<Record<string, number>>({});
   const [floor, setFloor] = useState<number | undefined>();
@@ -24,6 +44,7 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
       setAddons(Object.fromEntries(pricing.data.addons.map((a) => [a.key, a.credits])));
       setFloor(pricing.data.economics.creditFloorUsd);
       setProfit(pricing.data.economics.expectedProfitPct);
+      setLive(null); // the freshly loaded view IS the truth; drop any preview
     }
   }, [pricing.data]);
 
@@ -98,7 +119,11 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
             max={1_000_000}
             w={180}
             value={modes[m.key] ?? m.credits}
-            onChange={(v) => setModes({ ...modes, [m.key]: typeof v === 'number' ? v : m.credits })}
+            onChange={(v) => {
+              const next = { ...modes, [m.key]: typeof v === 'number' ? v : m.credits };
+              setModes(next);
+              repreview({ modes: next });
+            }}
           />
         ))}
       </Group>
@@ -138,7 +163,11 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
           decimalScale={4}
           w={220}
           value={floor ?? data.economics.creditFloorUsd}
-          onChange={(v) => setFloor(typeof v === 'number' ? v : undefined)}
+          onChange={(v) => {
+            const n = typeof v === 'number' ? v : undefined;
+            setFloor(n);
+            if (n) repreview({ creditFloorUsd: n });
+          }}
         />
         <Stack gap={4} pt={26}>
           <Button size="compact-sm" variant="light" onClick={onReadStripe} loading={refresh.isPending}>
@@ -153,7 +182,11 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
           max={99}
           w={220}
           value={profit ?? data.economics.expectedProfitPct}
-          onChange={(v) => setProfit(typeof v === 'number' ? v : undefined)}
+          onChange={(v) => {
+            const n = typeof v === 'number' ? v : undefined;
+            setProfit(n);
+            if (n !== undefined) repreview({ expectedProfitPct: n });
+          }}
         />
       </Group>
 
@@ -161,32 +194,49 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
           API rather than recomputed here — it returns the figure the engine
           enforces, clamp included, and a second implementation of the formula in
           the admin would be one that can disagree with the one that bills. */}
-      <Table mt="sm" withTableBorder>
+      <Group gap={6} mt="sm" mb={4}>
+        <Text size="xs" c="dimmed">What each tier costs, earns and buys</Text>
+        {live && <Badge size="xs" color="blue" variant="light">unsaved</Badge>}
+      </Group>
+      <Table withTableBorder data-testid="tiers">
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Tier</Table.Th>
+            <Table.Th>Credits</Table.Th>
             <Table.Th>Earns</Table.Th>
             <Table.Th>A job may spend</Table.Th>
+            <Table.Th>Max turns</Table.Th>
+            <Table.Th>Runs</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {data.economics.ceilings.map((c) => {
-            const credits = modes[c.key] ?? data.modes.find((m) => m.key === c.key)?.credits ?? 0;
-            const earns = credits * data.economics.creditFloorUsd;
-            const clamped = c.ceilingUsd >= data.economics.maxJobCostUsd;
+          {(shown?.ceilings ?? []).map((c) => {
+            const clamped = c.ceilingUsd >= (shown?.maxJobCostUsd ?? Infinity);
             return (
               <Table.Tr key={c.key}>
-                <Table.Td><Mono size="xs">{c.key}</Mono></Table.Td>
-                <Table.Td>{usd(earns)}</Table.Td>
+                <Table.Td>
+                  <Mono size="xs">{c.key}</Mono>
+                  <Text size="xs" c="dimmed">{c.depth} · ×{c.budgetScale}</Text>
+                </Table.Td>
+                <Table.Td>{c.credits}</Table.Td>
+                <Table.Td>{usd(c.earnsUsd)}</Table.Td>
                 <Table.Td>
                   <Group gap={6}>
                     {usd(c.ceilingUsd)}
                     {clamped && (
-                      <Tooltip label={`Capped by the deployment-wide MAX_JOB_COST_USD of ${usd(data.economics.maxJobCostUsd)}.`}>
+                      <Tooltip label={`Capped by the deployment-wide MAX_JOB_COST_USD of ${usd(shown!.maxJobCostUsd)}.`}>
                         <Badge size="xs" color="orange" variant="light">capped</Badge>
                       </Tooltip>
                     )}
                   </Group>
+                </Table.Td>
+                {/* The half that was invisible: what the money buys. Turns come from
+                    the engine's own per-agent budget line, so this is the number a
+                    job of this tier will actually get. */}
+                <Table.Td>{c.maxTurns}</Table.Td>
+                <Table.Td>
+                  <Text size="xs">{c.researchers} researching / {c.agents} agents</Text>
+                  <Text size="xs" c="dimmed">{c.sections} sections</Text>
                 </Table.Td>
               </Table.Tr>
             );
@@ -195,7 +245,8 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
       </Table>
       <Text size="xs" c="dimmed" mt={6}>
         A job that reaches its ceiling is HELD for review, not failed — the credits stay spent and the
-        checkpoint intact. The figures above update on save.
+        checkpoint intact. Turns and sections are what the mode’s own `budgetScale` and `exclude`
+        produce; change them in the model, not here.
       </Text>
     </Card>
   );

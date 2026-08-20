@@ -121,6 +121,22 @@ export function usePricing(templateId: string) {
   });
 }
 
+/**
+ * What the pricing WOULD be for an unsaved edit — computed by the API.
+ *
+ * A mutation rather than a query because it is a POST, and because the caller
+ * decides when to ask (on change, debounced). Recomputing the ceilings in the
+ * browser instead would be a second implementation of the formula that bills.
+ */
+export function usePreviewPricing() {
+  return useMutation({
+    mutationFn: ({ templateId, body }: {
+      templateId: string;
+      body: { modes?: Record<string, number>; creditFloorUsd?: number; expectedProfitPct?: number };
+    }) => api<PricingView>(`/admin/pricing/${encodeURIComponent(templateId)}/preview`, { method: 'POST', body }),
+  });
+}
+
 export function useSetPricing() {
   const qc = useQueryClient();
   return useMutation({

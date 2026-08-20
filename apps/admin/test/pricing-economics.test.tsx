@@ -30,8 +30,8 @@ const ECONOMICS = {
   expectedProfitPct: 40,
   maxJobCostUsd: 20,
   ceilings: [
-    { key: 'essential', ceilingUsd: 3.8688 },
-    { key: 'comprehensive', ceilingUsd: 8.7048 },
+    { key: 'essential', credits: 8, earnsUsd: 6.448, ceilingUsd: 3.8688, budgetScale: 0.5, depth: 'light', sections: 12, agents: 10, researchers: 8, maxTurns: 40 },
+    { key: 'comprehensive', credits: 18, earnsUsd: 14.508, ceilingUsd: 8.7048, budgetScale: 1, depth: 'standard', sections: 17, agents: 15, researchers: 10, maxTurns: 92 },
   ],
 };
 
@@ -46,10 +46,21 @@ const PRICING = () => ({
   economics: state.economics ?? ECONOMICS,
 });
 
+/** What the API answers a PREVIEW with — a different figure, so it is visible. */
+const PREVIEWED = {
+  ...ECONOMICS,
+  expectedProfitPct: 10,
+  ceilings: [
+    { key: 'essential', credits: 8, earnsUsd: 6.448, ceilingUsd: 5.8032, budgetScale: 0.5, depth: 'light', sections: 12, agents: 10, researchers: 8, maxTurns: 40 },
+    { key: 'comprehensive', credits: 18, earnsUsd: 14.508, ceilingUsd: 13.0572, budgetScale: 1, depth: 'standard', sections: 17, agents: 15, researchers: 10, maxTurns: 92 },
+  ],
+};
+
 vi.mock('../src/api/client', async (orig) => ({
   ...(await orig<typeof import('../src/api/client')>()),
   api: (path: string, init?: { method?: string; body?: unknown }) => {
     calls.push({ path, init });
+    if (path.includes('/preview')) return Promise.resolve({ ...PRICING(), economics: PREVIEWED });
     if (path.startsWith('/templates')) return Promise.resolve({ templates: [{ id: 'florida-business-for-sale', name: 'Florida' }] });
     if (path.startsWith('/admin/apps')) return Promise.resolve({ apps: [{ appId: 'fbizlab', name: 'F' }] });
     if (path.includes('/credit-floor')) {
@@ -96,13 +107,20 @@ describe('the economics section', () => {
     // …beside what that tier earns, because the ceiling is only meaningful next to it.
     expect(screen.getByText('$6.45')).toBeTruthy();  // 8 × 0.806
     expect(screen.getByText('$14.51')).toBeTruthy(); // 18 × 0.806
+    // …and what the money BUYS, which is the half that was invisible: an admin
+    // pricing a tier had no way to know it is 40 turns or 92.
+    const tiers = screen.getByTestId('tiers');
+    expect(tiers.textContent).toContain('40');
+    expect(tiers.textContent).toContain('92');
+    expect(tiers.textContent).toContain('8 researching / 10 agents');
+    expect(tiers.textContent).toContain('12 sections');
   });
 
   it('marks a ceiling the deployment lever capped, rather than showing it as chosen', async () => {
     // Above a certain price the per-model number stops being the one in force and
     // `MAX_JOB_COST_USD` is. Rendered as $20 with nothing said, that reads as a
     // figure someone picked.
-    state.economics = { ...ECONOMICS, ceilings: [{ key: 'comprehensive', ceilingUsd: 20 }] };
+    state.economics = { ...ECONOMICS, ceilings: [{ ...ECONOMICS.ceilings[1]!, ceilingUsd: 20 }] };
     show();
     expect(await screen.findByText('capped')).toBeTruthy();
   });
@@ -134,5 +152,28 @@ describe('the economics section', () => {
       const put = calls.find((c) => c.init?.method === 'PUT');
       expect(put?.init?.body).toMatchObject({ creditFloorUsd: 0.806, expectedProfitPct: 40 });
     });
+  });
+});
+
+describe('the live preview', () => {
+  it('recomputes the tiers on the SERVER while the inputs change, and says the figures are unsaved', async () => {
+    // Without it, every number in the table describes the SAVED pricing while the
+    // inputs above show something else — the shape of screen where someone changes
+    // a price, reads a ceiling that has not moved, and concludes it did not matter.
+    //
+    // On the server, because recomputing the formula in the browser would be a
+    // second implementation of the one that bills.
+    show();
+    const profit = await screen.findByLabelText(/expected profit/i);
+    expect(screen.getByTestId('tiers').textContent).toContain('$8.70');
+    expect(screen.queryByText('unsaved')).toBeNull();
+
+    await userEvent.clear(profit);
+    await userEvent.type(profit, '10');
+
+    await waitFor(() => expect(screen.getByTestId('tiers').textContent).toContain('$13.06'));
+    expect(screen.getByText('unsaved'), 'a previewed figure must not read as stored').toBeTruthy();
+    const call = calls.find((c) => c.path.includes('/preview'));
+    expect(call?.init?.method).toBe('POST');
   });
 });

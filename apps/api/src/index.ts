@@ -121,6 +121,7 @@ import {
   resolveModeCeiling,
   creditFloorFrom,
   modesOf,
+  modeShapes,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
@@ -2789,10 +2790,19 @@ function pricingView(templateId: string, override: ModelPricing | null) {
       creditFloorSource: override?.creditFloorUsd != null ? 'stored' : 'default',
       expectedProfitPct: override?.expectedProfitPct ?? config.pricing.expectedProfitPct,
       maxJobCostUsd: config.workflow.maxJobCostUsd,
-      ceilings: modesOf(tmpl.modes).map(([key]) => ({
-        key,
-        ceilingUsd: resolveModeCeiling(override, resolveMode(tmpl.modes, key).config, key, config.workflow.maxJobCostUsd),
-      })),
+      // Per tier: what it earns, what a job of it may spend, and — the half an
+      // admin could not see anywhere — what that money actually BUYS. `modeShapes`
+      // is the engine's own filter and its own per-agent budget line, shared rather
+      // than reimplemented, so a tier's turns here are the turns a job will get.
+      ceilings: modeShapes(tmpl).map((shape) => {
+        const credits = override?.modes?.[shape.key] ?? base.modes.find((m) => m.key === shape.key)?.credits ?? 0;
+        return {
+          ...shape,
+          credits,
+          earnsUsd: credits * (override?.creditFloorUsd ?? config.pricing.creditFloorUsd),
+          ceilingUsd: resolveModeCeiling(override, resolveMode(tmpl.modes, shape.key).config, shape.key, config.workflow.maxJobCostUsd),
+        };
+      }),
     },
   };
 }
@@ -2884,6 +2894,45 @@ app.put(
     bustPublicCache(`manifest:${templateId}:`);
     logEvent({ jobId: '-', appId: 'admin', userId: req.auth!.email }, 'INFO', 'pricing.updated', { templateId, modes: body.modes, addons });
     return pricingView(templateId, await getModelPricing(templateId));
+  },
+);
+
+/**
+ * What the pricing WOULD look like — the same view, computed and not stored.
+ *
+ * The alternative was recomputing the ceilings in the browser so an admin could see
+ * a change before saving it, and that is a second implementation of the formula
+ * that bills. This keeps one: the client sends the edit, the server answers with
+ * the view it would produce.
+ */
+app.post(
+  '/admin/pricing/:templateId/preview',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Compute a model’s pricing view for an unsaved edit (stores nothing)',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', required: ['templateId'], properties: { templateId: { type: 'string', maxLength: 128 } } },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          modes: { type: 'object', additionalProperties: { type: 'integer', minimum: 1, maximum: 1_000_000 } },
+          creditFloorUsd: { type: 'number', exclusiveMinimum: 0, maximum: 1000 },
+          expectedProfitPct: { type: 'number', minimum: 0, maximum: 99 },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const { templateId } = req.params as { templateId: string };
+    if (!getTemplate(templateId)) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
+    const body = (req.body ?? {}) as ModelPricing;
+    // Merged over what is STORED, so a preview of one field is not a preview of
+    // that field against the code defaults for every other.
+    const stored = await getModelPricing(templateId);
+    return pricingView(templateId, { ...stored, ...body, modes: { ...stored?.modes, ...body.modes } });
   },
 );
 
