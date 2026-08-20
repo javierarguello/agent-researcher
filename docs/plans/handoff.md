@@ -76,10 +76,12 @@ only tier you may use.
   Measure yours and say which one it is — round 10's R10-28 caught this line 19
   tests stale, in a commit that edited the line beneath it. `npm run typecheck`
   clean.
-- **Everything through `cca295b` is pushed to `origin/main`** (2026-08-20). Pushing
-  to `main` deploys DEV — the API to Cloud Run and both SPAs to Firebase Hosting,
-  all three behind `verify.yml`. Prod is a push to `deploy-prod`, which nothing in
-  this batch touched.
+- **`main` is pushed to `origin/main` at the end of every closed cluster** — no sha
+  here, because a line naming one is wrong by the next push and this file has already
+  been caught doing that twice (R10-28, R10-33). `git log origin/main..HEAD` is the
+  honest version. Pushing to `main` deploys DEV — the API to Cloud Run and both SPAs
+  to Firebase Hosting, all three behind `verify.yml`. Prod is a push to
+  `deploy-prod`, which nothing in this batch touched.
 - **Next: round 11, against `20f361b..HEAD`** — the WHOLE round-10 fix batch, P1 and
   P2, which nobody has reviewed. That is deliberate and it is where this repo's record
   says the next defects are: rounds 8, 9 and 10 each found the previous round's FIXES
