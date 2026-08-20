@@ -117,9 +117,18 @@ describe('rankEvidence · the referenced reserve is not a free pass for one host
     // served `max - reserve` first — so pages the agent paid to fetch leave the
     // dossier to make room for listings it was handed.
     //
-    // The SNIPPET call needs 37 fetched-and-in-store urls to feel it, which no
-    // research budget reaches. The PAGES call is `max = MAX_PAGES = 14`, and it
-    // reaches it at EIGHT — which every producer reaches. Measured here rather than
+    // The threshold is `fetched > max - min(referenced, floor(max/2))` — a formula
+    // that falls as the writer is handed more listings, not a constant. Floors,
+    // measured by scanning `referenced.length`: **25** of 48 for the SNIPPET call
+    // (at 24+ referenced, which is what R8-6 measured for a repeatedly cited host)
+    // and **8** of 14 for the PAGES call (at 7+ referenced). "37, which no budget
+    // reaches" was the snippet value at twelve referenced (round 10, R10-12).
+    //
+    // And 8 is a floor a producer must REACH, not one they all do: the honest
+    // comprehensive fixture carries 8 extracted pages across its whole 15-agent run
+    // (`red-team/d-legit.test.ts` § 2 and § 6), so no producer in it holds eight of
+    // its own. "which every producer reaches" was a universal over a number that had
+    // only been measured here (round 10, R10-16). Measured here rather than
     // described, because the comment that described it got the number wrong.
     const own = list('mine.example', 10);
     const shortlist = list('shortlist.example', 8);

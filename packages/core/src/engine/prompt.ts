@@ -282,10 +282,22 @@ export function rankEvidence<T extends { url: string }>(items: T[], max: number,
     // It is a TRADE, not a free win — "nothing an honest run relies on gets worse"
     // was written here and is false (round 9, R9-8). Promoting an overlapping item
     // grows `reserve`, and the reserve is taken out of `fetched`, which is served
-    // `max - reserve` first. The SNIPPET call needs 37 fetched-and-in-store urls to
-    // feel that, which no budget reaches; the PAGES call (`max = MAX_PAGES = 14`)
-    // reaches it at EIGHT, and then pages the agent PAID to fetch leave the dossier
-    // to make room for listings it was handed. Measured, both sides, in
+    // `max - reserve` first — and then pages the agent PAID to fetch leave the
+    // dossier to make room for listings it was handed.
+    //
+    // The threshold is a FORMULA and not a constant:
+    // `fetched > max - min(referenced.length, floor(max / 2))`. It FALLS as the
+    // writer is handed more listings, so the "37" written here was its value at
+    // exactly twelve referenced, quoted as if it were the floor (round 10, R10-12).
+    // Measured across `referenced.length` (scan reproduced at that finding): the
+    // SNIPPET call's floor is **25**, reached at 24+ referenced — which is the very
+    // figure R8-6 measured for a host cited repeatedly in the sections a writer is
+    // handed — and the PAGES call's is **8**, reached at 7+ referenced. Neither is
+    // out of reach on its face: `research-engine.ts` warns about an agent that
+    // fetched more pages than the 60 a checkpoint carries. What the honest
+    // comprehensive fixture does is a separate question with a separate answer —
+    // 8 extracted pages across the whole 15-agent run — so no producer THERE holds
+    // eight of its own (round 10, R10-16). Measured, both sides, in
     // `evidence-ranking.test.ts` — 10 own pages and 8 referenced gives 7 own + 7
     // referenced here, against 10 own + 4 referenced before.
     //

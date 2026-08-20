@@ -349,20 +349,33 @@ describeMock('B1 refute · the REFERENCED tier at production density (8 results 
     //     its own results could supply the whole shortlist, the ORDER would stop
     //     being measurable here.
     //
-    // NOT `const reserve = 0` — measured, full suite: 2 red, both in
-    // `evidence-ranking.test.ts`. This refiner never fetches, so its `fetched` tier
-    // is empty and the reserve holds back slots nothing competes for. The reserve
-    // bites only when `fetched` alone could fill `max - reserve`: 37 of 48 URLs both
-    // fetched by this loop and in the store for the SNIPPET call, which no budget
-    // reaches — but only **8** for the 14-slot PAGES call, which every producer
-    // reaches (round 9, R9-8). It is pinned at the unit level and by nothing end to
-    // end, and that is worth knowing rather than implying otherwise.
+    // NOT `const reserve = 0` — measured, full suite: **3 red, all in
+    // `evidence-ranking.test.ts`**. It was 2 when this sentence was written and
+    // `2f5ab43` added the third five lines below, in the same commit, without moving
+    // this line (round 10, R10-14). This refiner never fetches, so its `fetched`
+    // tier is empty and the reserve holds back slots nothing competes for. The
+    // reserve bites only when `fetched` alone could fill `max - reserve`, which is
+    // `fetched > max - min(referenced, floor(max/2))` — a formula, not a constant:
+    // the floor is **25** of 48 for the SNIPPET call (at 24+ referenced) and **8**
+    // of 14 for the PAGES call (at 7+ referenced). "37, which no budget reaches" was
+    // the snippet value at twelve referenced, and "8, which every producer reaches"
+    // is a floor the honest comprehensive fixture never reaches — it carries 8
+    // extracted pages across 15 agents (round 9, R9-8; round 10, R10-12/R10-16). It
+    // is pinned at the unit level and by nothing end to end, and that is worth
+    // knowing rather than implying otherwise.
     expect(referencedVisible, 'the listings the enricher is told to fill gaps in').toBe(12);
     // …and they are FIRST, which is the ordering itself rather than a count that
     // survives it: the twelve reserved slots are the twelve shortlisted urls, in
     // store order. A count can be reached by more than one arrangement; this cannot
     // (round 9, R9-11).
-    expect(ref.snippets.slice(0, 12).sort()).toEqual([...SHORTLISTED].sort());
+    //
+    // Without the `.sort()` this line carried on both sides until round 10: sorting
+    // both operands turns it back into a SET comparison, so "in store order" — said
+    // twice here and once in `2f5ab43`'s message — was pinned by nothing, and
+    // reversing the whole `referenced` tier was 0 red across the suite (R10-13). All
+    // twelve are the same host and `takeSpread` keeps store order among them, so the
+    // unsorted form is what the code already produces.
+    expect(ref.snippets.slice(0, 12)).toEqual(SHORTLISTED);
     // Eight of the twelve are also its OWN results, which is the point of the
     // overlap: they are counted once, in the referenced tier, and the slots left
     // still go to what it paid for. This number is NOT the evidence for the ordering

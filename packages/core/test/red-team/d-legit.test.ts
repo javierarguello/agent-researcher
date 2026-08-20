@@ -781,7 +781,7 @@ describe('5 · the $20 ceiling vs an honest comprehensive job vs the harness wor
 // =============================================================================
 
 describe('6 · what an honest comprehensive job stores', () => {
-  it('checkpoint 185k chars here (8 pages, 137k report); real bound ≈ 200k report + 350k sources + 60 pages × 6k + 13 × 1.5k handoffs ≈ 0.94MB, all in GCS — Firestore carries only progress/cost/summary', async () => {
+  it('checkpoint 184k chars here (8 pages, 136k report); real bound ≈ 200k report + 350k sources + 60 pages × 6k + 13 × 1.5k handoffs ≈ 0.94MB, all in GCS — Firestore carries only progress/cost/summary', async () => {
     const p = new HonestDiligentProvider(florida, { replan: true, fullBudget: true });
     install(p);
     const { out, checkpoint } = await run(florida, FLORIDA_COMPREHENSIVE);
