@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
@@ -29,7 +29,8 @@ const T = {
     f: { industry: 'Industry', location: 'Location', askingPriceMin: 'Asking price · Min', askingPriceMax: 'Asking price · Max', minRevenue: 'Min revenue', minCashFlow: 'Min cash flow', keywords: 'Keywords', preferredSources: 'Preferred sources' } as Record<string, string>,
     sba: 'SBA friendly', realEstate: 'Include real estate',
     optionalUseful: 'Optional but very useful', add: 'Add and press Enter',
-    industryWarn: 'No industry set — add one, or at least one keyword under Advanced, so the analysts know what to hunt for.',
+    industryWarn: 'No industry set — add one, so the analysts know what to hunt for.',
+    draftDropped: 'Part of your saved draft used a field this model no longer offers, and was cleared. Everything else was restored.',
     summary: 'Summary', pickIndustry: 'Pick an industry', mode: 'Mode', language: 'Language',
     cost: 'Cost', credits: 'credits', generate: 'Generate dossier', delivered: 'Delivered in 2–8 min',
     review: 'Review', confirmTitle: 'Confirm and generate', confirmSub: 'Review your dossier request before we start the research.', goBack: 'Go back', confirmGenerate: 'Confirm & generate',
@@ -60,7 +61,8 @@ const T = {
     f: { industry: 'Industria', location: 'Ubicación', askingPriceMin: 'Precio · Mín', askingPriceMax: 'Precio · Máx', minRevenue: 'Ingreso mín', minCashFlow: 'Flujo de caja mín', keywords: 'Palabras clave', preferredSources: 'Fuentes preferidas' } as Record<string, string>,
     sba: 'Apto SBA', realEstate: 'Incluir inmueble',
     optionalUseful: 'Opcional pero muy útil', add: 'Escribe y presiona Enter',
-    industryWarn: 'Sin industria — indica una, o al menos una palabra clave en Avanzado, para que los analistas sepan qué buscar.',
+    industryWarn: 'Sin industria — indica una, para que los analistas sepan qué buscar.',
+    draftDropped: 'Parte de tu borrador guardado usaba un campo que este modelo ya no ofrece y se descartó. Lo demás se restauró.',
     summary: 'Resumen', pickIndustry: 'Elige una industria', mode: 'Modo', language: 'Idioma',
     cost: 'Costo', credits: 'créditos', generate: 'Generar dossier', delivered: 'Listo en 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirma y genera', confirmSub: 'Revisa tu solicitud de dossier antes de empezar la investigación.', goBack: 'Volver', confirmGenerate: 'Confirmar y generar',
@@ -91,7 +93,8 @@ const T = {
     f: { industry: 'Secteur', location: 'Localisation', askingPriceMin: 'Prix · Min', askingPriceMax: 'Prix · Max', minRevenue: 'Revenu min', minCashFlow: 'Cash-flow min', keywords: 'Mots-clés', preferredSources: 'Sources préférées' } as Record<string, string>,
     sba: 'Compatible SBA', realEstate: "Inclure l'immobilier",
     optionalUseful: 'Optionnel mais très utile', add: 'Saisissez et appuyez sur Entrée',
-    industryWarn: 'Aucun secteur — indiquez-en un, ou au moins un mot-clé dans Avancé, pour que les analystes sachent quoi chercher.',
+    industryWarn: 'Aucun secteur — indiquez-en un, pour que les analystes sachent quoi chercher.',
+    draftDropped: 'Une partie de votre brouillon utilisait un champ que ce modèle ne propose plus ; elle a été effacée. Le reste a été restauré.',
     summary: 'Résumé', pickIndustry: 'Choisissez un secteur', mode: 'Mode', language: 'Langue',
     cost: 'Coût', credits: 'crédits', generate: 'Générer le dossier', delivered: 'Livré en 2–8 min',
     review: 'Vérifier', confirmTitle: 'Confirmer et générer', confirmSub: 'Vérifiez votre demande de dossier avant de lancer la recherche.', goBack: 'Retour', confirmGenerate: 'Confirmer et générer',
@@ -122,7 +125,8 @@ const T = {
     f: { industry: 'Setor', location: 'Localização', askingPriceMin: 'Preço · Mín', askingPriceMax: 'Preço · Máx', minRevenue: 'Receita mín', minCashFlow: 'Fluxo de caixa mín', keywords: 'Palavras-chave', preferredSources: 'Fontes preferidas' } as Record<string, string>,
     sba: 'Compatível SBA', realEstate: 'Incluir imóvel',
     optionalUseful: 'Opcional mas muito útil', add: 'Digite e pressione Enter',
-    industryWarn: 'Sem setor — indique um, ou ao menos uma palavra-chave em Avançado, para que os analistas saibam o que buscar.',
+    industryWarn: 'Sem setor — indique um, para que os analistas saibam o que buscar.',
+    draftDropped: 'Parte do seu rascunho usava um campo que este modelo já não oferece e foi descartada. O resto foi restaurado.',
     summary: 'Resumo', pickIndustry: 'Escolha um setor', mode: 'Modo', language: 'Idioma',
     cost: 'Custo', credits: 'créditos', generate: 'Gerar dossiê', delivered: 'Pronto em 2–8 min',
     review: 'Revisar', confirmTitle: 'Confirme e gere', confirmSub: 'Revise sua solicitação de dossiê antes de começar a pesquisa.', goBack: 'Voltar', confirmGenerate: 'Confirmar e gerar',
@@ -241,6 +245,8 @@ export function NewReport() {
   const [advOpen, setAdvOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** A saved draft carried a param this model no longer declares — see the restore below. */
+  const [draftDropped, setDraftDropped] = useState(false);
   // Pre-flight validation: the result + the exact params it was run for (so editing
   // re-triggers validation, but re-opening the dialog for the same params does not).
   const [pf, setPf] = useState<PreflightResult | null>(null);
@@ -334,7 +340,28 @@ export function NewReport() {
         // params object. A rename is a migration, even in localStorage.
         const saved = JSON.parse(raw) as Props | { params?: Props; freeText?: string };
         const isWrapped = saved && typeof saved === 'object' && 'params' in saved;
-        setParams((isWrapped ? (saved as { params?: Props }).params : (saved as Props)) ?? {});
+        // …and shape-tolerant in the other direction too: a draft written before a
+        // param LEFT the model carries a key the manifest no longer declares, and
+        // the API refuses such a request outright rather than stripping it (R7-8's
+        // rule, and the right one). Nothing renders the value, so the buyer cannot
+        // see it or delete it, and `clearDraft` only runs after a SUCCESSFUL create
+        // — so "Reload the page and try again" restored the same draft and the form
+        // 400ed forever. Every abandoned top-up from before `29f8593` was a bricked
+        // form (round 10, R10-9).
+        //
+        // The manifest is the migration boundary: keep what it declares, drop what
+        // it does not, and SAY that something was dropped — the buyer typed it, and
+        // a value that quietly disappears is the defect one door down.
+        const restored = ((isWrapped ? (saved as { params?: Props }).params : (saved as Props)) ?? {}) as Props;
+        const declared = Object.keys(schema.properties ?? {});
+        const kept: Props = {};
+        let dropped = 0;
+        for (const [k, v] of Object.entries(restored)) {
+          if (declared.includes(k)) kept[k] = v;
+          else dropped++;
+        }
+        setParams(kept);
+        if (dropped) setDraftDropped(true);
         if (isWrapped && typeof (saved as { freeText?: string }).freeText === 'string') {
           setFreeText((saved as { freeText: string }).freeText);
         }
@@ -632,6 +659,7 @@ export function NewReport() {
         )}
         {help(key) && <div className="desc">{help(key)}</div>}
         {key === subjectKey && needsSubject && <div className="nr-warn">{t.industryWarn}</div>}
+        {key === subjectKey && draftDropped && <div className="nr-warn" data-testid="draft-dropped">{t.draftDropped}</div>}
       </div>
     );
   };
@@ -770,6 +798,43 @@ export function NewReport() {
 
   // Step 2: actually create the job (moderation runs again server-side). When the
   // user kept the suggested fixes, we submit the corrected set the API returned.
+  /**
+   * The plan sentence, as it applies to the request ABOUT TO BE SENT.
+   *
+   * `pf.summary` is rendered by the API from `correctedParams ?? params`, at
+   * PREVIEW time. Two controls inside this very dialog then change the request
+   * without changing it: unticking "apply suggested fixes" ships the value the
+   * sentence just denied, and ticking a basic narrows the search the sentence
+   * describes as state-wide. Round 10 (R10-6) reproduced both — the modal reading
+   * "we will research ERCOT Far West" while `createJob` carried `ERCOT Wst`. That
+   * is R9-1's own damage statement, on the paths its fix did not walk: `c1397a9`
+   * moved the PREFERENCES line onto the live form and left the sentence above it
+   * server-rendered.
+   *
+   * Patched locally rather than re-previewed, deliberately. A second preflight per
+   * checkbox click costs an assisted-review attempt (R7-11's lesson, and the bill
+   * `c1397a9` refused to pay) — and the substitutions are exact strings the API
+   * already gave us: a correction's own `from`/`to`, and the field default the
+   * manifest declares.
+   *
+   * What it does NOT do: invent a sentence. If the default is not in the summary,
+   * nothing is replaced — the sentence is then silent about that field rather than
+   * wrong about it, and the accepted value is on screen in its own row below.
+   */
+  const summaryShown = useMemo(() => {
+    let out = pf?.summary ?? '';
+    if (!out) return out;
+    if (!applyFixes) {
+      for (const c of pf?.corrections ?? []) if (c.from && c.to) out = out.split(c.to).join(c.from);
+    }
+    for (const [field, value] of Object.entries(pf?.proposals?.basics ?? {})) {
+      if (!accepted[`basic:${field}`] || typeof value !== 'string') continue;
+      const dflt = (props[field] as { default?: unknown } | undefined)?.default;
+      if (typeof dflt === 'string' && dflt && out.includes(dflt)) out = out.split(dflt).join(value);
+    }
+    return out;
+  }, [pf, applyFixes, accepted, props]);
+
   async function submit(review: typeof pf | null = pf) {
     setError(null);
     try {
@@ -1070,7 +1135,7 @@ export function NewReport() {
               ) : validated && pf ? (
                 <div className="pf-result">
                   <div className="eyebrow" style={{ color: 'var(--accent)', marginBottom: 8 }}>{t.whatWeWillSearch}</div>
-                  <p className="soft" style={{ fontSize: 14, lineHeight: 1.6 }}>{pf.summary || t.confirmSub}</p>
+                  <p className="soft" style={{ fontSize: 14, lineHeight: 1.6 }} data-testid="confirm-summary">{summaryShown || t.confirmSub}</p>
 
                   {/* The preferences, rendered from the FORM and not from `pf`.
                       The server sends them as pairs (`pf.preferences`) and they are

@@ -272,6 +272,32 @@ describe('the directive block comes entirely from the manifest', () => {
     expect(boxes.at(-1)!.value, 'the old shape still loads').toBe('ERCOT West');
   });
 
+  it('drops a draft key the model no longer declares, and says it did (round 10, R10-9)', async () => {
+    // The one cohort `29f8593`'s own message named as live on ship day, and the one
+    // its remedy does not reach. `saveDraft` runs on the way to buy credits; the
+    // draft was restored VERBATIM; the field is not on the form, so the buyer cannot
+    // see it or delete it; the API refuses the request outright rather than
+    // stripping it (R7-8, and the right call); and `clearDraft` runs only after a
+    // SUCCESSFUL create — so "Reload the page and try again" restored the same draft
+    // and the form 400ed forever. One click cost two failed requests and a captcha
+    // token, in a hardcoded English sentence on a translated page.
+    // Mutation that reds this: `setParams(restored)`.
+    const { DRAFT_KEY } = await import('../src/api/client');
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      params: { gridRegion: 'ERCOT West', retiredField: ['absentee owner', 'seller financing'] },
+      freeText: '',
+    }));
+    renderForm();
+
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    const sent = hooks.preflight.mock.calls.at(-1)![0] as { params: Record<string, unknown> };
+    expect('retiredField' in sent.params, 'the undeclared key never reaches the API').toBe(false);
+    expect(sent.params.gridRegion, 'and everything the manifest does declare survives').toBe('ERCOT West');
+    // …and it is not silent: they typed it, into a field that has since gone.
+    expect(screen.getByTestId('draft-dropped')).toBeTruthy();
+  });
+
   it('still sends the notes when the buyer switched to picking by hand', async () => {
     renderForm();
     await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
@@ -491,6 +517,60 @@ describe('a rate-limited preview does not become an order', () => {
     await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
 
     await waitFor(() => expect(hooks.createJob).toHaveBeenCalled());
+  });
+
+  it('the plan sentence follows the request, not the preview — declining the fixes rewrites it (round 10, R10-6)', async () => {
+    // `c1397a9` fixed the PREFERENCES line and left the sentence above it, which the
+    // API renders from `correctedParams ?? params` at preview time. Unticking
+    // "apply suggested fixes" — a control inside the same modal — then ships the
+    // value the sentence just denied, and nothing re-renders. For the flagship the
+    // correctable fields are `location` and `industry`, i.e. exactly the subject and
+    // the place of that sentence, so there is no field where this is cosmetic.
+    // Mutation that reds this: render `pf.summary` in the dialog.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, quality: 'ok', issues: [], assist: { state: 'on' },
+      summary: 'We will research parcels in ERCOT Far West.',
+      corrections: [{ field: 'gridRegion', from: 'ERCOT Wst', to: 'ERCOT Far West' }],
+      correctedParams: { gridRegion: 'ERCOT Far West' },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT Wst');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    expect(screen.getByTestId('confirm-summary').textContent, 'as previewed').toContain('ERCOT Far West');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /apply suggested fixes/i }));
+    expect(screen.getByTestId('confirm-summary').textContent, 'and now as it will run').toContain('ERCOT Wst');
+    expect(screen.getByTestId('confirm-summary').textContent).not.toContain('Far West');
+
+    await userEvent.click((await screen.findAllByRole('button', { name: /generate dossier/i })).at(-1)!);
+    await waitFor(() => expect(hooks.createJob).toHaveBeenCalled());
+    const params = (hooks.createJob.mock.calls.at(-1)?.[0] as { params: Record<string, unknown> }).params;
+    expect(params.gridRegion, 'the screen and the request agree').toBe('ERCOT Wst');
+    expect(hooks.preflight, 'and no second review was bought for a checkbox').toHaveBeenCalledTimes(1);
+  });
+
+  it('…and ticking a basic narrows it, from the default the manifest declares (round 10, R10-6)', async () => {
+    // The other half: a basic fills a field the buyer left empty, so the sentence
+    // was rendered while it still held the schema default. `parcelUse` defaults to
+    // `Somewhere` in this fixture, which is why the client can substitute without
+    // knowing anything about the model — the default is in the manifest it renders
+    // the form from.
+    // Mutation that reds this: drop the basics branch from `summaryShown`.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
+      summary: 'We will research parcels in Somewhere.',
+      proposals: { directives: {}, keywords: [], basics: { parcelUse: 'Hialeah' }, quotes: { parcelUse: 'in Hialeah' } },
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await screen.findByTestId('proposals');
+    expect(screen.getByTestId('confirm-summary').textContent).toContain('Somewhere');
+
+    await userEvent.click(screen.getByTestId('accept-basic-parcelUse'));
+    expect(screen.getByTestId('confirm-summary').textContent, 'the sentence narrows with the request').toContain('Hialeah');
   });
 
   it('…with the PREVIOUS review applied only where it still fits (R8-12)', async () => {
