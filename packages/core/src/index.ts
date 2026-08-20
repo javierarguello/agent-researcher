@@ -105,6 +105,7 @@ export type { LogContext, JobLogger, Severity } from './obs/log.js';
 
 // Report modes (public cost/scope knob) + internal depth
 export { modeShapes, effectiveTemplate, agentTurns, type ModeShape } from './mode-shape.js';
+export { findLink, paramsWithLinks } from './moderation/links.js';
 export { REPORT_MODES, modeParamSchema, resolveMode, modesOf, defaultModeOf, isModeKey, validateModes, DEFAULT_MODES, creditsForMode, maxCostForMode, ceilingFromCredits } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
 export { LANGUAGE_LABELS } from './languages.js';
@@ -220,6 +221,7 @@ export { screeningForms, similarity, sanitizeProposal, hasControlChars } from '.
 
 import { z } from 'zod';
 import { modesOf } from './mode.js';
+import { paramsWithLinks } from './moderation/links.js';
 import { getTemplate } from './templates/registry.js';
 
 export interface ValidatedRequest {
@@ -308,6 +310,23 @@ export function validateRequest(body: unknown): ValidatedRequest {
     if (!offered.includes(String(askedMode))) {
       throw new Error(`This model does not offer the "${String(askedMode)}" mode. It offers: ${offered.join(', ')}.`);
     }
+  }
+
+  // A link in what the buyer typed. We choose the sources; they do not.
+  //
+  // Checked BEFORE the schema so the message is about the link rather than about
+  // whatever else the request got wrong, and checked on the RAW params so a value
+  // the schema would coerce or default cannot smuggle one past.
+  //
+  // Not a moderation strike: someone pasting a broker's URL into "industry" is
+  // being helpful. Malice through this channel still has to say something the
+  // pre-screen catches to earn one.
+  const linked = paramsWithLinks(sent);
+  if (linked.length) {
+    throw new Error(
+      `Links are not accepted in ${linked.join(', ')} — we find and check the sources ourselves. ` +
+        'Describe what you are looking for instead.',
+    );
   }
 
   const parsed = template.paramsSchema.safeParse(raw.params ?? {});
