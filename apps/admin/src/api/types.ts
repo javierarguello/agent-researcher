@@ -311,9 +311,33 @@ export interface PricingAddon {
   defaultCredits: number;
   credits: number;
 }
+/**
+ * The two numbers a job's cost ceiling is derived from, and the ceilings they
+ * produce. The ceilings are returned rather than recomputed here on purpose: they
+ * are what the engine actually enforces, `maxJobCostUsd` clamp included, and an
+ * admin changing a price needs to see what it did — not this app's guess at it.
+ */
+export interface PricingEconomics {
+  creditFloorUsd: number;
+  /** 'stored' = set for this model (by hand or from Stripe); 'default' = code seed. */
+  creditFloorSource: 'stored' | 'default';
+  expectedProfitPct: number;
+  /** The deployment-wide clamp. A per-model ceiling can never exceed it. */
+  maxJobCostUsd: number;
+  ceilings: Array<{ key: string; ceilingUsd: number }>;
+}
 export interface PricingView {
   templateId: string;
   modes: PricingMode[];
   addons: PricingAddon[];
   updatedAt: string | null;
+  economics: PricingEconomics;
+}
+/** What the "read from Stripe" tool answers. */
+export interface CreditFloorResult {
+  creditFloorUsd: number;
+  applied: boolean;
+  before: number | null;
+  packs: Array<{ planId: string; priceUsd: number; credits: number; perCredit: number }>;
+  pricing: PricingView;
 }

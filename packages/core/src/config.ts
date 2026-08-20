@@ -386,12 +386,18 @@ export const config = {
     /**
      * The gross margin, in PERCENT, a job must leave on the report it produced:
      *   ceiling = credits × creditFloorUsd × (1 − expectedProfitPct / 100)
-     * At 30 a job may spend at most 70% of what its report earned before it is held
-     * for an admin, so a delivered job cannot be a loss however badly it goes. Both
-     * modes used to share a flat $20, which was ABOVE what either report earns —
-     * reaching the ceiling WAS the loss (D1).
+     * At 40 (Javier, 2026-08-20) a job may spend at most 60% of what its report
+     * earned before it is held for an admin, so a delivered job cannot be a loss
+     * however badly it goes. Both modes used to share a flat $20, which was ABOVE
+     * what either report earns — reaching the ceiling WAS the loss (D1).
+     *
+     * Measured headroom at 40, so the policy is not fighting the honest cost:
+     * comprehensive gets **$8.70** against a real $3.885843 run (2.2x) and essential
+     * **$3.87** against an inferred $1.92 (2.0x). Both comfortable. A model may
+     * override it in `/admin/pricing`; this is what one that never has falls back
+     * to.
      */
-    expectedProfitPct: float('EXPECTED_PROFIT_PCT', 30),
+    expectedProfitPct: float('EXPECTED_PROFIT_PCT', 40),
   },
   search: {
     braveApiKey: str('BRAVE_API_KEY'),

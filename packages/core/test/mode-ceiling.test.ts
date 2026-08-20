@@ -44,12 +44,15 @@ describe('the ceiling is derived from what the report sells for', () => {
     // mutation this catches.
     const repriced: ModelPricing = { modes: { essential: 16 } };
     expect(ceilingOf('essential', repriced)).toBeCloseTo(ceilingOf('essential') * 2, 6);
-    // Doubling COMPREHENSIVE instead does not double the ceiling, and that is the
-    // deployment lever working rather than a bug: 36 credits derives $20.31 and
-    // `MAX_JOB_COST_USD` clamps it to $20. Written down because it surprised this
-    // test first — above roughly 35 credits the per-model number stops being the
-    // one in force, and whoever raises a price that far should know it.
-    expect(ceilingOf('comprehensive', { modes: { comprehensive: 36 } })).toBe(config.workflow.maxJobCostUsd);
+    // …but only up to the deployment lever. Above a certain price the per-model
+    // number stops being the one in force and `MAX_JOB_COST_USD` is, which is the
+    // lever working rather than a bug — and worth knowing before raising a price
+    // that far. DERIVED, not the `36` this first said: that was the threshold at a
+    // 30% expected profit and stopped being one at 40%.
+    const perCredit = config.pricing.creditFloorUsd * (1 - config.pricing.expectedProfitPct / 100);
+    const clampsAt = Math.ceil(config.workflow.maxJobCostUsd / perCredit);
+    expect(ceilingOf('comprehensive', { modes: { comprehensive: clampsAt } })).toBe(config.workflow.maxJobCostUsd);
+    expect(ceilingOf('comprehensive', { modes: { comprehensive: clampsAt - 1 } })).toBeLessThan(config.workflow.maxJobCostUsd);
     // …and the same for the floor and the margin, the other two inputs.
     const cheaper: ModelPricing = { creditFloorUsd: config.pricing.creditFloorUsd / 2 };
     expect(ceilingOf('essential', cheaper)).toBeCloseTo(ceilingOf('essential') / 2, 6);

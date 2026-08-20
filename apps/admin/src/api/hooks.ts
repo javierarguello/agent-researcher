@@ -8,6 +8,7 @@ import type {
   JobDetail,
   LedgerEntry,
   PricingView,
+  CreditFloorResult,
   TemplateManifest,
 } from './types';
 
@@ -61,6 +62,25 @@ export function useApps() {
   return useQuery({ queryKey: ['apps'], queryFn: () => api<{ apps: AppPublic[] }>('/admin/apps') });
 }
 
+/**
+ * Read the live Stripe packs and compute this model's credit floor.
+ *
+ * A TOOL the admin triggers, not something that happens on its own: the stored
+ * figure is what every cost ceiling for the model derives from, so it moves when a
+ * person asks. `apply: false` answers "what would it be?" without writing.
+ */
+export function useRefreshCreditFloor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ templateId, appId, apply }: { templateId: string; appId: string; apply: boolean }) =>
+      api<CreditFloorResult>(`/admin/pricing/${encodeURIComponent(templateId)}/credit-floor`, {
+        method: 'POST',
+        body: { appId, apply },
+      }),
+    onSuccess: (_res, { templateId }) => qc.invalidateQueries({ queryKey: ['pricing', templateId] }),
+  });
+}
+
 export function usePricing(templateId: string) {
   return useQuery({
     queryKey: ['pricing', templateId],
@@ -71,7 +91,15 @@ export function usePricing(templateId: string) {
 export function useSetPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ templateId, body }: { templateId: string; body: { modes?: Record<string, number>; addons?: Record<string, number> } }) =>
+    mutationFn: ({ templateId, body }: {
+      templateId: string;
+      body: {
+        modes?: Record<string, number>;
+        addons?: Record<string, number>;
+        creditFloorUsd?: number;
+        expectedProfitPct?: number;
+      };
+    }) =>
       api<PricingView>(`/admin/pricing/${encodeURIComponent(templateId)}`, { method: 'PUT', body }),
     onSuccess: (_res, { templateId }) => {
       qc.invalidateQueries({ queryKey: ['pricing', templateId] });

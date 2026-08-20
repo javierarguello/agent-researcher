@@ -1,29 +1,74 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Divider, Group, Loader, NumberInput, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Button, Card, Divider, Group, Loader, NumberInput, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
-import { usePricing, useSetPricing, useTemplates } from '../api/hooks';
+import { useApps, usePricing, useRefreshCreditFloor, useSetPricing, useTemplates } from '../api/hooks';
 import { ApiError } from '../api/client';
+
+const usd = (n: number) => `$${n.toFixed(2)}`;
 
 function PricingCard({ templateId, name }: { templateId: string; name: string }) {
   const pricing = usePricing(templateId);
   const save = useSetPricing();
+  const refresh = useRefreshCreditFloor();
+  const apps = useApps();
   const [modes, setModes] = useState<Record<string, number>>({});
   const [addons, setAddons] = useState<Record<string, number>>({});
+  const [floor, setFloor] = useState<number | undefined>();
+  const [profit, setProfit] = useState<number | undefined>();
 
   useEffect(() => {
     if (pricing.data) {
       setModes(Object.fromEntries(pricing.data.modes.map((m) => [m.key, m.credits])));
       setAddons(Object.fromEntries(pricing.data.addons.map((a) => [a.key, a.credits])));
+      setFloor(pricing.data.economics.creditFloorUsd);
+      setProfit(pricing.data.economics.expectedProfitPct);
     }
   }, [pricing.data]);
 
   async function onSave() {
     try {
-      await save.mutateAsync({ templateId, body: { modes, addons } });
+      await save.mutateAsync({
+        templateId,
+        body: {
+          modes,
+          addons,
+          ...(floor !== undefined ? { creditFloorUsd: floor } : {}),
+          ...(profit !== undefined ? { expectedProfitPct: profit } : {}),
+        },
+      });
       notifications.show({ message: `Pricing saved for ${templateId}`, color: 'teal' });
     } catch (err) {
+      notifications.show({ message: err instanceof ApiError ? err.message : 'Failed', color: 'red' });
+    }
+  }
+
+  /**
+   * Read the packs off Stripe and store the floor they imply.
+   *
+   * `appId` is which catalog to read — credits are sold per app, and a model
+   * offered through two apps has two floors. The first app is the common case and
+   * the only one this picker needs until a second appears.
+   */
+  async function onReadStripe() {
+    const appId = apps.data?.apps?.[0]?.appId;
+    if (!appId) {
+      notifications.show({ message: 'No app to read a credit catalog from.', color: 'red' });
+      return;
+    }
+    try {
+      const res = await refresh.mutateAsync({ templateId, appId, apply: true });
+      setFloor(res.creditFloorUsd);
+      const cheapest = res.packs.reduce((a, b) => (a.perCredit <= b.perCredit ? a : b));
+      notifications.show({
+        color: 'teal',
+        message: `Credit floor ${usd(res.creditFloorUsd)} — cheapest pack "${cheapest.planId}" (${usd(cheapest.priceUsd)} / ${cheapest.credits} credits).`,
+      });
+    } catch (err) {
+      // A 409 here is the useful one: an empty or unusable catalog. It changes
+      // nothing on purpose — a floor of zero would derive a ceiling of zero and
+      // hold every job of this model.
       notifications.show({ message: err instanceof ApiError ? err.message : 'Failed', color: 'red' });
     }
   }
@@ -79,6 +124,77 @@ function PricingCard({ templateId, name }: { templateId: string; name: string })
         </Group>
       )}
       <Text size="xs" c="dimmed" mt="sm">Add-ons are defined in the model; here you only set their price. Generators ship later.</Text>
+
+      <Divider label="Economics — what a job may spend" labelPosition="left" my="sm" />
+      <Group align="flex-start">
+        <NumberInput
+          label="Credit floor (USD)"
+          description={data.economics.creditFloorSource === 'stored' ? 'set for this model' : 'code default — never read from Stripe'}
+          min={0.0001}
+          max={1000}
+          step={0.01}
+          decimalScale={4}
+          w={220}
+          value={floor ?? data.economics.creditFloorUsd}
+          onChange={(v) => setFloor(typeof v === 'number' ? v : undefined)}
+        />
+        <Stack gap={4} pt={26}>
+          <Button size="compact-sm" variant="light" onClick={onReadStripe} loading={refresh.isPending}>
+            Read from Stripe
+          </Button>
+          <Text size="xs" c="dimmed">cheapest pack, live</Text>
+        </Stack>
+        <NumberInput
+          label="Expected profit (%)"
+          description="margin a job must leave on its report"
+          min={0}
+          max={99}
+          w={220}
+          value={profit ?? data.economics.expectedProfitPct}
+          onChange={(v) => setProfit(typeof v === 'number' ? v : undefined)}
+        />
+      </Group>
+
+      {/* The point of the whole section: what those two numbers DO. Read off the
+          API rather than recomputed here — it returns the figure the engine
+          enforces, clamp included, and a second implementation of the formula in
+          the admin would be one that can disagree with the one that bills. */}
+      <Table mt="sm" withTableBorder>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Tier</Table.Th>
+            <Table.Th>Earns</Table.Th>
+            <Table.Th>A job may spend</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {data.economics.ceilings.map((c) => {
+            const credits = modes[c.key] ?? data.modes.find((m) => m.key === c.key)?.credits ?? 0;
+            const earns = credits * data.economics.creditFloorUsd;
+            const clamped = c.ceilingUsd >= data.economics.maxJobCostUsd;
+            return (
+              <Table.Tr key={c.key}>
+                <Table.Td><Mono size="xs">{c.key}</Mono></Table.Td>
+                <Table.Td>{usd(earns)}</Table.Td>
+                <Table.Td>
+                  <Group gap={6}>
+                    {usd(c.ceilingUsd)}
+                    {clamped && (
+                      <Tooltip label={`Capped by the deployment-wide MAX_JOB_COST_USD of ${usd(data.economics.maxJobCostUsd)}.`}>
+                        <Badge size="xs" color="orange" variant="light">capped</Badge>
+                      </Tooltip>
+                    )}
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+      <Text size="xs" c="dimmed" mt={6}>
+        A job that reaches its ceiling is HELD for review, not failed — the credits stay spent and the
+        checkpoint intact. The figures above update on save.
+      </Text>
     </Card>
   );
 }
