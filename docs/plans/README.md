@@ -17,8 +17,14 @@ The convention, so items stay useful rather than decaying into a wish list:
 - **Product decisions are labelled as such.** Some entries here are not bugs;
   they are numbers someone has to choose.
 
+**Start at [handoff.md](handoff.md).** It is the entry point: the state, the four
+commands that get you running, and pointers to everything below. Every other file
+here is a backlog, not a starting place.
+
 | File | What it covers |
 | --- | --- |
-| [abuse-and-cost.md](abuse-and-cost.md) | Findings from the July 2026 adversarial review of the limits, quota and token-spend surface. |
-| [deep-review.md](deep-review.md) | The rolling adversarial review of the engine, money, tenancy and prompts (rounds 1-7). |
+| [handoff.md](handoff.md) | **Read first.** Where the work stands, what is open, and the rules the rounds have paid for. |
+| [deep-review.md](deep-review.md) | The rolling adversarial review of the engine, money, tenancy and prompts — rounds 1-10, every finding with the hash that closed it. The last round's "How to continue" is the ordered next-actions list. |
+| [m-red-team.md](m-red-team.md) | The red-team runbook; raw reports in [m-red-team-reports/](m-red-team-reports/), one directory per round. |
 | [product-backlog.md](product-backlog.md) | Things to build, as opposed to things that are broken. |
+| [abuse-and-cost.md](abuse-and-cost.md) | Findings from the July 2026 adversarial review of the limits, quota and token-spend surface. |

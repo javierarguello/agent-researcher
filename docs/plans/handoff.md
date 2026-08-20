@@ -26,6 +26,25 @@ pointers.
 Read the "How to continue" section first. It is rewritten at the end of every round
 and it is the only place that is current by construction.
 
+## Starting cold — the four commands
+
+```bash
+npm ci                       # a fresh worktree has no node_modules and no vitest
+npm test                     # 1196 passed, 0 failed in Javier's checkout (see State)
+npm run typecheck            # must be clean; it catches what the suites cannot
+npx tsx docs/plans/m-red-team-reports/k-census-2026-08-19/run.ts   # the §K census
+```
+
+`npm test` chains the five workspaces with `&&`. A red core suite means the other
+four never run, so **count the RED, never the passed** — and when you measure a
+mutation, run the workspaces that actually exercise the code, not just the first one
+that goes red.
+
+Nothing in the suites spends money: `packages/core/test/no-paid-calls.ts` throws on
+a real paid call, Firestore and Cloud Storage are mocked, and `TEST_LLM=ollama`
+points every alias at a local model. If a test of yours needs a model, that is the
+only tier you may use.
+
 ---
 
 ## State, 2026-08-20
@@ -53,8 +72,19 @@ and it is the only place that is current by construction.
   the two checkouts (775 vs 777). Measure yours and say which one it is — round 10's
   R10-28 caught this line 19 tests stale, in a commit that edited the line beneath
   it. `npm run typecheck` clean.
-- **Next is the round-10 fix batch, then round 11** against `20f361b..HEAD`. The
-  brief to copy is `m-red-team-reports/round10/BRIEF.md`; its three predecessors'
+- **Everything through `cca295b` is pushed to `origin/main`** (2026-08-20). Pushing
+  to `main` deploys DEV — the API to Cloud Run and both SPAs to Firebase Hosting,
+  all three behind `verify.yml`. Prod is a push to `deploy-prod`, which nothing in
+  this batch touched.
+- **Next: round 11, against `2a01ada..cca295b`** — the round-10 P1 fix batch, which
+  nobody has reviewed. That is deliberate and it is where this repo's record says
+  the next defects are: rounds 8, 9 and 10 each found the previous round's FIXES
+  shipping holes, twice inside the very line of the fix. Two things in the range are
+  new code rather than repairs and deserve the suspicion `29f8593` and `63fd892`
+  earned in round 10 — the admin health strip (`b4ee573`: a new endpoint field, a new
+  counter, and the thinnest test suite in the repo) and the client-side summary
+  patching (`1b16eae`: it substitutes strings into a sentence the server wrote).
+  The brief to copy is `m-red-team-reports/round10/BRIEF.md`; its three predecessors'
   corrections all held (a PRIVATE scratchpad per reviewer, the sha in each agent's
   PROMPT, the clean-worktree total stated as measured). Two more to add, paid for in
   round 10: tell reviewers to **count red from a runner that does not stop at the
@@ -122,6 +152,7 @@ while adding an engineering item to it (R10-31).
   and evasion, the classifier owns semantics. Reasoning and what the decision does
   NOT license are in `deep-review.md` § K; the census is runnable at
   `m-red-team-reports/k-census-2026-08-19/`.
+
 ## Working agreements
 
 Paired adversarial agents with opposed lenses; one refuter per finding, told to
@@ -133,4 +164,12 @@ message rather than only the change. Tests never spend money
 
 Two mechanical ones that cost time when forgotten: grep the file after a scripted
 mutation to confirm the substitution applied, and never `git checkout` a file to
-undo a mutation while other uncommitted work lives in it.
+undo a mutation while other uncommitted work lives in it (copy it aside first —
+that is what the scratchpad is for).
+
+And one earned on 2026-08-20, which is not a review rule but a testing one:
+**drive the production entry point, not the unit.** R10-37 — a whole feature that
+could never fire — survived every test around it because all of them called
+`acceptProposals` with hand-built params, while the API calls `validateRequest`
+first and Zod fills in the defaults. If a test builds the input that reaches the
+function under test, it is testing your model of the caller.
