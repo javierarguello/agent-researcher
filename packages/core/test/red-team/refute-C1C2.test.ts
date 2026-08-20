@@ -53,6 +53,22 @@ describe('C2 · the clip, in the renderer that prints it (R7-24)', () => {
     expect(visible).toMatch(/…$/);
   });
 
+  it('and a long HOST is clipped too — the branch R9-22 did not look at (round 10, R10-8)', () => {
+    // "It was the one path that returned an unbounded string" was false: `cut()`
+    // was applied to the label and to the url fallback, and to `host` on neither
+    // return. Both of R9-22's fixtures use the empty-host `javascript:` url, so the
+    // bound on this branch was unreachable from either of them — which is exactly
+    // how it shipped. Worse than the case that was fixed, too: `safeHref` accepts
+    // `https://`, so this string is the TEXT OF A LIVE ANCHOR.
+    // Mutation that reds this: `return host || cut(s.url)`.
+    const url = `https://${'a'.repeat(4000)}.test/x`;
+    for (const s of [{ id: 1, url }, { id: 2, url, label: 'Official registry' }]) {
+      const html = pdf({ sources: { items: [s] } });
+      const visible = html.match(/<ul class="sources">(.*?)<\/ul>/s)![1]!.replace(/<[^>]+>/g, '');
+      expect([...visible].length, JSON.stringify(s.label ?? null)).toBeLessThan(400);
+    }
+  });
+
   it('and the honest long row survives it: the identifying half is what is kept', () => {
     // The longest real label across the two July runs (373 rows): 167 code points,
     // the only one over the cap. The number in the comment justifying 160 said "real

@@ -305,6 +305,23 @@ describe('C-attack · what a link TITLE and a long url carry to the buyer (round
     expect([...(li.textContent ?? '')].length, 'the row is bounded like the tooltip').toBeLessThanOrEqual(162);
   });
 
+  it('and a long HOST is clipped too, in the row AND as the anchor text (round 10, R10-8)', () => {
+    // The sibling of the row above, and worse: that one is a span because
+    // `safeHref` refuses `javascript:`, while this one is a LIVE link — the host is
+    // the anchor's own text. `new URL().hostname` has no length limit (the WHATWG
+    // parser does not enforce IDNA's 253 octets), and R9-22 clipped the label and
+    // the url fallback but never `host`, on either of the two returns, in either
+    // copy. Its two fixtures both used the empty-host url, so neither could see it.
+    // Mutation that reds this: `return host || cut(s.url)` in `safe-href.ts`.
+    const url = `https://${'a'.repeat(4000)}.test/x`;
+    const { container } = render(
+      <ReportViewer report={{ sources: { items: [{ id: 1, url }] } }} sections={[{ key: 'sources', title: 'Sources' }]} lang="en" />,
+    );
+    const li = container.querySelector('ul.rv-sources li')!;
+    expect(li.querySelector('a'), 'https is accepted, so this one IS a link').not.toBeNull();
+    expect([...(li.textContent ?? '')].length, 'the row is bounded like the tooltip').toBeLessThanOrEqual(200);
+  });
+
   it('the Sources tooltip clips by CODE POINT, and the bound is reachable — a long url used to end it in half an emoji', () => {
     // `2c346de` fixed exactly this for `progress.detail` in the same batch, and
     // `clientProgress` carries the comment "By CODE POINT, like `sourceLabel` and

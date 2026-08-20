@@ -60,11 +60,19 @@ export function sourceLabel(s: { url: string; label?: string }): string {
     return c.length > SOURCE_LABEL_MAX ? `${c.slice(0, SOURCE_LABEL_MAX - 1).join('')}…` : x;
   };
   const clipped = cut(label);
-  // The fallback is clipped too. A url that `new URL()` parses but whose hostname is
-  // empty — `javascript:void("AAAA…")` — with no label put the WHOLE string on the
-  // page as the row's text, 4,020 characters of it, while the tooltip beside it was
-  // bounded at 320 (round 9, R9-22). `safeHref` refuses the scheme so it is a span
-  // and not a link, but the text is on screen either way.
-  if (!clipped) return host || cut(s.url);
-  return host && clipped.toLowerCase() !== host ? `${host} — ${clipped}` : clipped;
+  // Every branch is clipped, which took two rounds to be true. R9-22 fixed the url
+  // fallback (an empty-host `javascript:` url printed 4,020 characters beside a
+  // tooltip bounded at 320) and claimed it was "the one path that returned an
+  // unbounded string". `host` is the value on BOTH remaining returns and
+  // `new URL().hostname` has no length limit, so a `https://` source with a
+  // 4,000-character hostname printed 4,006 — as a LIVE anchor here, because
+  // `safeHref` accepts the scheme (round 10, R10-8). Keep this file and
+  // `packages/core/src/pdf/report-html.ts` identical; the two copies exist because
+  // the PDF cannot import from the SPA, not because they may differ.
+  //
+  // The dedupe still compares the WHOLE host: a label that equals a clipped host is
+  // not the same question.
+  const shortHost = cut(host);
+  if (!clipped) return shortHost || cut(s.url);
+  return host && clipped.toLowerCase() !== host ? `${shortHost} — ${clipped}` : clipped;
 }

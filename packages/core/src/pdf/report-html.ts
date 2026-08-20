@@ -141,7 +141,15 @@ export function makeNumFmt(lang: string, currency = 'USD'): NumFmt {
  * `esc()` has already run, so a double quote is `&quot;` here and a single quote is
  * still `'`.
  */
-const MD_TITLE = String.raw`(?:\s+(?:&quot;[^)]*?&quot;|'[^')]*?'|\([^)]*?\)))?`;
+// Each alternative excludes its OWN delimiter as well as `)`. The double-quote one
+// did not: `&quot;[^)]*?&quot;` is lazy but not anchored to a single quoted run, so
+// against `"a" KEEP "c")` the short match fails the following `\)` and the engine
+// extends it across the second pair. In the LINK rule that only over-discards a
+// title; in the IMAGE strip, whose replacement is '', it deletes `KEEP` from the
+// PDF while the viewer shows every character of it — R9-3's silent-deletion
+// primitive, inherited by the neighbouring rule when the definition was shared
+// (round 10, R10-7). `&quot;` is six characters, so the exclusion is a lookahead.
+const MD_TITLE = String.raw`(?:\s+(?:&quot;(?:(?!&quot;)[^)])*&quot;|'[^')]*?'|\([^)]*?\)))?`;
 
 /** Minimal, SAFE Markdown → HTML (escape first, then a few inline/block rules). */
 function mdInline(s: string): string {
@@ -399,13 +407,22 @@ export function sourceLabel(s: { url: string; label?: string }): string {
     return c.length > SOURCE_LABEL_MAX ? `${c.slice(0, SOURCE_LABEL_MAX - 1).join('')}…` : x;
   };
   const clipped = cut(label);
-  // The fallback is clipped too. A url that `new URL()` parses but whose hostname is
-  // empty — `javascript:void("AAAA…")` — with no label put the WHOLE string on the
-  // page as the row's text, 4,020 characters of it, while the tooltip beside it was
-  // bounded at 320 (round 9, R9-22). `safeHref` refuses the scheme so it is a span
-  // and not a link, but the text is on screen either way.
-  if (!clipped) return host || cut(s.url);
-  return host && clipped.toLowerCase() !== host ? `${host} — ${clipped}` : clipped;
+  // Every branch is clipped, which took two rounds to be true. R9-22 fixed the url
+  // fallback — a url that `new URL()` parses but whose hostname is empty,
+  // `javascript:void("AAAA…")`, put 4,020 characters on the page while the tooltip
+  // beside it was bounded at 320 — and wrote "it was the one path that returned an
+  // unbounded string". It was not: `host` is the value on BOTH remaining returns and
+  // `new URL().hostname` has no length limit (the WHATWG parser does not enforce
+  // IDNA's 253 octets). A `https://` source with a 4,000-character hostname put
+  // 4,006 characters on the page — and unlike R9-22's case `safeHref` ACCEPTS the
+  // scheme, so that is the text of a live anchor (round 10, R10-8). Both of R9-22's
+  // fixtures used the empty-host url, so neither could see it.
+  //
+  // The dedupe still compares the WHOLE host: a label that equals a clipped host is
+  // not the same question.
+  const shortHost = cut(host);
+  if (!clipped) return shortHost || cut(s.url);
+  return host && clipped.toLowerCase() !== host ? `${shortHost} — ${clipped}` : clipped;
 }
 
 function sourceListHtml(items: Source[], t: PdfTheme): string {

@@ -91,6 +91,27 @@ describe('C-attack · PDF — Markdown images (report-html.ts:123 mdInline)', ()
     expect(html, 'the second link survived').toContain('https://y.test/2');
     expect(html, 'and so did the prose between them').toContain('and');
   });
+
+  it('SOUND · and the IMAGE strip does not delete it either — the same swallow, in the rule that removes (round 10, R10-7)', () => {
+    // `0ff22ef` fixed the link rule and gave the image strip the same shared title
+    // definition. `&quot;[^)]*?&quot;` is lazy but not anchored to ONE quoted run:
+    // the short match fails the following `\)`, so it extends across the second
+    // pair and succeeds — and where the link rule only discards a title, the strip
+    // replaces everything it matched with ''. The viewer keeps every character; the
+    // PDF, which is the copy the buyer keeps and forwards, loses the sentence with
+    // no marker. That is the silent-deletion primitive R9-3 closed, inherited by
+    // the neighbouring rule.
+    // Mutation that reds this: `&quot;[^)]*?&quot;` in MD_TITLE.
+    const html = pdf(
+      { findings: { overview: 'KEEP1 ![alt](https://beacon.attacker.test/x.png "a" KEEP-MIDDLE "c") KEEP2', listings: [], risks: [] } },
+      [{ key: 'findings', title: 'Findings' }],
+    );
+    expect(html, 'the prose between the two quote pairs').toContain('KEEP-MIDDLE');
+    expect(html).toContain('KEEP1');
+    expect(html).toContain('KEEP2');
+    // …and the reason the strip exists is untouched: no anchor at the beacon.
+    expect(html).not.toContain('href="https://beacon.attacker.test');
+  });
 });
 
 // ── The PDF: raw hrefs ─────────────────────────────────────────────────────
