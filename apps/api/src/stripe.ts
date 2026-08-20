@@ -29,6 +29,16 @@ export function stripe(): Stripe {
  */
 export interface StripePlan {
   planId: string;
+  /**
+   * The research model this pack is sold FOR, written by the system.
+   *
+   * Absent means "every model this app offers", which is what every pack created
+   * before this field is — they are not broken and must keep selling. A pack that
+   * names a model is listed only for it, which is also what makes a model's credit
+   * FLOOR honest: the ceiling for a model derives from the cheapest credit that
+   * model is actually sold at, not from the cheapest credit anywhere in the app.
+   */
+  templateId?: string;
   name: string;
   priceUsd: number;
   credits: number;
@@ -47,6 +57,8 @@ export interface StripePlan {
  * … (pipe-separated for features). The base `sub`/`features` (and the native
  * `description`) are the English/default fallback. Pass `lang` to pick a locale.
  */
+const BASE_LANG = 'en';
+
 function localized(md: Record<string, string>, base: string, lang: string): string | undefined {
   return md[`${base}_${lang}`] ?? md[base] ?? undefined;
 }
@@ -59,6 +71,7 @@ function planFromProduct(product: Stripe.Product, price: Stripe.Price, lang: str
   const features = localized(md, 'features', lang);
   return {
     planId,
+    ...(md.templateId ? { templateId: String(md.templateId) } : {}),
     name: localized(md, 'name', lang) ?? product.name,
     priceUsd: (price.unit_amount ?? 0) / 100,
     credits: Number(md.credits ?? 0),
@@ -92,7 +105,7 @@ export function isValidAppId(appId: string): boolean {
   return APP_ID_RE.test(appId);
 }
 
-export async function listStripePlans(appId: string, lang = 'en'): Promise<StripePlan[]> {
+export async function listStripePlans(appId: string, lang = 'en', templateId?: string): Promise<StripePlan[]> {
   if (!isValidAppId(appId)) {
     // Returning [] silently would show an empty pricing page with nothing in the
     // logs to explain it.
@@ -107,6 +120,10 @@ export async function listStripePlans(appId: string, lang = 'en'): Promise<Strip
   return res.data
     .filter((p) => p.default_price && typeof p.default_price === 'object')
     .map((p) => planFromProduct(p, p.default_price as Stripe.Price, lang))
+    // A pack with no `templateId` predates the field and sells for every model the
+    // app offers — dropping those would empty the pricing page of every deployment
+    // that has ever taken money. One that names a model is listed only for it.
+    .filter((p) => !templateId || !p.templateId || p.templateId === templateId)
     .sort((a, b) => a.priceUsd - b.priceUsd);
 }
 
@@ -117,4 +134,145 @@ export async function listStripePlans(appId: string, lang = 'en'): Promise<Strip
 export async function resolveStripePlan(appId: string, planId: string): Promise<StripePlan | undefined> {
   const plans = await listStripePlans(appId);
   return plans.find((p) => p.planId === planId);
+}
+
+// --- Writing the catalog ----------------------------------------------------
+
+/**
+ * A plan as the ADMIN edits it. Everything the system needs to run — `appId`,
+ * `planId`, `credits` — is written into Product metadata by `upsertStripePlan`,
+ * never by a person in the Stripe dashboard.
+ *
+ * That is the whole reason this write path exists. The catalog stays in Stripe
+ * (its reporting, its refunds, its review), but the fields the PRODUCT depends on
+ * stop being hand-typed: a pack created with `credits` missing, or `appId`
+ * misspelt, is a pack that takes someone's money and grants nothing — and it is
+ * invisible until it does, because a product with bad metadata simply does not
+ * appear in `listStripePlans`.
+ */
+export interface PlanWrite {
+  /** Stable slug; the key every session, webhook and stat is attributed by. */
+  planId: string;
+  name: string;
+  credits: number;
+  priceUsd: number;
+  popular?: boolean;
+  /** Marketing copy, per locale: `{ en: '…', es: '…' }`. `en` is the fallback. */
+  sub?: Record<string, string>;
+  features?: Record<string, string[]>;
+}
+
+/** The product for an app's plan, or undefined. Searched the same way listing does. */
+async function findProduct(appId: string, planId: string): Promise<Stripe.Product | undefined> {
+  const res = await stripe().products.search({
+    query: `active:'true' AND metadata['appId']:'${appId}' AND metadata['planId']:'${planId}'`,
+    expand: ['data.default_price'],
+    limit: 2,
+  });
+  return res.data[0];
+}
+
+/** Marketing copy → the suffixed metadata keys `localized()` reads back. */
+function marketingMetadata(input: PlanWrite): Record<string, string> {
+  const md: Record<string, string> = {};
+  for (const [lang, text] of Object.entries(input.sub ?? {})) md[lang === 'en' ? 'sub' : `sub_${lang}`] = text;
+  for (const [lang, list] of Object.entries(input.features ?? {})) {
+    md[lang === 'en' ? 'features' : `features_${lang}`] = list.join('|');
+  }
+  return md;
+}
+
+/**
+ * Create or update one credit pack, in whichever Stripe account this deployment
+ * holds a key for — dev writes the sandbox, prod writes live, and neither can
+ * reach the other because the API only ever has its own `STRIPE_SECRET_KEY`.
+ *
+ * **A price is never edited.** Stripe Prices are immutable by design, so changing
+ * an amount means creating a new Price and repointing the product's
+ * `default_price`. The old Price is left ACTIVE rather than archived: a checkout
+ * link someone is holding, or a session opened seconds ago, still resolves — and
+ * the amount they were quoted is the amount they pay. Only the default moves.
+ *
+ * `templateId` goes into the metadata with the rest: packs are per research model,
+ * and the system writes that too — a pack tagged for the wrong model is one that
+ * quietly disappears from a pricing page, or quietly appears on the wrong one.
+ *
+ * `expectedPriceUsd` is the confirmation, enforced here rather than in the UI. It
+ * must match what Stripe currently charges before an amount may change, which
+ * makes it both "yes, I meant to reprice" and a guard against two admins editing
+ * the same pack from different screens.
+ */
+export async function upsertStripePlan(
+  appId: string,
+  templateId: string,
+  input: PlanWrite,
+  opts: { expectedPriceUsd?: number } = {},
+): Promise<{ plan: StripePlan; priceChanged: boolean; previousPriceUsd: number | null }> {
+  const metadata = {
+    appId,
+    templateId,
+    planId: input.planId,
+    credits: String(input.credits),
+    popular: String(!!input.popular),
+    ...marketingMetadata(input),
+  };
+  const existing = await findProduct(appId, input.planId);
+  const unitAmount = Math.round(input.priceUsd * 100);
+
+  if (!existing) {
+    const product = await stripe().products.create({ name: input.name, metadata });
+    const price = await stripe().prices.create({ product: product.id, currency: 'usd', unit_amount: unitAmount });
+    const updated = await stripe().products.update(product.id, { default_price: price.id });
+    return { plan: planFromProduct(updated, price, BASE_LANG), priceChanged: false, previousPriceUsd: null };
+  }
+
+  const current = existing.default_price as Stripe.Price | null;
+  const currentUsd = (current?.unit_amount ?? 0) / 100;
+  const priceChanged = !!current && current.unit_amount !== unitAmount;
+
+  if (priceChanged) {
+    // The confirmation. Refused rather than applied-and-logged: this is the number
+    // a customer is charged, and the cost of asking twice is nothing next to the
+    // cost of a silent zero.
+    if (opts.expectedPriceUsd === undefined) {
+      throw Object.assign(new Error(`Changing the price of "${input.planId}" needs expectedPriceUsd (it is currently ${currentUsd}).`), { statusCode: 428 });
+    }
+    if (Math.abs(opts.expectedPriceUsd - currentUsd) > 0.0001) {
+      throw Object.assign(
+        new Error(`"${input.planId}" now costs ${currentUsd}, not the ${opts.expectedPriceUsd} you were shown — someone changed it. Reload and try again.`),
+        { statusCode: 409 },
+      );
+    }
+  }
+
+  await stripe().products.update(existing.id, { name: input.name, metadata });
+  const price = priceChanged || !current
+    ? await stripe().prices.create({ product: existing.id, currency: 'usd', unit_amount: unitAmount })
+    : current;
+  if (priceChanged || !current) await stripe().products.update(existing.id, { default_price: price.id });
+
+  const product = (await stripe().products.retrieve(existing.id, { expand: ['default_price'] })) as Stripe.Product;
+  logEvent({ jobId: '-', appId }, 'INFO', 'stripe.plan_upserted', {
+    planId: input.planId, priceChanged, from: priceChanged ? currentUsd : undefined, to: input.priceUsd, credits: input.credits,
+  });
+  return {
+    plan: planFromProduct(product, (product.default_price as Stripe.Price) ?? price, BASE_LANG),
+    priceChanged,
+    previousPriceUsd: priceChanged ? currentUsd : null,
+  };
+}
+
+/**
+ * Retire a pack: `active: false` on the product, so it stops being listed and
+ * stops being purchasable.
+ *
+ * Not a delete. Stripe keeps the payments, the sessions and the reporting attached
+ * to it, and a deleted product would orphan every one of them.
+ */
+export async function archiveStripePlan(appId: string, planId: string): Promise<boolean> {
+  const existing = await findProduct(appId, planId);
+  if (!existing) return false;
+  await stripe().products.update(existing.id, { active: false });
+  logEvent({ jobId: '-', appId }, 'INFO', 'stripe.plan_archived', { planId });
+  return true;
 }

@@ -124,7 +124,7 @@ import {
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
-import { stripe, stripeConfigured, listStripePlans, resolveStripePlan, isValidAppId } from './stripe.js';
+import { stripe, stripeConfigured, listStripePlans, resolveStripePlan, isValidAppId, upsertStripePlan, archiveStripePlan } from './stripe.js';
 import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_EMPTY_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
 import { publicLimit, clientIp, secondsToNextHour } from './public-limit.js';
 import { requireCaptcha, captchaBodyProperties } from './captcha.js';
@@ -2887,6 +2887,133 @@ app.put(
   },
 );
 
+// --- Admin: the credit packs, written INTO Stripe --------------------------
+//
+// The catalog stays in Stripe — its reporting, its refunds, its review — but the
+// fields the system depends on stop being typed by a person in the Stripe
+// dashboard. `appId`, `templateId`, `planId` and `credits` are written by
+// `upsertStripePlan`, because a pack created with `credits` missing takes someone's
+// money and grants nothing, and is invisible until it does: a product with bad
+// metadata simply never appears in `listStripePlans`.
+//
+// Which Stripe ACCOUNT is not a choice made here. The API only ever holds its own
+// `STRIPE_SECRET_KEY` — the dev deploy gets `STRIPE_SECRET_KEY_DEV`, prod gets
+// `_PROD` — so dev edits the sandbox and prod edits live, and neither can reach the
+// other even by mistake.
+app.get(
+  '/admin/plans',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'List an app’s credit packs (optionally only a model’s)',
+      tags: ['admin'],
+      security: sec,
+      querystring: {
+        type: 'object',
+        required: ['appId'],
+        properties: {
+          appId: { type: 'string', maxLength: 128 },
+          templateId: { type: 'string', maxLength: 128, description: 'Only packs sold for this model (plus the untagged ones).' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    if (!stripeConfigured()) return reply.code(503).send({ error: 'Billing is not configured.' });
+    const { appId, templateId } = req.query as { appId: string; templateId?: string };
+    if (!isValidAppId(appId)) return reply.code(400).send({ error: `Invalid appId: ${appId}` });
+    return { plans: await listStripePlans(appId, 'en', templateId) };
+  },
+);
+
+app.put(
+  '/admin/plans/:planId',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Create or update a credit pack in Stripe',
+      description:
+        'Writes the Product + its default Price. Changing an amount requires `expectedPriceUsd` to match ' +
+        'what Stripe currently charges — the confirmation is enforced here, not in the UI.',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', required: ['planId'], properties: { planId: { type: 'string', maxLength: 128 } } },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['appId', 'templateId', 'name', 'credits', 'priceUsd'],
+        properties: {
+          appId: { type: 'string', maxLength: 128 },
+          templateId: { type: 'string', maxLength: 128 },
+          name: { type: 'string', minLength: 1, maxLength: 200 },
+          credits: { type: 'integer', minimum: 1, maximum: 1_000_000 },
+          priceUsd: { type: 'number', exclusiveMinimum: 0, maximum: 100_000 },
+          popular: { type: 'boolean' },
+          sub: { type: 'object', additionalProperties: { type: 'string', maxLength: 300 } },
+          features: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string', maxLength: 200 }, maxItems: 12 } },
+          expectedPriceUsd: {
+            type: 'number',
+            minimum: 0,
+            description: 'What the editor was shown. Required to CHANGE a price; ignored otherwise.',
+          },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    if (!stripeConfigured()) return reply.code(503).send({ error: 'Billing is not configured.' });
+    const { planId } = req.params as { planId: string };
+    const b = req.body as {
+      appId: string; templateId: string; name: string; credits: number; priceUsd: number;
+      popular?: boolean; sub?: Record<string, string>; features?: Record<string, string[]>; expectedPriceUsd?: number;
+    };
+    if (!isValidAppId(b.appId)) return reply.code(400).send({ error: `Invalid appId: ${b.appId}` });
+    if (!getTemplate(b.templateId)) return reply.code(404).send({ error: `Unknown model: ${b.templateId}` });
+    try {
+      const res = await upsertStripePlan(b.appId, b.templateId, { ...b, planId }, { expectedPriceUsd: b.expectedPriceUsd });
+      logEvent({ jobId: '-', appId: b.appId, userId: req.auth!.email }, 'INFO', 'plan.saved', {
+        planId, templateId: b.templateId, priceChanged: res.priceChanged, from: res.previousPriceUsd, to: b.priceUsd,
+      });
+      // The floor a model's ceilings derive from is a function of its packs, so a
+      // price change moves it. Bust the manifest cache; the admin recomputes the
+      // floor with the button when it wants the new number stored.
+      bustPublicCache('plans:');
+      return res;
+    } catch (err) {
+      // 428 = "confirm this", 409 = "someone else changed it". Both are the price
+      // guard, and both are the caller's to resolve rather than ours to override.
+      const code = (err as { statusCode?: number }).statusCode;
+      if (code === 428 || code === 409) return reply.code(code).send({ error: (err as Error).message });
+      throw err;
+    }
+  },
+);
+
+app.post(
+  '/admin/plans/:planId/archive',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Retire a credit pack (Stripe `active: false`, never a delete)',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', required: ['planId'], properties: { planId: { type: 'string', maxLength: 128 } } },
+      body: { type: 'object', required: ['appId'], additionalProperties: false, properties: { appId: { type: 'string', maxLength: 128 } } },
+    },
+  },
+  async (req, reply) => {
+    if (!stripeConfigured()) return reply.code(503).send({ error: 'Billing is not configured.' });
+    const { planId } = req.params as { planId: string };
+    const { appId } = req.body as { appId: string };
+    if (!isValidAppId(appId)) return reply.code(400).send({ error: `Invalid appId: ${appId}` });
+    const ok = await archiveStripePlan(appId, planId);
+    if (!ok) return reply.code(404).send({ error: `No pack "${planId}" for app "${appId}".` });
+    bustPublicCache('plans:');
+    logEvent({ jobId: '-', appId, userId: req.auth!.email }, 'INFO', 'plan.archived', { planId });
+    return { archived: true, planId };
+  },
+);
+
 /**
  * Read the live Stripe packs and compute the credit floor — the admin app's button.
  *
@@ -2926,7 +3053,10 @@ app.post(
     if (!stripeConfigured()) return reply.code(503).send({ error: 'Billing is not configured.' });
     if (!isValidAppId(appId)) return reply.code(400).send({ error: `Invalid appId: ${appId}` });
 
-    const packs = await listStripePlans(appId);
+    // This MODEL's packs, not the app's: the ceiling for a model has to derive from
+    // the cheapest credit that model is actually sold at. Untagged packs count —
+    // they sell for every model the app offers.
+    const packs = await listStripePlans(appId, 'en', templateId);
     const floor = creditFloorFrom(packs);
     // An empty or unusable catalog is NOT a floor of zero — that would derive a
     // ceiling of zero and hold every job of this model. Say so and change nothing.
