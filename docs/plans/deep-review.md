@@ -2213,7 +2213,7 @@ None.
   billing. Pre-existing — but `63fd892` made it reachable without the literal word:
   `d1sregard` and `dis-regard` cost 8ms before and ~2-3s after, a ~370× regression.
   Fixed by clamping separator runs; worst case now 16.4ms (G3-break F3).
-- **R10-4 · A four-letter prefix buys a different real Florida city, with the buyer's
+- **[done `67261d0`] R10-4 · A four-letter prefix buys a different real Florida city, with the buyer's
   own words as the evidence.** `d77ffb3`'s `shares()` is symmetric and unrestricted,
   so `home` → **Homestead**, `plan` → Plantation, `lake` → Lakeland, `park` →
   Parkland, `water` → Waterford, `near the port` → **Portland, OR** (nothing bounds
@@ -2221,7 +2221,7 @@ None.
   changed, and nothing pins it: both new tests assert only the good direction
   (`pete` → `petersburg`). **Two reviewers, independently** (G1-break F1,
   G1-verify F1).
-- **R10-5 · The same commit swapped one admitted class of quote for another.**
+- **[done `67261d0`] R10-5 · The same commit swapped one admitted class of quote for another.**
   `CONTENT_WORD_LEN = 5` now ticks `busco`, `quiero`, `porque`, `about`, `there`,
   `quand`, `parce`, `quando` — twelve function words of 5-7 letters, all refused
   before — while `low risk`, `cash flow`, `no debt`, `turn key`, `high rent`,
@@ -2229,19 +2229,19 @@ None.
   languages rather than a threshold someone picked" is false in all four at once;
   the counter-list is in the report. Digits count as letters too, so `«500000»`
   ticks (G1-break F2, G1-verify F6).
-- **R10-6 · The confirm dialog's "what we'll search" sentence is still the stale
+- **[done `1b16eae`] R10-6 · The confirm dialog's "what we'll search" sentence is still the stale
   one.** `c1397a9` fixed the preferences line and left `pf.summary`, which is
   server-rendered at preview time — so unticking "Apply suggested fixes" (a control
   inside the same dialog) ships the value the sentence just denied, and ticking a
   basic re-scopes the search it describes. For the flagship those are exactly
   `location` and `industry`, the subject and place of the sentence. R9-1's own
   damage statement, on the paths the fix did not walk (G2-break F1).
-- **R10-7 · The PDF's image strip deletes prose the viewer keeps.** `0ff22ef`'s
+- **[done `4665dc8`] R10-7 · The PDF's image strip deletes prose the viewer keeps.** `0ff22ef`'s
   shared `MD_TITLE` was applied to the rule that DELETES: `![alt](url "a" KEEP "c")`
   renders `KEEP1  KEEP2` in the PDF and every character in the viewer. The silent
   deletion R9-3 closed for links, inherited by the image strip. The headline
   security fix holds — 119 image shapes produced no anchor (G2-break F2).
-- **R10-8 · `sourceLabel` never clips the HOST, in either copy.** `7a29a43`'s "it was
+- **[done `4665dc8`] R10-8 · `sourceLabel` never clips the HOST, in either copy.** `7a29a43`'s "it was
   the one path that returned an unbounded string" is false: a `https://` source with
   a 4,000-character hostname puts **4,006 characters** into the Sources row of the
   PDF and the viewer, as a LIVE anchor, beside a tooltip correctly bounded at 320.
@@ -2250,7 +2250,7 @@ None.
   253 octets, and today `sources` are derived from search results — so read it as
   "up to ~253 where the design says 160, and 4,006 the day a template lets a model
   write `sources`" (G2-verify F1, G2-break F3).
-- **R10-9 · A draft saved before 2026-08-19 leaves the form permanently 400ing.**
+- **[done `1b16eae`] R10-9 · A draft saved before 2026-08-19 leaves the form permanently 400ing.**
   `29f8593`'s refusal is right; its remedy is not. `saveDraft` runs on the way to buy
   credits, the draft is restored verbatim with no manifest filter, `keywords` is
   invisible on the form, and `clearDraft` only runs after a SUCCESSFUL create — so
@@ -2258,7 +2258,7 @@ None.
   requests and a captcha token, and the message is hardcoded English on a translated
   page. No TTL, so every abandoned top-up from before that date is a bricked form
   (G3-break F4, G3-verify F2).
-- **R10-10 · §K's load-bearing sentence is false on two shipping paths.**
+- **[done `b4ee573`, claim restated below] R10-10 · §K's load-bearing sentence is false on two shipping paths.**
   `MODERATION_LLM` and `VALIDATION_LLM` are independent (`config.ts:126` vs `:132`),
   so with the first false the assist runs and the classifier is silent — the
   pre-screen IS the only layer on a path where a miss reaches a prompt, and
@@ -2269,6 +2269,19 @@ None.
   (option 1, refocus) still stands on its other two feet, and R10-1/R10-2 are
   evidence FOR it; fact 1 has to be restated, and the fail-open alert stops being a
   "smaller item" (G3-verify F3, G3-break F5).
+
+- **[done `73fcf36`] R10-37 · The assist could never fill an empty location — found while fixing
+  R10-6, by nobody in the round.** `acceptProposals` skips a fillable basic whose
+  field is not empty, and the params it is handed have been through
+  `paramsSchema.safeParse`, which applies declared defaults. `location` defaults to
+  `State of Florida, USA`, so the field was never empty, the loop always
+  `continue`d, and **nothing was ever proposed** for the only shipped model.
+  Measured through the real `validateRequest`. Two documents described it as
+  working: `product-backlog.md`'s P-2, whose whole subject is the buyer who names
+  no location, and round 9's R9-5 — filed as a P1 about `St. Pete` VANISHING, when
+  the proposal was vanishing for every buyer one gate earlier. The tests all passed
+  because every one of them calls `acceptProposals` with hand-built params instead
+  of with what the API produces; the new one calls `validateRequest` first.
 
 ### P2 — batch
 - R10-11 The record says `isEvidence` now applies to the basics field. It does not,
@@ -2341,7 +2354,7 @@ None.
   `api-reference.md:108`), one of them edited by the docs pass one commit earlier.
   `internalParams` is documented in exactly one place and in neither `extending.md`
   nor the API's error list (G4-verify F2).
-- R10-30 The SPA still tells the buyer, in four languages, to add "at least one
+- R10-30 **done `1b16eae`** The SPA still tells the buyer, in four languages, to add "at least one
   keyword under Advanced" — a field and a section the form no longer renders, and the
   first advisory a new buyer reads (G3-verify F5).
 - R10-31 "§K is the last thing in the handoff's 'waiting on Javier' list to close" is
@@ -2393,12 +2406,30 @@ only, so the correction-vs-dialog path is closed.
 
 ### How to continue (for the next agent)
 
-**R10-1, R10-2 and R10-3 are fixed in `2a01ada`** — the three that were live
-regressions from `63fd892`, all mine, with revert-verify 7 red / 7 red / 1 red and
-the census unchanged at 61/95 and 2/73. Suite **1176 passed, 0 failed** in the MAIN
-checkout, `npm run typecheck` clean.
+**ALL TEN P1 ARE FIXED**, 2026-08-20, in the order this section originally set out:
+`2a01ada` R10-1 + R10-2 + R10-3 (the three live regressions from `63fd892`) ·
+`67261d0` R10-4 + R10-5 · `b4ee573` R10-10, with the fail-open made visible on the
+admin dashboard rather than only restated · `4665dc8` R10-7 + R10-8 ·
+`73fcf36` R10-37 (found on the way) · `1b16eae` R10-6 + R10-9 + R10-30.
+Suite **1196 passed, 0 failed** in the MAIN checkout, `npm run typecheck` clean.
 
-**Everything else is open.** Order of work, and the reasoning behind the order:
+**The 26 P2 are open**, minus R10-30 and R10-35's first half. They cluster by file:
+the engine/test ones (R10-12 … R10-16), the buyer-surface ones (R10-17 … R10-21),
+the summary/deterministic ones (R10-22 … R10-27, R10-36), and the record ones
+(R10-11, R10-28 … R10-35). R10-22 (the `boolean` directive that renders an
+arbitrary string) is the one two reviewers found independently and the one to take
+first.
+
+**What the P1 batch itself is owed.** It has not been reviewed, and on this repo's
+record that is where the next defects are: rounds 8, 9 and 10 each found that the
+previous round's FIXES shipped holes, twice in the same line as the fix. Two things
+in it are new code rather than repairs and deserve the same suspicion `29f8593` and
+`63fd892` earned in this round — the admin health strip (`b4ee573`, a new endpoint
+field, a new counter and the thinnest test suite in the repo) and the client-side
+summary patching (`1b16eae`, which substitutes strings into a sentence the server
+wrote).
+
+**The original order of work, kept because the reasoning is what matters:**
 
 1. **R10-4 and R10-5 together** — they are one function and they pull in opposite
    directions, the same trap R9-4/R9-5 set and the same one that produced them.

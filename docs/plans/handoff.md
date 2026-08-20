@@ -30,20 +30,24 @@ and it is the only place that is current by construction.
 
 ## State, 2026-08-20
 
-- **Rounds 1-10 are run. Rounds 8 and 9 are fully closed. Round 10 is OPEN**: it
-  found 0 P0, 10 P1 and 26 P2, of which **three P1 are fixed** (`2a01ada`) and
-  everything else is not. Its findings, its order of work and the reasoning for that
-  order are `deep-review.md` § "Round 10" → "How to continue".
+- **Rounds 1-10 are run. Rounds 8, 9 and round 10's P1 half are closed.** Round 10
+  found 0 P0, 10 P1 and 26 P2; **all ten P1 are fixed** (`2a01ada`, `67261d0`,
+  `b4ee573`, `4665dc8`, `73fcf36`, `1b16eae`), plus R10-30 and R10-37 — the latter
+  found while fixing R10-6 and by none of the eight reviewers: the assist's
+  fillable-basics path could never fire in production, because `validateRequest`
+  applies the schema default before the "is this field empty?" gate runs. **The 26
+  P2 are open.** Findings, stamps and the order of work are `deep-review.md`
+  § "Round 10".
 - Round 10's shape, because it repeats: **the fixes of round 9 shipped holes of
   their own**, one of them in the same LINE as the fix (`d77ffb3` closed R9-4/R9-5
   and opened R10-4/R10-5), and the §K evasion work shipped **two false positives on
   ordinary buyer language** plus a reachability regression on a cubic regex — the
   expensive failure that commit argued it had avoided. Five findings were reached by
   two reviewers independently.
-- **Suite totals, both MEASURED 2026-08-20 at `2a01ada`** — not one derived from the
-  other: **1176 passed, 0 failed** in the MAIN checkout (765 core + 216 api + 22
-  worker + 166 fbizlab + 7 admin) and **1170 passed, 0 failed** in a fresh worktree
-  (759 core, same four others). The gap is six red-team tests gated on
+- **Suite totals, MEASURED 2026-08-20 at `1b16eae`:** **1196 passed, 0 failed** in
+  the MAIN checkout (776 core + 217 api + 22 worker + 170 fbizlab + 11 admin). The
+  clean-worktree figure was 1170 at `2a01ada` and has NOT been re-measured since —
+  do not subtract six from 1196 and write it down. The gap is six red-team tests gated on
   `out/*/trace.json`, which exists only in Javier's checkout. Subtracting six is not
   a safe shortcut even though it lands here: core also COLLECTS a different total in
   the two checkouts (775 vs 777). Measure yours and say which one it is — round 10's
@@ -93,13 +97,18 @@ while adding an engineering item to it (R10-31).
 
 ### Open work, nobody blocked
 
-- **The round-10 fix batch** — 7 open P1 and 26 P2. Start at `deep-review.md`
-  § "Round 10" → "How to continue"; it is ordered and says why.
-- **The alert on the moderation fail-open.** §K's own follow-up, and round 10
-  promoted it: R10-10 reproduced two shipping paths on which the classifier does not
-  run at all (`MODERATION_LLM=false`, which is independent of `VALIDATION_LLM`; and
-  any admin caller, on both routes). The §K decision ASSUMES the classifier is
-  running and nothing checks that it is.
+- **The round-10 P2 batch** — 26 items, clustered by file in `deep-review.md`
+  § "Round 10" → "How to continue". R10-22 first (two reviewers found it).
+- **A review of the round-10 P1 fixes themselves.** Three rounds running have found
+  that the previous round's FIXES shipped holes, twice in the very line of the fix.
+  Two things in this batch are new code rather than repairs: the admin health strip
+  (`b4ee573`) and the client-side summary patching (`1b16eae`).
+- **Alerting on the moderation fail-open — the half that is still open.**
+  `b4ee573` made it VISIBLE: `ModerationVerdict.degraded`, a counter with a last-seen
+  time, and a strip at the top of the admin dashboard that renders in all four
+  states including "this API build does not report it". Nobody is PAGED, which is
+  the part that would need a log-based metric and an alert policy in
+  `sinuous-canto-497518-h7`, i.e. Javier's credentials.
 - C5's dispatch deadline (unmeasured), E3's unblock script (needs Javier's
   credentials for the dry run), N2 Stripe clawback, M-A2 (FENCE_RE near-misses,
   gated on frontier-tier evidence).

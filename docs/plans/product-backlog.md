@@ -82,9 +82,14 @@ say otherwise"*, `florida-business-for-sale.ts:954`).
   in the report ("we focused on Hialeah, Kendall and Fort Myers, because…").
 - Interaction with P-1: "compare two locations" and "recommend a location" are the
   same machinery seen from two ends.
-- Interaction with the assist: the "in your own words" box can now FILL an empty
+- Interaction with the assist: the "in your own words" box can FILL an empty
   location when the buyer's text names one (`fillable`, `florida-preflight.ts:150`).
-  This item is the case where nobody named one anywhere.
+  **Corrected 2026-08-20:** this line said "can now", and until `73fcf36` it could
+  not — `validateRequest` applies the schema default, so `location` was never empty
+  by the time the gate ran and no basic was ever proposed (round 10, R10-37). It
+  works now, which makes this item's premise sharper rather than weaker: the assist
+  can narrow a location the buyer's PROSE names, and this item is still the case
+  where nobody named one anywhere.
 
 **Not started.** No code exists for this.
 
