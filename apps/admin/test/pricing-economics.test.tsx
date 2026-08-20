@@ -62,7 +62,17 @@ vi.mock('../src/api/client', async (orig) => ({
     calls.push({ path, init });
     if (path.includes('/preview')) return Promise.resolve({ ...PRICING(), economics: PREVIEWED });
     if (path.startsWith('/templates')) return Promise.resolve({ templates: [{ id: 'florida-business-for-sale', name: 'Florida' }] });
-    if (path.startsWith('/admin/apps')) return Promise.resolve({ apps: [{ appId: 'fbizlab', name: 'F' }] });
+    if (path.startsWith('/admin/apps')) {
+      // The backoffice is in the list the API returns and must not be in the picker:
+      // it sells no credits, so choosing it answers nothing.
+      return Promise.resolve({ apps: [{ appId: 'admin', name: 'Backoffice', role: 'admin' }, { appId: 'fbizlab', name: 'F', role: 'app' }] });
+    }
+    if (path.startsWith('/admin/plans?')) {
+      return Promise.resolve({ plans: [
+        { planId: 'scout', priceUsd: 29, credits: 20, priceId: 'p1' },
+        { planId: 'investor', priceUsd: 69, credits: 80, priceId: 'p2' },
+      ] });
+    }
     if (path.includes('/credit-floor')) {
       return Promise.resolve({
         creditFloorUsd: 0.75,
@@ -125,21 +135,20 @@ describe('the economics section', () => {
     expect(await screen.findByText('capped')).toBeTruthy();
   });
 
-  it('reads the floor off Stripe on demand, and never on its own', async () => {
-    // A tool, not a side effect: the stored figure is what every ceiling derives
-    // from, so it moves when a person asks. Nothing should have called it on render.
+  it('offers the packs\' floor only when the stored one has drifted from it', async () => {
+    // There is no "read from Stripe" button any more: the packs table on this same
+    // card IS the Stripe read, so a second round trip to compute
+    // `min(price / credits)` from the same rows could only ever agree with them.
+    // What is worth surfacing is the DIVERGENCE — a stored floor that no longer
+    // matches the catalog is what silently drifts every ceiling on the page, and a
+    // button nobody presses never showed it.
     show();
     await screen.findByLabelText(/credit floor/i);
+    expect(screen.queryByRole('button', { name: /read from stripe/i })).toBeNull();
     expect(calls.some((c) => c.path.includes('/credit-floor'))).toBe(false);
-
-    await userEvent.click(screen.getByRole('button', { name: /read from stripe/i }));
-    await waitFor(() => expect(calls.some((c) => c.path.includes('/credit-floor'))).toBe(true));
-    const call = calls.find((c) => c.path.includes('/credit-floor'))!;
-    expect(call.init?.method).toBe('POST');
-    expect(call.init?.body).toMatchObject({ appId: 'fbizlab', apply: true });
-    // …and the field takes the value it came back with, so a save does not write
-    // the stale one back over it.
-    await waitFor(() => expect((screen.getByLabelText(/credit floor/i) as HTMLInputElement).value).toBe('0.75'));
+    // The fixture's packs are $69/80 = $0.8625 at their cheapest, and the stored
+    // floor is 0.806 — so it HAS drifted, and the offer names the figure.
+    expect(await screen.findByRole('button', { name: /use \$0\.86 from the packs/i })).toBeTruthy();
   });
 
   it('sends both economics fields when saving, not just the credits', async () => {
@@ -175,5 +184,19 @@ describe('the live preview', () => {
     expect(screen.getByText('unsaved'), 'a previewed figure must not read as stored').toBeTruthy();
     const call = calls.find((c) => c.path.includes('/preview'));
     expect(call?.init?.method).toBe('POST');
+  });
+});
+
+describe('the credit catalog picker', () => {
+  it('does not offer the backoffice, which sells nothing', async () => {
+    show();
+    // `findByLabelText` matches the description too; take the input by role.
+    const picker = await screen.findByRole('textbox', { name: /credit catalog/i });
+    // The apps land after the first render, and the default is the first app that
+    // is not the backoffice — asserted rather than assumed, because "it defaults to
+    // the first app" is what put the backoffice there in the first place.
+    await waitFor(() => expect((picker as HTMLInputElement).value).toBe('F (fbizlab)'));
+    await userEvent.click(picker);
+    expect(screen.queryByText(/backoffice/i), 'the admin app was offered as a storefront').toBeNull();
   });
 });

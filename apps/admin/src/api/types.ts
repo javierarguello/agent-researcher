@@ -350,14 +350,6 @@ export interface PricingView {
   updatedAt: string | null;
   economics: PricingEconomics;
 }
-/** What the "read from Stripe" tool answers. */
-export interface CreditFloorResult {
-  creditFloorUsd: number;
-  applied: boolean;
-  before: number | null;
-  packs: Array<{ planId: string; priceUsd: number; credits: number; perCredit: number }>;
-  pricing: PricingView;
-}
 
 /** A credit pack as Stripe holds it (the catalog) — see `StripePlan` in the API. */
 export interface CreditPack {

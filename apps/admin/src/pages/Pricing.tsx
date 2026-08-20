@@ -3,7 +3,7 @@ import { Alert, Badge, Button, Card, Divider, Group, Loader, NumberInput, Select
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
-import { useApps, usePreviewPricing, usePricing, useRefreshCreditFloor, useSetPricing, useTemplates } from '../api/hooks';
+import { useApps, usePlans, usePreviewPricing, usePricing, useSetPricing, useTemplates } from '../api/hooks';
 import { CreditPacks } from '../components/CreditPacks';
 import type { PricingView } from '../api/types';
 import { ApiError } from '../api/client';
@@ -13,7 +13,10 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 function PricingCard({ templateId, name, appId }: { templateId: string; name: string; appId: string | undefined }) {
   const pricing = usePricing(templateId);
   const save = useSetPricing();
-  const refresh = useRefreshCreditFloor();
+  // The same query the packs table runs — react-query serves both from one fetch.
+  // The packs came from Stripe seconds ago, so the floor they imply needs no second
+  // round trip: `min(priceUsd / credits)` over what is already on screen.
+  const packs = usePlans(appId, templateId);
   const preview = usePreviewPricing();
   /**
    * The tier table, recomputed by the API for whatever is on screen.
@@ -66,32 +69,15 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
   }
 
   /**
-   * Read the packs off Stripe and store the floor they imply.
-   *
-   * The catalog read is the SELECTED app's: credits are sold per app, and a model
-   * offered through two apps has two floors. Reading it off the app picker rather
-   * than assuming the first app is what makes the second one reachable.
+   * The floor the packs on screen imply. `undefined` when there is nothing to read
+   * one from — an empty catalog is not a floor of zero, which would derive a
+   * ceiling of zero and hold every job of this model.
    */
-  async function onReadStripe() {
-    if (!appId) {
-      notifications.show({ message: 'Pick the app whose credit catalog to read.', color: 'red' });
-      return;
-    }
-    try {
-      const res = await refresh.mutateAsync({ templateId, appId, apply: true });
-      setFloor(res.creditFloorUsd);
-      const cheapest = res.packs.reduce((a, b) => (a.perCredit <= b.perCredit ? a : b));
-      notifications.show({
-        color: 'teal',
-        message: `Credit floor ${usd(res.creditFloorUsd)} — cheapest pack "${cheapest.planId}" (${usd(cheapest.priceUsd)} / ${cheapest.credits} credits).`,
-      });
-    } catch (err) {
-      // A 409 here is the useful one: an empty or unusable catalog. It changes
-      // nothing on purpose — a floor of zero would derive a ceiling of zero and
-      // hold every job of this model.
-      notifications.show({ message: err instanceof ApiError ? err.message : 'Failed', color: 'red' });
-    }
-  }
+  const packsFloor = (() => {
+    const usable = (packs.data?.plans ?? []).filter((p) => p.priceUsd > 0 && p.credits > 0);
+    return usable.length ? Math.min(...usable.map((p) => p.priceUsd / p.credits)) : undefined;
+  })();
+  const stale = packsFloor !== undefined && Math.abs((floor ?? 0) - packsFloor) > 0.0001;
 
   if (pricing.isLoading) return <Card padding="lg"><Loader size="sm" /></Card>;
   if (pricing.error) return <Card padding="lg"><Alert color="red">{(pricing.error as Error).message}</Alert></Card>;
@@ -156,7 +142,7 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
       <Group align="flex-start">
         <NumberInput
           label="Credit floor (USD)"
-          description={data.economics.creditFloorSource === 'stored' ? 'set for this model' : 'code default — never read from Stripe'}
+          description={data.economics.creditFloorSource === 'stored' ? 'set for this model' : 'code default — nothing stored yet'}
           min={0.0001}
           max={1000}
           step={0.01}
@@ -169,11 +155,25 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
             if (n) repreview({ creditFloorUsd: n });
           }}
         />
+        {/* No "read from Stripe" button any more: the packs table above IS the
+            Stripe read, so a second round trip to compute `min(price/credits)`
+            from the same data was a button that could only ever agree with the
+            rows beside it. What is worth surfacing is the DIVERGENCE — a stored
+            floor that no longer matches the catalog is what silently drifts every
+            ceiling, and a button nobody presses never showed it. */}
         <Stack gap={4} pt={26}>
-          <Button size="compact-sm" variant="light" onClick={onReadStripe} loading={refresh.isPending}>
-            Read from Stripe
-          </Button>
-          <Text size="xs" c="dimmed">cheapest pack, live</Text>
+          {packsFloor === undefined ? (
+            <Text size="xs" c="dimmed" maw={230}>No pack to read a floor from — the stored figure stands.</Text>
+          ) : stale ? (
+            <>
+              <Button size="compact-sm" variant="light" color="orange" onClick={() => { setFloor(packsFloor); repreview({ creditFloorUsd: packsFloor }); }}>
+                Use {usd(packsFloor)} from the packs
+              </Button>
+              <Text size="xs" c="orange" maw={230}>The stored floor is not what the packs sell at.</Text>
+            </>
+          ) : (
+            <Text size="xs" c="dimmed" pt={4} maw={230}>Matches the cheapest pack above.</Text>
+          )}
         </Stack>
         <NumberInput
           label="Expected profit (%)"
@@ -258,7 +258,7 @@ export function Pricing() {
   const [appId, setAppId] = useState<string | undefined>();
   // The first app until someone picks another. Packs are sold per app, so every
   // catalog on this page is one app's — saying WHICH beats implying it.
-  const selected = appId ?? apps.data?.apps?.[0]?.appId;
+  const selected = appId ?? apps.data?.apps?.find((a) => a.role !== 'admin')?.appId;
 
   return (
     <Stack>
@@ -267,7 +267,9 @@ export function Pricing() {
         label="Credit catalog"
         description="Packs are sold per app; a model offered through two apps has two of everything below."
         w={280}
-        data={(apps.data?.apps ?? []).map((a) => ({ value: a.appId, label: `${a.name} (${a.appId})` }))}
+        // The backoffice is not a storefront: it has no credit packs and nothing to
+        // price, so listing it here only offers a choice that answers nothing.
+        data={(apps.data?.apps ?? []).filter((a) => a.role !== 'admin').map((a) => ({ value: a.appId, label: `${a.name} (${a.appId})` }))}
         value={selected ?? null}
         onChange={(v) => setAppId(v ?? undefined)}
       />
