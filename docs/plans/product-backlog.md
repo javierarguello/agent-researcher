@@ -192,6 +192,88 @@ whoever is extending the code.
 
 ---
 
+## P-6 · A credit ladder where buying more is cheaper, and the MIDDLE is the buy — `decided, not applied`
+
+**Asked for by Javier, 2026-08-20**, alongside the per-mode cost ceiling (D1's
+engineering half, shipped in `ef9f02a`). Two goals in his words: buying more credits
+should be *"un poquito más barato"*, and *"lo ideal es que compren siempre la opción
+intermedia, que sería la recomendada"*.
+
+**What is wrong today.** Read off `GET /plans?appId=fbizlab` on 2026-08-20:
+
+| plan | price | credits | $/credit |
+|---|---|---|---|
+| Scout | $29 | 20 | $1.450 |
+| Investor (`popular`) | $69 | 80 | $0.8625 |
+| Syndicate | $129 | 150 | $0.860 |
+
+It is not a ladder. Investor and Syndicate are the same price per credit — 0.3%
+apart — so the top tier asks for **$60 more cash and returns nothing per credit**.
+The whole discount is spent on one step (Scout → Investor, −40.5%) and then
+saturates. Nobody has a reason to go up, and the middle is not a sweet spot; it is
+just where the curve flattened.
+
+**The change: `credits` only, no price moves.**
+
+| plan | price | credits | $/credit | step |
+|---|---|---|---|---|
+| Scout | $29 | 20 | $1.450 | — |
+| Investor (`popular`) | $69 | 80 | $0.8625 | **−40.5%** |
+| Syndicate | $129 | **160** (was 150) | **$0.806** | **−6.5%** |
+
+Monotonic and DECELERATING, which is the shape that makes the middle the buy: the
+big drop is already banked by Investor, and Syndicate asks $60 more for a further
+6.5%. That is the "un poquito más barato" exactly.
+
+Only Product **metadata** moves — no new Price objects, nothing already purchased is
+touched, and no code changes: nothing about plans is hardcoded in this repo (checked
+by grep; the SPA renders whatever `/plans` returns, and price/credits/`popular`/`sub`
+/`features` are all Stripe Product metadata, `apps/api/src/stripe.ts`).
+
+**What must move WITH it, or the page lies.** Syndicate's `features` says
+"≈8 comprehensive or 30 essential reports". At 160 credits it is 8 and **32**. That
+string exists in four languages — `features`, `features_es`, `features_fr`,
+`features_pt`, pipe-separated — and all four need the 30 → 32.
+
+**The linked consequence, and it is the reason this is a decision rather than a
+config edit.** `CREDIT_FLOOR_USD` (`packages/core/src/mode.ts`) is the cheapest a
+credit is ever sold for, and `mode-ceiling.test.ts` uses it to assert that no job may
+be allowed to cost more than the report it produced earned. Applying this ladder
+lowers the floor **$0.86 → $0.806**, which tightens the essential mode:
+
+| | earns at the floor | ceiling | margin at the ceiling |
+|---|---|---|---|
+| Essential (5 cr) | $4.03 (was $4.30) | $3.50 | **$0.53** |
+| Comprehensive (18 cr) | $14.51 (was $15.48) | $10 | $4.51 |
+
+Still not a loss, which is the property that matters — but essential's worst case is
+now half a dollar. **Update `CREDIT_FLOOR_USD` in the same change**; the test fails
+loudly if a ceiling ever crosses it, which is the direction that loses money.
+
+**The open decision, with the numbers.** Essential is structurally thin: it costs
+~$1.92 (inferred — no real run) and earns $4.03, a 52% margin against
+comprehensive's 73%, and its ceiling is bounded by revenue rather than by cost.
+Raising an essential report from **5 to 6 credits** takes it to $4.84 at the floor
+and $1.34 of margin at the ceiling; 8 credits brings its cost-per-credit to near
+parity with comprehensive. That is a change to `modes.essential.credits`
+(`florida-business-for-sale.ts`, overridable per model in Firestore via
+`/admin/pricing`) and it rewrites every "≈N essential reports" line in all three
+plans and four languages. **Not taken.**
+
+**Steps, when Javier decides:**
+1. Stripe → Product "Florida Biz Lab Syndicate" → metadata `credits` 150 → 160.
+2. Same product, metadata `features`, `features_es`, `features_fr`, `features_pt` →
+   "30 essential" → "32 essential".
+3. `CREDIT_FLOOR_USD` 0.86 → 0.806 in `packages/core/src/mode.ts`, with the date and
+   the three source prices in its docstring updated to match.
+4. `npm test` — `mode-ceiling.test.ts` is what proves no ceiling crossed the new
+   floor. Bust the plans cache (`bustPublicCache`) or wait out `PUBLIC_TTL_MS`.
+
+**Not applied.** The catalog is live billing on an external service; changing it is
+Javier's account and Javier's call.
+
+---
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04

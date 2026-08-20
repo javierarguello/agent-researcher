@@ -129,9 +129,22 @@ while adding an engineering item to it (R10-31).
 
 ### Waiting on a decision (Javier)
 
-- **D1 essential pricing** and the **`MAX_JOB_COST_USD` default of $20** against a
-  ~$2.6 honest comprehensive job — both are numbers someone has to choose, not
-  patches.
+- **P-6 — the credit ladder, decided and NOT applied.** Syndicate's `credits`
+  150 → 160 in Stripe (metadata only, no price moves), which turns a flat
+  $0.8625/$0.860 into a real ladder and makes the middle tier the buy. It carries
+  three linked edits — the "30 essential" line in four languages, and
+  `CREDIT_FLOOR_USD` 0.86 → 0.806 — and one open question: essential earns $4.03 at
+  the new floor and may burn $3.50, so five credits per essential report is thin.
+  All the numbers and the steps are `product-backlog.md` § P-6. Javier's Stripe
+  account, Javier's call.
+- **D1's remaining half — what an essential report costs in CREDITS.** The ceiling
+  half shipped (`ef9f02a`): $10 comprehensive, $3.50 essential, both under what the
+  report earns, and `MAX_JOB_COST_USD` still binds when an operator lowers it. What
+  is left is that essential's ceiling is bounded by REVENUE rather than by cost —
+  1.8× its inferred cost, where comprehensive gets 2.6× — because 5 credits does not
+  buy enough room. 6 credits gives it $1.34 of margin at the ceiling; 8 brings its
+  cost-per-credit to near parity. Not a patch: it rewrites every "≈N essential
+  reports" line in three plans and four languages.
 - The four product items' open design questions (P-1, P-2, P-4, P-5 in
   `product-backlog.md`); each names its own.
 
