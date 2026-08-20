@@ -431,6 +431,47 @@ describe('a 429 tells the truth about itself', () => {
     expect(wait).toBe(secondsToNextHour());
   });
 
+  it('says it in the person’s language, on every 429 a buyer can reach', async () => {
+    // Four 429s in the product answered in hand-written English — the captcha burst
+    // window, every public endpoint, the plans list and the checkout button — on the
+    // three doors a NEW buyer walks through first: register, sign in, pay. The
+    // report route's was the only one that ever spoke their language.
+    //
+    // The language comes from `errorLang`: `body.lang`, then `?lang=`, then
+    // `Accept-Language` — which the SPA now sets to the language its switcher is on,
+    // because the browser's own value is `en` for a Spanish speaker on a US laptop.
+    await seed();
+    const fr = (ip: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { appId: 'fbizlab', email: `l${ip}@x.com`, password: 'sup3rsecret' },
+        headers: { 'x-forwarded-for': ip, 'accept-language': 'fr' },
+      });
+    for (let i = 1; i <= 5; i++) {
+      await post('/auth/register', { appId: 'fbizlab', email: `f${i}@x.com`, password: 'sup3rsecret' }, '203.0.113.91');
+    }
+    const blocked = await fr('203.0.113.91');
+    expect(blocked.statusCode).toBe(429);
+    // The words, not the shape: a `toMatch(/./)` passes on the English sentence.
+    expect(blocked.json().error).toBe('Trop de requêtes. Patientez un instant et réessayez.');
+
+    // `body.lang` outranks the header — the register form states it explicitly.
+    const pt = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { appId: 'fbizlab', email: 'p1@x.com', password: 'sup3rsecret', lang: 'pt' },
+      headers: { 'x-forwarded-for': '203.0.113.91', 'accept-language': 'fr' },
+    });
+    expect(pt.statusCode).toBe(429);
+    expect(pt.json().error).toBe('Muitas solicitações. Aguarde um momento e tente novamente.');
+
+    // …and English is still what a client that says nothing gets.
+    const en = await post('/auth/register', { appId: 'fbizlab', email: 'e1@x.com', password: 'sup3rsecret' }, '203.0.113.91');
+    expect(en.statusCode).toBe(429);
+    expect(en.json().error).toBe('Too many requests. Please wait a moment and try again.');
+  });
+
   it('does not pool the verification link with the password-reset link', async () => {
     // They shared one `token` bucket at 30/hour per IP. Clicking the link in your
     // own signup mail is the most ordinary thing a new customer does, and behind a

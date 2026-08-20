@@ -18,7 +18,8 @@
  * one address can't be password-sprayed or mail-bombed from many IPs.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { checkRateLimits, config, logEvent, type RateLimitEntry } from '@agent-researcher/core';
+import { checkRateLimits, config, logEvent, tooManyRequestsNotice, type RateLimitEntry } from '@agent-researcher/core';
+import { errorLang } from './req-lang.js';
 
 // --- Client IP ---------------------------------------------------------------
 
@@ -188,7 +189,10 @@ export async function publicLimit(req: FastifyRequest, reply: FastifyReply, spec
   const wait = tooFast ? 60 : secondsToNextHour();
   reply.header('Retry-After', String(wait));
   await reply.code(429).send({
-    error: 'Too many requests. Please wait a moment and try again.',
+    // In the person's language. Every unauthenticated endpoint answers through this
+    // one function, and it answered all of them in English — the register, sign-in
+    // and password-reset pages included (round 10's B item).
+    error: tooManyRequestsNotice(errorLang(req)),
     code: 'rate_limited',
     scope: rl.violation?.scope,
     // The client has read `retryAfterSeconds` off the body since it was written

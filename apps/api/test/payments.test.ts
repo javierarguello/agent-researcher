@@ -285,6 +285,17 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
       expect(second.statusCode).toBe(429);
       expect(second.json().retryAfterSeconds).toBe(secondsToNextHour());
       expect(second.headers['retry-after']).toBe(String(secondsToNextHour()));
+      // …in their language, and saying the thing they most need to hear on THIS
+      // button: no money moved. It said "Too many checkout attempts. Please try
+      // again later." in English, whatever page they were on, and said nothing
+      // about the charge (round 10's B item).
+      expect(second.json().error).toBe('Too many checkout attempts. Please wait a moment and try again — nothing was charged.');
+      const es = await app.inject({
+        method: 'POST', url: '/credits/checkout',
+        headers: { ...auth(buyer), 'accept-language': 'es' }, payload: body,
+      });
+      expect(es.statusCode).toBe(429);
+      expect(es.json().error).toBe('Demasiados intentos de pago. Espera un momento e inténtalo de nuevo — no se te cobró nada.');
     } finally {
       writableConfig.publicLimits.checkoutPerHourPerUser = cap;
     }

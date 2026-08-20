@@ -175,6 +175,39 @@ export function rateLimitNotice(lang: unknown, scope: string): string {
   return pick(scope === 'user' ? RATE_LIMIT_USER : RATE_LIMIT_CAPACITY, asLang(lang));
 }
 
+const TOO_MANY_REQUESTS: Copy = {
+  en: 'Too many requests. Please wait a moment and try again.',
+  es: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
+  fr: 'Trop de requêtes. Patientez un instant et réessayez.',
+  pt: 'Muitas solicitações. Aguarde um momento e tente novamente.',
+};
+
+const TOO_MANY_CHECKOUTS: Copy = {
+  en: 'Too many checkout attempts. Please wait a moment and try again — nothing was charged.',
+  es: 'Demasiados intentos de pago. Espera un momento e inténtalo de nuevo — no se te cobró nada.',
+  fr: 'Trop de tentatives de paiement. Patientez un instant et réessayez — rien ne vous a été facturé.',
+  pt: 'Muitas tentativas de pagamento. Aguarde um momento e tente novamente — nada foi cobrado.',
+};
+
+/**
+ * What a person reads when a NON-report request is rate-limited.
+ *
+ * `rateLimitNotice` above is the report route's, and it was the only 429 in the
+ * product that spoke the buyer's language. The other four — the captcha burst
+ * window, every public endpoint, the plans list and the checkout button — sent one
+ * of three hand-written English sentences into a page translated into four
+ * languages, on the three doors a NEW buyer walks through first: register, sign in,
+ * pay.
+ *
+ * One sentence for all of them, not three: they state the same fact. Checkout keeps
+ * its own, because there the person has just pressed a button that takes money and
+ * the thing they most need to know is that none moved — the same reason
+ * `RATE_LIMIT_CAPACITY` says it.
+ */
+export function tooManyRequestsNotice(lang: unknown, kind: 'requests' | 'checkout' = 'requests'): string {
+  return pick(kind === 'checkout' ? TOO_MANY_CHECKOUTS : TOO_MANY_REQUESTS, asLang(lang));
+}
+
 const CLOSED_NOTICE: Copy = {
   en: 'This report could not be completed.',
   es: 'Este informe no pudo completarse.',

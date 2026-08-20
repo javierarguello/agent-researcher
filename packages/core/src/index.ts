@@ -47,7 +47,7 @@ export {
 } from './jobs/firestore.js';
 export type { ResearchJob, JobStatus, JobFailureKind, JobHold, JobFile, JobProgress, JobSummary, ProgressKind } from './jobs/types.js';
 export { clientProgress, PROGRESS_DETAIL_MAX } from './jobs/types.js';
-export { sectionsNotice, degradedSectionNote, closedNotice, rateLimitNotice } from './jobs/report-copy.js';
+export { sectionsNotice, degradedSectionNote, closedNotice, rateLimitNotice, tooManyRequestsNotice } from './jobs/report-copy.js';
 export { claimJobSlot, releaseJobSlot, releaseUnclaimedSlot, inFlightSlots, setJobSlotHeld } from './jobs/slots.js';
 export type { SlotClaim } from './jobs/slots.js';
 export { generateHeadline } from './jobs/headline.js';

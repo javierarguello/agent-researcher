@@ -20,8 +20,9 @@
  * Off entirely until `TURNSTILE_SECRET` is set.
  */
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
-import { captchaEnabled, config, logEvent, verifyCaptcha, TURNSTILE_TOKEN_FIELD } from '@agent-researcher/core';
+import { captchaEnabled, config, logEvent, tooManyRequestsNotice, verifyCaptcha, TURNSTILE_TOKEN_FIELD } from '@agent-researcher/core';
 import { clientIp, burstOkOnce, burstKeyFor, type BurstWindow } from './public-limit.js';
+import { errorLang } from './req-lang.js';
 
 /**
  * A named user action a widget can be attached to. Adding one is just adding a
@@ -129,7 +130,10 @@ export function requireCaptcha(flow: CaptchaFlow, opts: CaptchaOptions): preHand
       // that reads it. A 429 that cannot say how long to wait is a dead end.
       reply.header('Retry-After', '60');
       await reply.code(429).send({
-        error: 'Too many requests. Please try again in a moment.',
+        // In the person's language. This is a preHandler on register, login and
+        // password-reset — the three doors a NEW buyer walks through — and it sent
+        // an English sentence into a page translated into four.
+        error: tooManyRequestsNotice(errorLang(req)),
         code: 'rate_limited',
         scope: 'burst',
         retryAfterSeconds: 60,

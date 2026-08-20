@@ -58,7 +58,13 @@ interface RequestOptions {
 }
 
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  // The language the SWITCHER is on, not the browser's. The API answers a person in
+  // `body.lang`, then `?lang=`, then this header — and until now this header was
+  // whatever the laptop was configured in, so a Spanish speaker on a US machine read
+  // the rate-limit and blocked-account messages in English inside a Spanish page.
+  // One line here, and every route that answers a person gets it: the four 429s, the
+  // blocked-account 403, and the two emails that used to need `lang` in the body.
+  const headers: Record<string, string> = { 'content-type': 'application/json', ...langHeader() };
   if (opts.token) {
     headers.authorization = `Bearer ${opts.token}`;
   } else if (!opts.anonymous) {
@@ -80,7 +86,7 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
 /** Fetch a report file through the authenticated proxy (with the session token) and
  *  trigger a browser download — there is no shareable link. */
 export async function downloadFile(path: string, filename: string, override?: string): Promise<void> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...langHeader() };
   const token = override ?? getToken();
   if (token) headers.authorization = `Bearer ${token}`;
   const res = await fetch(`${config.apiBaseUrl}${path}`, { headers });
@@ -136,6 +142,19 @@ export const captchaBody = (token?: string): Record<string, string> =>
  * person this is for.
  */
 const chosenLang = (): string | undefined => localStorage.getItem('fbizlab_lang') ?? undefined;
+
+/**
+ * `Accept-Language` for every call, set to the language the switcher is on.
+ *
+ * `Accept-Language` is not a forbidden header name, so `fetch` may set it — and
+ * setting it is what makes the server's fallback the CHOSEN language rather than
+ * the laptop's. Omitted entirely when nothing has been chosen, so the browser's own
+ * value is sent, which is the right default for a first visit.
+ */
+const langHeader = (): Record<string, string> => {
+  const l = chosenLang();
+  return l ? { 'accept-language': l } : {};
+};
 
 // --- Password auth (register / verify email / reset) -----------------------
 /** Register a password account. 202 = verification email sent. Throws ApiError

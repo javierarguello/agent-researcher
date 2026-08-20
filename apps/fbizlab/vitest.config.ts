@@ -13,7 +13,12 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   test: {
-    include: ['test/**/*.test.tsx'],
+    // `?(x)`, because the old pattern matched only `.test.tsx` and silently
+    // DROPPED a `.test.ts` file — no error, no skip, just a suite total that did
+    // not move. Every sibling here is `.tsx` by habit rather than by need, and the
+    // first file written without JSX was invisible. A pattern that ignores a file
+    // is worse than one that fails on it. Found by writing one.
+    include: ['test/**/*.test.ts?(x)'],
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
     globals: true,

@@ -58,6 +58,7 @@ import {
   updateApp,
   updateSettings,
   validateRequest,
+  tooManyRequestsNotice,
   moderateResearchParams,
   moderationMessage,
   blockedMessage,
@@ -124,6 +125,7 @@ import { stripe, stripeConfigured, listStripePlans, resolveStripePlan, isValidAp
 import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_EMPTY_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
 import { publicLimit, clientIp, secondsToNextHour } from './public-limit.js';
 import { requireCaptcha, captchaBodyProperties } from './captcha.js';
+import { errorLang } from './req-lang.js';
 
 /**
  * The burst window each captcha'd route counts into — one object per route, read
@@ -471,7 +473,7 @@ app.post(
 
     const token = await signActionToken({ email, appId: appRec.appId, scope: 'verify-email' }, config.auth.verifyTtlSeconds);
     const link = `${appRec.webUrl}/verify?token=${encodeURIComponent(token)}`;
-    const tpl = verifyEmailTemplate(appRec.name, link, b.lang ?? headerLang(req));
+    const tpl = verifyEmailTemplate(appRec.name, link, errorLang(req));
     try {
       await sendAppEmail({ app: appRec, to: email, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text });
     } catch (err) {
@@ -614,7 +616,7 @@ app.post(
       if (cred) {
         const token = await signActionToken({ email, appId: appRec.appId, scope: 'reset-password' }, config.auth.resetTtlSeconds);
         const link = `${appRec.webUrl}/reset?token=${encodeURIComponent(token)}`;
-        const tpl = resetPasswordTemplate(appRec.name, link, b.lang ?? headerLang(req));
+        const tpl = resetPasswordTemplate(appRec.name, link, errorLang(req));
         await sendAppEmail({ app: appRec, to: email, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text }).catch((err) =>
           logEvent({ jobId: '-', appId: appRec.appId, userId: email }, 'ERROR', 'auth.reset_email_failed', { error: (err as Error).message }),
         );
@@ -1045,13 +1047,9 @@ async function moderateParams(
 /** The report language a request asked for (drives every message we send back). */
 const paramsLang = (params: Record<string, unknown>): Lang => asLang(params.language);
 
-/**
- * The language to answer an error in when the request carries no params to read it
- * from — a checkout, a block. Falls back to the browser's `Accept-Language`, which
- * is what the SPA sends, rather than to English for everyone.
- */
-const headerLang = (req: { headers: Record<string, unknown> }): Lang =>
-  asLang(String(req.headers['accept-language'] ?? '').slice(0, 2).toLowerCase());
+// The language to answer a person in lives in `req-lang.ts` now — one rule for the
+// body, the query and the header, shared with `captcha.ts` and `public-limit.ts`,
+// which had no way to reach the local helper this replaced.
 
 app.post(
   '/research',
@@ -1904,7 +1902,7 @@ app.get(
         // reached by the SAME buyer page, were left behind.
         const wait = secondsToNextHour();
         reply.header('Retry-After', String(wait));
-        return reply.code(429).send({ error: 'Too many requests. Please try again later.', code: 'rate_limited', retryAfterSeconds: wait });
+        return reply.code(429).send({ error: tooManyRequestsNotice(errorLang(req)), code: 'rate_limited', retryAfterSeconds: wait });
       }
     }
 
@@ -1952,7 +1950,7 @@ app.post(
     if (req.auth!.role !== 'admin') {
       const flags = await getUserFlags(appId, userId);
       if (flags.blocked) {
-        return reply.code(403).send({ error: blockedMessage(headerLang(req)), code: 'account_blocked', reason: flags.blockedReason });
+        return reply.code(403).send({ error: blockedMessage(errorLang(req)), code: 'account_blocked', reason: flags.blockedReason });
       }
     }
 
@@ -1969,7 +1967,7 @@ app.post(
         // figure is the worst place to leave them.
         const wait = secondsToNextHour();
         reply.header('Retry-After', String(wait));
-        return reply.code(429).send({ error: 'Too many checkout attempts. Please try again later.', code: 'rate_limited', retryAfterSeconds: wait });
+        return reply.code(429).send({ error: tooManyRequestsNotice(errorLang(req), 'checkout'), code: 'rate_limited', retryAfterSeconds: wait });
       }
     }
 
