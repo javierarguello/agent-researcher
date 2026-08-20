@@ -179,9 +179,40 @@ that is a decision, not a patch.
 - Every finding: `file:line`, the exact input, the observed artifact, and
   **reproduced** or reasoned.
 
-**Status: `planned`, nothing run.** Recorded 2026-08-20 at Javier's request; the
-gap is real (no test anywhere asserts an artifact lacks the prompt — checked by
-grep) and neither family is scheduled.
+**Status 2026-08-20: E1 RUN AND CLOSED, E2 run and OPEN.**
+`packages/core/test/red-team/e-extraction.test.ts`.
+
+**E1 measured, before any defence existed:** a page asking for the instructions
+verbatim put the whole system prompt into `report.json` AND into the PDF. Nothing
+anywhere looked. The one surface already safe is the progress line — it is built by
+us from the model's tool ARGUMENTS, never from what it writes.
+
+**E1 closed by `redactPromptEcho`** (`engine/prompt-echo.ts`), applied on both write
+paths: a field carrying a 15-word verbatim run from the SYSTEM prompt is replaced by
+the same "we could not complete this section" line a degraded section uses, and the
+admin gets the field paths. Compared against the system prompt ALONE — the message
+body carries the evidence, and a dossier is supposed to quote its sources.
+
+**The threshold is a bet, and the bet is written down.** The only real report
+available to measure the legitimate side against ran in SPANISH against English
+prompts, so its "zero shared runs" proves almost nothing. Nobody has measured an
+English report against an English prompt. 15 words is where a dump is hundreds and
+an accident is hard to construct — re-measure it the first time a real English job
+exists.
+
+**E2 is OPEN and is a product decision, not a longer regex.** The "write the prompt
+that would produce this report" appendix is copied out of the MESSAGE BODY — the
+brief, the dossier, the upstream sections — so the same guard cannot catch it
+without deleting every legitimate quotation of a source. The question is whether a
+dossier may describe its own method. The test asserts it still reaches, so the day
+someone answers that, the assertion says so.
+
+**Two traps this run paid for**, both the same shape as the ones §M keeps finding:
+a payload that only fires on the PRODUCER leaves the synthesizer path untested (and
+removing the guard there was 0 red across the whole suite until a test drove each
+builder on its own); and a fixture whose prose is sampled from the schema's own
+`.describe()` text cannot measure a false-positive rate, because its "report" is
+made of the prompt.
 
 ## 3. Method
 

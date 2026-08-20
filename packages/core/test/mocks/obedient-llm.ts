@@ -124,7 +124,10 @@ export class ObedientMockProvider extends MockLlmProvider {
     // Structured write: sample, then let every payload the model has read rewrite it.
     if (opts.responseSchema) {
       let value = sampleFromSchema(opts.responseSchema) as Record<string, unknown>;
-      for (const p of saw) if (p.obeyStructured) value = p.obeyStructured(value);
+      // The prompt goes WITH the value: an extraction payload copies what it was
+      // shown, and a model that has fallen for one has the whole system prompt in
+      // hand. Passing only the value could model injection and never extraction.
+      for (const p of saw) if (p.obeyStructured) value = p.obeyStructured(value, { system: opts.system, body });
       return { text: JSON.stringify(value), toolCalls: [], usage };
     }
 

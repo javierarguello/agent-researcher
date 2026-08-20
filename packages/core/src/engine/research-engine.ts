@@ -27,6 +27,7 @@ import {
   type ResearchTemplate,
 } from '../templates/types.js';
 import { degradedSectionNote } from '../jobs/report-copy.js';
+import { redactPromptEcho } from './prompt-echo.js';
 import type { ProgressKind } from '../jobs/types.js';
 import { normalizeSectionStatuses, type SectionStatus } from './section-status.js';
 import { createEvidence, gather, gatherCompleted, type Evidence, type GatherStop } from './gather.js';
@@ -1257,14 +1258,42 @@ async function runAgent(ctx: {
             depthDirective,
           });
     const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-    return splitHandoff(sres.value as Record<string, unknown>);
+    return splitHandoff(guardPromptEcho(sres.value as Record<string, unknown>, system, language, note));
   }
 
   // synthesizer — compose from upstream only.
   await note(`Composing (${owned.join(', ')}).`, 'composing');
   const text = buildSynthesizerPrompt({ agent, brief, sections, context: context.sections, handoffs: context.handoffs, current: context.current, lang: language, depthDirective });
   const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-  return splitHandoff(sres.value as Record<string, unknown>);
+  return splitHandoff(guardPromptEcho(sres.value as Record<string, unknown>, system, language, note));
+}
+
+/**
+ * Our own prompt, refused on its way into the report.
+ *
+ * Compared against the SYSTEM prompt alone, deliberately. The user message carries
+ * the evidence — the fetched pages, the snippets, the upstream sections — and a
+ * report is supposed to quote those; guarding against them would delete the
+ * product to protect a sentence that is not a secret. What must never come back out
+ * is the instructions.
+ *
+ * A hit empties the FIELD, not the section: the rest of the write is usually fine,
+ * and an agent whose overview was a transcription still found real listings. The
+ * buyer reads the same "we could not complete this" line a degraded section uses —
+ * they cannot act on the difference, and explaining our prompt handling to whoever
+ * asked for it is the last thing this should do. The ADMIN gets the field paths.
+ */
+function guardPromptEcho(
+  value: Record<string, unknown>,
+  system: string,
+  language: string,
+  note: (m: string, kind?: ProgressKind, detail?: string) => unknown,
+): Record<string, unknown> {
+  const { value: clean, redacted } = redactPromptEcho(value, system, degradedSectionNote(language));
+  if (redacted.length) {
+    void note(`Removed ${redacted.length} field(s) that repeated this agent's own instructions.`, 'composing');
+  }
+  return clean as Record<string, unknown>;
 }
 
 /**
