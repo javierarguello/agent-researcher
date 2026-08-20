@@ -6,7 +6,8 @@ import { ApiError, resetPassword } from '../api/client';
 import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 
 const MARK = '/icons/favicon.svg';
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: { title: 'Choose a new password', sub: 'Enter a new password for your account.', label: 'New password', ph: '••••••••', submit: 'Reset password', busy: 'Please wait…', missing: 'This reset link is missing its token.', invalid: 'This reset link is invalid or has expired.', login: 'Back to sign in', tooShort: 'Password must be at least 8 characters.', linkOk: 'Your reset link is still valid.' },
   es: { title: 'Elige una nueva contraseña', sub: 'Ingresa una nueva contraseña para tu cuenta.', label: 'Nueva contraseña', ph: '••••••••', submit: 'Restablecer contraseña', busy: 'Espera…', missing: 'A este enlace le falta su token.', invalid: 'Este enlace es inválido o expiró.', login: 'Volver al ingreso', tooShort: 'La contraseña debe tener al menos 8 caracteres.', linkOk: 'Tu enlace para restablecer sigue siendo válido.' },
   fr: { title: 'Choisissez un nouveau mot de passe', sub: 'Saisissez un nouveau mot de passe pour votre compte.', label: 'Nouveau mot de passe', ph: '••••••••', submit: 'Réinitialiser', busy: 'Patientez…', missing: 'Ce lien n’a pas son jeton.', invalid: 'Ce lien est invalide ou a expiré.', login: 'Retour à la connexion', tooShort: 'Le mot de passe doit contenir au moins 8 caractères.', linkOk: 'Votre lien de réinitialisation reste valide.' },

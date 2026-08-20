@@ -5,7 +5,8 @@ import { pick, useLang } from '../i18n';
 import { LangSwitcher } from './LangSwitcher';
 import { useBalance } from '../api/hooks';
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: { reports: 'Dossiers', newReport: 'New dossier', credits: 'Credits', logout: 'Log out', credit: 'credits' },
   es: { reports: 'Dossiers', newReport: 'Nuevo dossier', credits: 'Créditos', logout: 'Salir', credit: 'créditos' },
   fr: { reports: 'Dossiers', newReport: 'Nouveau dossier', credits: 'Crédits', logout: 'Déconnexion', credit: 'crédits' },

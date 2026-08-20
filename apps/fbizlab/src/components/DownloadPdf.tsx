@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useLang, pick } from '../i18n';
 import { ensureReportPdf, ApiError } from '../api/client';
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: { pdf: 'PDF', download: 'Download PDF', preparing: 'Preparing PDF…', retry: 'Try again' },
   es: { pdf: 'PDF', download: 'Descargar PDF', preparing: 'Preparando PDF…', retry: 'Reintentar' },
   fr: { pdf: 'PDF', download: 'Télécharger le PDF', preparing: 'Préparation du PDF…', retry: 'Réessayer' },

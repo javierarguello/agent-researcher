@@ -9,7 +9,8 @@ import type { DirectiveFieldInfo, ParamsUi } from '../api/types';
 
 type Props = Record<string, unknown>;
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: {
     sModel: 'Research model', sModelH: 'Which kind of report to produce.',
     dash: 'Dashboard', crumb: 'New dossier', title: 'New dossier.',
@@ -459,10 +460,22 @@ export function NewReport() {
   const livePrefs = directives.flatMap((f) => {
     const v = dirVals[f.key];
     if (v === undefined || v === null || (Array.isArray(v) && !v.length)) return [];
-    const label = (x: unknown) => f.options?.find((o) => o.value === x)?.label ?? String(x);
+    // The same three rules the server applies in `planPreferences`, because this is
+    // the renderer that actually reaches the buyer: since `c1397a9` the confirm
+    // dialog reads the live form, not `pf.preferences`, so the hardening R9-19 added
+    // server-side ran on a value no first-party screen shows (round 10, R10-36).
+    // Only a DECLARED option renders — `?? String(x)` was the fall-through the
+    // server had just removed — a multi is deduped and cut at the cap the manifest
+    // declares, and a boolean renders only for a real boolean (round 10, R10-21).
+    // Reachable through a restored draft: R10-9's filter keeps or drops whole param
+    // keys, so `directives` survives with whatever localStorage held inside it.
+    const declared = f.options ? new Set(f.options.map((o) => o.value)) : undefined;
+    const ok = (x: unknown): x is string => typeof x === 'string' && !!declared?.has(x);
+    const label = (x: string) => f.options?.find((o) => o.value === x)?.label ?? x;
     const value = typeof v === 'boolean' ? (v ? t.yes : t.no)
-      : Array.isArray(v) ? v.map(label).join(', ')
-      : label(v);
+      : Array.isArray(v) ? [...new Set(v.filter(ok))].slice(0, f.maxSelected ?? declared?.size ?? 0).map(label).join(', ')
+      : ok(v) ? label(v)
+      : '';
     return value ? [{ label: f.label, value }] : [];
   });
   /**

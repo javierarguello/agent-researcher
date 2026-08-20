@@ -11,7 +11,8 @@ import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 const BRAND = 'Florida Biz Labs';
 const MARK = '/icons/favicon.svg';
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: {
     eyebrow: 'API & MCP', title: 'API & MCP access', login: 'Log In', home: '← Home',
     eyebrowInfo: 'Contact', titleInfo: 'Request information', leadInfo: 'Have a question or want more information? Send us a message and we’ll get back to you.',

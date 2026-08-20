@@ -14,7 +14,8 @@ import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 const BRAND = 'Florida Biz Labs';
 const MARK = '/icons/favicon.svg';
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: {
     eyebrowL: 'Research digest · Florida', heroL: 'Sign in to research Florida business opportunities.',
     leadL: 'Organize listing information, compare key details and prepare the questions worth investigating.',

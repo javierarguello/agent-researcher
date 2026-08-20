@@ -5,7 +5,8 @@ import { useBalance, useJobs, useMyStats, useTemplates } from '../api/hooks';
 import type { JobStatus } from '../api/types';
 import { DownloadPdf } from '../components/DownloadPdf';
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: {
     dashboard: 'Dashboard', hi: 'Hi, ',
     sub: 'Generate new dossiers, track running ones, and manage your credits.',

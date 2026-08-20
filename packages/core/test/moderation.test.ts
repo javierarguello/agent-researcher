@@ -633,11 +633,19 @@ describe('deterministic review', () => {
     // the two renderers agree about what a boolean field accepts.
     expect(renderDirectives(boolSpec, forged.directives)).toBe('');
     // A real boolean still renders, in the buyer's language.
+    // The word is ours and it matches the only client that renders these pairs:
+    // `t.yes` / `t.no` in the SPA's `NewReport`, which are capitalized (R10-21).
     expect(planPreferences(boolTpl, { directives: { franchiseOnly: true } }, 'en')).toEqual([
-      { label: 'Franchises only', value: 'yes' },
+      { label: 'Franchises only', value: 'Yes' },
     ]);
     expect(planPreferences(boolTpl, { directives: { franchiseOnly: false } }, 'es')).toEqual([
-      { label: 'Franchises only', value: 'no' },
+      { label: 'Franchises only', value: 'No' },
+    ]);
+    expect(planPreferences(boolTpl, { directives: { franchiseOnly: true } }, 'fr')).toEqual([
+      { label: 'Franchises only', value: 'Oui' },
+    ]);
+    expect(planPreferences(boolTpl, { directives: { franchiseOnly: true } }, 'pt')).toEqual([
+      { label: 'Franchises only', value: 'Sim' },
     ]);
   });
 

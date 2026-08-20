@@ -5,7 +5,8 @@ import { useBalance, useCheckout, usePlans, useTemplates } from '../api/hooks';
 import { ApiError, DRAFT_KEY } from '../api/client';
 import { isRateLimited, rateLimitMessage } from '../lib/rate-limit';
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: {
     eyebrow: 'Credits', title: 'Top up your balance',
     sub: 'Credits pay for your AI research dossiers. Buy once — spend them whenever you research; credits are valid for one year from purchase, and you always see a dossier’s exact cost before you confirm.',

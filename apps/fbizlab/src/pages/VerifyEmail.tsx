@@ -4,7 +4,8 @@ import { pick, useLang } from '../i18n';
 import { verifyEmail } from '../api/client';
 
 const MARK = '/icons/favicon.svg';
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: {
     title: 'Confirm your password to finish signing up',
     sub: 'Enter the password you chose when you created the account.',

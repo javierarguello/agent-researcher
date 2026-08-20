@@ -127,11 +127,24 @@ export function renderPlan(
   return `${head(template.name, ctx.modeLabel)}${filters.length ? ` — ${filters.join('; ')}.` : '.'}`;
 }
 
+/**
+ * The word for a boolean directive, in the buyer's language.
+ *
+ * Capitalized, which is what the only client that renders these pairs already
+ * shows: `t.yes` / `t.no` in `apps/fbizlab/src/pages/NewReport.tsx` are
+ * `Yes|No` / `Sí|No` / `Oui|Non` / `Sim|Não`, and this table said `yes` / `sí`.
+ * Two renderers of the same request disagreeing on a word is the shape these rounds
+ * keep finding, and here it also read oddly beside its neighbours: every other
+ * value in the pairs list is a manifest label ("Owner retiring"). Dead copy today —
+ * no shipped template declares a boolean directive — and there is no automatic
+ * parity check for it, because the SPA is a static bundle with no dependency on this
+ * package and `t.yes` is general UI copy rather than this constant (round 10, R10-21).
+ */
 const PREFS_YESNO: Record<Lang, [string, string]> = {
-  en: ['yes', 'no'],
-  es: ['sí', 'no'],
-  fr: ['oui', 'non'],
-  pt: ['sim', 'não'],
+  en: ['Yes', 'No'],
+  es: ['Sí', 'No'],
+  fr: ['Oui', 'Non'],
+  pt: ['Sim', 'Não'],
 };
 
 /**

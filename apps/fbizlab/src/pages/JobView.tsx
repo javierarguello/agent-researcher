@@ -8,7 +8,8 @@ import { shortDate } from '../lib/format';
 import { progressLine } from '../lib/progress-copy';
 import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
 
-const T = {
+/** Exported for `copy-parity.test.tsx`: every language must carry every key. */
+export const T = {
   en: { back: '← Dossiers', working: 'Generating your dossier…', loadingReport: 'Loading dossier…', failed: 'This dossier could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.' },
   es: { back: '← Dossiers', working: 'Generando tu dossier…', loadingReport: 'Cargando dossier…', failed: 'Este dossier no pudo completarse.', download: 'Descargar', files: 'Archivos', warnings: 'Notas', partial: 'Algunas secciones se entregaron parciales.' },
   fr: { back: '← Dossiers', working: 'Génération de votre dossier…', loadingReport: 'Chargement du dossier…', failed: 'Ce dossier n’a pas pu être terminé.', download: 'Télécharger', files: 'Fichiers', warnings: 'Notes', partial: 'Certaines sections ont été livrées partielles.' },
