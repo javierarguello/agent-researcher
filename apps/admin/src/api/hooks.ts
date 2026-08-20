@@ -9,6 +9,8 @@ import type {
   LedgerEntry,
   PricingView,
   CreditFloorResult,
+  CreditPack,
+  CreditPackWrite,
   TemplateManifest,
 } from './types';
 
@@ -78,6 +80,37 @@ export function useRefreshCreditFloor() {
         body: { appId, apply },
       }),
     onSuccess: (_res, { templateId }) => qc.invalidateQueries({ queryKey: ['pricing', templateId] }),
+  });
+}
+
+/** The credit packs an app sells for one model (plus the untagged, all-model ones). */
+export function usePlans(appId: string | undefined, templateId: string) {
+  return useQuery({
+    enabled: !!appId,
+    queryKey: ['plans', appId, templateId],
+    queryFn: () =>
+      api<{ plans: CreditPack[] }>(`/admin/plans?appId=${encodeURIComponent(appId!)}&templateId=${encodeURIComponent(templateId)}`),
+  });
+}
+
+export function useSavePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, body }: { planId: string; body: CreditPackWrite }) =>
+      api<{ plan: CreditPack; priceChanged: boolean; previousPriceUsd: number | null }>(
+        `/admin/plans/${encodeURIComponent(planId)}`,
+        { method: 'PUT', body },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'] }),
+  });
+}
+
+export function useArchivePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, appId }: { planId: string; appId: string }) =>
+      api<{ archived: boolean }>(`/admin/plans/${encodeURIComponent(planId)}/archive`, { method: 'POST', body: { appId } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'] }),
   });
 }
 

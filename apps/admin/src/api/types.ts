@@ -341,3 +341,35 @@ export interface CreditFloorResult {
   packs: Array<{ planId: string; priceUsd: number; credits: number; perCredit: number }>;
   pricing: PricingView;
 }
+
+/** A credit pack as Stripe holds it (the catalog) — see `StripePlan` in the API. */
+export interface CreditPack {
+  planId: string;
+  templateId?: string;
+  name: string;
+  priceUsd: number;
+  credits: number;
+  priceId: string;
+  interval?: string;
+  sub?: string;
+  popular?: boolean;
+  features?: string[];
+}
+
+/** What the admin sends to create or update one. */
+export interface CreditPackWrite {
+  appId: string;
+  templateId: string;
+  name: string;
+  credits: number;
+  priceUsd: number;
+  popular?: boolean;
+  sub?: Record<string, string>;
+  features?: Record<string, string[]>;
+  /**
+   * What the editor was SHOWN. Required to change an amount, ignored otherwise.
+   * The server refuses (428) without it and (409) when it no longer matches, which
+   * is what stops two admins on two screens from overwriting each other.
+   */
+  expectedPriceUsd?: number;
+}

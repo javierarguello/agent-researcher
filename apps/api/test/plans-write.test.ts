@@ -212,3 +212,42 @@ describe('listing and retiring', () => {
     expect(list.json().plans).toEqual([]);
   });
 });
+
+describe('who may touch the catalog', () => {
+  /**
+   * `requireAdmin` guards all three routes, and it is not the token's word that
+   * decides: `jwtAuth` re-reads the app's `adminEmails` on every request and
+   * DOWNGRADES the claim when the email is no longer on the list (`auth.ts:141`).
+   * So a signed admin token belonging to someone since removed is a user token by
+   * the time a route sees it — which is the case worth testing, because it is the
+   * one a session-lifetime check gets wrong.
+   */
+  const user = async () => auth(await token('fbizlab', 'buyer@x.com'));
+
+  it('refuses a buyer on every one of them', async () => {
+    const attempts = [
+      app.inject({ method: 'GET', url: '/admin/plans?appId=fbizlab', headers: await user() }),
+      app.inject({ method: 'PUT', url: '/admin/plans/scout', headers: await user(), payload: base }),
+      app.inject({ method: 'POST', url: '/admin/plans/scout/archive', headers: await user(), payload: { appId: 'fbizlab' } }),
+    ];
+    for (const r of await Promise.all(attempts)) expect(r.statusCode).toBe(403);
+    expect(store.products.size, 'a refused request still wrote to Stripe').toBe(0);
+  });
+
+  it('refuses an unauthenticated request', async () => {
+    const r = await app.inject({ method: 'PUT', url: '/admin/plans/scout', payload: base, headers: { 'content-type': 'application/json' } });
+    expect(r.statusCode).toBe(401);
+    expect(store.products.size).toBe(0);
+  });
+
+  it('refuses a token that CLAIMS admin for an app whose whitelist it is not on', async () => {
+    // The downgrade. `signSession({ role: 'admin' })` is easy to mint from anywhere
+    // that has the secret — a leaked worker key, an old script — and the role on the
+    // claim is not the role that is enforced.
+    await seedAdmin(['boss@x.com']);
+    const impostor = auth(await token('admin', 'someone-else@x.com', 'admin'));
+    const r = await app.inject({ method: 'PUT', url: '/admin/plans/scout', headers: impostor, payload: base });
+    expect(r.statusCode).toBe(403);
+    expect(store.products.size).toBe(0);
+  });
+});

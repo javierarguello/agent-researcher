@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Card, Divider, Group, Loader, NumberInput, Stack, Table, Text, Tooltip } from '@mantine/core';
+import { Alert, Badge, Button, Card, Divider, Group, Loader, NumberInput, Select, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { useApps, usePricing, useRefreshCreditFloor, useSetPricing, useTemplates } from '../api/hooks';
+import { CreditPacks } from '../components/CreditPacks';
 import { ApiError } from '../api/client';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
-function PricingCard({ templateId, name }: { templateId: string; name: string }) {
+function PricingCard({ templateId, name, appId }: { templateId: string; name: string; appId: string | undefined }) {
   const pricing = usePricing(templateId);
   const save = useSetPricing();
   const refresh = useRefreshCreditFloor();
-  const apps = useApps();
   const [modes, setModes] = useState<Record<string, number>>({});
   const [addons, setAddons] = useState<Record<string, number>>({});
   const [floor, setFloor] = useState<number | undefined>();
@@ -47,14 +47,13 @@ function PricingCard({ templateId, name }: { templateId: string; name: string })
   /**
    * Read the packs off Stripe and store the floor they imply.
    *
-   * `appId` is which catalog to read — credits are sold per app, and a model
-   * offered through two apps has two floors. The first app is the common case and
-   * the only one this picker needs until a second appears.
+   * The catalog read is the SELECTED app's: credits are sold per app, and a model
+   * offered through two apps has two floors. Reading it off the app picker rather
+   * than assuming the first app is what makes the second one reachable.
    */
   async function onReadStripe() {
-    const appId = apps.data?.apps?.[0]?.appId;
     if (!appId) {
-      notifications.show({ message: 'No app to read a credit catalog from.', color: 'red' });
+      notifications.show({ message: 'Pick the app whose credit catalog to read.', color: 'red' });
       return;
     }
     try {
@@ -124,6 +123,9 @@ function PricingCard({ templateId, name }: { templateId: string; name: string })
         </Group>
       )}
       <Text size="xs" c="dimmed" mt="sm">Add-ons are defined in the model; here you only set their price. Generators ship later.</Text>
+
+      <Divider label="Credit packs (Stripe)" labelPosition="left" my="sm" />
+      <CreditPacks appId={appId} templateId={templateId} />
 
       <Divider label="Economics — what a job may spend" labelPosition="left" my="sm" />
       <Group align="flex-start">
@@ -201,13 +203,27 @@ function PricingCard({ templateId, name }: { templateId: string; name: string })
 
 export function Pricing() {
   const templates = useTemplates();
+  const apps = useApps();
+  const [appId, setAppId] = useState<string | undefined>();
+  // The first app until someone picks another. Packs are sold per app, so every
+  // catalog on this page is one app's — saying WHICH beats implying it.
+  const selected = appId ?? apps.data?.apps?.[0]?.appId;
+
   return (
     <Stack>
-      <PageHeader eyebrow="Billing" title="Pricing" subtitle="Credit cost per model — tiers + add-ons. Overrides the code default, no deploy." />
+      <PageHeader eyebrow="Billing" title="Pricing" subtitle="Credit cost per model — tiers, add-ons, the packs that sell credits, and what a job may spend." />
+      <Select
+        label="Credit catalog"
+        description="Packs are sold per app; a model offered through two apps has two of everything below."
+        w={280}
+        data={(apps.data?.apps ?? []).map((a) => ({ value: a.appId, label: `${a.name} (${a.appId})` }))}
+        value={selected ?? null}
+        onChange={(v) => setAppId(v ?? undefined)}
+      />
       {templates.isLoading && <Loader />}
       {templates.error && <Alert color="red">{(templates.error as Error).message}</Alert>}
       {(templates.data?.templates ?? []).map((t) => (
-        <PricingCard key={t.id} templateId={t.id} name={t.name} />
+        <PricingCard key={t.id} templateId={t.id} name={t.name} appId={selected} />
       ))}
     </Stack>
   );
