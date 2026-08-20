@@ -55,6 +55,8 @@ export interface AppStatsRollup {
   /** Request-path model spend (moderation + assisted review), outside any job. */
   requestLlmUsd: number;
   requestLlmCalls: number;
+  /** Requests allowed through because the moderation classifier could not answer. */
+  moderationFailOpen: number;
   revenueUsd: number;
   purchases: number;
   creditsPurchased: number;
@@ -71,10 +73,23 @@ export interface DailyPoint {
   failedCostUsd: number;
   revenueUsd: number;
 }
+/**
+ * The state of the layers that decide whether a request runs at all. Optional
+ * because a deployed API older than this field returns stats without it — the
+ * dashboard must not claim "healthy" when what it actually has is silence.
+ */
+export interface AdminHealth {
+  classifierEnabled: boolean;
+  moderationFailOpenRecent: number;
+  moderationFailOpen: number;
+  moderationFailOpenLastAt?: string;
+  adminBypassesModeration: boolean;
+}
 export interface AdminStats {
   totals: Omit<AppStatsRollup, 'appId'>;
   apps: AppStatsRollup[];
   daily: DailyPoint[];
+  health?: AdminHealth;
 }
 
 export interface AdminUser {

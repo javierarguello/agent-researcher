@@ -359,6 +359,34 @@ describe('a billed call is booked even when its answer is unusable', () => {
     expect(verdict.usage?.usd).toBeGreaterThan(0);
   });
 
+  it('says WHY it allowed the request — a verdict that could not answer is not a verdict that said yes (round 10, R10-10)', async () => {
+    // Failing open is right and it was silent: one WARNING nobody watches. §K's
+    // decision to leave semantic injection patterns to the classifier assumes the
+    // classifier RUNS, and nothing checked that it did. `degraded` is what a
+    // caller books so an admin can see it on the way in.
+    // Mutation that reds this: return a bare `{ ok: true }` from any of the three.
+    writableConfig.moderation.llm = true;
+    __setProviderForTests('gemini-vertex', stub('{"allowed": tru') as never);
+    expect((await moderateResearchParams({ industry: 'laundromats' })).degraded).toBe('llm_unparsable');
+
+    __setProviderForTests('gemini-vertex', {
+      name: 'gemini-vertex',
+      async generate() { throw new Error('vertex is down'); },
+    } as never);
+    expect((await moderateResearchParams({ industry: 'laundromats' })).degraded).toBe('llm_failed');
+
+    // The third state is a deployment, not an incident — and it is the one R10-10
+    // reproduced, because `MODERATION_LLM` is independent of `VALIDATION_LLM`.
+    writableConfig.moderation.llm = false;
+    expect((await moderateResearchParams({ industry: 'laundromats' })).degraded).toBe('off');
+
+    // …and a CALLER skipping the classifier for one call is neither: the preview
+    // re-moderates in full at generate time, so there is nothing to report.
+    writableConfig.moderation.llm = true;
+    __setProviderForTests('gemini-vertex', stub('{"allowed": true}') as never);
+    expect((await moderateResearchParams({ industry: 'laundromats' }, { llm: false })).degraded).toBeUndefined();
+  });
+
   it('the assisted review reports usage when its answer does not parse', async () => {
     __setProviderForTests('gemini-vertex', stub('not json at all') as never);
     const res = await enrichRequest(tpl, params());

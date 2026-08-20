@@ -41,6 +41,19 @@ export interface ModerationVerdict {
   source?: 'prescreen' | 'llm';
   /** What the classifier cost, when it ran. Absent for the free pre-screen. */
   usage?: { inputTokens: number; outputTokens: number; usd: number };
+  /**
+   * Set when this verdict is `ok` because the classifier could NOT answer, not
+   * because it said yes — it threw, or it returned something that would not parse.
+   *
+   * Failing open is the right behaviour (an outage must not block paying users)
+   * and it was, until round 10, completely silent outside a log line nobody
+   * watches. §K's decision to stop chasing semantic patterns with regexes rests on
+   * the classifier actually running; this is the field that lets a caller say
+   * whether it did. `moderation.off` is the third state: not an incident, a
+   * deployment with `MODERATION_LLM=false`, where the pre-screen is the only layer
+   * by configuration.
+   */
+  degraded?: 'llm_failed' | 'llm_unparsable' | 'off';
 }
 
 /** Collect the free-text the user typed (skip numbers/booleans; enums are harmless). */
@@ -323,7 +336,7 @@ async function llmModerate(text: string): Promise<ModerationVerdict> {
       outputTokens: res.usage?.outputTokens,
       textSnippet: res.text.slice(0, 200),
     });
-    return { ok: true, categories: [], ...(usage ? { usage } : {}) };
+    return { ok: true, categories: [], degraded: 'llm_unparsable', ...(usage ? { usage } : {}) };
   }
   if (parsed.allowed !== false) return { ok: true, categories: [], source: 'llm', ...(usage ? { usage } : {}) };
   const categories = Array.isArray(parsed.categories) ? parsed.categories.map(asModerationCategory) : [];
@@ -355,13 +368,18 @@ export async function moderateResearchParams(
   const pre = preScreen(text);
   if (pre) return { ok: false, categories: [pre], source: 'prescreen' };
 
-  if (!config.moderation.llm || opts.llm === false) return { ok: true, categories: [] };
+  // `opts.llm === false` is a CALLER choosing to skip the classifier for this one
+  // call (the preview re-moderates in full at generate time); `config.moderation.llm`
+  // off is the deployment running without it at all. Only the second is worth an
+  // admin's attention, so only the second is reported.
+  if (!config.moderation.llm) return { ok: true, categories: [], degraded: 'off' };
+  if (opts.llm === false) return { ok: true, categories: [] };
   try {
     return await llmModerate(text);
   } catch (err) {
     // Fail-open so an LLM/permission outage never blocks legit users — but log it,
     // since a silent failure means moderation isn't actually running.
     logEvent({ jobId: '-' }, 'WARNING', 'moderation.llm_failed', { message: (err as Error).message });
-    return { ok: true, categories: [] };
+    return { ok: true, categories: [], degraded: 'llm_failed' };
   }
 }

@@ -130,6 +130,7 @@ export {
   recordReportStats,
   recordPurchaseStats,
   recordRequestLlmCost,
+  recordModerationDegraded,
   recordLogin,
   getAppStats,
   getDailyStats,

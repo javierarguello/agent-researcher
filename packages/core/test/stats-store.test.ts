@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { writableConfig } from './writable-config.js';
+import { config } from '../src/config.js';
 import {
   recordReportStats,
   recordPurchaseStats,
   recordRequestLlmCost,
+  recordModerationDegraded,
+  getAdminStats,
   getAppStats,
   getDailyStats,
   queryUsers,
@@ -91,5 +95,51 @@ describe('per-app stats', () => {
     expect(daily.length).toBe(1);
     expect((daily[0] as { revenueUsd: number }).revenueUsd).toBe(49);
     expect((daily[0] as { newUsers: number }).newUsers).toBe(1);
+  });
+});
+
+describe('the health an admin sees on the way in (round 10, R10-10)', () => {
+  it('counts a fail-open, keeps its time, and reports whether the classifier is on at all', async () => {
+    // The failure this makes visible is silent everywhere else: a classifier that
+    // throws is allowed through by design, and the only trace was a WARNING nobody
+    // watches. A COUNT alone would not be enough — "is this from March or from this
+    // morning?" is the question an admin actually has — so the last time is kept
+    // beside it.
+    // Mutation that reds this: drop `moderationFailOpenLastAt`, or stop summing
+    // `moderationFailOpen` into the totals.
+    const app = 'app-health';
+    await recordModerationDegraded({ appId: app, userId: 'u1@x.com', kind: 'llm_failed' });
+    await recordModerationDegraded({ appId: app, userId: 'u1@x.com', kind: 'llm_unparsable' });
+
+    const s = (await getAppStats(app))!;
+    expect(s.moderationFailOpen).toBe(2);
+    expect(s.moderationFailOpen_llm_failed).toBe(1);
+    expect(s.moderationFailOpen_llm_unparsable).toBe(1);
+
+    const stats = await getAdminStats(30);
+    expect(stats.health.moderationFailOpen).toBeGreaterThanOrEqual(2);
+    expect(stats.health.moderationFailOpenRecent).toBeGreaterThanOrEqual(2);
+    expect(stats.health.moderationFailOpenLastAt).toBeTruthy();
+    // Read from config, not from a counter: an off classifier writes nothing, which
+    // is exactly why counting alone cannot answer the question.
+    expect(stats.health.classifierEnabled).toBe(true);
+    // A fact about the code, carried so the dashboard does not have to know it.
+    expect(stats.health.adminBypassesModeration).toBe(true);
+  });
+
+  it('reports a classifier switched off, which leaves no trace of its own', async () => {
+    // `MODERATION_LLM=false` is a supported deployment (`deployment.md`), and it is
+    // the configuration in which the pre-screen is genuinely the only layer — while
+    // `VALIDATION_LLM` stays independent, so the assisted review still prompts a
+    // model with the buyer's free text. It increments nothing, so the ONLY way it
+    // can reach a dashboard is by being read.
+    // Mutation that reds this: hardcode `classifierEnabled: true`.
+    const was = config.moderation.llm;
+    writableConfig.moderation.llm = false;
+    try {
+      expect((await getAdminStats(30)).health.classifierEnabled).toBe(false);
+    } finally {
+      writableConfig.moderation.llm = was;
+    }
   });
 });

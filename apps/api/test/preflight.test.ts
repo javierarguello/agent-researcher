@@ -16,7 +16,7 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { grantCredits } from '@agent-researcher/core';
+import { grantCredits, getAppStats } from '@agent-researcher/core';
 import { seedApp, token, auth } from './helpers.js';
 import { fakeLlm } from './setup.js';
 import { describeMock } from './llm-mode.js';
@@ -144,6 +144,23 @@ describeMock('pre-flight — the buyer’s own words → proposals (stubbed mode
     // Mutation that reds this: moderate `params` alone (drop `{ ...params, freeText }`).
     expect(r.statusCode).toBe(422);
     expect(fakeLlm.calls).toBe(0);
+  });
+
+  it('books the fail-open, so the dashboard can say the classifier stopped answering (round 10, R10-10)', async () => {
+    // The production caller, not the unit. `moderateResearchParams` returns
+    // `degraded` and nothing would have read it: failing open is right, and it was
+    // invisible outside a WARNING nobody watches. §K's decision to leave semantic
+    // injection to the classifier assumes the classifier RUNS.
+    // Mutation that reds this: drop the `recordModerationDegraded` call from
+    // `moderateParams`, or stop setting `degraded` in core.
+    fakeLlm.reply = 'not json at all';
+    const r = await withText('I want a laundromat with steady cash flow.');
+    expect(r.statusCode, 'fails OPEN — a broken classifier must not block a buyer').toBe(200);
+
+    const s = await getAppStats('fbizlab');
+    expect(s?.moderationFailOpen).toBe(1);
+    expect(s?.moderationFailOpen_llm_unparsable).toBe(1);
+    expect(s?.moderationFailOpenLastAt, 'a count with no time cannot be acted on').toBeTruthy();
   });
 
   it('turns the text into directive values from the vocabulary — and no keywords, which this model does not take from a client — with `proposedParams` ready to submit', async () => {

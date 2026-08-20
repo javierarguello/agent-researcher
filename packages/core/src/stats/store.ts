@@ -138,6 +138,41 @@ export async function recordRequestLlmCost(input: {
   ]);
 }
 
+/**
+ * A moderation call that could not answer — the classifier threw, or returned JSON
+ * that would not parse, and the request was allowed through on the fail-open path.
+ *
+ * Booked as a COUNTER, not as an error: failing open is the designed behaviour and
+ * a single occurrence is not an incident. What was missing until round 10 is any
+ * way to notice that it stopped being single — §K's decision to leave semantic
+ * injection patterns to the classifier assumes the classifier is running, and
+ * nothing checked that it was (R10-10). `lastAt` is what turns a count into a
+ * question an admin can answer: "is this from March, or from this morning?"
+ *
+ * `off` is deliberately NOT recorded here. A deployment with `MODERATION_LLM=false`
+ * is a configuration, readable directly and true on every request; counting it
+ * would drown the incidents it sits next to.
+ */
+export async function recordModerationDegraded(input: {
+  appId: string;
+  userId: string;
+  kind: 'llm_failed' | 'llm_unparsable';
+}): Promise<void> {
+  const now = nowIso();
+  const date = utcDate();
+  await ensureUserSeen(input.appId, input.userId, date);
+  const inc = {
+    moderationFailOpen: FieldValue.increment(1),
+    [`moderationFailOpen_${input.kind}`]: FieldValue.increment(1),
+    moderationFailOpenLastAt: now,
+    updatedAt: now,
+  };
+  await Promise.all([
+    appStats().doc(input.appId).set({ appId: input.appId, ...inc }, { merge: true }),
+    dailyDoc(input.appId, date).set({ appId: input.appId, date, expireAt: expireAt(), ...inc }, { merge: true }),
+  ]);
+}
+
 /** Record a finished report into the app + daily + user aggregates. */
 export async function recordReportStats(input: ReportStatsInput): Promise<void> {
   const now = nowIso();
@@ -275,6 +310,8 @@ export interface AppStatsRollup {
   /** Request-path model spend (moderation + assisted review), separate from job cost. */
   requestLlmUsd: number;
   requestLlmCalls: number;
+  /** Requests allowed through because the moderation classifier could not answer. */
+  moderationFailOpen: number;
   revenueUsd: number;
   purchases: number;
   creditsPurchased: number;
@@ -287,6 +324,30 @@ export interface AdminStats {
   totals: Omit<AppStatsRollup, 'appId'>;
   apps: AppStatsRollup[];
   daily: Array<{ date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; failedCostUsd: number; revenueUsd: number }>;
+  /**
+   * The state of the layers that decide whether a request is allowed to run at
+   * all — the thing an admin should see on the way IN, not after an incident.
+   *
+   * Round 10 (R10-10) reproduced two shipping paths on which the moderation
+   * classifier does not run: `MODERATION_LLM=false`, which is independent of
+   * `VALIDATION_LLM` so the assisted review still prompts a model with the buyer's
+   * free text; and any admin caller, for whom the whole moderation block is
+   * skipped on both routes. §K's decision to stop chasing semantic injection
+   * patterns with regexes rests on the classifier running. This block is how that
+   * assumption gets checked instead of assumed.
+   */
+  health: {
+    /** `MODERATION_LLM`. False = the deterministic pre-screen is the only layer. */
+    classifierEnabled: boolean;
+    /** Fail-open events (threw / unparsable) in the last `days` of daily buckets. */
+    moderationFailOpenRecent: number;
+    /** …and over the lifetime of the app documents. */
+    moderationFailOpen: number;
+    /** ISO time of the most recent one, across apps. Absent if there has never been one. */
+    moderationFailOpenLastAt?: string;
+    /** True where an admin's own requests bypass moderation entirely (R10-10). */
+    adminBypassesModeration: boolean;
+  };
 }
 
 function rollup(d: Record<string, unknown>): AppStatsRollup {
@@ -305,6 +366,7 @@ function rollup(d: Record<string, unknown>): AppStatsRollup {
     failedCostUsd: num(d, 'failedCostUsd'),
     requestLlmUsd: num(d, 'requestLlmUsd'),
     requestLlmCalls: num(d, 'requestLlmCalls'),
+    moderationFailOpen: num(d, 'moderationFailOpen'),
     revenueUsd: num(d, 'revenueUsd'),
     purchases: num(d, 'purchases'),
     creditsPurchased: num(d, 'creditsPurchased'),
@@ -328,7 +390,7 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
   const totals: Omit<AppStatsRollup, 'appId'> = {
     reports: 0, reportsCompleted: 0, reportsFailed: 0, budgetStoppedReports: 0, degradedReports: 0,
     users: 0, payingUsers: 0,
-    costUsd: 0, failedCostUsd: 0, requestLlmUsd: 0, requestLlmCalls: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
+    costUsd: 0, failedCostUsd: 0, requestLlmUsd: 0, requestLlmCalls: 0, moderationFailOpen: 0, revenueUsd: 0, purchases: 0, creditsPurchased: 0,
     avgGenMs: null, genTimeMsMin: null, genTimeMsMax: null,
   };
   for (const d of docs) {
@@ -343,6 +405,7 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
     totals.failedCostUsd += num(d, 'failedCostUsd');
     totals.requestLlmUsd += num(d, 'requestLlmUsd');
     totals.requestLlmCalls += num(d, 'requestLlmCalls');
+    totals.moderationFailOpen += num(d, 'moderationFailOpen');
     totals.revenueUsd += num(d, 'revenueUsd');
     totals.purchases += num(d, 'purchases');
     totals.creditsPurchased += num(d, 'creditsPurchased');
@@ -358,6 +421,7 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
   totals.avgGenMs = genCount > 0 ? genTotal / genCount : null;
 
   // Merge each app's daily buckets by date (summed) → newest-first series.
+  let failOpenRecent = 0;
   const byDate = new Map<string, { date: string; reports: number; reportsCompleted: number; reportsFailed: number; costUsd: number; failedCostUsd: number; revenueUsd: number }>();
   await Promise.all(
     apps.map(async (a) => {
@@ -371,13 +435,29 @@ export async function getAdminStats(days = 30): Promise<AdminStats> {
         cur.costUsd += num(b, 'costUsd');
         cur.failedCostUsd += num(b, 'failedCostUsd');
         cur.revenueUsd += num(b, 'revenueUsd');
+        failOpenRecent += num(b, 'moderationFailOpen');
         byDate.set(date, cur);
       }
     }),
   );
   const daily = [...byDate.values()].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, days);
 
-  return { totals, apps, daily };
+  const lastAt = docs
+    .map((d) => (typeof d.moderationFailOpenLastAt === 'string' ? d.moderationFailOpenLastAt : ''))
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const health: AdminStats['health'] = {
+    classifierEnabled: config.moderation.llm,
+    moderationFailOpenRecent: failOpenRecent,
+    moderationFailOpen: totals.moderationFailOpen,
+    ...(lastAt ? { moderationFailOpenLastAt: lastAt } : {}),
+    // Not a setting — a fact about the code, stated here so the dashboard does not
+    // have to know it. If the admin bypass is ever removed, this goes with it.
+    adminBypassesModeration: true,
+  };
+
+  return { totals, apps, daily, health };
 }
 
 export interface UserRecord {

@@ -1,8 +1,9 @@
 import { Alert, Card, Group, Loader, SimpleGrid, Stack, Table, Text } from '@mantine/core';
+import type { AdminHealth } from '../api/types';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
 import { useAdminStats } from '../api/hooks';
-import { int, secs, usd, usdFine } from '../lib/format';
+import { int, relative, secs, shortDateTime, usd, usdFine } from '../lib/format';
 
 function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
@@ -11,6 +12,76 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
       <Mono fw={700} fz={28} c={accent}>{value}</Mono>
       {hint && <Text size="xs" c="dimmed">{hint}</Text>}
     </Card>
+  );
+}
+
+/**
+ * The state of the layers that decide whether a request runs at all — first thing
+ * on the page, because the failure it reports is SILENT everywhere else.
+ *
+ * Round 10 (R10-10) reproduced two shipping paths on which the moderation
+ * classifier does not run: `MODERATION_LLM=false`, which is a separate flag from
+ * `VALIDATION_LLM`, so the assisted review still prompts a model with the buyer's
+ * free text; and any admin caller, for whom the whole moderation block is skipped.
+ * The pre-screen behind it lets 61 of 95 known injection strings through by
+ * design — §K decided that is the classifier's job. This strip is what makes the
+ * classifier's absence visible instead of assumed.
+ *
+ * It renders in all four states, including the good one. A health panel that only
+ * appears when something is wrong is indistinguishable from a health panel that
+ * has stopped working — and `health` really can be absent here, from an API
+ * deployed before the field existed, which is why that case says so rather than
+ * showing green.
+ */
+function Health({ health, days }: { health?: AdminHealth; days: number }) {
+  if (!health) {
+    return (
+      <Alert color="gray" title="Moderation health not reported">
+        <Text size="sm">
+          This API build predates the health block, so the dashboard cannot say whether the moderation
+          classifier is running. That is not the same as “it is”.
+        </Text>
+      </Alert>
+    );
+  }
+  const { classifierEnabled, moderationFailOpenRecent: recent, moderationFailOpenLastAt: lastAt } = health;
+  const bypass = health.adminBypassesModeration
+    ? ' Your own requests, as an admin, skip moderation entirely on both routes.'
+    : '';
+
+  if (!classifierEnabled) {
+    return (
+      <Alert color="red" title="The moderation classifier is OFF">
+        <Text size="sm">
+          <Mono>MODERATION_LLM=false</Mono>, so the deterministic pre-screen is the only layer running.
+          It is tuned for precision and lets roughly two thirds of known injection phrasings through on
+          purpose — the classifier is what was supposed to catch those. Note that this flag is independent
+          of <Mono>VALIDATION_LLM</Mono>: with that one on, the assisted review still sends the buyer’s
+          free text to a model.{bypass}
+        </Text>
+      </Alert>
+    );
+  }
+  if (recent > 0) {
+    return (
+      <Alert color="orange" title={`Moderation failed open ${int(recent)}× in the last ${days} days`}>
+        <Text size="sm">
+          The classifier threw or answered with something unparsable, and those requests were allowed
+          through — which is the designed behaviour, and is only safe while it stays rare.
+          {lastAt ? ` Most recent: ${shortDateTime(lastAt)} (${relative(lastAt)}).` : ''}
+          {bypass}
+        </Text>
+      </Alert>
+    );
+  }
+  return (
+    <Alert color="teal" title="Moderation is running">
+      <Text size="sm">
+        Classifier on, and no fail-open in the last {days} days
+        {health.moderationFailOpen > 0 && lastAt ? `; last one ever was ${shortDateTime(lastAt)}` : ''}.
+        {bypass}
+      </Text>
+    </Alert>
   );
 }
 
@@ -25,6 +96,8 @@ export function Dashboard() {
   return (
     <Stack>
       <PageHeader eyebrow="Overview" title="Dashboard" subtitle="Last 30 days across all apps." />
+
+      <Health health={data.health} days={30} />
 
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }}>
         <Kpi label="Reports" value={int(t.reports)} hint={`${int(t.reportsCompleted)} completed`} />

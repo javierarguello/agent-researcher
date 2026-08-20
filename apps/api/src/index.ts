@@ -89,6 +89,7 @@ import {
   recordPurchase,
   recordPurchaseStats,
   recordRequestLlmCost,
+  recordModerationDegraded,
   recordLogin,
   signSession,
   signReadToken,
@@ -965,6 +966,15 @@ async function moderateParams(
     await recordRequestLlmCost({ appId, userId, usd: verdict.usage.usd, inputTokens: verdict.usage.inputTokens, outputTokens: verdict.usage.outputTokens })
       .catch((err) => logEvent({ jobId: '-', appId, userId }, 'WARNING', 'stats.request_llm_failed', { message: (err as Error).message }));
   }
+  // A verdict that is `ok` because the classifier could NOT answer is not the same
+  // as one that is ok because it said yes, and until round 10 the difference lived
+  // only in a log line nobody watches (R10-10). Booked as a counter so the admin
+  // dashboard can say it out loud on the way in. Best-effort, like the meter above:
+  // an outage in the thing that RECORDS an outage must not fail the request.
+  if (verdict.degraded === 'llm_failed' || verdict.degraded === 'llm_unparsable') {
+    await recordModerationDegraded({ appId, userId, kind: verdict.degraded })
+      .catch((err) => logEvent({ jobId: '-', appId, userId }, 'WARNING', 'stats.moderation_degraded_failed', { message: (err as Error).message }));
+  }
   if (verdict.ok) return null;
 
   // E4: count the refusal somewhere. A rejected `/research` used to write to NO
@@ -1430,9 +1440,15 @@ app.post(
         }
       }
 
-      // 3. Moderation. The deterministic pre-screen always runs; only the
-      //    classifier's verdicts record a strike, and it is billed against the
-      //    allowance above.
+      // 3. Moderation. Inside the `role !== 'admin'` block that opens this handler,
+      //    which is the whole of it: for an ADMIN caller neither layer runs — not
+      //    the classifier and not the deterministic pre-screen — while `assist`
+      //    above stays `'on'`, so an admin's free text reaches `proposeFromText`
+      //    unscreened. That is a trusted human by construction (`app.role` AND the
+      //    address in `adminEmails`), and it is deliberate, but it was written up
+      //    as "the pre-screen always runs" and it does not (round 10, R10-10).
+      //    For everyone else: the pre-screen always runs; only the classifier's
+      //    verdicts record a strike, and it is billed against the allowance above.
       //    Skipping it here is safe because /research moderates in full — and that
       //    is the call that actually spends credits.
       //    The buyer's free text is moderated with the params: it is the one
