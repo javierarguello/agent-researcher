@@ -422,6 +422,24 @@ function quoteNames(quote: string, value: string): boolean {
   return false;
 }
 
+/**
+ * The default `paramsSchema` declares for a field, as a trimmed string — or `''`
+ * when it declares none. Read off the Zod shape rather than by parsing `{}`, which
+ * a schema with a `superRefine` (the flagship's "industry or a keyword") rejects.
+ * Defensive by construction: any surprise in the internals means "no default",
+ * which is the pre-2026-08-20 behaviour.
+ */
+function declaredDefault(template: ResearchTemplate<any>, field: string): string {
+  try {
+    const shape = (template.paramsSchema as unknown as { shape?: Record<string, unknown> }).shape ?? {};
+    const def = (shape[field] as { def?: { defaultValue?: unknown } } | undefined)?.def?.defaultValue;
+    const value = typeof def === 'function' ? (def as () => unknown)() : def;
+    return typeof value === 'string' ? value.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 /** Case- and whitespace-insensitive: a model re-types a quote, it does not copy bytes. */
 const flatten = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
 /**
@@ -648,7 +666,21 @@ export function acceptProposals(
   const rawBasics = raw?.basics && typeof raw.basics === 'object' && !Array.isArray(raw.basics) ? raw.basics : {};
   const basics: Record<string, string> = {};
   for (const f of template.preflight?.fillable ?? []) {
-    if (String(params[f.field] ?? '').trim()) continue; // not empty: theirs, untouched
+    // "Empty" has to mean what the BUYER left empty, not what arrives here. These
+    // params have been through `paramsSchema.safeParse`, which applies declared
+    // defaults — so for the flagship `location` is always the string
+    // `State of Florida, USA` by the time this runs, this loop always `continue`d,
+    // and the whole fillable-basics feature could not fire for the only shipped
+    // model. Measured 2026-08-20 through the real `validateRequest`: nothing was
+    // ever proposed. The product backlog's P-2 says the assist "can now FILL an
+    // empty location when the buyer's text names one"; it could not.
+    //
+    // A value equal to the field's declared default is therefore treated as empty.
+    // The buyer who deliberately typed the default is indistinguishable from the
+    // buyer who typed nothing — both get an UNTICKED suggestion to narrow, which is
+    // the right answer for both.
+    const current = String(params[f.field] ?? '').trim();
+    if (current && current !== declaredDefault(template, f.field)) continue; // theirs, untouched
     const { value: v, quote } = valueAndQuote(rawBasics[f.field]);
     if (typeof v !== 'string') continue;
     const said = verbatim(freeText, quote);

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { getTemplate } from '../src/templates/registry.js';
+import { validateRequest } from '../src/index.js';
 import { acceptProposals, applyProposals } from '../src/moderation/enrich.js';
 import type { GenerateOptions, GenerateResult } from '../src/llm/provider.js';
 
@@ -307,6 +308,28 @@ describe('a basic the buyer left empty and their own words name', () => {
     // all, so an inference is worse than an omission.
     const out = acceptProposals(florida, empty, { directives: {}, keywords: [], basics: { location: { value: 'Orlando, FL' } } }, text);
     expect(out.basics).toBeUndefined();
+  });
+
+  it('reaches production at all: the DEFAULT the schema applies is not the buyer filling it in (round 10, R10-37)', () => {
+    // Measured 2026-08-20 through the real `validateRequest`, which is what the API
+    // calls: `paramsSchema.safeParse` applies declared defaults, so `location`
+    // arrives here as the string `State of Florida, USA` for a buyer who typed
+    // nothing — the loop `continue`d every time and NOTHING was ever proposed. The
+    // whole fillable-basics feature was dead for the only shipped model, and
+    // `product-backlog.md`'s P-2 described it as working.
+    // Mutation that reds this: `if (String(params[f.field] ?? '').trim()) continue;`.
+    const validated = validateRequest({
+      template: 'florida-business-for-sale',
+      params: { industry: 'laundromats', mode: 'essential' },
+    }).params as Record<string, unknown>;
+    expect(validated.location, 'the default really is applied before we see it').toBe('State of Florida, USA');
+
+    const out = acceptProposals(
+      florida, validated,
+      { directives: {}, keywords: [], basics: { location: { value: 'Hialeah, FL', quote: 'en Hialeah' } } },
+      'Busco una lavandería en Hialeah, presupuesto máximo 500k.',
+    );
+    expect(out.basics?.location).toBe('Hialeah, FL');
   });
 
   it('never touches a basic the buyer filled in', () => {
