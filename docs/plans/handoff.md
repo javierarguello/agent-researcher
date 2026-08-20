@@ -148,9 +148,14 @@ while adding an engineering item to it (R10-31).
   states including "this API build does not report it". Nobody is PAGED, which is
   the part that would need a log-based metric and an alert policy in
   `sinuous-canto-497518-h7`, i.e. Javier's credentials.
-- C5's dispatch deadline (unmeasured), E3's unblock script (needs Javier's
-  credentials for the dry run), N2 Stripe clawback, M-A2 (FENCE_RE near-misses,
-  gated on frontier-tier evidence).
+- **`infra/setup-gcp.sh` needs re-running on dev and prod** — `91b5cfc` raised the
+  Cloud Tasks retry window 10800s → 18000s, and an existing queue keeps the old
+  value until someone applies it. Below that, a slow job's queue window runs out
+  before `maxJobAttempts` finalizes and the job stays `running` forever with the
+  credits spent. Javier's credentials; not run here.
+- E3's unblock script (needs Javier's credentials for the dry run), N2 Stripe
+  clawback, M-A2 (FENCE_RE near-misses, gated on frontier-tier evidence).
+  **C5 is closed** (`91b5cfc`, measured).
 
 ### Closed
 

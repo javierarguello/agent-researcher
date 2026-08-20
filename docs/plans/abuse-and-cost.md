@@ -23,7 +23,24 @@ we spend, and several ways spend can run away.
 ## C. Spend can run away — 1-2 days
 
 ### C5 · The 30-minute dispatch deadline is shorter than a real job
-`open` · reasoned from config, not measured
+`done 2026-08-20 (91b5cfc)` — MEASURED, and the deadline turned out not to be the
+thing that could change
+
+An hour cannot be bought: Cloud Tasks caps an HTTP dispatch deadline at 30 minutes
+(setting 3600 fails `createTask` on every enqueue), and raising only Cloud Run's
+`--timeout` makes the queue re-dispatch while the first run is still going. A job
+gets more than 30 minutes by SPANNING dispatches, which the checkpoint already
+supported and nothing used on purpose.
+
+Measured from the two real runs in `out/*` rather than from the config: **1241s and
+1309s** total (69% and 73% of 1800), wave 1 at 570s / 687s, longest single agent
+`deal-scout` at **455s / 565s** — so the headroom either run has left is less than
+one deal-scout. `JOB_DISPATCH_BUDGET_SECONDS` = 1500 stops a dispatch STARTING an
+agent it cannot keep; it leaves it `pending`, checkpoints, and returns 503. And the
+queue window went 10800s → 18000s, because reaching dispatch 8 needs 11730s and the
+queue was giving up around the sixth — the ending `parkJob` describes, where nothing
+touches the job again. **A live project needs `infra/setup-gcp.sh` re-run for that
+half.**
 
 Worker timeout 1800s (`infra/deploy.sh:62`), `dispatchDeadlineSeconds` 1800
 (`config.ts:271`), agent concurrency 2. Wave 1 of the Florida model is 5 agents /
