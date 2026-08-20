@@ -2168,3 +2168,266 @@ the last channel by which a buyer's PROSE reached an agent's prompt as a phrase 
 API's injection tests now use.
 
 ---
+
+## Round 10 — eight Opus reviewers against the round-9 fix batch and the §K work (`79fa632..20f361b`)
+
+Run 2026-08-20. Four groups × two lenses, private scratchpad each, all eight pinned
+to `20f361b` (the brief's own commit) and all eight measured the brief's
+clean-worktree total of **1162** before starting. Raw reports:
+`m-red-team-reports/round10/` (brief + 8, complete).
+
+**Verdict of the round in one line:** the arithmetic is again almost perfect — 40 of
+44 re-run mutation counts reproduce, every suite total reconciles to the unit, and
+the §K census reproduces to the string in BOTH columns — and the round's own fixes
+again shipped holes: **`d77ffb3` closed R9-4/R9-5 and opened two more of the same
+class in the same line**, and `63fd892` (the §K evasion work) shipped **two false
+positives on ordinary buyer language plus a reachability regression on a cubic
+regex**. Two independent reviewers converged on five separate findings, which is
+new and worth keeping: the prefix rule, the boolean directive, the unclipped host,
+the stale draft, and §K's load-bearing sentence.
+
+**The rule this round earns.** Round 9's rule was *name the case you measured*.
+This round: **a corpus proves a shape, never a class.** Every false positive here
+sits one word outside a row that exists — `Forget everything above 1M` beside
+`above the $1M asking price`, `Jail-Break: The Escape Room` beside `jail-break
+themed escape room`, a 4,000-character HOST beside a 4,000-character url. Writing
+the row is what makes the guard read as proven; the next reviewer's job is to write
+the sibling the author did not think of.
+
+### P0
+None.
+
+### P1
+- **[done `2a01ada`] R10-1 · `63fd892` refused a buyer's price band.** "Forget everything above 1M" —
+  and 750k, 5M, 300k, "40k a month in rent" — became a hard 422. `foldLeet` turns
+  `1M` into `im`, and the price rule's escape hatch is a DIGIT right after `above`.
+  Clean at `ec66323`, refused at `20f361b`; the corpus missed it because both of its
+  price rows carry a `$` (G3-break F1, G3-verify F1).
+- **[done `2a01ada`] R10-2 · `63fd892` refused an escape room's own brand.** "Jail-Break: The Escape
+  Room" and "Jail-Break Mode" — the business the guard was written to protect.
+  Keeping the de-obfuscated form away from `PADDED_ONLY` was the right idea aimed at
+  the wrong list: the MAIN list also carries `jailbreak`, needing only a colon or
+  `mode` after it (G3-break F2, G3-verify F4).
+- **[done `2a01ada`] R10-3 · `disregard` + 2,000 separators = ~3s of the API's only thread.** Cubic
+  backtracking over three adjacent tolerant gaps, on `/research/preflight`, before
+  billing. Pre-existing — but `63fd892` made it reachable without the literal word:
+  `d1sregard` and `dis-regard` cost 8ms before and ~2-3s after, a ~370× regression.
+  Fixed by clamping separator runs; worst case now 16.4ms (G3-break F3).
+- **R10-4 · A four-letter prefix buys a different real Florida city, with the buyer's
+  own words as the evidence.** `d77ffb3`'s `shares()` is symmetric and unrestricted,
+  so `home` → **Homestead**, `plan` → Plantation, `lake` → Lakeland, `park` →
+  Parkland, `water` → Waterford, `near the port` → **Portland, OR** (nothing bounds
+  the value to Florida). All refused before `d77ffb3`. This is R8-26 with the strings
+  changed, and nothing pins it: both new tests assert only the good direction
+  (`pete` → `petersburg`). **Two reviewers, independently** (G1-break F1,
+  G1-verify F1).
+- **R10-5 · The same commit swapped one admitted class of quote for another.**
+  `CONTENT_WORD_LEN = 5` now ticks `busco`, `quiero`, `porque`, `about`, `there`,
+  `quand`, `parce`, `quando` — twelve function words of 5-7 letters, all refused
+  before — while `low risk`, `cash flow`, `no debt`, `turn key`, `high rent`,
+  `busy area` lost their tick AND their quote. The commit's "a property of the
+  languages rather than a threshold someone picked" is false in all four at once;
+  the counter-list is in the report. Digits count as letters too, so `«500000»`
+  ticks (G1-break F2, G1-verify F6).
+- **R10-6 · The confirm dialog's "what we'll search" sentence is still the stale
+  one.** `c1397a9` fixed the preferences line and left `pf.summary`, which is
+  server-rendered at preview time — so unticking "Apply suggested fixes" (a control
+  inside the same dialog) ships the value the sentence just denied, and ticking a
+  basic re-scopes the search it describes. For the flagship those are exactly
+  `location` and `industry`, the subject and place of the sentence. R9-1's own
+  damage statement, on the paths the fix did not walk (G2-break F1).
+- **R10-7 · The PDF's image strip deletes prose the viewer keeps.** `0ff22ef`'s
+  shared `MD_TITLE` was applied to the rule that DELETES: `![alt](url "a" KEEP "c")`
+  renders `KEEP1  KEEP2` in the PDF and every character in the viewer. The silent
+  deletion R9-3 closed for links, inherited by the image strip. The headline
+  security fix holds — 119 image shapes produced no anchor (G2-break F2).
+- **R10-8 · `sourceLabel` never clips the HOST, in either copy.** `7a29a43`'s "it was
+  the one path that returned an unbounded string" is false: a `https://` source with
+  a 4,000-character hostname puts **4,006 characters** into the Sources row of the
+  PDF and the viewer, as a LIVE anchor, beside a tooltip correctly bounded at 320.
+  Both new fixtures use the empty-host `javascript:` url, so neither can see it.
+  The two reviewers disagree on reachability — a resolver caps a real hostname at
+  253 octets, and today `sources` are derived from search results — so read it as
+  "up to ~253 where the design says 160, and 4,006 the day a template lets a model
+  write `sources`" (G2-verify F1, G2-break F3).
+- **R10-9 · A draft saved before 2026-08-19 leaves the form permanently 400ing.**
+  `29f8593`'s refusal is right; its remedy is not. `saveDraft` runs on the way to buy
+  credits, the draft is restored verbatim with no manifest filter, `keywords` is
+  invisible on the form, and `clearDraft` only runs after a SUCCESSFUL create — so
+  "Reload the page and try again" restores the same draft. One click costs two failed
+  requests and a captcha token, and the message is hardcoded English on a translated
+  page. No TTL, so every abandoned top-up from before that date is a bricked form
+  (G3-break F4, G3-verify F2).
+- **R10-10 · §K's load-bearing sentence is false on two shipping paths.**
+  `MODERATION_LLM` and `VALIDATION_LLM` are independent (`config.ts:126` vs `:132`),
+  so with the first false the assist runs and the classifier is silent — the
+  pre-screen IS the only layer on a path where a miss reaches a prompt, and
+  `deployment.md:177` documents that switch as supported. And `role === 'admin'`
+  skips the whole moderation block on BOTH routes (`index.ts:1182`, `:1401`), so an
+  admin's params reach `buildBrief` having passed no layer at all — "`/research` runs
+  it unconditionally" is false as written. Reproduced with `app.inject`. The decision
+  (option 1, refocus) still stands on its other two feet, and R10-1/R10-2 are
+  evidence FOR it; fact 1 has to be restated, and the fail-open alert stops being a
+  "smaller item" (G3-verify F3, G3-break F5).
+
+### P2 — batch
+- R10-11 The record says `isEvidence` now applies to the basics field. It does not,
+  the commit never claimed it, and the round-10 BRIEF promoted the un-taken half of a
+  fix sketch to a statement of fact for eight reviewers (G1-verify F5).
+- R10-12 R9-8's corrected threshold is still wrong: the snippet call's floor is
+  **25**, not 37, and it is a function of `referenced.length`, not a constant. "which
+  no budget reaches" does not survive `research-engine.ts:809`, which warns about
+  fetch counts above 60 (G1-break F3).
+- R10-13 R9-11's replacement assertion `.sort()`s both sides, so the "in store order"
+  it claims twice is pinned by nothing: reversing the whole `referenced` tier is
+  **0 red across 1162 tests** (G1-break F4).
+- R10-14 `5a7b844`'s mutation table counts two rows in one denominator and the third
+  in another — "2 red" is 4 and "1 red" is 2 suite-wide, and there is no reading under
+  which all three are right. Its in-file "2 red" comment is now 3 (G1-break F5,
+  G1-verify F2).
+- R10-15 The `it()` title `2f5ab43` re-measured carries a DIFFERENT test's figures:
+  185k/137k where its own run prints 184.0k/135.9k. The commit whose subject is "five
+  claims of mine the round measured and found wrong" replaced one stale number with
+  another run's number, in an edit its own message never mentions (G1-verify F3).
+- R10-16 "which every producer reaches" (the PAGES threshold of 8) is refuted by the
+  repo's own honest denominator, where the whole 15-agent run fetches 8 pages — a
+  figure the SAME commit corrects elsewhere (G1-verify F4).
+- R10-17 `7a29a43`'s headline "adding `partial` now reds **4**" reds **3** for the
+  mutation the same paragraph describes; the 4-red variant includes a test that
+  predates the commit, so "(0 before this commit)" is false by one for it
+  (G2-verify F2).
+- R10-18 Two of `c1397a9`'s four counts are understated by one, in a pattern
+  consistent with counting red from a `&&`-chained `npm test` that stopped at the
+  first failing workspace — the trap the brief warns about (G2-verify F3).
+- R10-19 `0ff22ef`'s "keeps every character and its second link" — the second link
+  and the prose survive; the well-formed trailing title does not. True of the damage,
+  false as written (G2-verify F4).
+- R10-20 The confirm dialog's `prefsLead` is unpinned in all four languages, and
+  nothing asserts key-parity over the SPA's `T` table — the exact shape that shipped
+  `la passe` / `a passagem` twice (G2-verify F5).
+- R10-21 `livePrefs` and `planPreferences` diverge twice: the SPA renders an
+  undeclared directive value as `String(x)` and applies no `maxSelected` (reachable
+  through a restored draft), and `yes`/`no` differ in case between them (dead copy
+  today — no shipped template has a boolean directive) (G2-verify F6, G4-break F1/F4).
+- R10-22 **"Only declared values render now" is false for `kind: 'boolean'`**: an
+  explicit `field.kind === 'boolean' ||` escape hatch renders an arbitrary string
+  verbatim, where the sibling `renderDirectives` `continue`s. `validateDirectives`
+  accepts such a template with zero errors. **Two reviewers, independently**
+  (G4-break F2, G4-verify F3).
+- R10-23 The `[object Object]` fix is keyed on one param NAME, not on the value's
+  TYPE, so any other object- or object-array-valued param still prints it
+  (G4-break F3).
+- R10-24 The `maxSelected` cut `99a1a48` advertises is pinned by nothing — deleting
+  it is **0 red** — and for the unvalidated caller the fix was written for it makes
+  the confirm screen understate what reaches the prompt by four values, where the two
+  agreed before (G4-break F4).
+- R10-25 A duplicated directive value passes the real `paramsSchema` (the `.max()` is
+  on length, not distinctness), so a validated request can print one preference four
+  times on the last screen before payment and weight it 4× in the prompt
+  (G4-break F5).
+- R10-26 `dirKey ?? 'directives'` swallows a legitimately named param on a template
+  with no directive spec (G4-break F6).
+- R10-27 `hadLoop` is a migration nobody did, and unlike its sibling `kind` its
+  JSDoc does not say so — old summaries render the pre-fix badge with nothing on the
+  page telling them apart, and the data to backfill exists in `trace.json`
+  (G4-break F7).
+- R10-28 **The handoff and the round-9 close both report `1149 passed` as current;
+  it is 1168 (main) / 1162 (clean).** It went stale in `ff6bc5c`, a commit that
+  edited the line directly beneath it and added the words "which now also carries
+  `63fd892`" (G4-verify F1).
+- R10-29 `1644897`'s subject says "two lines that still say a client may send
+  `keywords`"; **five more documents still say it** (`agents.md:261`,
+  `architecture.md:115`, `local-llm.md:158`, `request-review.md:119`,
+  `api-reference.md:108`), one of them edited by the docs pass one commit earlier.
+  `internalParams` is documented in exactly one place and in neither `extending.md`
+  nor the API's error list (G4-verify F2).
+- R10-30 The SPA still tells the buyer, in four languages, to add "at least one
+  keyword under Advanced" — a field and a section the form no longer renders, and the
+  first advisory a new buyer reads (G3-verify F5).
+- R10-31 "§K is the last thing in the handoff's 'waiting on Javier' list to close" is
+  false — D1 and the `MAX_JOB_COST_USD` default are still on it — and the same commit
+  ADDS an engineering item (the fail-open alert) to a list headed "rather than on
+  work" (G4-verify F5).
+- R10-32 The section the handoff calls "the only place that is current by
+  construction" tells the next agent, thirteen lines under `ROUND 9 IS CLOSED`, that
+  "the 20 P2 items below are open" and to start with R9-1, closed nine commits
+  earlier. And "all twenty stamped with their hash" is false for four, which carry
+  `done (the docs pass that wrote this line)` and no sha (G4-verify F4).
+- R10-33 `handoff.md` stamps itself "last updated at `ec66323`", a commit that never
+  touched the file, two edits ago (G4-verify F6).
+- R10-34 R9-27's fourth correction is recorded 31 lines from the sentence it
+  corrects, which still asserts "four commits" where the count is six — the document
+  now says both (G4-verify F7).
+- R10-35 "only NINE of the seventy were evasion" is ten (the newline-inside-a-word
+  case is evasion and is disclosed as left open two paragraphs later), and "`$` … 2
+  red on the legit corpus" is 2 red TESTS and 1 new corpus row (G3-verify F6).
+- R10-36 The R9-19 hardening does not reach the screen its commit is written about:
+  since `c1397a9` the shipped confirm dialog renders `livePrefs` in the browser, with
+  neither the vocabulary re-check nor the cut. No stranger's string reaches it today
+  (checked three ways), so the defect is the claim's reach, not a hole (G4-break F1).
+
+### Checked and TRUE by round 10 (do not re-check)
+The **§K census reproduces to the string in both columns** — 61/95 and 2/73 at
+`20f361b`, 70/95 and 2/73 with `63fd892` reverted — and every cell of its
+per-category evasion table, measured independently by two reviewers. All five of
+`99a1a48`'s mutation counts, all five of `d77ffb3`'s, all three of `2f5ab43`'s, both
+of `b18ea51`'s, all four of `0ff22ef`'s, all three of `dcfeedf`'s, all four of
+`63fd892`'s, and `d77ffb3`'s disclosed "0 red" at its parent. Every suite total in
+every commit message reconciles to the unit, and the clean-clone gap of 6 is core in
+all four cases checked. `b18ea51`'s flagship census is exact (**17 `minItems`, 2
+`maxItems`, 5 `maxLength`, 0 `minimum`/`maximum`/`minLength`/`pattern`**), all five
+`maxLength`s are chart copy, and `.describe()` reaches the model at every nesting
+level. `0ff22ef`'s headline holds under a **119-shape sweep**: no anchor, no stray
+`!`, no swallowed tail. `dcfeedf`'s four-language claim is pinned in FRENCH and
+PORTUGUESE specifically (each drifted alone, each 1 red). R9-18's checkpoint copy is
+COMPLETE — a probe that diffed every field of every checkpoint after the run found
+nothing changed — and the three shallow copies are sound because those maps are
+reassigned, never mutated. `hadLoop`'s writer/reader chain agrees end to end and
+survives a resume. R9-24, R9-25 and R9-26 are substantively correct, including the
+14-of-14 checkpoint field list. `toManifest` strips all five `paramsUi` hint kinds
+after localization, and `k in sent` really does refuse `keywords: []`. The
+deobfuscated form does NOT break the equipment exemption (the tolerant gap absorbs
+the join). Ordinary buyer notes cost 0.52ms through the whole pre-screen. There is
+no second confirm dialog for mobile, and `correctable` is `location`/`industry`
+only, so the correction-vs-dialog path is closed.
+
+### How to continue (for the next agent)
+
+**R10-1, R10-2 and R10-3 are fixed in `2a01ada`** — the three that were live
+regressions from `63fd892`, all mine, with revert-verify 7 red / 7 red / 1 red and
+the census unchanged at 61/95 and 2/73. Suite **1176 passed, 0 failed** in the MAIN
+checkout, `npm run typecheck` clean.
+
+**Everything else is open.** Order of work, and the reasoning behind the order:
+
+1. **R10-4 and R10-5 together** — they are one function and they pull in opposite
+   directions, the same trap R9-4/R9-5 set and the same one that produced them.
+   Whatever replaces `shares()` must be measured against the R9-5 case (a VANISHED
+   proposal) and not only against the new one, and whatever replaces
+   `CONTENT_WORD_LEN` must keep `deuda` and recover `cash flow`. Both directions,
+   in one commit, with the counter-lists from `G1-break.md` as the fixture.
+2. **R10-6** — the last screen before payment, and the fix is bounded: the two
+   correctable fields and the one fillable basic are named in the manifest, so the
+   client can substitute locally. Do NOT put `applyFixes` into `paramsKey`; that
+   buys an assisted review per checkbox, which is the bill `c1397a9` correctly
+   refused.
+3. **R10-9** — a permanently bricked form for anyone who abandoned a top-up. Filter
+   the restored draft against the manifest and keep the API's loud refusal.
+4. **R10-7 and R10-8** — the two artifact defects, both in `report-html.ts` and both
+   with a sibling in `safe-href.ts`. Fix `MD_TITLE`'s double-quote alternative
+   inside the shared definition, not by unsharing it.
+5. **R10-10 with the fail-open alert.** Restate §K's fact 1 with the two paths named,
+   and build the alert in the same commit — the decision assumes the classifier is
+   running and nothing checks that it is.
+6. The P2 batch clusters by file as usual: the engine/test ones (R10-12 … R10-16),
+   the buyer-surface ones (R10-17 … R10-21), the summary/deterministic ones
+   (R10-22 … R10-27, R10-36), and the record ones (R10-11, R10-28 … R10-35).
+
+**Round 11** is against `20f361b..HEAD` when this batch is closed. Two corrections
+to carry into its brief, both paid for here: tell the reviewers to **count red from a
+runner that does not stop at the first failing workspace** (two of this round's four
+wrong counts are explained by the `&&` chain), and tell them the round's rule — **a
+corpus proves a shape, never a class** — with the instruction to write the sibling
+row the author did not think of.
+
+---

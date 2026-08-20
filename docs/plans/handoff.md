@@ -1,7 +1,9 @@
 # Handoff — the entry point
 
-Last updated 2026-08-19 at `ec66323`. For whoever picks this up without the
-conversation that produced it.
+Last updated 2026-08-20. For whoever picks this up without the conversation that
+produced it. (No sha here on purpose: the previous one named `ec66323`, a commit
+that never touched this file, two edits before the one that left it — round 10,
+R10-33. `git log -1 -- docs/plans/handoff.md` is the honest version of that line.)
 
 **This file is deliberately short and points elsewhere.** Its previous version was a
 three-week-old snapshot of rounds 1-3 that still called itself "where this work
@@ -26,22 +28,36 @@ and it is the only place that is current by construction.
 
 ---
 
-## State, 2026-08-19
+## State, 2026-08-20
 
-- **Rounds 1-9 are run. Rounds 8 and 9 are fully closed** — every P0, P1 and P2 has
-  a commit. Round 9 found 1 P0, 6 P1 and 20 P2 against round 8's own fix batch;
-  four of the seven P0/P1 were defects in the previous round's fixes, one of them a
-  security regression (a poisoned Markdown image became a live link in the PDF).
-- `npm test` from the root: **1149 passed, 0 failed**. A clean clone counts **6**
-  fewer — the red-team tests gated on `out/*/trace.json`, which only exists in
-  Javier's checkout. `npm run typecheck` clean.
-- **Next is round 10**, against `79fa632..HEAD` — which now also carries `63fd892`
-  (the §K evasion fix) and `1644897` (P-5 + two `keywords` doc corrections), neither
-  of them reviewed by anyone. The brief to copy is
-  `m-red-team-reports/round9/BRIEF.md`; both of its corrections worked and should
-  stay — a PRIVATE scratchpad per reviewer, and the sha in each agent's PROMPT
-  rather than in the brief (a brief cannot name its own commit). Tell the reviewers
-  that `29f8593` is in range and is the one change none of them has seen.
+- **Rounds 1-10 are run. Rounds 8 and 9 are fully closed. Round 10 is OPEN**: it
+  found 0 P0, 10 P1 and 26 P2, of which **three P1 are fixed** (`2a01ada`) and
+  everything else is not. Its findings, its order of work and the reasoning for that
+  order are `deep-review.md` § "Round 10" → "How to continue".
+- Round 10's shape, because it repeats: **the fixes of round 9 shipped holes of
+  their own**, one of them in the same LINE as the fix (`d77ffb3` closed R9-4/R9-5
+  and opened R10-4/R10-5), and the §K evasion work shipped **two false positives on
+  ordinary buyer language** plus a reachability regression on a cubic regex — the
+  expensive failure that commit argued it had avoided. Five findings were reached by
+  two reviewers independently.
+- **Suite totals, both MEASURED 2026-08-20 at `2a01ada`** — not one derived from the
+  other: **1176 passed, 0 failed** in the MAIN checkout (765 core + 216 api + 22
+  worker + 166 fbizlab + 7 admin) and **1170 passed, 0 failed** in a fresh worktree
+  (759 core, same four others). The gap is six red-team tests gated on
+  `out/*/trace.json`, which exists only in Javier's checkout. Subtracting six is not
+  a safe shortcut even though it lands here: core also COLLECTS a different total in
+  the two checkouts (775 vs 777). Measure yours and say which one it is — round 10's
+  R10-28 caught this line 19 tests stale, in a commit that edited the line beneath
+  it. `npm run typecheck` clean.
+- **Next is the round-10 fix batch, then round 11** against `20f361b..HEAD`. The
+  brief to copy is `m-red-team-reports/round10/BRIEF.md`; its three predecessors'
+  corrections all held (a PRIVATE scratchpad per reviewer, the sha in each agent's
+  PROMPT, the clean-worktree total stated as measured). Two more to add, paid for in
+  round 10: tell reviewers to **count red from a runner that does not stop at the
+  first failing workspace** (`npm test` chains with `&&`, and two of the round's four
+  wrong counts are explained by it), and give them the round's rule — **a corpus
+  proves a shape, never a class** — with the instruction to write the sibling row the
+  author did not think of.
 
 ## The two rules the rounds have paid for
 
@@ -61,30 +77,42 @@ REMOVE the only detection the thing it fixed had; a test that reads a value insi
 callback proves nothing about aliasing; and a test can pass for a false reason (one
 of mine previewed before the value under test was ever set).
 
-## Open, and waiting on Javier rather than on work
+## Open — a decision nobody can take for Javier, and work nobody is blocked on
 
-- **K is no longer here. It closed 2026-08-19** — re-measured on a rebuilt census
+Split in two because round 10 found the previous single heading, "waiting on Javier
+rather than on work", covering both kinds — and a commit claiming to have emptied it
+while adding an engineering item to it (R10-31).
+
+### Waiting on a decision (Javier)
+
+- **D1 essential pricing** and the **`MAX_JOB_COST_USD` default of $20** against a
+  ~$2.6 honest comprehensive job — both are numbers someone has to choose, not
+  patches.
+- The four product items' open design questions (P-1, P-2, P-4, P-5 in
+  `product-backlog.md`); each names its own.
+
+### Open work, nobody blocked
+
+- **The round-10 fix batch** — 7 open P1 and 26 P2. Start at `deep-review.md`
+  § "Round 10" → "How to continue"; it is ordered and says why.
+- **The alert on the moderation fail-open.** §K's own follow-up, and round 10
+  promoted it: R10-10 reproduced two shipping paths on which the classifier does not
+  run at all (`MODERATION_LLM=false`, which is independent of `VALIDATION_LLM`; and
+  any admin caller, on both routes). The §K decision ASSUMES the classifier is
+  running and nothing checks that it is.
+- C5's dispatch deadline (unmeasured), E3's unblock script (needs Javier's
+  credentials for the dry run), N2 Stripe clawback, M-A2 (FENCE_RE near-misses,
+  gated on frontier-tier evidence).
+
+### Closed
+
+- **K closed 2026-08-19** — re-measured on a rebuilt census
   (the 2026-08-03 lists were never kept), 70 → **61 of 95** attacks passing and
   2 / 73 ordinary phrasings refused, unchanged; the nine that closed were all
   evasion. Decision taken: **option 1, refocus** — the pre-screen owns normalization
   and evasion, the classifier owns semantics. Reasoning and what the decision does
   NOT license are in `deep-review.md` § K; the census is runnable at
   `m-red-team-reports/k-census-2026-08-19/`.
-- **Product, none started**: P-1 (one dossier comparing two scenarios), P-2
-  (recommend where in Florida when no location is given), P-4 (move the mode
-  selector into the right-hand summary card — the real work is mobile, where that
-  card does not render at all), P-5 (a couple of pages inside the app that explain
-  the params and the report to the buyer — asked for 2026-08-19). Each carries its
-  own open design questions.
-- Smaller: **an alert on the moderation fail-open** (`moderation.llm_failed` /
-  `moderation.unparsable` are WARNINGs nobody watches, and `MODERATION_LLM=false`
-  has no signal at all — the one configuration in which the pre-screen is really the
-  only layer; §K's own follow-up, and the highest-yield item left on that layer),
-  C5's dispatch deadline (unmeasured), D1 essential pricing, the
-  `MAX_JOB_COST_USD` default of $20 against a ~$2.6 honest comprehensive job, E3's
-  unblock script (needs Javier's credentials for the dry run), N2 Stripe clawback,
-  M-A2 (FENCE_RE near-misses, gated on frontier-tier evidence).
-
 ## Working agreements
 
 Paired adversarial agents with opposed lenses; one refuter per finding, told to
