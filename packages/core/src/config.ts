@@ -367,6 +367,32 @@ export const config = {
      */
     dispatchBudgetSeconds: int('JOB_DISPATCH_BUDGET_SECONDS', 1500),
   },
+  /**
+   * SEED values for the two numbers that turn "what a report SELLS for" into "what
+   * a job may SPEND". The live figures are PER RESEARCH MODEL, in Firestore
+   * (`model-pricing/{templateId}`), editable from the admin without a deploy —
+   * these are only what a model that has never been priced falls back to.
+   */
+  pricing: {
+    /**
+     * The lowest USD a single credit is sold for. Not typed by hand in the normal
+     * path: the admin app has a tool that reads the live Stripe packs and computes
+     * `min(priceUsd / credits)` into the model's pricing doc. This default exists
+     * for a deployment whose catalog has never been read. Measured 2026-08-20:
+     * Scout $29/20 = $1.45, Investor $69/80 = $0.8625, Syndicate $129/150 = $0.86;
+     * 0.806 anticipates P-6 (Syndicate → 160), which is the stricter of the two.
+     */
+    creditFloorUsd: float('CREDIT_FLOOR_USD', 0.806),
+    /**
+     * The gross margin, in PERCENT, a job must leave on the report it produced:
+     *   ceiling = credits × creditFloorUsd × (1 − expectedProfitPct / 100)
+     * At 30 a job may spend at most 70% of what its report earned before it is held
+     * for an admin, so a delivered job cannot be a loss however badly it goes. Both
+     * modes used to share a flat $20, which was ABOVE what either report earns —
+     * reaching the ceiling WAS the loss (D1).
+     */
+    expectedProfitPct: float('EXPECTED_PROFIT_PCT', 30),
+  },
   search: {
     braveApiKey: str('BRAVE_API_KEY'),
     tavilyApiKey: str('TAVILY_API_KEY'),

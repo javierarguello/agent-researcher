@@ -17,8 +17,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../src/enqueue.js', () => ({ enqueueJob: vi.fn(async () => {}), enqueuePdf: vi.fn(async () => {}) }));
 
 import {
+  creditsForMode,
   getBalance,
   getJob,
+  getTemplate,
   markRunning,
   grantCredits,
   inFlightSlots,
@@ -29,6 +31,13 @@ import {
   releaseJobSlot,
   updateApp,
 } from '@agent-researcher/core';
+
+/**
+ * What one essential report charges, read off the model rather than written down.
+ * Every balance here was `500 - 5` and friends; the price is a product number that
+ * moves (5 → 8 on 2026-08-20, D1) and each literal became a puzzle to re-derive.
+ */
+const ESSENTIAL = creditsForMode(getTemplate('florida-business-for-sale')!.modes!.essential!, 'essential');
 import { app } from '../src/index.js';
 import { auth, seedAdmin, seedApp, token } from './helpers.js';
 import { fakeLlm } from './setup.js';
@@ -211,7 +220,7 @@ describe('an admin is not who these caps are for', () => {
 
     await grantCredits({ appId: 'admin', userId: ADMIN, credits: 10 });
     expect((await post(adminToken)).statusCode).toBe(202);
-    expect(await getBalance('admin', ADMIN)).toBe(5); // essential = 5
+    expect(await getBalance('admin', ADMIN)).toBe(10 - ESSENTIAL);
   });
 
   it('never charges its own balance for someone else’s report', async () => {
@@ -221,7 +230,7 @@ describe('an admin is not who these caps are for', () => {
     expect((await post(userToken)).statusCode).toBe(202);
 
     expect(await getBalance('admin', ADMIN)).toBe(10);
-    expect(await getBalance(APP, USER)).toBe(495); // 500 - 5
+    expect(await getBalance(APP, USER)).toBe(500 - ESSENTIAL);
   });
 });
 
@@ -284,7 +293,7 @@ describe('a job an admin re-runs is still a job someone paid for', () => {
       method: 'POST', url: `/admin/jobs/${jobId}/resolve`, headers: auth(adminToken), payload: { outcome: 'refund' },
     });
     expect(resolved.json().refunded).toBe(true);
-    expect(await getBalance(APP, USER)).toBe(before + 5);
+    expect(await getBalance(APP, USER)).toBe(before + ESSENTIAL);
 
     // Retry does not re-charge — that is what makes it safe for a job that is
     // still paid for. On a refunded one it would hand the owner a full report they
@@ -293,7 +302,7 @@ describe('a job an admin re-runs is still a job someone paid for', () => {
     expect(retry.statusCode).toBe(409);
     expect(retry.json().code).toBe('job_refunded');
     expect((await getJob(jobId))!.status).toBe('failed');
-    expect(await getBalance(APP, USER)).toBe(before + 5); // and nothing was charged to anyone
+    expect(await getBalance(APP, USER)).toBe(before + ESSENTIAL); // and nothing was charged to anyone
   });
 
   it('still re-runs one that was closed WITHOUT a refund', async () => {

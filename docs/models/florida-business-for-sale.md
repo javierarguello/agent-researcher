@@ -58,10 +58,19 @@ estate are deliberately absent here: they already have their own params.
 
 ### Modes (the only public cost knob)
 
-| Mode | Sections | Budget scale | `targetCount` | Depth | Credits |
-|---|---|---|---|---|---|
-| `essential` | 12 (core) | 0.5× | 3 | light | 1 |
-| `comprehensive` | 17 (full) | 1× | 6 | standard | 2 |
+| Mode | Sections | Budget scale | `targetCount` | Depth | Credits | Cost ceiling |
+|---|---|---|---|---|---|---|
+| `essential` | 12 (core) | 0.5× | 3 | light | **8** | **$5** |
+| `comprehensive` | 17 (full) | 1× | 6 | standard | **18** | **$10** |
+
+The Credits column read `1` and `2` until 2026-08-20 and had not been true for
+months. The figures now: a real comprehensive run costs **$3.885843**
+(`out/local-aa4b3edf/trace.json`) and an essential one ~**$1.92** (inferred — no
+real run yet), so essential is 49% of the cost and cost parity per credit sits at
+8.9. Each ceiling is 2.6× its mode's cost and stays under what that report earns at
+the cheapest credit pack (`CREDIT_FLOOR_USD`, `packages/core/src/mode.ts`) — the
+property `mode-ceiling.test.ts` pins, because a job allowed to cost more than it
+earned is a loss whenever it reaches its ceiling (D1).
 
 `essential` **excludes** 5 heavy sections — `competitive_landscape`,
 `financial_analysis`, `comparable_transactions`, `due_diligence_checklist`,

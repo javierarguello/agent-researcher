@@ -30,6 +30,7 @@ import type { JobFile, JobHold, JobSummary } from '../jobs/types.js';
 import { generateHeadline } from '../jobs/headline.js';
 import { createCostSink, emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
+import { getModelPricing, resolveModeCeiling } from '../credits/pricing.js';
 import { recordReportStats } from '../stats/store.js';
 import { jobLogger } from '../obs/log.js';
 import { runResearch, type Checkpoint, type JobTrace } from './research-engine.js';
@@ -284,6 +285,16 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
     const generatedAt = existing?.createdAt ?? new Date().toISOString();
     const seenAgents = new Set<string>();
 
+    // Resolved HERE, not in the engine, because this is the only place that knows
+    // the model's live pricing: the per-mode credits, the credit floor read off
+    // Stripe, and the expected profit. Read per job on purpose — a price change has
+    // to reach the next job, not the next deploy. A Firestore blip falls back to the
+    // engine's own derivation rather than failing the job.
+    const jobMode = resolveMode(template.modes, (input.params as Record<string, unknown>).mode);
+    const modelPricing = await getModelPricing(input.template).catch(() => null);
+    const ceilingUsd = resolveModeCeiling(modelPricing, jobMode.config, jobMode.key, config.workflow.maxJobCostUsd);
+    log.info('job.ceiling', { mode: jobMode.key, ceilingUsd });
+
     const output = await runResearch({
       template,
       params: input.params,
@@ -295,10 +306,16 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       // Fold headline cost into the trace so it's checkpointed and survives resumes
       // (nonzero only on the first dispatch; already carried in `resume.cost` after).
       baseCost: headlineCost,
-      // An admin approved this specific job to run past its ceiling. `null` is
-      // uncapped; `undefined` (the normal case) lets the engine derive the ceiling
-      // from the model's mode.
-      ...(existing?.budgetOverride ? { costCeilingUsd: null } : {}),
+      // The ceiling this job runs under, resolved HERE because this is the only
+      // place that knows all three inputs: the Firestore per-model credit override,
+      // the credit floor the live Stripe packs imply, and the expected profit. The
+      // engine's own fallback is the deployment-wide number, which is right for a
+      // direct caller (a test, the CLI) and wrong for a paid job — the ceiling has
+      // to follow the PRICE, or a re-priced model stays guarded by its old one.
+      //
+      // An admin approval still wins: `null` is uncapped, and it is what "continue
+      // this job past its ceiling" means.
+      ...(existing?.budgetOverride ? { costCeilingUsd: null } : { costCeilingUsd: ceilingUsd }),
       onCheckpoint: async (cp) => {
         try {
           // If another dispatch has claimed the job, ours is the stale one: saving

@@ -90,13 +90,13 @@ describe('admin API — stats, users, jobs, apps, credit audit', () => {
   });
 
   // --- Per-model credit pricing (Firestore override, code default) ---------
-  it('pricing: code default (5/18), PUT override, applied to manifest + charge', async () => {
+  it('pricing: code default (8/18), PUT override, applied to manifest + charge', async () => {
     const admin = await adminToken();
     const model = 'florida-business-for-sale';
 
     const g0 = await app.inject({ method: 'GET', url: `/admin/pricing/${model}`, headers: auth(admin) });
     expect(g0.json().modes).toEqual([
-      { key: 'essential', defaultCredits: 5, credits: 5 },
+      { key: 'essential', defaultCredits: 8, credits: 8 },
       { key: 'comprehensive', defaultCredits: 18, credits: 18 },
     ]);
 

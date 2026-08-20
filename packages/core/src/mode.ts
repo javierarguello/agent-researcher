@@ -51,31 +51,49 @@ export interface ModeConfig {
 
 /** Fallback when a template does not declare its own modes. */
 export const DEFAULT_MODES: Record<ReportMode, ModeConfig> = {
-  essential: { label: 'Essential', budgetScale: 0.5, depth: 'light', credits: 5 },
+  essential: { label: 'Essential', budgetScale: 0.5, depth: 'light', credits: 8 },
   comprehensive: { label: 'Comprehensive', budgetScale: 1, depth: 'standard', credits: 18 },
 };
 
-/** Credits a mode consumes (defaults: essential 5, comprehensive 18 — track real cost). */
+/**
+ * Credits a mode consumes. Defaults: **essential 8, comprehensive 18** — and the 8
+ * is the measured ratio rather than a guess. A real comprehensive run costs
+ * $3.885843 and an essential one ~$1.92 (inferred), i.e. 49% of the cost, so cost
+ * parity per credit sits at 8.9 credits. Essential was 5 — 28% of the price for 49%
+ * of the cost — which underpriced the cheaper mode against the dearer one and made
+ * its ceiling impossible to set from cost (D1).
+ */
 export function creditsForMode(config: ModeConfig, key: ReportMode): number {
-  return config.credits ?? (key === 'comprehensive' ? 18 : 5);
+  return config.credits ?? (key === 'comprehensive' ? 18 : 8);
 }
 
 /**
- * The lowest USD a single credit is ever sold for.
+ * What a job of this mode is allowed to spend, DERIVED from what its report sells
+ * for: `credits × creditFloorUsd × jobCeilingFraction`.
  *
- * A COPY of an external fact, and the only one in the repo: the credit packs live
- * entirely in Stripe (Product metadata `credits` + the default Price), so nothing
- * here can derive it. Measured 2026-08-20 off `GET /plans?appId=fbizlab`:
- * Scout $29/20 = $1.45, Investor $69/80 = $0.8625, Syndicate $129/150 = $0.86.
- * The floor is what matters — a buyer on the cheapest pack is the one a ceiling
- * has to stay profitable against.
+ * A ceiling nobody derives is a ceiling nobody re-checks. Both modes shared a flat
+ * $20 — 5× a real comprehensive run, and ABOVE what either report earns, so a job
+ * that reached the ceiling was a loss the moment it did (D1). Hand-setting one
+ * number per mode fixed that batch and would have gone stale the next time a price
+ * moved; this cannot, because the price IS the input. Change `credits` (Firestore,
+ * no deploy), the floor, or the fraction, and every ceiling follows.
  *
- * It exists so the rule below can be a TEST rather than a habit: no job may be
- * allowed to cost more than the report it produced earned. Update it whenever the
- * Stripe catalog moves; `mode-ceiling.test.ts` fails loudly if a ceiling ever
- * crosses it, which is the direction that loses money.
+ * Both inputs come from `settings/general` (Firestore, admin-editable): the floor
+ * is computed from the live Stripe packs by an admin-triggered refresh, and the
+ * expected profit is the policy. Neither is a code constant, because both are
+ * adjusted constantly.
+ *
+ * `credits` must be the EFFECTIVE price — the Firestore override when there is one,
+ * not the code default — which is why the resolution lives with the caller that
+ * knows it (`resolveModeCeiling`, `credits/pricing.ts`).
  */
-export const CREDIT_FLOOR_USD = 0.86;
+export function ceilingFromCredits(
+  credits: number,
+  pricing: { creditFloorUsd: number; expectedProfitPct: number },
+): number {
+  const keep = 1 - pricing.expectedProfitPct / 100;
+  return credits * pricing.creditFloorUsd * Math.max(keep, 0);
+}
 
 /**
  * The USD ceiling for one job in this mode: **the TIGHTER of the model's own figure
@@ -95,9 +113,17 @@ export const CREDIT_FLOOR_USD = 0.86;
  * its own cost profile, which is the case the field exists for. A deployment that
  * sets no ceiling leaves the model's as the only one.
  */
-export function maxCostForMode(config: ModeConfig, fallbackUsd: number): number {
-  const own = config.maxCostUsd;
-  if (own == null) return fallbackUsd;      // no opinion → the deployment's
+export function maxCostForMode(
+  mode: ModeConfig,
+  fallbackUsd: number,
+  derived?: { credits: number; creditFloorUsd: number; expectedProfitPct: number },
+): number {
+  // A template's explicit figure still wins over the derivation — that is what the
+  // field is for, and `0`/negative is a deliberate opt-out. Everything else is
+  // derived from what the report sells for, and only falls back to the
+  // deployment-wide number when the caller does not know the price.
+  const own = mode.maxCostUsd ?? (derived ? ceilingFromCredits(derived.credits, derived) : undefined);
+  if (own == null) return fallbackUsd;      // no price in hand → the deployment's
   if (own <= 0) return own;                 // the model opts out, deliberately
   if (fallbackUsd <= 0) return own;         // the deployment does not cap → ours
   return Math.min(own, fallbackUsd);        // both real → whichever binds first

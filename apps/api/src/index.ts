@@ -118,6 +118,9 @@ import {
   type LedgerEntryType,
   type JobStatus,
   clientProgress,
+  REPORT_MODES,
+  resolveModeCeiling,
+  creditFloorFrom,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
@@ -2753,7 +2756,8 @@ app.post(
 
 // --- Admin: per-model credit pricing (Firestore overrides) ------------------
 function pricingView(templateId: string, override: ModelPricing | null) {
-  const base = toManifest(getTemplate(templateId)!); // code/template default credits + add-on catalog
+  const tmpl = getTemplate(templateId)!;
+  const base = toManifest(tmpl); // code/template default credits + add-on catalog
   return {
     templateId,
     modes: base.modes.map((m) => ({
@@ -2770,6 +2774,26 @@ function pricingView(templateId: string, override: ModelPricing | null) {
       credits: override?.addons?.[a.key] ?? a.credits,
     })),
     updatedAt: override?.updatedAt ?? null,
+    /**
+     * The economics, and the ceilings they produce. Both inputs are editable here
+     * and neither is a code constant: a job may spend at most
+     * `credits × creditFloorUsd × (1 − expectedProfitPct/100)` before it is HELD, so
+     * a delivered job cannot be a loss however badly it goes (D1).
+     *
+     * `ceilingUsd` is returned rather than left for the client to recompute — it is
+     * the number actually enforced, `MAX_JOB_COST_USD` clamp included, and an admin
+     * changing a price needs to see what it did.
+     */
+    economics: {
+      creditFloorUsd: override?.creditFloorUsd ?? config.pricing.creditFloorUsd,
+      creditFloorSource: override?.creditFloorUsd != null ? 'stored' : 'default',
+      expectedProfitPct: override?.expectedProfitPct ?? config.pricing.expectedProfitPct,
+      maxJobCostUsd: config.workflow.maxJobCostUsd,
+      ceilings: REPORT_MODES.map((key) => ({
+        key,
+        ceilingUsd: resolveModeCeiling(override, resolveMode(tmpl.modes, key).config, key, config.workflow.maxJobCostUsd),
+      })),
+    },
   };
 }
 
@@ -2814,6 +2838,18 @@ app.put(
             },
           },
           addons: { type: 'object', additionalProperties: { type: 'integer', minimum: 1, maximum: 1_000_000 } },
+          creditFloorUsd: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            maximum: 1000,
+            description: 'Lowest USD one credit sells for. Normally set by the "read from Stripe" tool below.',
+          },
+          expectedProfitPct: {
+            type: 'number',
+            minimum: 0,
+            maximum: 99,
+            description: 'Gross margin a job must leave on its report. The cost ceiling is derived from it.',
+          },
         },
       },
     },
@@ -2822,18 +2858,94 @@ app.put(
     const { templateId } = req.params as { templateId: string };
     const tmpl = getTemplate(templateId);
     if (!tmpl) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
-    const body = (req.body ?? {}) as { modes?: Record<string, number>; addons?: Record<string, number> };
+    const body = (req.body ?? {}) as {
+      modes?: Record<string, number>;
+      addons?: Record<string, number>;
+      creditFloorUsd?: number;
+      expectedProfitPct?: number;
+    };
     // Add-on keys must exist in the model's catalog — the admin only prices them.
     const validAddons = new Set((tmpl.addons ?? []).map((a) => a.key));
     const addons = body.addons
       ? Object.fromEntries(Object.entries(body.addons).filter(([k]) => validAddons.has(k)))
       : undefined;
-    await setModelPricing(templateId, { modes: body.modes as ModelPricing['modes'], addons });
+    await setModelPricing(templateId, {
+      modes: body.modes as ModelPricing['modes'],
+      addons,
+      ...(body.creditFloorUsd !== undefined ? { creditFloorUsd: body.creditFloorUsd } : {}),
+      ...(body.expectedProfitPct !== undefined ? { expectedProfitPct: body.expectedProfitPct } : {}),
+    });
     // Drop the cached manifest for this model so the user front picks up the new
     // mode costs (the admin itself already reads uncached).
     bustPublicCache(`manifest:${templateId}:`);
     logEvent({ jobId: '-', appId: 'admin', userId: req.auth!.email }, 'INFO', 'pricing.updated', { templateId, modes: body.modes, addons });
     return pricingView(templateId, await getModelPricing(templateId));
+  },
+);
+
+/**
+ * Read the live Stripe packs and compute the credit floor — the admin app's button.
+ *
+ * Deliberately a TOOL and not a side effect of listing plans: the stored figure is
+ * what every cost ceiling for this model is derived from, and a read path that
+ * silently rewrote it would move them all without anyone asking. `apply: false`
+ * answers "what would it be?" so the admin can look before writing.
+ *
+ * `appId` is which catalog to read: credits are sold per app, and a model offered
+ * through two apps has two floors — the caller picks the one this model is priced
+ * for. Its packs are the Stripe products tagged with that `appId`.
+ */
+app.post(
+  '/admin/pricing/:templateId/credit-floor',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: 'Compute a model’s credit floor from the live Stripe packs (optionally store it)',
+      tags: ['admin'],
+      security: sec,
+      params: { type: 'object', properties: { templateId: { type: 'string', maxLength: 128 } }, required: ['templateId'] },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['appId'],
+        properties: {
+          appId: { type: 'string', maxLength: 128, description: 'Which credit catalog to read (packs are per app).' },
+          apply: { type: 'boolean', default: true, description: 'false = compute and return it without storing.' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const { templateId } = req.params as { templateId: string };
+    if (!getTemplate(templateId)) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
+    const { appId, apply = true } = req.body as { appId: string; apply?: boolean };
+    if (!stripeConfigured()) return reply.code(503).send({ error: 'Billing is not configured.' });
+    if (!isValidAppId(appId)) return reply.code(400).send({ error: `Invalid appId: ${appId}` });
+
+    const packs = await listStripePlans(appId);
+    const floor = creditFloorFrom(packs);
+    // An empty or unusable catalog is NOT a floor of zero — that would derive a
+    // ceiling of zero and hold every job of this model. Say so and change nothing.
+    if (floor === undefined) {
+      return reply.code(409).send({
+        error: `No usable credit pack for app "${appId}" — nothing to compute a floor from.`,
+        packs: packs.length,
+      });
+    }
+    const before = (await getModelPricing(templateId))?.creditFloorUsd ?? null;
+    if (apply) {
+      await setModelPricing(templateId, { creditFloorUsd: floor });
+      bustPublicCache(`manifest:${templateId}:`);
+      logEvent({ jobId: '-', appId: 'admin', userId: req.auth!.email }, 'INFO', 'pricing.credit_floor', { templateId, appId, before, floor });
+    }
+    return {
+      creditFloorUsd: floor,
+      applied: apply,
+      before,
+      // What it was computed from, so the number is auditable rather than magic.
+      packs: packs.map((p) => ({ planId: p.planId, priceUsd: p.priceUsd, credits: p.credits, perCredit: p.priceUsd / p.credits })),
+      pricing: pricingView(templateId, await getModelPricing(templateId)),
+    };
   },
 );
 

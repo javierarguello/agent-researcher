@@ -992,50 +992,39 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
   // Public API exposes only `mode`; these map it to internal cost/scope.
   modes: {
     /**
-     * The per-job cost ceilings, and why they are not one number.
+     * No `maxCostUsd` here on purpose — the ceiling is DERIVED.
      *
-     * Both modes shared the deployment default of $20 — 5x what a real
-     * comprehensive job costs and 10x an essential one, so it caught nothing short
-     * of a catastrophe, and it sat ABOVE what either report earns: a job that
-     * reached it was a loss the moment it did (D1).
+     * Both modes used to ride one $20 deployment default: 5x what a real
+     * comprehensive run costs ($3.885843, `out/local-aa4b3edf/trace.json`) and, the
+     * part that mattered, ABOVE what either report earns — so a job that reached the
+     * ceiling was a loss the moment it did (D1). Hand-setting one figure per mode
+     * fixed that and would have gone stale the next time a price moved.
      *
-     * Two facts set these, and they are different in kind:
-     *   - **What a job costs.** MEASURED, once, from a real run:
-     *     `out/local-aa4b3edf/trace.json` is a completed comprehensive at
-     *     **$3.885843** ($3.006 LLM over 4.10M in / 206k out, $0.88 search over 55
-     *     calls). The honest FIXTURE estimates $2.65, so the estimate runs ~1.47x
-     *     low; essential has no real run at all and is inferred at ~$1.92 by
-     *     scaling the fixture's $1.31 by that factor. One run is not a p95 — when
-     *     production volume exists, re-derive both from `trace.cost`.
-     *   - **What a job earns.** `credits x CREDIT_FLOOR_USD`, the cheapest pack:
-     *     $15.48 comprehensive, $4.30 essential.
+     * It is now `credits x CREDIT_FLOOR_USD x JOB_CEILING_FRACTION`
+     * (`ceilingFromCredits`), resolved against the EFFECTIVE credits so a
+     * `/admin/pricing` override moves it with no deploy. At today's 0.806 / 0.7 that
+     * is **$10.16 comprehensive** (2.6x its measured cost) and **$4.51 essential**
+     * (2.35x its inferred $1.92). A template that genuinely needs its own number can
+     * still declare `maxCostUsd` and it wins; this one does not.
      *
-     * Comprehensive gets **$10** — 2.6x the measured cost, and still $5.48 of margin
-     * if a job ever reaches it. Essential gets **$3.50**, and that number is set by
-     * REVENUE rather than by cost: 2.5x its inferred cost would be $4.80, which is
-     * more than the $4.30 the report earns. At 1.8x the honest cost it is thinner
-     * headroom than a ceiling should have, and the honest reading is that five
-     * credits does not buy enough room — the structural fix is what a report costs
-     * in credits, not a bigger ceiling.
-     *
-     * A job that reaches its ceiling is HELD for an admin, not failed and not
-     * refunded, so a tight ceiling spends someone's attention rather than money.
-     * That is the trade being made here, deliberately, on the cheaper mode.
+     * `credits` is the number to think about, and 8 for essential is the measured
+     * ratio rather than a guess: essential costs ~49% of comprehensive, so cost
+     * parity per credit sits at 8.9 credits. At the 5 it used to be it was 28% of
+     * the price for 49% of the cost — the cheaper mode carried the worse margin, and
+     * its ceiling could not be derived from cost at all.
      */
     comprehensive: {
       label: 'Comprehensive',
       budgetScale: 1,
       depth: 'standard',
       credits: 18,
-      maxCostUsd: 10,
       params: { targetCount: 6 },
     },
     essential: {
       label: 'Essential',
       budgetScale: 0.5,
       depth: 'light',
-      credits: 5,
-      maxCostUsd: 3.5,
+      credits: 8,
       // Drop the heaviest analytical sections (~half the cost, core report kept).
       exclude: [
         'competitive_landscape',

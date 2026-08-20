@@ -49,7 +49,15 @@ vi.mock('../src/stripe.js', () => ({
 }));
 
 import { app } from '../src/index.js';
-import { getBalance, listTransactions, grantCredits, createApp, updateApp, config } from '@agent-researcher/core';
+import { getBalance, listTransactions, grantCredits, createApp, updateApp, config, creditsForMode, getTemplate } from '@agent-researcher/core';
+
+/**
+ * What one essential report actually charges, read off the model rather than
+ * written down. Three balances in this file were `20 - 5` and `15 = 3 x 5`, and
+ * when essential went 5 -> 8 credits (D1) every one of them was a puzzle to
+ * re-derive. The price is a product decision that will move again.
+ */
+const ESSENTIAL = creditsForMode(getTemplate('florida-business-for-sale')!.modes!.essential!, 'essential');
 import { listStripePlans } from '../src/stripe.js';
 import { seedApp, token, auth, seedAdmin } from './helpers.js';
 import { secondsToNextHour } from '../src/public-limit.js';
@@ -147,14 +155,14 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     // so this is the one caller for whom credits are the only bound.
     await seedAdmin(['boss@x.com']);
     await updateApp('fbizlab', { adminEmails: ['boss@x.com'] });
-    await grantCredits({ appId: 'fbizlab', userId: 'boss@x.com', credits: 15 });
+    await grantCredits({ appId: 'fbizlab', userId: 'boss@x.com', credits: ESSENTIAL * 3 });
     const t = await token('fbizlab', 'boss@x.com', 'admin');
 
     const results = await Promise.all(
       Array.from({ length: 6 }, () => app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research })),
     );
     const ok = results.filter((r) => r.statusCode === 202).length;
-    // Essential costs 5, so 15 buys exactly three — and six requests raced for them.
+    // The grant buys exactly three essentials — and six requests raced for them.
     //
     // Measured: TWO independent gates hold this — the route's pre-check and the
     // ledger transaction's own — so removing either alone leaves this green and
@@ -176,8 +184,8 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     const second = await app.inject({ method: 'POST', url: '/research', headers: auth(t), payload: research });
     expect(second.statusCode).toBe(409);
     expect(second.json().code).toBe('concurrency_limit');
-    // The blocked request cost nothing — only the first job was charged (20 − 5).
-    expect(await getBalance('fbizlab', 'u@x.com')).toBe(15);
+    // The blocked request cost nothing — only the first job was charged.
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(20 - ESSENTIAL);
   });
 
   it('GET /plans is public (no auth) and Stripe-sourced', async () => {
