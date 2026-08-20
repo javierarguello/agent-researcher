@@ -258,9 +258,11 @@ The shared **system prompt** (`buildSystemPrompt`) is identical for every agent:
 the template `basePrompt` plus the client's **structured directives** (a closed
 vocabulary the template declares — every word ours). There is deliberately no
 free-text block: the buyer's own words never reach a prompt. They fill the
-directives and the keywords through the preflight assist (`/research/preflight`
-with `freeText`), as proposals the buyer accepts, one field at a time and only
-where it can quote them. Per-agent `focus` rides in the research KICKOFF's user
+directives, and the `fillable` basics, through the preflight assist
+(`/research/preflight` with `freeText`), as proposals the buyer accepts, one field
+at a time and only where it can quote them. No longer the keywords: `keywords` is an
+`internalParams` key since `29f8593`, and `hasKeywordsField` returns false for one
+(`enrich.ts:606`), so the assist neither offers nor accepts them for the flagship. Per-agent `focus` rides in the research KICKOFF's user
 message — and nowhere else, so an agent without a loop cannot be told one.
 
 ## Per-agent trace

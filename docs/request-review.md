@@ -116,8 +116,9 @@ what records strikes and blocks accounts.
 2. **LLM classifier** — answers `allowed` plus categories from a fixed enum.
    Fails open on any error. What made that acceptable was that the engine fenced
    client instructions as low-authority; since `7a45269` there is no client text in
-   a prompt at all — the buyer's words become directive values and keywords from
-   our own vocabularies, and only if the buyer accepts them. The fail-open is
+   a prompt at all — the buyer's words become directive values from our own
+   vocabularies (and a `fillable` basic quoted back to them), and only if the buyer
+   accepts them. Not keywords: `internalParams` since `29f8593`. The fail-open is
    safer than it was, and this line named a mechanism that no longer exists.
 
 A rejection increments a strike; at `MODERATION_STRIKE_LIMIT` the account is

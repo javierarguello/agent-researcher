@@ -90,13 +90,33 @@ and never refunded on its own.
    (`id`, `name`, `description`, `version: 1`, `basePrompt`, `paramsSchema`,
    `sections`, `agents`, `buildBrief`). Optionally add `paramsUi` (form layout,
    per-field help + suggestions) so clients render a good form with no UI change —
-   see [model-ui.md](model-ui.md).
+   see [model-ui.md](model-ui.md) — and `internalParams` for any param the ENGINE
+   understands and no client may send (see below).
 2. Register it in `templates/registry.ts` (`TEMPLATES` map).
 3. Add its doc `docs/models/<id>.md`.
 4. `npm run templates:check`.
 
 Nothing else changes — the engine, API, and worker are generic. Existing models
 are untouched.
+
+### `internalParams` — a param the engine takes and no client may send
+
+A key that stays in `paramsSchema` (so `buildBrief` and a server-side caller can
+still use it) but leaves the client contract entirely: `toManifest` strips it from
+the published `paramsSchema` and from `paramsUi`, so no client can render or
+discover it, and `validateRequest` REFUSES a request that carries it — a `400`
+reading "This model does not accept … from a client. Reload the page and try again."
+rather than a silent strip, because a client with the field on an open tab would
+otherwise have its value used without ever having been offered it.
+
+The assist follows the same boundary: `hasKeywordsField` returns false for a
+`keywords` listed here, so the preflight neither asks the model for keyword
+proposals nor accepts them (`enrich.ts:606`).
+
+The flagship's `keywords` is the only one today
+(`florida-business-for-sale.ts:1030`, since `29f8593`): a buyer's PROSE reaching a
+prompt as a phrase list was the last channel of its kind, and it now has no client
+route at all.
 
 ## Modes — the public cost/scope knob
 

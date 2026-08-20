@@ -47,7 +47,10 @@ Two parts of the batch are NOT round-9 repairs and nobody has reviewed them at a
   about one it would. Fixed client-side, rendering the clause from the LIVE form rather than re-previewing.
 - `d77ffb3` **the quote gates** (R9-4, R9-5, R9-13). The two-word branch that let «de la» pre-tick a directive is
   gone; the basics anchor gained a fallback so `St. Pete` no longer VANISHES; `isEvidence` now applies to the
-  higher-bar field too.
+  higher-bar field too. **[FALSE — corrected 2026-08-20, round 10's own R10-11, and left in place because this
+  file is the record of what the eight reviewers were told. `isEvidence` is on the DIRECTIVES path only
+  (`enrich.ts:553`); the basics path (`enrich.ts:592`) has no `isEvidence` and `d77ffb3` never claimed it did.
+  The clause came from the un-taken half of G2-break F3's fix sketch. Do not copy it into the next brief.]**
 - `5a7b844` **the density e2e** (R9-6). The fixture passed with `rankEvidence` deleted; it now needs both the
   overlap and a shortlist that store order does not hand over.
 - `dcfeedf` **the degraded-section copy** (R9-7). "Everything else was researched and written as usual" is now

@@ -155,7 +155,8 @@ the model says.
 **Request review** (`preflight.live.test.ts`): the summary equals our own
 deterministic render, every finding is a known code with our copy, every
 correction is recognisably the user's own value, and an injection in the buyer's
-free text (`freeText`, which fills directives and keywords and never a prompt)
+free text (`freeText`, which fills directives and `fillable` basics — never
+keywords since `29f8593`, and never a prompt)
 changes nothing in the response.
 
 **The full job lifecycle** (`apps/api/test/hold-e2e.test.ts`): the one test that

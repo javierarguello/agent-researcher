@@ -91,6 +91,16 @@ mode → record job → enqueue Cloud Task. Returns immediately:
 ```
 Errors:
 - `400` — invalid template or params (`{ error: "Invalid params: …" }`).
+- `400` — a param the model declares but no client may send:
+  `{ error: "This model does not accept keywords from a client. Reload the page and
+  try again." }`. The key IS in `paramsSchema` — that is what makes it different
+  from a retired param — but it is listed in the template's `internalParams`, so it
+  is stripped from the manifest and refused here rather than silently ignored
+  (`packages/core/src/index.ts:285`). A client that has it on an open tab is told to
+  reload, not quietly given a different request than the one it sent.
+- `400` — a param the model has RETIRED (`instructions`, `preferredSources`):
+  `{ error: "This model no longer accepts free-text instructions. Reload the page
+  and try again." }`.
 - `429` — per-app or per-user reports/hour limit exceeded:
   `{ error, scope, limit, used }` + `Retry-After: 3600`.
 - `402` — insufficient credits: `{ error: "Insufficient credits.", required, balance }`.
@@ -106,7 +116,10 @@ text, then a deterministic review (`summary`, `issues`) and — when the user co
 generate and has assisted reviews left — an assisted pass that proposes
 `corrections` (typo/format fixes on a whitelist of fields, `correctedParams`)
 and, from `freeText`, `proposals` (`{ directives, keywords }` — values from the
-model's own vocabularies and a few short keywords, `proposedParams`). Everything
+model's own vocabularies, plus `basics` for a `fillable` field the buyer left empty,
+`proposedParams`). `keywords` is in the response TYPE and is empty for any model that
+lists it in `internalParams`, which the only shipped model does (`29f8593`): the
+assist neither asks the model for them nor accepts them (`enrich.ts:606`). Everything
 returned is either our copy or a value from a closed vocabulary; nothing the
 user typed and nothing the model wrote is echoed. **`freeText` is never a param
 and never reaches a research prompt** — a client that wants the user's words to

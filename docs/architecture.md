@@ -112,8 +112,9 @@ credits }`) — nothing in Firestore. Full detail: [credits.md](credits.md).
    directives, rendered from closed vocabularies) and the **research brief** from
    the effective params. There is no free-text client instruction any more:
    `7a45269` removed `instructionsField`, and what a buyer types in their own words
-   fills directives and keywords through the pre-flight assist, as proposals they
-   confirm.
+   fills directives and the `fillable` basics through the pre-flight assist, as
+   proposals they confirm — not keywords, which have been an `internalParams` key
+   since `29f8593`.
 3. Creates one shared **evidence store**.
 4. **Topo-sorts** the agents into waves (`planWaves` / Kahn layering). An agent's
    dependencies are its explicit `dependsOn` plus the producer of any section it

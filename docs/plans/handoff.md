@@ -30,7 +30,7 @@ and it is the only place that is current by construction.
 
 ```bash
 npm ci                       # a fresh worktree has no node_modules and no vitest
-npm test                     # 1196 passed, 0 failed in Javier's checkout (see State)
+npm test                     # 1214 passed, 0 failed in Javier's checkout (see State)
 npm run typecheck            # must be clean; it catches what the suites cannot
 npx tsx docs/plans/m-red-team-reports/k-census-2026-08-19/run.ts   # the §K census
 ```
@@ -49,13 +49,15 @@ only tier you may use.
 
 ## State, 2026-08-20
 
-- **Rounds 1-10 are run. Rounds 8, 9 and round 10's P1 half are closed.** Round 10
-  found 0 P0, 10 P1 and 26 P2; **all ten P1 are fixed** (`2a01ada`, `67261d0`,
-  `b4ee573`, `4665dc8`, `73fcf36`, `1b16eae`), plus R10-30 and R10-37 — the latter
+- **Rounds 1-10 are run, and rounds 8, 9 and 10 are all CLOSED.** Round 10 found
+  0 P0, 10 P1 and 26 P2, and every one is fixed. The P1 half:
+  `2a01ada`, `67261d0`, `b4ee573`, `4665dc8`, `73fcf36`, `1b16eae` — plus R10-37,
   found while fixing R10-6 and by none of the eight reviewers: the assist's
   fillable-basics path could never fire in production, because `validateRequest`
-  applies the schema default before the "is this field empty?" gate runs. **The 26
-  P2 are open.** Findings, stamps and the order of work are `deep-review.md`
+  applies the schema default before the "is this field empty?" gate runs. The P2
+  half, one commit per file cluster: `eda0913` (summary/deterministic),
+  `06879b3` (buyer surface), `1de3363` (engine/test), and the record ones in the
+  docs commit that closed the round. Findings and stamps are `deep-review.md`
   § "Round 10".
 - Round 10's shape, because it repeats: **the fixes of round 9 shipped holes of
   their own**, one of them in the same LINE as the fix (`d77ffb3` closed R9-4/R9-5
@@ -63,27 +65,34 @@ only tier you may use.
   ordinary buyer language** plus a reachability regression on a cubic regex — the
   expensive failure that commit argued it had avoided. Five findings were reached by
   two reviewers independently.
-- **Suite totals, MEASURED 2026-08-20 at `1b16eae`:** **1196 passed, 0 failed** in
-  the MAIN checkout (776 core + 217 api + 22 worker + 170 fbizlab + 11 admin). The
+- **Suite totals, MEASURED 2026-08-20 at `1de3363`:** **1214 passed, 0 failed** in
+  the MAIN checkout (779 core + 217 api + 22 worker + 185 fbizlab + 11 admin). The
   clean-worktree figure was 1170 at `2a01ada` and has NOT been re-measured since —
-  do not subtract six from 1196 and write it down. The gap is six red-team tests gated on
+  do not subtract six from 1214 and write it down. The gap is six red-team tests gated on
   `out/*/trace.json`, which exists only in Javier's checkout. Subtracting six is not
   a safe shortcut even though it lands here: core also COLLECTS a different total in
-  the two checkouts (775 vs 777). Measure yours and say which one it is — round 10's
-  R10-28 caught this line 19 tests stale, in a commit that edited the line beneath
-  it. `npm run typecheck` clean.
+  the two checkouts. At `1de3363` the main checkout COLLECTS **791** in core (779
+  passed + 12 skipped); the clean-worktree collection has not been measured since
+  `2a01ada`, so the old "775 vs 777" pair is gone rather than carried forward.
+  Measure yours and say which one it is — round 10's R10-28 caught this line 19
+  tests stale, in a commit that edited the line beneath it. `npm run typecheck`
+  clean.
 - **Everything through `cca295b` is pushed to `origin/main`** (2026-08-20). Pushing
   to `main` deploys DEV — the API to Cloud Run and both SPAs to Firebase Hosting,
   all three behind `verify.yml`. Prod is a push to `deploy-prod`, which nothing in
   this batch touched.
-- **Next: round 11, against `2a01ada..cca295b`** — the round-10 P1 fix batch, which
-  nobody has reviewed. That is deliberate and it is where this repo's record says
-  the next defects are: rounds 8, 9 and 10 each found the previous round's FIXES
-  shipping holes, twice inside the very line of the fix. Two things in the range are
+- **Next: round 11, against `20f361b..HEAD`** — the WHOLE round-10 fix batch, P1 and
+  P2, which nobody has reviewed. That is deliberate and it is where this repo's record
+  says the next defects are: rounds 8, 9 and 10 each found the previous round's FIXES
+  shipping holes, twice inside the very line of the fix. Five things in the range are
   new code rather than repairs and deserve the suspicion `29f8593` and `63fd892`
   earned in round 10 — the admin health strip (`b4ee573`: a new endpoint field, a new
-  counter, and the thinnest test suite in the repo) and the client-side summary
-  patching (`1b16eae`: it substitutes strings into a sentence the server wrote).
+  counter, and the thinnest test suite in the repo), the client-side summary patching
+  (`1b16eae`: it substitutes strings into a sentence the server wrote), the
+  `z.preprocess` dedupe in `directivesSchema` (`eda0913`: it changes the stored params
+  of any validated request), the `maxSelected` cut added to `renderDirectives`
+  (`eda0913`: the prompt now drops values it used to carry), and `copy-parity.test.tsx`
+  (`06879b3`: eleven modules got a new export so one test could reach them).
   The brief to copy is `m-red-team-reports/round10/BRIEF.md`; its three predecessors'
   corrections all held (a PRIVATE scratchpad per reviewer, the sha in each agent's
   PROMPT, the clean-worktree total stated as measured). Two more to add, paid for in
@@ -127,12 +136,11 @@ while adding an engineering item to it (R10-31).
 
 ### Open work, nobody blocked
 
-- **The round-10 P2 batch** — 26 items, clustered by file in `deep-review.md`
-  § "Round 10" → "How to continue". R10-22 first (two reviewers found it).
-- **A review of the round-10 P1 fixes themselves.** Three rounds running have found
-  that the previous round's FIXES shipped holes, twice in the very line of the fix.
-  Two things in this batch are new code rather than repairs: the admin health strip
-  (`b4ee573`) and the client-side summary patching (`1b16eae`).
+- **Round 11** — eight reviewers against `20f361b..HEAD`, the whole round-10 fix
+  batch. Nothing else is queued ahead of it: rounds 8, 9 and 10 are closed. The brief
+  to copy is `m-red-team-reports/round10/BRIEF.md` (with the two corrections named in
+  the State section above), and the five pieces of new behaviour to weight are listed
+  there too.
 - **Alerting on the moderation fail-open — the half that is still open.**
   `b4ee573` made it VISIBLE: `ModerationVerdict.degraded`, a counter with a last-seen
   time, and a strip at the top of the admin dashboard that renders in all four
