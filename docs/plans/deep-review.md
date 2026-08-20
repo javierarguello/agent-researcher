@@ -2310,7 +2310,7 @@ None.
   of with what the API produces; the new one calls `validateRequest` first.
 
 ### P2 — batch
-- R10-11 The record says `isEvidence` now applies to the basics field. It does not,
+- R10-11 **done `664d36a`** The record says `isEvidence` now applies to the basics field. It does not,
   the commit never claimed it, and the round-10 BRIEF promoted the un-taken half of a
   fix sketch to a statement of fact for eight reviewers (G1-verify F5).
 - R10-12 **done `1de3363`** R9-8's corrected threshold is still wrong: the snippet call's floor is
@@ -2320,8 +2320,8 @@ None.
 - R10-13 **done `1de3363`** R9-11's replacement assertion `.sort()`s both sides, so the "in store order"
   it claims twice is pinned by nothing: reversing the whole `referenced` tier is
   **0 red across 1162 tests** (G1-break F4).
-- R10-14 **done `1de3363` (the in-file half; the message half is CORRECTED HERE, a
-  commit message cannot be edited)** `5a7b844`'s mutation table counts two rows in one
+- R10-14 **done `1de3363` (the in-file half) + `664d36a` (the message half, corrected in
+  this backlog because a commit message cannot be edited)** `5a7b844`'s mutation table counts two rows in one
   denominator and the third in another — "2 red" is 4 and "1 red" is 2 suite-wide, and
   there is no reading under which all three are right. Its in-file "2 red" comment is
   now 3 (G1-break F5, G1-verify F2).
@@ -2337,7 +2337,7 @@ None.
 - R10-16 **done `1de3363`** "which every producer reaches" (the PAGES threshold of 8) is refuted by the
   repo's own honest denominator, where the whole 15-agent run fetches 8 pages — a
   figure the SAME commit corrects elsewhere (G1-verify F4).
-- R10-17 **CORRECTED HERE — a commit message cannot be edited** `7a29a43`'s headline
+- R10-17 **done `664d36a` — CORRECTED IN THIS BACKLOG, a commit message cannot be edited** `7a29a43`'s headline
   "adding `partial` now reds **4**" reds **3** for the mutation the same paragraph
   describes; the 4-red variant includes a test that predates the commit, so "(0 before
   this commit)" is false by one for it (G2-verify F2).
@@ -2349,7 +2349,7 @@ None.
   `7a29a43^` the same mutation is **0 red across all five suites**. The fix is real;
   only the number was wrong, and three reds is still enough for whoever adds a real
   fourth status.
-- R10-18 **CORRECTED HERE — a commit message cannot be edited** Two of `c1397a9`'s
+- R10-18 **done `664d36a` — CORRECTED IN THIS BACKLOG, a commit message cannot be edited** Two of `c1397a9`'s
   four counts are understated by one, in a pattern consistent with counting red from a
   `&&`-chained `npm test` that stopped at the first failing workspace — the trap the
   brief warns about (G2-verify F3).
@@ -2362,7 +2362,7 @@ None.
   + api 1, and a run that stops after core sees exactly the claimed 1) · "the response
   drops `preferences`" — 1 ✓. Understated is the safe direction, but it is still a
   number nobody re-measured.
-- R10-19 **CORRECTED HERE — a commit message cannot be edited** `0ff22ef`'s "keeps
+- R10-19 **done `664d36a` — CORRECTED IN THIS BACKLOG, a commit message cannot be edited** `0ff22ef`'s "keeps
   every character and its second link" — the second link and the prose survive; the
   well-formed trailing title does not. True of the damage, false as written
   (G2-verify F4).
@@ -2402,11 +2402,11 @@ None.
   JSDoc does not say so — old summaries render the pre-fix badge with nothing on the
   page telling them apart, and the data to backfill exists in `trace.json`
   (G4-break F7).
-- R10-28 **The handoff and the round-9 close both report `1149 passed` as current;
+- R10-28 **done `664d36a`** **The handoff and the round-9 close both report `1149 passed` as current;
   it is 1168 (main) / 1162 (clean).** It went stale in `ff6bc5c`, a commit that
   edited the line directly beneath it and added the words "which now also carries
   `63fd892`" (G4-verify F1).
-- R10-29 `1644897`'s subject says "two lines that still say a client may send
+- R10-29 **done `664d36a`** `1644897`'s subject says "two lines that still say a client may send
   `keywords`"; **five more documents still say it** (`agents.md:261`,
   `architecture.md:115`, `local-llm.md:158`, `request-review.md:119`,
   `api-reference.md:108`), one of them edited by the docs pass one commit earlier.
@@ -2419,17 +2419,17 @@ None.
   false — D1 and the `MAX_JOB_COST_USD` default are still on it — and the same commit
   ADDS an engineering item (the fail-open alert) to a list headed "rather than on
   work" (G4-verify F5).
-- R10-32 The section the handoff calls "the only place that is current by
+- R10-32 **done `664d36a`** The section the handoff calls "the only place that is current by
   construction" tells the next agent, thirteen lines under `ROUND 9 IS CLOSED`, that
   "the 20 P2 items below are open" and to start with R9-1, closed nine commits
   earlier. And "all twenty stamped with their hash" is false for four, which carry
   `done (the docs pass that wrote this line)` and no sha (G4-verify F4).
 - R10-33 **done `4babf0c`** `handoff.md` stamps itself "last updated at `ec66323`", a commit that never
   touched the file, two edits ago (G4-verify F6).
-- R10-34 R9-27's fourth correction is recorded 31 lines from the sentence it
+- R10-34 **done `664d36a`** R9-27's fourth correction is recorded 31 lines from the sentence it
   corrects, which still asserts "four commits" where the count is six — the document
   now says both (G4-verify F7).
-- R10-35 "only NINE of the seventy were evasion" is ten (the newline-inside-a-word
+- R10-35 **done `664d36a`** "only NINE of the seventy were evasion" is ten (the newline-inside-a-word
   case is evasion and is disclosed as left open two paragraphs later), and "`$` … 2
   red on the legit corpus" is 2 red TESTS and 1 new corpus row (G3-verify F6).
 - R10-36 **done `06879b3`** The R9-19 hardening does not reach the screen its commit is written about:
@@ -2476,8 +2476,8 @@ the P1 batch, one per file cluster and each stamped on its own item above:
 `eda0913` the summary/deterministic ones (R10-22 … R10-27) ·
 `06879b3` the buyer-surface ones (R10-20, R10-21, R10-36) ·
 `1de3363` the engine/test ones (R10-12 … R10-16) ·
-and the record ones (R10-11, R10-14/17/18/19's message halves, R10-28, R10-29,
-R10-32, R10-34, R10-35) in the docs commit that carries this line. R10-30 was closed
+`664d36a` the record ones (R10-11, R10-14/17/18/19's message halves, R10-28,
+R10-29, R10-32, R10-34, R10-35). R10-30 was closed
 in the P1 batch (`1b16eae`) and R10-31/R10-33 by the handoff rewrite (`4babf0c`).
 
 R10-22 — the `boolean` directive that renders an arbitrary string — was taken first,

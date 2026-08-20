@@ -56,9 +56,8 @@ only tier you may use.
   fillable-basics path could never fire in production, because `validateRequest`
   applies the schema default before the "is this field empty?" gate runs. The P2
   half, one commit per file cluster: `eda0913` (summary/deterministic),
-  `06879b3` (buyer surface), `1de3363` (engine/test), and the record ones in the
-  docs commit that closed the round. Findings and stamps are `deep-review.md`
-  § "Round 10".
+  `06879b3` (buyer surface), `1de3363` (engine/test), `664d36a` (the record).
+  Findings and stamps are `deep-review.md` § "Round 10".
 - Round 10's shape, because it repeats: **the fixes of round 9 shipped holes of
   their own**, one of them in the same LINE as the fix (`d77ffb3` closed R9-4/R9-5
   and opened R10-4/R10-5), and the §K evasion work shipped **two false positives on
