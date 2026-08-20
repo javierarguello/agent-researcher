@@ -219,6 +219,57 @@ describe('the quote that says whose words a proposal is', () => {
     }
   });
 
+  it('a five-letter FUNCTION word is not a content word — «busco», «about», «quand», «quando» (round 10, R10-5)', () => {
+    // `d77ffb3` replaced "8 characters or a space" with "one word of five letters",
+    // arguing that function words in these four languages are almost all four
+    // letters or fewer. They are not: `porque`, `aunque`, `cuando`, `about`,
+    // `there`, `would`, `parce`, `depuis`, `muito` are all five or more, and all
+    // twelve below were REFUSED by the rule this replaced. A quote that is the
+    // first word of a note is not evidence for a preference.
+    // Mutation that reds this: judge a word by its length alone again.
+    const fillers = ['busco', 'quiero', 'aunque', 'porque', 'about', 'there', 'maybe', 'would', 'quand', 'parce', 'quando', 'sobre'];
+    for (const q of fillers) {
+      const out = acceptProposals(
+        florida, base,
+        { directives: { riskAppetite: { value: 'opportunistic', quote: q } }, keywords: [] },
+        `Busco una lavandería, ${q} algo tranquilo, quiero about there maybe would quand parce quando sobre aunque porque.`,
+      );
+      expect(out.directives?.riskAppetite, `«${q}» kept the value`).toBe('opportunistic');
+      expect(out.quotes?.riskAppetite, `«${q}» ticked it`).toBeUndefined();
+    }
+  });
+
+  it('…and the trade vocabulary of this product IS evidence — «low risk», «cash flow», «no debt» (round 10, R10-5)', () => {
+    // The other half of the same swap: every word of these is four letters or
+    // fewer, so the five-letter rule refused the exact phrases a buyer types about
+    // a business — and refused them silently, since the client only renders «…»
+    // when a quote survived. They ticked before `d77ffb3` and must again.
+    // Mutation that reds this: require one word of five letters.
+    const text = 'I want low risk, good cash flow, no debt, a turn key laundromat. Busy area, long lease, high rent is fine.';
+    for (const q of ['low risk', 'cash flow', 'no debt', 'turn key', 'high rent', 'busy area']) {
+      const out = acceptProposals(
+        florida, base,
+        { directives: { riskAppetite: { value: 'conservative', quote: q } }, keywords: [] },
+        text,
+      );
+      expect(out.quotes?.riskAppetite, `«${q}»`).toBe(q);
+    }
+  });
+
+  it('…and a number is not a word at all — «500000» is a budget, not a preference (round 10, R10-5)', () => {
+    // `words()` splits on `[^\p{L}\p{N}]+`, so a six-digit budget counted as a
+    // six-letter content word. The linguistic argument behind the threshold says
+    // nothing about digits, and a price is in every note.
+    // Mutation that reds this: count digits toward the tick gate again.
+    const out = acceptProposals(
+      florida, base,
+      { directives: { riskAppetite: { value: 'opportunistic', quote: '500000' } }, keywords: [] },
+      'Busco una lavandería, presupuesto 500000, algo tranquilo.',
+    );
+    expect(out.directives?.riskAppetite).toBe('opportunistic');
+    expect(out.quotes?.riskAppetite).toBeUndefined();
+  });
+
   it('reads a bare value from an older model answer exactly as before', () => {
     // The shape is what we ASK for, not what we can rely on getting: a model that
     // answers with the old flat value still proposes, it is just never quoted.
@@ -339,6 +390,51 @@ describe('a basic must be quoted by something that names it (R8-26)', () => {
       );
       expect(out.basics?.location, `${quote} → ${value}`).toBeUndefined();
     }
+  });
+
+  it('and refuses a four-letter PREFIX of an ordinary word — five real Florida cities the buyer never named (round 10, R10-4)', () => {
+    // `d77ffb3` let a shared prefix count as a match so `pete` could anchor
+    // `petersburg`. The predicate was symmetric and unrestricted, so any common
+    // noun of four letters anchored any place name starting with it — and the
+    // buyer's own phrase was rendered beside it as the evidence. Two reviewers
+    // found this independently, with different strings.
+    // Mutation that reds this: let a shared prefix match on its own again.
+    const cases: Array<[string, string, string]> = [
+      ['Looking for a mobile home park business, budget 500k, in Hialeah.', 'Homestead, FL', 'mobile home park'],
+      ['I have a plan to buy a laundromat in Hialeah this year.', 'Plantation, FL', 'a plan to buy'],
+      ['A laundromat near the lake, in Hialeah, budget 500k.', 'Lakeland, FL', 'near the lake'],
+      ['Mobile home park operator in Hialeah.', 'Parkland, FL', 'home park'],
+      ['Laundromat with good water pressure in Hialeah.', 'Waterford, FL', 'good water'],
+      // Nothing bounds the value to Florida — `location` is a 200-character string.
+      ['Laundromat near the port, budget 500k.', 'Portland, OR', 'near the port'],
+      ['Laundromat with parking, budget 500k.', 'Park City, UT', 'with parking'],
+    ];
+    for (const [text, value, quote] of cases) {
+      const out = acceptProposals(florida, empty, { directives: {}, keywords: [], basics: { location: { value, quote } } }, text);
+      expect(out.basics?.location, `${quote} → ${value}`).toBeUndefined();
+      expect(out.quotes?.location, `${quote} → ${value}`).toBeUndefined();
+    }
+  });
+
+  it('and the abbreviation it does keep is kept by its NEIGHBOUR, not by the prefix alone (round 10, R10-4)', () => {
+    // What separates `in St. Pete → St. Petersburg, FL` from `near the port →
+    // Portland, OR` is not the prefix — both are four letters against eight or ten.
+    // It is that the token beside it matches exactly, on the same side, in both:
+    // `st pete` against `st petersburg`. Take the neighbour away and the same
+    // expansion is refused, because then it is only a prefix.
+    // Mutation that reds this: drop the adjacency requirement.
+    const kept = acceptProposals(
+      florida, empty,
+      { directives: {}, keywords: [], basics: { location: { value: 'St. Petersburg, FL', quote: 'in St. Pete' } } },
+      'Laundromat in St. Pete, budget 500k.',
+    );
+    expect(kept.basics?.location).toBe('St. Petersburg, FL');
+    const bare = acceptProposals(
+      florida, empty,
+      { directives: {}, keywords: [], basics: { location: { value: 'Petersburg, FL', quote: 'the Pete area' } } },
+      'Laundromat in the Pete area, budget 500k.',
+    );
+    expect(bare.basics?.location).toBeUndefined();
   });
 
   it('and keeps the normalised one the buyer really did name', () => {

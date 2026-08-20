@@ -296,18 +296,64 @@ const QUOTE_MIN_LEN = 3;
  * `riesgo`, `deuda`, which is how a Spanish or Portuguese buyer writes the thing
  * the directive is about (round 9, R9-4).
  *
- * So: one content word. Function words in the four languages this product speaks
- * are almost all four letters or fewer (`the`, `for`, `and`, `una`, `los`, `que`,
- * `de`, `la`, `en`, `el`, `dans`, `pour`, `com`, `uma`); content words are almost
- * all five or more. That is a property of the languages rather than a threshold
- * someone picked, which is why it holds in all four at once.
+ * The version this replaces said "one word of five letters or more", and argued
+ * that function words in these four languages are almost all four letters or
+ * fewer — "a property of the languages rather than a threshold someone picked".
+ * Round 10 measured it in both directions and it is neither (R10-5). It ADMITTED
+ * twelve five-to-seven letter function words that the rule before it refused
+ * (`busco`, `quiero`, `aunque`, `porque`, `about`, `there`, `maybe`, `would`,
+ * `quand`, `parce`, `quando`, `sobre` — the first word of a Spanish or English
+ * buyer's note), and it REFUSED the trade vocabulary this product is made of
+ * (`low risk`, `cash flow`, `no debt`, `turn key`, `high rent`, `busy area`),
+ * silently, because the client only renders «…» when a quote survived.
+ *
+ * So the threshold stops pretending to be a property of the languages and becomes
+ * what it always was: a LIST, plus a length. A quote is evidence when, ignoring
+ * function words, it carries one word of four letters or more, or two words of
+ * three. The list is the honest part — it can be wrong, and it can be added to,
+ * which a threshold could not.
+ *
+ * Digits are not letters here (round 10, R10-6/G1-verify F6): `words()` splits on
+ * `[^\p{L}\p{N}]+`, so a six-digit budget counted as a six-letter content word and
+ * «500000» ticked a preference. The linguistic argument says nothing about digits,
+ * and a price is in every note. The ANCHOR below still counts them — `Highway 27`
+ * is a place name.
  *
  * Below the bar the proposal still stands — it is shown UNTICKED, the designed
  * lane for an inference with no literal quote ("que se maneje sola" → `absentee`).
  */
-const CONTENT_WORD_LEN = 5;
+const CONTENT_WORD_LEN = 4;
+const SHORT_WORD_LEN = 3;
+/**
+ * Function words of three letters or more in en/es/fr/pt — the ones long enough to
+ * clear the bar above while saying nothing about a preference. Deliberately NOT a
+ * general stop-list: no word here is one a buyer could mean as a criterion, which
+ * is why `deuda`, `riesgo`, `lease`, `renta` and `venta` are absent.
+ */
+const FUNCTION_WORDS = new Set([
+  // en
+  'the', 'and', 'but', 'for', 'not', 'with', 'from', 'that', 'this', 'these', 'those', 'they', 'them',
+  'then', 'than', 'have', 'has', 'had', 'been', 'were', 'was', 'what', 'when', 'where', 'which', 'while',
+  'would', 'could', 'should', 'about', 'there', 'their', 'here', 'some', 'such', 'into', 'also', 'just',
+  'very', 'only', 'more', 'most', 'much', 'maybe', 'because', 'looking', 'want', 'wants', 'need', 'needs',
+  // es
+  'que', 'por', 'para', 'pero', 'con', 'sin', 'los', 'las', 'una', 'uno', 'unos', 'unas', 'del', 'como',
+  'cuando', 'donde', 'porque', 'aunque', 'sobre', 'hasta', 'entre', 'desde', 'mismo', 'misma', 'este',
+  'esta', 'esto', 'esos', 'esas', 'algo', 'busco', 'buscar', 'quiero', 'quisiera', 'necesito',
+  // fr
+  'les', 'des', 'une', 'dans', 'pour', 'avec', 'sans', 'chez', 'comme', 'aussi', 'quand', 'parce',
+  'depuis', 'plutot', 'cherche', 'voudrais', 'veux',
+  // pt
+  'que', 'com', 'sem', 'uma', 'dos', 'das', 'pelo', 'pela', 'como', 'quando', 'onde', 'porque', 'sobre',
+  'ate', 'entre', 'desde', 'muito', 'procuro', 'quero', 'preciso',
+]);
 const words = (s: string): string[] => fold(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-const isEvidence = (q: string): boolean => words(q).some((w) => w.length >= CONTENT_WORD_LEN);
+/** …letters only, for the TICK gate. See the note about digits above. */
+const letterWords = (s: string): string[] => fold(s).split(/[^\p{L}]+/u).filter(Boolean);
+const isEvidence = (q: string): boolean => {
+  const carrying = letterWords(q).filter((w) => w.length >= SHORT_WORD_LEN && !FUNCTION_WORDS.has(w));
+  return carrying.some((w) => w.length >= CONTENT_WORD_LEN) || carrying.length >= 2;
+};
 
 /**
  * How long a word has to be to ANCHOR a quote to a value. One less than a content
@@ -335,6 +381,22 @@ const ANCHOR_WORD_LEN = 4;
  *    accents folded (a model normalising `Orléans` to `Orleans` is the normal
  *    case) and a shared PREFIX counted as a match (`pete` ↔ `petersburg`).
  *
+ * That prefix rule was symmetric and unrestricted, and round 10 measured what it
+ * bought (R10-4, found twice, independently): `mobile home park` → **Homestead**,
+ * `a plan to buy` → Plantation, `near the lake` → Lakeland, `home park` →
+ * Parkland, `good water` → Waterford, `near the port` → **Portland, OR** (nothing
+ * bounds the value to Florida), `with parking` → Park City, UT — each a real city
+ * the buyer never named, each carrying the buyer's own phrase as its evidence.
+ * That is R8-26 with the strings changed.
+ *
+ * What separates the one case that ships from those seven is not the prefix — they
+ * are all four letters against eight or ten. It is the token BESIDE it: `st pete`
+ * against `st petersburg`, the same word on the same side. So the prefix is no
+ * longer a match on its own; it counts only inside an adjacent pair whose other
+ * half matches exactly. This is a rule for ONE shape, deliberately — an abbreviated
+ * token expanded in place — because that is the only abbreviation the shipped case
+ * needs, and the general version bought seven wrong cities.
+ *
  * What it still refuses, knowingly: an abbreviation with no shared prefix (`Jax` →
  * `Jacksonville`), a translation (`Cayo Hueso` → `Key West`), and a value whose
  * words are all shorter than four letters (`LA`, and any CJK place name — the
@@ -343,10 +405,21 @@ const ANCHOR_WORD_LEN = 4;
  * to offer basics with no evidence shown, and losing them keeps R8-26 closed.
  */
 function quoteNames(quote: string, value: string): boolean {
-  const qs = words(quote).filter((w) => w.length >= ANCHOR_WORD_LEN);
-  const vs = words(value).filter((w) => w.length >= ANCHOR_WORD_LEN);
-  const shares = (a: string, b: string) => a === b || a.startsWith(b) || b.startsWith(a);
-  return vs.some((v) => qs.some((q) => shares(v, q)));
+  const qs = words(quote);
+  const vs = words(value);
+  const long = (w: string) => w.length >= ANCHOR_WORD_LEN;
+  // (A) A word of the value, four letters or more, is a word of the quote.
+  if (vs.some((v) => long(v) && qs.includes(v))) return true;
+  // (B) …or an abbreviation EXPANDED IN PLACE: two adjacent tokens where one side
+  //     matches exactly and the other is a prefix. `st pete` ↔ `st petersburg`.
+  const prefix = (a: string, b: string) => long(a) && long(b) && (a.startsWith(b) || b.startsWith(a));
+  for (let i = 0; i + 1 < vs.length; i++) {
+    for (let j = 0; j + 1 < qs.length; j++) {
+      const [v1, v2, q1, q2] = [vs[i]!, vs[i + 1]!, qs[j]!, qs[j + 1]!];
+      if ((v1 === q1 && prefix(v2, q2)) || (v2 === q2 && prefix(v1, q1))) return true;
+    }
+  }
+  return false;
 }
 
 /** Case- and whitespace-insensitive: a model re-types a quote, it does not copy bytes. */
