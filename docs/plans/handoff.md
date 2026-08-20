@@ -160,31 +160,14 @@ while adding an engineering item to it (R10-31).
   states including "this API build does not report it". Nobody is PAGED, which is
   the part that would need a log-based metric and an alert policy in
   `sinuous-canto-497518-h7`, i.e. Javier's credentials.
-- **`Deploy dev` is FAILING on `main` and dev is half-deployed** (2026-08-20, first
-  failure in 15 runs, and it is NOT a flake — re-run once, identical). The worker
-  image builds and the worker Cloud Run revision deploys; the API image then fails at
-  submit:
-
-      ERROR: (gcloud.builds.submit) FAILED_PRECONDITION: Precondition check failed.
-
-  That is a submit-time API error, before the Dockerfile runs, so it is not a compile
-  or test failure. `infra/cloudbuild.api.yaml` and `infra/cloudbuild.worker.yaml` are
-  byte-identical apart from the Dockerfile name and the tag, and neither has changed
-  since the initial commit — so nothing in this batch caused it. It reads as a
-  project-level precondition (Cloud Build quota, billing, or the build service
-  account's policy). **Needs Javier**: the account available in a local session gets
-  `PERMISSION_DENIED` on `gcloud builds describe` in
-  `sinuous-canto-497518-h7`. Build ids: `02d3b4bd-497e-4587-90e1-f94cd88b1221` and
-  `8b23707b-c28a-421d-890a-000f5495018d`.
-  **The half-deploy is benign for this batch** — the worker runs the new code, the
-  API runs the previous revision, and the only API-visible change in the range
-  (`config.workflow.dispatchBudgetSeconds`) is read by the worker alone. The 429
-  localization shipped earlier, in `0bf39b3`, whose deploy succeeded.
-- **`infra/setup-gcp.sh` needs re-running on dev and prod** — `91b5cfc` raised the
-  Cloud Tasks retry window 10800s → 18000s, and an existing queue keeps the old
-  value until someone applies it. Below that, a slow job's queue window runs out
-  before `maxJobAttempts` finalizes and the job stays `running` forever with the
-  credits spent. Javier's credentials; not run here.
+- **`ENV=prod bash infra/setup-gcp.sh` — once, by Javier.** `91b5cfc` raised the
+  Cloud Tasks retry window 10800s → 18000s, and below that a slow job's queue window
+  runs out before `maxJobAttempts` finalizes: the task is dropped and the job stays
+  `running` forever with the credits spent (the ending `parkJob` describes).
+  **Dev needs nothing** — `deploy-dev.yml` runs `setup-gcp.sh` on every push and the
+  live dev queue already reads `maxRetryDuration 18000s, maxAttempts 12, maxBackoff
+  600s` (read off the API 2026-08-20, not inferred). **Prod does**: `deploy.yml` only
+  deploys, and says so in its own header.
 - E3's unblock script (needs Javier's credentials for the dry run), N2 Stripe
   clawback, M-A2 (FENCE_RE near-misses, gated on frontier-tier evidence).
   **C5 is closed** (`91b5cfc`, measured).
