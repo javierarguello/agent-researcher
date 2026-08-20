@@ -206,6 +206,13 @@ export interface JobSummary {
      * loop threw before its first turn was indistinguishable from an agent that
      * never had one (round 9, R9-20). Different conversations, and one of them is a
      * refund.
+     *
+     * Absent on summaries written before it, exactly like `kind` above, and there is
+     * no backfill: `setJobSummary` has one caller, at the end of a completed job.
+     * Those rows render as they did before the fix — a producer-refiner whose loop
+     * threw still shows `refiner` — and nothing on the admin page tells an old row
+     * from a new one. The data to backfill exists (`trace.json` keeps `role` per
+     * agent), so this is "we did not", not "we cannot" (round 10, R10-27).
      */
     hadLoop?: boolean;
   }>;

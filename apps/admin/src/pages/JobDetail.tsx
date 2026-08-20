@@ -52,6 +52,13 @@ function Research({ turnsUsed, gatherStop, kind, hadLoop }: { turnsUsed?: number
   // research at all — say which it is, which is the reason `kind` is written in the
   // first place (round 8, R8-27). `—` stays for a trace written before the field.
   //
+  // `hadLoop` is absent on every summary written before `99a1a48`, and nothing
+  // backfilled them, so those rows fall through to the `kind` branch below and
+  // render exactly as they did before R9-20 was fixed. There is no marker on this
+  // page for it: an old `refiner` badge may be a synthesizer or a producer whose
+  // loop threw. The admin has only `job.summary` here — deriving it would mean
+  // serving `trace.json`'s `role` alongside it (round 10, R10-27).
+  //
   // Gated on `hadLoop`, not on `kind !== 'researcher'`: `agentKind` returns
   // `refiner` for a producer-refiner AND for a synthesizer-refiner, and the
   // flagship ships three of the first and one of the second — so a producer whose

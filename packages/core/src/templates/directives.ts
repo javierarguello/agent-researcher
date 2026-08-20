@@ -37,10 +37,16 @@ export function directivesSchema(fields: DirectiveField[]): z.ZodType {
     }
     const values = f.values ?? [];
     const value = z.enum(values as [string, ...string[]]);
+    // Deduped BEFORE the bound, because `.max()` counts elements and not distinct
+    // values: four copies of one preference passed validation, printed four times on
+    // the last screen before payment and weighed 4x in the prompt (round 10, R10-25).
+    // A preference set is a set. `validateRequest` returns `parsed.data`, so the
+    // collapse reaches the stored params and every reader downstream of them.
+    const dedupe = (x: unknown) => (Array.isArray(x) ? [...new Set(x)] : x);
     shape[f.key] =
       f.kind === 'single'
         ? value.optional()
-        : z.array(value).max(f.maxSelected ?? values.length).optional();
+        : z.preprocess(dedupe, z.array(value).max(f.maxSelected ?? values.length)).optional();
   }
   return z.strictObject(shape).optional();
 }
@@ -103,7 +109,14 @@ export function renderDirectives(spec: DirectiveSpec, raw: unknown): string {
       lines.push(`- ${label}: ${word(v)}`);
     } else {
       if (!Array.isArray(v)) continue;
-      const picked = v.filter((x): x is string => typeof x === 'string' && !!field.values?.includes(x));
+      // Deduped and cut at the field's own bound — the same two operations
+      // `planPreferences` performs, so the buyer's confirm screen and the prompt say
+      // the same thing. For a VALIDATED request `directivesSchema` has already done
+      // both and this is a no-op; for the unvalidated caller this re-check exists
+      // for, the screen used to understate by four what reached the model
+      // (round 10, R10-24).
+      const named = v.filter((x): x is string => typeof x === 'string' && !!field.values?.includes(x));
+      const picked = [...new Set(named)].slice(0, field.maxSelected ?? named.length);
       if (!picked.length) continue;
       lines.push(`- ${label}: ${picked.map(word).join('; ')}`);
     }

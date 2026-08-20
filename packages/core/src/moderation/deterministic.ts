@@ -104,14 +104,24 @@ export function renderPlan(
       /* fall through to the generic renderer */
     }
   }
-  // Generic fallback: subject + scope + the filters that are actually set. The
-  // directives key is skipped — it is an object, so `String(v)` printed literally
-  // `directives: [object Object]` on the last screen before payment for any model
-  // with no `describePlan` (round 9, R9-17). They are not lost: `planPreferences`
-  // renders them as pairs for every template, whichever branch wrote the summary.
-  const dirKey = template.directives?.key ?? 'directives';
+  // Generic fallback: subject + scope + the filters that are actually set.
+  //
+  // Two exclusions, and they are different things. An object-valued param is
+  // skipped because `String(v)` prints literally `[object Object]` on the last
+  // screen before payment (round 9, R9-17) — that reason is about the TYPE, and
+  // the fix was keyed on the directives KEY, so every other object param still
+  // printed it and an array of objects printed one per element (round 10, R10-23).
+  // The directives key is skipped for a second, semantic reason: `planPreferences`
+  // renders those as pairs for every template, whichever branch wrote the summary,
+  // so listing them here would say everything twice. That skip now applies only
+  // when the template actually declares a spec — `?? 'directives'` swallowed a
+  // legitimately named param on a template with no spec, which is the only kind of
+  // template the fallback existed for, and nothing else rendered it (R10-26).
+  const dirKey = template.directives?.key;
+  const isPrimitive = (x: unknown) => x === null || typeof x !== 'object';
+  const renderable = (v: unknown) => (Array.isArray(v) ? v.every(isPrimitive) : isPrimitive(v));
   const filters = Object.entries(params)
-    .filter(([k, v]) => k !== 'mode' && k !== 'language' && k !== dirKey && v != null && v !== '' && v !== false && !(Array.isArray(v) && !v.length))
+    .filter(([k, v]) => k !== 'mode' && k !== 'language' && k !== dirKey && v != null && v !== '' && v !== false && !(Array.isArray(v) && !v.length) && renderable(v))
     .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
   const head = GENERIC_HEAD[ctx.lang] ?? GENERIC_HEAD.en;
   return `${head(template.name, ctx.modeLabel)}${filters.length ? ` — ${filters.join('; ')}.` : '.'}`;
@@ -172,11 +182,23 @@ export function planPreferences(
     // to a buyer rather than to a prompt, which is not a weaker place to put a
     // stranger's text (round 9, R9-19).
     const allowed = new Set(field.values ?? []);
-    const ok = (x: unknown): x is string => typeof x === 'string' && (field.kind === 'boolean' || allowed.has(x));
+    // No escape hatch for a boolean. Its true value is handled by the first arm of
+    // the ternary below, so the only way this predicate is ever consulted on a
+    // boolean field is a value that is NOT a boolean — exactly the unvalidated
+    // caller the re-check exists for — and `field.kind === 'boolean' ||` waved that
+    // string through to a label lookup a boolean field has no entries in, i.e.
+    // printed it verbatim (round 10, R10-22). `renderDirectives` `continue`s on the
+    // same input; the two now agree.
+    const ok = (x: unknown): x is string => typeof x === 'string' && allowed.has(x);
     const label = (raw: string) => text.valueLabels?.[raw] ?? raw;
+    // Deduped, then cut — the same two operations `renderDirectives` performs on the
+    // same values, so the screen and the prompt cannot disagree. Both were one-sided
+    // before: only the screen cut at `maxSelected` (R10-24) and neither collapsed a
+    // repeat, which `directivesSchema` accepted because `.max()` counts elements
+    // rather than distinct values (R10-25).
     const shown =
       typeof v === 'boolean' ? (PREFS_YESNO[lang] ?? PREFS_YESNO.en)[v ? 0 : 1]
-      : Array.isArray(v) ? v.filter(ok).slice(0, field.maxSelected ?? allowed.size).map(label).join(', ')
+      : Array.isArray(v) ? [...new Set(v.filter(ok))].slice(0, field.maxSelected ?? allowed.size).map(label).join(', ')
       : ok(v) ? label(v)
       : '';
     if (shown) out.push({ label: text.label, value: shown });
