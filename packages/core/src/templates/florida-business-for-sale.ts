@@ -1013,13 +1013,12 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
      * the price for 49% of the cost — the cheaper mode carried the worse margin, and
      * its ceiling could not be derived from cost at all.
      */
-    comprehensive: {
-      label: 'Comprehensive',
-      budgetScale: 1,
-      depth: 'standard',
-      credits: 18,
-      params: { targetCount: 6 },
-    },
+    // ORDER MATTERS NOW, and it did not before: the manifest lists the modes a
+    // template declares, in the order it declares them, and that is the order a
+    // client draws its picker in. It used to walk a global constant that happened
+    // to put `essential` first — declaring comprehensive first here would have
+    // silently put the dearer report at the top of the buyer's page. Cheapest
+    // first, deliberately.
     essential: {
       label: 'Essential',
       budgetScale: 0.5,
@@ -1035,6 +1034,13 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
         'charts',
       ],
       params: { targetCount: 3 },
+    },
+    comprehensive: {
+      label: 'Comprehensive',
+      budgetScale: 1,
+      depth: 'standard',
+      credits: 18,
+      params: { targetCount: 6 },
     },
   },
   // The structured "what the client wants". Anything a buyer says often enough

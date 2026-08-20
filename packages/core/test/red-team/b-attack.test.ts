@@ -77,7 +77,14 @@ const CROWD_MODEL: ResearchTemplate<Record<string, unknown>> = {
   version: 1,
   basePrompt: 'You are a research analyst. Report only what the evidence supports.',
   paramsSchema: z.object({ language: z.enum(['en', 'es']).default('en') }),
-  modes: { comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 1 } },
+  // Both flavours, essential first and cheapest. It used to declare `comprehensive`
+  // alone and pass no mode, so `resolveMode` fell through to a DEFAULT_MODES config
+  // this template never declared — which is where the 0.5 budget scale the comment
+  // below relies on came from. Now it is declared rather than inherited by accident.
+  modes: {
+    essential: { label: 'E', budgetScale: 0.5, depth: 'light', credits: 1 },
+    comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 2 },
+  },
   sections: [
     { key: 'alpha', title: 'Alpha', guidance: 'SCOUT-FLOOD section.', schema: z.object({ text: z.string() }) },
     { key: 'beta', title: 'Beta', guidance: 'PEER-HONEST section.', schema: z.object({ text: z.string() }) },
@@ -244,7 +251,14 @@ const NOTE_MODEL: ResearchTemplate<Record<string, unknown>> = {
   version: 1,
   basePrompt: 'You are a research analyst.',
   paramsSchema: z.object({ language: z.enum(['en', 'es']).default('en') }),
-  modes: { comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 1 } },
+  // Both flavours, essential first and cheapest. It used to declare `comprehensive`
+  // alone and pass no mode, so `resolveMode` fell through to a DEFAULT_MODES config
+  // this template never declared — which is where the 0.5 budget scale the comment
+  // below relies on came from. Now it is declared rather than inherited by accident.
+  modes: {
+    essential: { label: 'E', budgetScale: 0.5, depth: 'light', credits: 1 },
+    comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 2 },
+  },
   sections: [{ key: 'alpha', title: 'Alpha', guidance: 'Findings.', schema: z.object({ text: z.string() }) }],
   agents: [{ id: 'scout', role: 'producer', objective: 'Find listings.', produces: ['alpha'], researchBudget: 4, model: 'flash', gatherModel: 'gather' }],
   buildBrief: () => 'Find laundromats for sale in Miami.',

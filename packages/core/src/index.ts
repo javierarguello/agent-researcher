@@ -104,7 +104,7 @@ export { logEvent, jobLogger } from './obs/log.js';
 export type { LogContext, JobLogger, Severity } from './obs/log.js';
 
 // Report modes (public cost/scope knob) + internal depth
-export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode, maxCostForMode, ceilingFromCredits } from './mode.js';
+export { REPORT_MODES, modeParamSchema, resolveMode, modesOf, defaultModeOf, isModeKey, validateModes, DEFAULT_MODES, creditsForMode, maxCostForMode, ceilingFromCredits } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
 export { LANGUAGE_LABELS } from './languages.js';
 export { dedupeSources, normalizeUrl } from './tools/sources.js';
@@ -217,6 +217,7 @@ export type { Correction, EnrichResult, Proposals } from './moderation/enrich.js
 export { screeningForms, similarity, sanitizeProposal, hasControlChars } from './util/text.js';
 
 import { z } from 'zod';
+import { modesOf } from './mode.js';
 import { getTemplate } from './templates/registry.js';
 
 export interface ValidatedRequest {
@@ -288,6 +289,23 @@ export function validateRequest(body: unknown): ValidatedRequest {
     throw new Error(
       `This model does not accept ${internal.join(', ')} from a client. Reload the page and try again.`,
     );
+  }
+
+  // A mode the model does not offer, refused BY NAME.
+  //
+  // `mode` stopped being a `z.enum` when modes became per-template (a template's
+  // `paramsSchema` is written in the same literal as its `modes`, so it cannot
+  // reference them), which moved this check from the schema to here. It is not
+  // cosmetic: `resolveMode` falls back to the cheapest declared mode for an unknown
+  // key, so without this an undeclared `mode` would run — and be CHARGED — as the
+  // cheap one, silently. The old enum error said "invalid enum value"; this says
+  // which flavours the model actually has.
+  const askedMode = (sent as { mode?: unknown }).mode;
+  if (askedMode !== undefined) {
+    const offered = modesOf(template.modes).map(([k]) => k);
+    if (!offered.includes(String(askedMode))) {
+      throw new Error(`This model does not offer the "${String(askedMode)}" mode. It offers: ${offered.join(', ')}.`);
+    }
   }
 
   const parsed = template.paramsSchema.safeParse(raw.params ?? {});

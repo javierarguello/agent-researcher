@@ -118,9 +118,9 @@ import {
   type LedgerEntryType,
   type JobStatus,
   clientProgress,
-  REPORT_MODES,
   resolveModeCeiling,
   creditFloorFrom,
+  modesOf,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
@@ -2789,7 +2789,7 @@ function pricingView(templateId: string, override: ModelPricing | null) {
       creditFloorSource: override?.creditFloorUsd != null ? 'stored' : 'default',
       expectedProfitPct: override?.expectedProfitPct ?? config.pricing.expectedProfitPct,
       maxJobCostUsd: config.workflow.maxJobCostUsd,
-      ceilings: REPORT_MODES.map((key) => ({
+      ceilings: modesOf(tmpl.modes).map(([key]) => ({
         key,
         ceilingUsd: resolveModeCeiling(override, resolveMode(tmpl.modes, key).config, key, config.workflow.maxJobCostUsd),
       })),
@@ -2829,14 +2829,10 @@ app.put(
         type: 'object',
         additionalProperties: false,
         properties: {
-          modes: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              essential: { type: 'integer', minimum: 1, maximum: 1_000_000 },
-              comprehensive: { type: 'integer', minimum: 1, maximum: 1_000_000 },
-            },
-          },
+          // Any mode key the MODEL declares — the two names used to be written out
+          // here, so a model with flavours of its own could not be priced at all.
+          // Unknown keys are dropped in the handler, the way add-on keys are.
+          modes: { type: 'object', additionalProperties: { type: 'integer', minimum: 1, maximum: 1_000_000 } },
           addons: { type: 'object', additionalProperties: { type: 'integer', minimum: 1, maximum: 1_000_000 } },
           creditFloorUsd: {
             type: 'number',
@@ -2869,8 +2865,16 @@ app.put(
     const addons = body.addons
       ? Object.fromEntries(Object.entries(body.addons).filter(([k]) => validAddons.has(k)))
       : undefined;
+    // Same rule for modes, and it is new: the schema used to name the two flavours
+    // so an unknown key could not arrive. Now any slug can, and a price stored for
+    // a mode the model does not have would sit in Firestore forever, priced and
+    // unreachable — or, worse, become live the day someone adds that flavour.
+    const validModes = new Set(modesOf(tmpl.modes).map(([k]) => k));
+    const modes = body.modes
+      ? Object.fromEntries(Object.entries(body.modes).filter(([k]) => validModes.has(k)))
+      : undefined;
     await setModelPricing(templateId, {
-      modes: body.modes as ModelPricing['modes'],
+      modes: modes as ModelPricing['modes'],
       addons,
       ...(body.creditFloorUsd !== undefined ? { creditFloorUsd: body.creditFloorUsd } : {}),
       ...(body.expectedProfitPct !== undefined ? { expectedProfitPct: body.expectedProfitPct } : {}),

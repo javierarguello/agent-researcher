@@ -120,6 +120,25 @@ route at all.
 
 ## Modes — the public cost/scope knob
 
+**A mode is any key a template declares.** `essential` and `comprehensive` are only
+the DEFAULTS — what a model that declares no `modes` gets. A model may ship
+`{ peek, dossier, deep }` or one flavour or five; the manifest publishes what the
+template declares, in the order it declares them, and that is the order a client
+draws its picker in (so declare the cheapest first).
+
+Each mode must state a `budgetScale` and — unless its key is one of the two
+defaults, which have a fallback price — its `credits`. `validateTemplate` refuses
+the rest at boot: a non-slug key, an empty `modes`, an `exclude` naming a section
+the model does not have. A mode a client asks for and the model does not declare is
+refused by `validateRequest`, by name, with the list it does offer; without that an
+undeclared mode would run — and be charged — as the cheapest one.
+
+The cost ceiling is not declared: it is `credits × creditFloorUsd ×
+(1 − expectedProfitPct/100)`, per model, from Firestore (`/admin/pricing/:model`).
+A template that genuinely needs its own number can still set `maxCostUsd` on a mode
+and it wins.
+
+
 The public API exposes exactly one cost control: `mode`
 (`essential` | `comprehensive`). Everything that drives cost (research budget,
 which sections run, prose depth, internal params) is configured **per mode**,

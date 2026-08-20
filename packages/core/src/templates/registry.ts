@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { floridaBusinessForSale } from './florida-business-for-sale.js';
 import { reportSchemaOf, type ResearchTemplate, type TemplateManifest } from './types.js';
 import { assertTemplatesValid } from './validate.js';
-import { REPORT_MODES, DEFAULT_MODES, creditsForMode } from '../mode.js';
+import { modesOf, creditsForMode } from '../mode.js';
 
 /** All research templates ("models") the API supports. Add new verticals here. */
 const TEMPLATES: Record<string, ResearchTemplate<any>> = {
@@ -140,7 +140,7 @@ function localizeParamsUi(ui: ParamsUi | undefined, tr: TemplateI18n | undefined
  */
 export function modeLabel(t: ResearchTemplate<any>, key: string, lang: string = DEFAULT_LANG): string {
   const tr = lang !== DEFAULT_LANG ? t.i18n?.[lang] : undefined;
-  const cfg = t.modes?.[key as keyof typeof t.modes] ?? DEFAULT_MODES[key as keyof typeof DEFAULT_MODES];
+  const cfg = modesOf(t.modes).find(([k]) => k === key)?.[1];
   return tr?.modeLabels?.[key as keyof NonNullable<TemplateI18n['modeLabels']>] ?? cfg?.label ?? key;
 }
 
@@ -200,10 +200,14 @@ export function toManifest(t: ResearchTemplate<any>, lang: string = DEFAULT_LANG
     // label, in every language. Keyed off `actualLang`, so a model with no block
     // for the requested language gets its English labels rather than a mixture.
     ...(t.i18n?.[actualLang]?.cover ? { coverLabels: t.i18n[actualLang]!.cover } : {}),
-    modes: REPORT_MODES.map((key) => {
-      const cfg = t.modes?.[key] ?? DEFAULT_MODES[key];
-      return { key, label: tr?.modeLabels?.[key] ?? cfg.label ?? key, credits: creditsForMode(cfg, key) };
-    }),
+    // The modes THIS TEMPLATE declares, in its own order — not a walk over a global
+    // constant, which silently dropped any mode not called essential/comprehensive
+    // and made "a new model just declares its modes" false.
+    modes: modesOf(t.modes).map(([key, cfg]) => ({
+      key,
+      label: tr?.modeLabels?.[key] ?? cfg.label ?? key,
+      credits: creditsForMode(cfg, key),
+    })),
     addons: (t.addons ?? []).map((a) => {
       const ov = tr?.addonLabels?.[a.key];
       return {

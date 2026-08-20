@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { modelAliases } from '../llm/models.js';
 import { validateDirectives } from './directives.js';
+import { validateModes } from '../mode.js';
 // The leaf module, not the registry: the registry imports THIS file.
 import { LANGUAGE_LABELS } from '../languages.js';
 import { agentKind, hasResearchLoop } from './types.js';
@@ -25,6 +26,22 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
     if (sectionKeys.has(s.key)) err(`duplicate section key "${s.key}"`);
     sectionKeys.add(s.key);
     if (s.derived && !s.derive) err(`section "${s.key}" is derived but has no derive()`);
+  }
+
+  // Modes: any slug a template likes, but each one has to be sellable.
+  //
+  // A mode is now open-ended (`essential`/`comprehensive` are only the defaults),
+  // so nothing about the NAME can be checked at the type level any more — which
+  // makes this the only place a typo'd or unpriced flavour is caught. It runs at
+  // module load (`assertTemplatesValid`), so a bad declaration fails the boot
+  // rather than charging someone the wrong price at 3am. And `exclude` is checked
+  // against the model's own sections here for the same reason a directive value is:
+  // a key that matches nothing is a mode that silently produces the full report.
+  for (const e of validateModes(t.modes)) err(e);
+  for (const [key, cfg] of Object.entries(t.modes ?? {})) {
+    for (const k of cfg?.exclude ?? []) {
+      if (!sectionKeys.has(k)) err(`mode "${key}" excludes unknown section "${k}"`);
+    }
   }
 
   // Agents: unique ids, valid section references, valid model aliases.

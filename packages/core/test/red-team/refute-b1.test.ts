@@ -55,7 +55,14 @@ const MODEL: ResearchTemplate<Record<string, unknown>> = {
   version: 1,
   basePrompt: 'You are a research analyst.',
   paramsSchema: z.object({ language: z.enum(['en', 'es']).default('en') }),
-  modes: { comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 1 } },
+  // Both flavours, essential first and cheapest. It used to declare `comprehensive`
+  // alone and pass no mode, so `resolveMode` fell through to a DEFAULT_MODES config
+  // this template never declared — which is where the 0.5 budget scale the comment
+  // below relies on came from. Now it is declared rather than inherited by accident.
+  modes: {
+    essential: { label: 'E', budgetScale: 0.5, depth: 'light', credits: 1 },
+    comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 2 },
+  },
   sections: [
     { key: 'market', title: 'Market', guidance: 'ROLE-MARKET', schema: z.object({ text: z.string() }) },
     { key: 'competition', title: 'Competition', guidance: 'ROLE-COMPETITION', schema: z.object({ text: z.string() }) },
@@ -209,7 +216,14 @@ const REF_MODEL: ResearchTemplate<Record<string, unknown>> = {
   version: 1,
   basePrompt: 'You are a research analyst.',
   paramsSchema: z.object({ language: z.enum(['en', 'es']).default('en') }),
-  modes: { comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 1 } },
+  // Both flavours, essential first and cheapest. It used to declare `comprehensive`
+  // alone and pass no mode, so `resolveMode` fell through to a DEFAULT_MODES config
+  // this template never declared — which is where the 0.5 budget scale the comment
+  // below relies on came from. Now it is declared rather than inherited by accident.
+  modes: {
+    essential: { label: 'E', budgetScale: 0.5, depth: 'light', credits: 1 },
+    comprehensive: { label: 'C', budgetScale: 1, depth: 'standard', credits: 2 },
+  },
   sections: [
     {
       key: 'market',

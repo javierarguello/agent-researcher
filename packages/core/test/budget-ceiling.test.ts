@@ -13,6 +13,7 @@
  *   - never hide spend that already happened.
  */
 import { writableConfig } from './writable-config.js';
+import { DEFAULT_MODES } from '../src/mode.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../src/tools/web-search.js', () => import('./fixtures/fake-web.js'));
@@ -354,8 +355,12 @@ describe('the ceiling an admin is told about is the one that was enforced', () =
     __registerTemplateForTests({
       ...compactModel,
       id: 'cheap-model',
-      // `essential` is what `resolveMode` picks when params name no mode.
-      modes: { essential: { maxCostUsd: 0.0002 } },
+      // `essential` is the cheapest mode this model declares, which is what
+      // `resolveMode` picks when params name no mode. Spread from the default
+      // rather than written as a lone `maxCostUsd`: that shape only compiled
+      // because of the `as never` below, and `validateModes` refuses it now — a
+      // mode with no `budgetScale` gives every agent a NaN research budget.
+      modes: { essential: { ...DEFAULT_MODES.essential!, maxCostUsd: 0.0002 } },
     } as never);
     installMockProvider();
     writableConfig.workflow.maxJobCostUsd = 20;

@@ -1,27 +1,56 @@
 /**
  * Report modes — the single, public cost/scope knob every research model exposes.
  *
- * The API surface stays simple: the client picks `mode` = 'essential' | 'comprehensive'.
- * Everything that actually controls cost (research budget, which sections run,
- * prose length, internal params like how many items to profile) is INTERNAL,
- * configured per mode by each template. This is generic: a new research model
- * just declares its `modes`; if it doesn't, sane defaults apply.
+ * The API surface stays simple: the client picks a `mode`, and everything that
+ * actually controls cost (research budget, which sections run, prose length,
+ * internal params like how many items to profile) is INTERNAL, configured per mode
+ * by each template.
  *
- *   - comprehensive → the full report (all sections, full budgets).
- *   - essential     → ~half the cost: fewer sections, reduced budgets, lighter prose.
+ * **A mode is any key a template declares.** It used to be the closed pair
+ * `'essential' | 'comprehensive'`, written into a union, a `z.enum`, a type guard,
+ * a credits fallback, the manifest builder and the admin's pricing schema — twelve
+ * places. The header above this one claimed "a new research model just declares its
+ * `modes`", and that was false in a way nothing caught: `toManifest` built the mode
+ * list by walking the CONSTANT, so a template declaring `{ deep: … }` had it
+ * silently dropped from the manifest, and `paramsSchema`'s enum refused it at the
+ * API even if a client somehow asked. A catalog product cannot ship two flavours
+ * for every model it will ever have.
+ *
+ * `essential` / `comprehensive` remain the DEFAULTS — what a template that declares
+ * nothing gets, and the vocabulary the flagship uses — but they are no longer the
+ * only names a model may use.
  */
 import { z } from 'zod';
 
-export type ReportMode = 'essential' | 'comprehensive';
+/** A mode key: whatever a template declares. Slug-shaped (see `validateModes`). */
+export type ReportMode = string;
 
-export const REPORT_MODES: ReportMode[] = ['essential', 'comprehensive'];
+/** The default flavours, for a template that declares none of its own. */
+export const REPORT_MODES = ['essential', 'comprehensive'];
 
-export function isReportMode(v: unknown): v is ReportMode {
-  return v === 'essential' || v === 'comprehensive';
+/** Mode keys are slugs, so they are safe in a URL, a Firestore field and a label. */
+const MODE_KEY_RE = /^[a-z][a-z0-9-]{0,31}$/;
+export function isModeKey(v: unknown): v is ReportMode {
+  return typeof v === 'string' && MODE_KEY_RE.test(v);
 }
 
-/** Public param field. Defaults to the cheaper mode (cost-safe). */
-export const modeParamSchema = z.enum(['essential', 'comprehensive']).default('essential');
+/**
+ * The `mode` param field.
+ *
+ * Deliberately NOT an enum any more, and the reason is worth stating: a template's
+ * `paramsSchema` is written in the same object literal that declares its `modes`,
+ * so it cannot reference them without a self-reference. The schema therefore admits
+ * any slug and `validateRequest` refuses one the template does not declare, BY NAME
+ * — which is a better error than "invalid enum value" anyway.
+ *
+ * That refusal is load-bearing, not cosmetic: `resolveMode` falls back to a default
+ * for an unknown key, so without it an undeclared `mode` would silently run — and
+ * be CHARGED — as the cheapest one.
+ */
+export const modeParamSchema = z
+  .string()
+  .refine(isModeKey, 'must be a lowercase slug')
+  .default('essential');
 
 /** Per-mode internal configuration (never exposed to clients). */
 export interface ModeConfig {
@@ -50,7 +79,7 @@ export interface ModeConfig {
 }
 
 /** Fallback when a template does not declare its own modes. */
-export const DEFAULT_MODES: Record<ReportMode, ModeConfig> = {
+export const DEFAULT_MODES: Record<string, ModeConfig> = {
   essential: { label: 'Essential', budgetScale: 0.5, depth: 'light', credits: 8 },
   comprehensive: { label: 'Comprehensive', budgetScale: 1, depth: 'standard', credits: 18 },
 };
@@ -64,7 +93,12 @@ export const DEFAULT_MODES: Record<ReportMode, ModeConfig> = {
  * its ceiling impossible to set from cost (D1).
  */
 export function creditsForMode(config: ModeConfig, key: ReportMode): number {
-  return config.credits ?? (key === 'comprehensive' ? 18 : 8);
+  // The fallback is the DEFAULT modes' own prices, and only reachable for a mode
+  // that declares no credits — which `validateModes` refuses at boot for any
+  // template that declares modes at all. A model named `deep` with no price is a
+  // template bug, not a free report: charge the dearer default rather than the
+  // cheaper one.
+  return config.credits ?? DEFAULT_MODES[key]?.credits ?? 18;
 }
 
 /**
@@ -129,11 +163,69 @@ export function maxCostForMode(
   return Math.min(own, fallbackUsd);        // both real → whichever binds first
 }
 
-/** Resolve a requested mode against a template's modes (or the defaults). */
+/** The modes a template offers, in declaration order — its own, or the defaults. */
+export function modesOf(modes: Record<ReportMode, ModeConfig> | undefined): Array<[ReportMode, ModeConfig]> {
+  const own = Object.entries(modes ?? {}).filter(([, c]) => !!c);
+  return own.length ? (own as Array<[ReportMode, ModeConfig]>) : Object.entries(DEFAULT_MODES);
+}
+
+/**
+ * A template's default mode: the CHEAPEST it declares, ties broken by declaration
+ * order.
+ *
+ * It was the literal `'essential'`, which a model with modes named anything else
+ * does not have — `resolveMode` would then hand back `DEFAULT_MODES.essential`, a
+ * config belonging to no template, with that template's sections and budgets
+ * nowhere in sight. Cheapest is also the safe direction for a default nobody chose.
+ */
+export function defaultModeOf(modes: Record<ReportMode, ModeConfig> | undefined): ReportMode {
+  const all = modesOf(modes);
+  return all.reduce((best, cur) =>
+    creditsForMode(cur[1], cur[0]) < creditsForMode(best[1], best[0]) ? cur : best,
+  )[0];
+}
+
+/**
+ * Resolve a requested mode against a template's modes (or the defaults).
+ *
+ * An unknown key falls back rather than throwing, because this runs deep in the
+ * engine where there is no useful error to raise. The REFUSAL lives at the API edge
+ * (`validateRequest`), which is where a client can be told what it did.
+ */
 export function resolveMode(
-  modes: Partial<Record<ReportMode, ModeConfig>> | undefined,
+  modes: Record<ReportMode, ModeConfig> | undefined,
   raw: unknown,
 ): { key: ReportMode; config: ModeConfig } {
-  const key: ReportMode = isReportMode(raw) ? raw : 'essential';
-  return { key, config: modes?.[key] ?? DEFAULT_MODES[key] };
+  const all = modesOf(modes);
+  const hit = typeof raw === 'string' ? all.find(([k]) => k === raw) : undefined;
+  if (hit) return { key: hit[0], config: hit[1] };
+  const key = defaultModeOf(modes);
+  return { key, config: all.find(([k]) => k === key)![1] };
+}
+
+/** Well-formedness of a template's mode declaration (used by `validateTemplate`). */
+export function validateModes(modes: Record<ReportMode, ModeConfig> | undefined): string[] {
+  if (modes === undefined) return []; // declares none → gets the defaults
+  const errors: string[] = [];
+  const entries = Object.entries(modes);
+  if (!entries.length) errors.push('modes declared but empty — omit it to take the defaults');
+  for (const [key, cfg] of entries) {
+    if (!isModeKey(key)) errors.push(`mode "${key}" is not a lowercase slug (a-z, 0-9, -)`);
+    if (!cfg) { errors.push(`mode "${key}" has no config`); continue; }
+    // Credits are what the buyer is charged AND what the cost ceiling is derived
+    // from. A mode may omit them ONLY if its key is one of the defaults, where
+    // "omitted" has a meaning — `essential` falls back to 8, `comprehensive` to 18.
+    // A flavour of its own invention has nothing to fall back to, so an omitted
+    // price there would silently become 18 credits: a number nobody chose, charged
+    // to a buyer.
+    const priced = typeof cfg.credits === 'number';
+    if (priced && (!Number.isInteger(cfg.credits) || (cfg.credits as number) < 1)) {
+      errors.push(`mode "${key}" has credits ${cfg.credits}; it must be an integer >= 1`);
+    }
+    if (!priced && !(key in DEFAULT_MODES)) {
+      errors.push(`mode "${key}" declares no credits, and only ${Object.keys(DEFAULT_MODES).join('/')} have a default price`);
+    }
+    if (!(cfg.budgetScale > 0)) errors.push(`mode "${key}" must declare a positive budgetScale`);
+  }
+  return errors;
 }

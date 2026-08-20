@@ -13,19 +13,21 @@
  * ways it could still go wrong (a stored zero, a deployment clamp ignored) do not.
  */
 import { describe, it, expect } from 'vitest';
-import { REPORT_MODES, ceilingFromCredits, creditsForMode, maxCostForMode, resolveMode } from '../src/mode.js';
+import { ceilingFromCredits, creditsForMode, maxCostForMode, modesOf, resolveMode } from '../src/mode.js';
 import { resolveModeCredits, resolveModeCeiling, creditFloorFrom, type ModelPricing } from '../src/credits/pricing.js';
 import { config } from '../src/config.js';
 import { floridaBusinessForSale as tpl } from '../src/templates/florida-business-for-sale.js';
 
-const modeOf = (key: 'essential' | 'comprehensive') => resolveMode(tpl.modes, key);
-const ceilingOf = (key: 'essential' | 'comprehensive', pricing: ModelPricing | null = null) =>
+/** The modes the FLAGSHIP declares, not a global constant — see `modesOf`. */
+const MODES = modesOf(tpl.modes).map(([k]) => k);
+const modeOf = (key: string) => resolveMode(tpl.modes, key);
+const ceilingOf = (key: string, pricing: ModelPricing | null = null) =>
   resolveModeCeiling(pricing, modeOf(key).config, key, config.workflow.maxJobCostUsd);
-const earns = (key: 'essential' | 'comprehensive', pricing: ModelPricing | null = null) =>
+const earns = (key: string, pricing: ModelPricing | null = null) =>
   resolveModeCredits(pricing, modeOf(key).config, key) * (pricing?.creditFloorUsd ?? config.pricing.creditFloorUsd);
 
 describe('the ceiling is derived from what the report sells for', () => {
-  it.each(REPORT_MODES)('%s can never be allowed to cost more than it earns', (key) => {
+  it.each(MODES)('%s can never be allowed to cost more than it earns', (key) => {
     const ceiling = ceilingOf(key);
     expect(
       ceiling,
@@ -60,10 +62,14 @@ describe('the ceiling is derived from what the report sells for', () => {
     // $3.885843 is a REAL completed comprehensive; essential has no real run and is
     // inferred at ~$1.92 by scaling the honest fixture's $1.31 by the 1.47× the
     // fixture under-estimates comprehensive by.
-    const HONEST = { comprehensive: 3.885843, essential: 1.92 } as const;
-    for (const key of REPORT_MODES) {
-      expect(ceilingOf(key), `${key}: the ceiling is below what an HONEST job costs`).toBeGreaterThan(HONEST[key]);
-      expect(ceilingOf(key) / HONEST[key], `${key}: less than 1.5× the honest cost`).toBeGreaterThan(1.5);
+    const HONEST: Record<string, number> = { comprehensive: 3.885843, essential: 1.92 };
+    for (const key of MODES) {
+      const honest = HONEST[key];
+      // Not skipped silently: a mode this fixture has no measurement for is a mode
+      // whose ceiling nobody has checked against reality, and that should be loud.
+      expect(honest, `no measured cost for mode "${key}" — add one before shipping it`).toBeDefined();
+      expect(ceilingOf(key), `${key}: the ceiling is below what an HONEST job costs`).toBeGreaterThan(honest!);
+      expect(ceilingOf(key) / honest!, `${key}: less than 1.5× the honest cost`).toBeGreaterThan(1.5);
     }
   });
 

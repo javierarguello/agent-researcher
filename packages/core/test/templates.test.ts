@@ -290,13 +290,23 @@ describe('a localized template is localized in every language we publish', () =>
     }
   });
 
-  it('and a mode that declares no price at all is still fine — the control', () => {
-    // `undefined` means "use the code default" (5/18), which is always positive.
-    // A rule that also refused the default would refuse every unpriced model.
+  it('and a DEFAULT-named mode that declares no price is still fine — the control', () => {
+    // `undefined` means "use the code default" (8/18) for `essential` and
+    // `comprehensive`, which is always positive; a rule that also refused those
+    // would refuse every unpriced model. A mode of the template's OWN invention is
+    // the case that must be refused instead — it has no default to inherit, so an
+    // omitted price would silently become 18 credits. That half is asserted below.
     const t0 = t();
     const { credits, ...essential } = t0.modes!.essential!;
     const unpriced = { ...t0, modes: { ...t0.modes, essential } } as typeof t0;
     expect(validateTemplate(unpriced)).toEqual([]);
+
+    // …and the half that is new: a flavour this model invented must state its price.
+    const invented = { ...t0, modes: { ...t0.modes, deep: { budgetScale: 2, depth: 'deep' } } } as unknown as typeof t0;
+    expect(validateTemplate(invented).join(' ')).toContain('deep');
+    // With a price it is a perfectly good mode — modes are open-ended now.
+    const ok = { ...t0, modes: { ...t0.modes, deep: { budgetScale: 2, depth: 'deep', credits: 40 } } } as unknown as typeof t0;
+    expect(validateTemplate(ok)).toEqual([]);
   });
 
   it('and the flagship passes it — its cover speaks all four', () => {
