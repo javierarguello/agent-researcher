@@ -104,7 +104,7 @@ export { logEvent, jobLogger } from './obs/log.js';
 export type { LogContext, JobLogger, Severity } from './obs/log.js';
 
 // Report modes (public cost/scope knob) + internal depth
-export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode, maxCostForMode } from './mode.js';
+export { REPORT_MODES, modeParamSchema, resolveMode, isReportMode, DEFAULT_MODES, creditsForMode, maxCostForMode, CREDIT_FLOOR_USD } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
 export { LANGUAGE_LABELS } from './languages.js';
 export { dedupeSources, normalizeUrl } from './tools/sources.js';

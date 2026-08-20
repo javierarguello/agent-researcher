@@ -61,12 +61,46 @@ export function creditsForMode(config: ModeConfig, key: ReportMode): number {
 }
 
 /**
- * The USD ceiling for one job in this mode: the model's own figure when it
- * declares one, otherwise the deployment default. `0`/negative means uncapped, at
- * either level — a model can opt out of a ceiling the deployment sets.
+ * The lowest USD a single credit is ever sold for.
+ *
+ * A COPY of an external fact, and the only one in the repo: the credit packs live
+ * entirely in Stripe (Product metadata `credits` + the default Price), so nothing
+ * here can derive it. Measured 2026-08-20 off `GET /plans?appId=fbizlab`:
+ * Scout $29/20 = $1.45, Investor $69/80 = $0.8625, Syndicate $129/150 = $0.86.
+ * The floor is what matters — a buyer on the cheapest pack is the one a ceiling
+ * has to stay profitable against.
+ *
+ * It exists so the rule below can be a TEST rather than a habit: no job may be
+ * allowed to cost more than the report it produced earned. Update it whenever the
+ * Stripe catalog moves; `mode-ceiling.test.ts` fails loudly if a ceiling ever
+ * crosses it, which is the direction that loses money.
+ */
+export const CREDIT_FLOOR_USD = 0.86;
+
+/**
+ * The USD ceiling for one job in this mode: **the TIGHTER of the model's own figure
+ * and the deployment default**, not simply the model's.
+ *
+ * It used to be `config.maxCostUsd ?? fallbackUsd`, which was fine while no shipped
+ * model declared one — and the moment the flagship did, `MAX_JOB_COST_USD` became
+ * decorative for the only model in the catalog. That env var is the incident lever:
+ * an operator who lowers it expects it to bite everywhere, and silently ignoring it
+ * because a template knows better is the wrong way round. Caught by
+ * `budget-ceiling.test.ts` and `budget-refund.test.ts`, which drive a hold by
+ * lowering exactly that knob — eleven of them went red on the change that
+ * introduced the per-mode figures.
+ *
+ * `0`/negative still means uncapped at either level, and the MODEL's opt-out still
+ * wins: a template that says "no ceiling" is making a deliberate statement about
+ * its own cost profile, which is the case the field exists for. A deployment that
+ * sets no ceiling leaves the model's as the only one.
  */
 export function maxCostForMode(config: ModeConfig, fallbackUsd: number): number {
-  return config.maxCostUsd ?? fallbackUsd;
+  const own = config.maxCostUsd;
+  if (own == null) return fallbackUsd;      // no opinion → the deployment's
+  if (own <= 0) return own;                 // the model opts out, deliberately
+  if (fallbackUsd <= 0) return own;         // the deployment does not cap → ours
+  return Math.min(own, fallbackUsd);        // both real → whichever binds first
 }
 
 /** Resolve a requested mode against a template's modes (or the defaults). */

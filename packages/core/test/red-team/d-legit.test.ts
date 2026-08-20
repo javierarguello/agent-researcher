@@ -30,6 +30,7 @@ import path from 'node:path';
 vi.mock('../../src/tools/web-search.js', () => import('../fixtures/fake-web.js'));
 
 import { config } from '../../src/config.js';
+import { CREDIT_FLOOR_USD } from '../../src/mode.js';
 import { maxCostForMode, resolveMode } from '../../src/mode.js';
 import { runResearch, type Checkpoint, type ResearchOutput } from '../../src/engine/research-engine.js';
 import { getTemplate } from '../../src/templates/registry.js';
@@ -399,9 +400,17 @@ describe('2 · Florida comprehensive, honest & diligent — the denominator', ()
     //     fixture returned 5 results per query; production returns 8 (R8-30), and
     //     every figure in this test's title moved with it.
     expect(loopChars + writeChars).toBeLessThan(5_000_000);
-    // (d) the honest job's estimated LLM spend is under 1/20 of the ceiling; at
+    // (d) the honest job's estimated ALL-IN spend is under half its ceiling; at
     //     Tavily rates SEARCH is the larger honest line.
-    expect(est.loop + est.write).toBeLessThan(maxCostForMode(florida.modes!.comprehensive!, config.workflow.maxJobCostUsd) / 20);
+    //
+    //     It used to compare the LLM line alone against a 1/20th of the $20
+    //     deployment default, and it was passing by $0.0013 — $0.9987 against a
+    //     $1.00 threshold. The ceiling is $10 per mode now (D1) and the ceiling
+    //     counts SEARCH too (`trace.cost.usd` is all-in), so the honest comparison
+    //     is all-in against the real bound: $0.9987 + $1.6540 = $2.65, which is
+    //     26.5% of $10.
+    const ceiling = maxCostForMode(florida.modes!.comprehensive!, config.workflow.maxJobCostUsd);
+    expect(est.loop + est.write + out.trace.cost.searchUsd).toBeLessThan(ceiling / 2);
     expect(out.trace.cost.searchUsd).toBeGreaterThan(est.loop + est.write);
   });
 
@@ -679,16 +688,28 @@ describe('4 · honest sizes for a cap to have a property behind it', () => {
 // =============================================================================
 
 describe('5 · the $20 ceiling vs an honest comprehensive job vs the harness worst spend payload', () => {
-  it('Florida declares NO per-mode maxCostUsd — both modes ride the deployment default ($20); honest real comprehensive was $3.89 (5.1× headroom), essential modelled ~$1.95 (10×)', () => {
-    expect(florida.modes!.comprehensive!.maxCostUsd).toBeUndefined();
-    expect(florida.modes!.essential!.maxCostUsd).toBeUndefined();
-    expect(maxCostForMode(florida.modes!.comprehensive!, config.workflow.maxJobCostUsd)).toBe(20);
-    expect(maxCostForMode(florida.modes!.essential!, config.workflow.maxJobCostUsd)).toBe(20);
+  it('Florida declares a ceiling PER MODE — $10 comprehensive (2.6× the real $3.89) and $3.50 essential, both under what the report earns (D1)', () => {
+    // This test used to assert the opposite — "declares NO per-mode maxCostUsd, both
+    // ride the deployment default ($20)" — and it was right to record it, because
+    // $20 was the whole finding: 5× a real comprehensive job, and ABOVE what either
+    // mode earns at the cheapest credit pack, so a job that reached the ceiling was
+    // a loss the moment it did.
+    expect(florida.modes!.comprehensive!.maxCostUsd).toBe(10);
+    expect(florida.modes!.essential!.maxCostUsd).toBe(3.5);
+    // The EFFECTIVE ceiling is the tighter of the model's and the deployment's, so
+    // the env var still binds if an operator lowers it below these.
+    expect(maxCostForMode(florida.modes!.comprehensive!, config.workflow.maxJobCostUsd)).toBe(10);
+    expect(maxCostForMode(florida.modes!.essential!, config.workflow.maxJobCostUsd)).toBe(3.5);
+    expect(maxCostForMode(florida.modes!.comprehensive!, 2), 'a lowered deployment ceiling must still bite').toBe(2);
     // Real datapoint (out/local-aa4b3edf, 2026-07-07, gemini flash+pro, es, 13
     // agents, pre-C4 page trimming): $3.885843 = $3.006 LLM (4.10M in / 206k out)
-    // + $0.88 search (55 calls). D1 models $0.24/credit × 18 = $4.32.
-    expect(20 / 3.885843).toBeGreaterThan(5);
-    expect(20 / (0.39 * 5)).toBeGreaterThan(10);
+    // + $0.88 search (55 calls).
+    expect(10 / 3.885843).toBeGreaterThan(2.5);
+    // …and the other side, which is what makes the number a bound and not a wish:
+    // both ceilings stay under the revenue of their own report. The invariant and
+    // the arithmetic live in `mode-ceiling.test.ts`; this is the fixture's witness.
+    expect(10).toBeLessThan(18 * CREDIT_FLOOR_USD);
+    expect(3.5).toBeLessThan(5 * CREDIT_FLOOR_USD);
   });
 
   it('plan-spam obeyed by deal-scout alone or by ALL 10 producers adds < 2% / < 5% of the ceiling — before the loop fixes +1.45M chars (+$0.16, 0.8%) and +3.53M (+$0.46, 2.3%) with turns collapsing 79→12; now the same-URL cap and plan stubbing make it cost about nothing — the report completes either way', async () => {

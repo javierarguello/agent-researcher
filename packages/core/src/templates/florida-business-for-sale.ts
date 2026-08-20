@@ -991,11 +991,43 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
   agents,
   // Public API exposes only `mode`; these map it to internal cost/scope.
   modes: {
+    /**
+     * The per-job cost ceilings, and why they are not one number.
+     *
+     * Both modes shared the deployment default of $20 — 5x what a real
+     * comprehensive job costs and 10x an essential one, so it caught nothing short
+     * of a catastrophe, and it sat ABOVE what either report earns: a job that
+     * reached it was a loss the moment it did (D1).
+     *
+     * Two facts set these, and they are different in kind:
+     *   - **What a job costs.** MEASURED, once, from a real run:
+     *     `out/local-aa4b3edf/trace.json` is a completed comprehensive at
+     *     **$3.885843** ($3.006 LLM over 4.10M in / 206k out, $0.88 search over 55
+     *     calls). The honest FIXTURE estimates $2.65, so the estimate runs ~1.47x
+     *     low; essential has no real run at all and is inferred at ~$1.92 by
+     *     scaling the fixture's $1.31 by that factor. One run is not a p95 — when
+     *     production volume exists, re-derive both from `trace.cost`.
+     *   - **What a job earns.** `credits x CREDIT_FLOOR_USD`, the cheapest pack:
+     *     $15.48 comprehensive, $4.30 essential.
+     *
+     * Comprehensive gets **$10** — 2.6x the measured cost, and still $5.48 of margin
+     * if a job ever reaches it. Essential gets **$3.50**, and that number is set by
+     * REVENUE rather than by cost: 2.5x its inferred cost would be $4.80, which is
+     * more than the $4.30 the report earns. At 1.8x the honest cost it is thinner
+     * headroom than a ceiling should have, and the honest reading is that five
+     * credits does not buy enough room — the structural fix is what a report costs
+     * in credits, not a bigger ceiling.
+     *
+     * A job that reaches its ceiling is HELD for an admin, not failed and not
+     * refunded, so a tight ceiling spends someone's attention rather than money.
+     * That is the trade being made here, deliberately, on the cheaper mode.
+     */
     comprehensive: {
       label: 'Comprehensive',
       budgetScale: 1,
       depth: 'standard',
       credits: 18,
+      maxCostUsd: 10,
       params: { targetCount: 6 },
     },
     essential: {
@@ -1003,6 +1035,7 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
       budgetScale: 0.5,
       depth: 'light',
       credits: 5,
+      maxCostUsd: 3.5,
       // Drop the heaviest analytical sections (~half the cost, core report kept).
       exclude: [
         'competitive_landscape',
