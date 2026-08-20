@@ -2756,6 +2756,35 @@ app.post(
 );
 
 // --- Admin: per-model credit pricing (Firestore overrides) ------------------
+
+/**
+ * Bring a model's stored credit floor in line with what its packs actually sell at.
+ *
+ * The floor is NEVER typed. It is `min(priceUsd / credits)` over the model's live
+ * Stripe packs, and this is the only thing that writes it — called after every pack
+ * write, after a retirement, and when the pricing page is read with an app in hand.
+ *
+ * It has to be STORED rather than computed on demand because the reader is the
+ * WORKER, which resolves a job's cost ceiling and has no Stripe client. A figure
+ * that only existed on an admin page would be a ceiling nobody could enforce.
+ *
+ * An unusable catalog changes nothing: `undefined` from `creditFloorFrom` means
+ * Stripe is down, the app has no products, or a pack has no credits — none of which
+ * is "credits are free". Storing 0 would derive a ceiling of 0 and hold every job
+ * of the model.
+ */
+async function syncCreditFloor(templateId: string, appId: string): Promise<number | undefined> {
+  if (!stripeConfigured() || !isValidAppId(appId)) return undefined;
+  const packs = await listStripePlans(appId, 'en', { templateId }).catch(() => []);
+  const floor = creditFloorFrom(packs);
+  if (floor === undefined) return undefined;
+  const stored = (await getModelPricing(templateId))?.creditFloorUsd;
+  if (stored !== undefined && Math.abs(stored - floor) < 0.0001) return floor;
+  await setModelPricing(templateId, { creditFloorUsd: floor });
+  logEvent({ jobId: '-', appId }, 'INFO', 'pricing.credit_floor', { templateId, from: stored ?? null, to: floor });
+  return floor;
+}
+
 function pricingView(templateId: string, override: ModelPricing | null) {
   const tmpl = getTemplate(templateId)!;
   const base = toManifest(tmpl); // code/template default credits + add-on catalog
@@ -2816,11 +2845,26 @@ app.get(
       tags: ['admin'],
       security: sec,
       params: { type: 'object', properties: { templateId: { type: 'string', maxLength: 128 } }, required: ['templateId'] },
+      querystring: {
+        type: 'object',
+        properties: {
+          appId: {
+            type: 'string',
+            maxLength: 128,
+            description: 'Refresh the credit floor from this app’s live packs before answering.',
+          },
+        },
+      },
     },
   },
   async (req, reply) => {
     const { templateId } = req.params as { templateId: string };
     if (!getTemplate(templateId)) return reply.code(404).send({ error: `Unknown model: ${templateId}` });
+    // Self-healing: the packs are the source, so reading this page with an app in
+    // hand is a chance to notice that someone edited a price in the Stripe
+    // dashboard and the stored figure went stale. Nothing else can drift it.
+    const { appId } = req.query as { appId?: string };
+    if (appId) await syncCreditFloor(templateId, appId);
     return pricingView(templateId, await getModelPricing(templateId));
   },
 );
@@ -2844,12 +2888,9 @@ app.put(
           // Unknown keys are dropped in the handler, the way add-on keys are.
           modes: { type: 'object', additionalProperties: { type: 'integer', minimum: 1, maximum: 1_000_000 } },
           addons: { type: 'object', additionalProperties: { type: 'integer', minimum: 1, maximum: 1_000_000 } },
-          creditFloorUsd: {
-            type: 'number',
-            exclusiveMinimum: 0,
-            maximum: 1000,
-            description: 'Lowest USD one credit sells for. Normally set by the "read from Stripe" tool below.',
-          },
+          // No `creditFloorUsd`: it is derived from the model's packs and written
+          // by `syncCreditFloor` alone. A hand-typed floor is a number that decides
+          // every cost ceiling and matches nothing anyone sells.
           expectedProfitPct: {
             type: 'number',
             minimum: 0,
@@ -2867,7 +2908,6 @@ app.put(
     const body = (req.body ?? {}) as {
       modes?: Record<string, number>;
       addons?: Record<string, number>;
-      creditFloorUsd?: number;
       expectedProfitPct?: number;
     };
     // Add-on keys must exist in the model's catalog — the admin only prices them.
@@ -2886,7 +2926,6 @@ app.put(
     await setModelPricing(templateId, {
       modes: modes as ModelPricing['modes'],
       addons,
-      ...(body.creditFloorUsd !== undefined ? { creditFloorUsd: body.creditFloorUsd } : {}),
       ...(body.expectedProfitPct !== undefined ? { expectedProfitPct: body.expectedProfitPct } : {}),
     });
     // Drop the cached manifest for this model so the user front picks up the new
@@ -3027,6 +3066,9 @@ app.put(
       // The floor a model's ceilings derive from is a function of its packs, so a
       // price change moves it. Bust the manifest cache; the admin recomputes the
       // floor with the button when it wants the new number stored.
+      // The packs ARE the floor. Recomputed here so the worker's ceilings follow a
+      // price change without anyone opening the pricing page.
+      await syncCreditFloor(b.templateId, b.appId);
       bustPublicCache('plans:');
       return res;
     } catch (err) {
@@ -3058,6 +3100,9 @@ app.post(
     if (!isValidAppId(appId)) return reply.code(400).send({ error: `Invalid appId: ${appId}` });
     const ok = await archiveStripePlan(appId, planId);
     if (!ok) return reply.code(404).send({ error: `No pack "${planId}" for app "${appId}".` });
+    // Retiring the cheapest pack RAISES the floor, which raises every ceiling. The
+    // direction that is easy to forget, and the one that costs money.
+    for (const t of listTemplates()) await syncCreditFloor(t.id, appId);
     bustPublicCache('plans:');
     logEvent({ jobId: '-', appId, userId: req.auth!.email }, 'INFO', 'plan.archived', { planId });
     return { archived: true, planId };

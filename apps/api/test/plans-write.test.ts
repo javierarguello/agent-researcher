@@ -213,6 +213,88 @@ describe('listing and retiring', () => {
   });
 });
 
+describe('the credit floor follows the packs, and nothing else writes it', () => {
+  /**
+   * The STORED floor — read without an `appId`, so the read does not repair it.
+   *
+   * The distinction is the whole test. Reading with `appId` refreshes from Stripe
+   * before answering, so a helper that always passed it made every assertion below
+   * pass with the pack-save sync deleted: the read was doing the work. Three
+   * mutations came back 0 red before this pair existed.
+   */
+  const stored = async () =>
+    (await app.inject({ method: 'GET', url: `/admin/pricing/${MODEL}`, headers: auth(await adminToken()) }))
+      .json().economics.creditFloorUsd;
+  /** …and the read that DOES repair it. */
+  const refreshed = async () =>
+    (await app.inject({ method: 'GET', url: `/admin/pricing/${MODEL}?appId=fbizlab`, headers: auth(await adminToken()) }))
+      .json().economics.creditFloorUsd;
+
+  it('is recomputed when a pack is saved — the worker never reads Stripe', async () => {
+    // The whole reason it is STORED: a job's cost ceiling is resolved in the worker,
+    // which has no Stripe client. A floor that only existed on this page would be a
+    // ceiling nobody could enforce.
+    await put('scout', { ...base, priceUsd: 29, credits: 20 });   // $1.45 / credit
+    expect(await stored(), 'saving a pack did not store the floor').toBeCloseTo(1.45, 4);
+    await put('investor', { ...base, planId: 'investor', name: 'Investor', priceUsd: 69, credits: 80 });
+    expect(await stored(), 'a cheaper pack lowers the floor').toBeCloseTo(0.8625, 4);
+  });
+
+  it('RISES when the cheapest pack is retired — the direction that costs money', async () => {
+    await put('scout', { ...base, priceUsd: 29, credits: 20 });
+    await put('investor', { ...base, planId: 'investor', name: 'Investor', priceUsd: 69, credits: 80 });
+    await app.inject({
+      method: 'POST', url: '/admin/plans/investor/archive',
+      headers: auth(await adminToken()), payload: { appId: 'fbizlab' },
+    });
+    expect(await stored(), 'retiring a pack did not restore the floor').toBeCloseTo(1.45, 4);
+  });
+
+  it('is repaired by READING the pricing page, for a price changed in the Stripe dashboard', async () => {
+    // The only way it can go stale now that nothing types it: someone edits a price
+    // in Stripe directly. Simulated by moving the price behind the API's back, which
+    // is exactly what that is.
+    await put('scout', { ...base, priceUsd: 29, credits: 20 });
+    expect(await stored()).toBeCloseTo(1.45, 4);
+    const product = [...store.products.values()][0]!;
+    product.default_price = { id: 'price_x:1000', unit_amount: 1000 }; // $10 / 20 credits
+    // The stored figure has not noticed…
+    expect(await stored()).toBeCloseTo(1.45, 4);
+    // …and reading the page with an app in hand is what heals it.
+    expect(await refreshed()).toBeCloseTo(0.5, 4);
+    expect(await stored(), 'the repair was not persisted').toBeCloseTo(0.5, 4);
+  });
+
+  it('cannot be set by hand', async () => {
+    // A typed floor decides every cost ceiling of the model and matches nothing
+    // anybody is sold, so the field is off the pricing schema entirely.
+    //
+    // Asserted on the EFFECT rather than the status: Fastify's ajv is configured to
+    // STRIP a property `additionalProperties: false` does not allow, not to reject
+    // it, so the write succeeds and the value goes nowhere. That is worth knowing
+    // before reading a 200 here as "it was accepted".
+    await put('scout', base);
+    const r = await app.inject({
+      method: 'PUT', url: `/admin/pricing/${MODEL}`,
+      headers: auth(await adminToken()), payload: { creditFloorUsd: 0.01, expectedProfitPct: 25 },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(await stored(), 'a hand-typed floor was stored').toBeCloseTo(1.45, 4);
+    // …and the rest of the same request DID apply, so this is not passing because
+    // the whole write was dropped.
+    expect(r.json().economics.expectedProfitPct).toBe(25);
+  });
+
+  it('is left alone when the catalog says nothing', async () => {
+    // Stripe down, an app with no products, a pack with no credits: none of them is
+    // "credits are free". Storing 0 would derive a ceiling of 0 and hold every job.
+    await put('scout', base);
+    const before = await stored();
+    store.products.clear();
+    expect(await refreshed(), 'an empty catalog was read as a floor of zero').toBe(before);
+  });
+});
+
 describe('the copy an EDITOR is given', () => {
   it('is every locale, with no fallback applied', async () => {
     // `sub`/`features` are one language resolved through English, which is right

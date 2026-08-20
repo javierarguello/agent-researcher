@@ -3,7 +3,7 @@ import { Alert, Badge, Button, Card, Divider, Group, Loader, NumberInput, Select
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../components/PageHeader';
 import { Mono } from '../components/Mono';
-import { useApps, usePlans, usePreviewPricing, usePricing, useSetPricing, useTemplates } from '../api/hooks';
+import { useApps, usePreviewPricing, usePricing, useSetPricing, useTemplates } from '../api/hooks';
 import { CreditPacks } from '../components/CreditPacks';
 import type { PricingView } from '../api/types';
 import { ApiError } from '../api/client';
@@ -11,12 +11,8 @@ import { ApiError } from '../api/client';
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 function PricingCard({ templateId, name, appId }: { templateId: string; name: string; appId: string | undefined }) {
-  const pricing = usePricing(templateId);
+  const pricing = usePricing(templateId, appId);
   const save = useSetPricing();
-  // The same query the packs table runs — react-query serves both from one fetch.
-  // The packs came from Stripe seconds ago, so the floor they imply needs no second
-  // round trip: `min(priceUsd / credits)` over what is already on screen.
-  const packs = usePlans(appId, templateId);
   const preview = usePreviewPricing();
   /**
    * The tier table, recomputed by the API for whatever is on screen.
@@ -30,7 +26,7 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
 
   function repreview(next: { modes?: Record<string, number>; creditFloorUsd?: number; expectedProfitPct?: number }) {
     preview
-      .mutateAsync({ templateId, body: { modes, creditFloorUsd: floor, expectedProfitPct: profit, ...next } })
+      .mutateAsync({ templateId, body: { modes, expectedProfitPct: profit, ...next } })
       .then((v) => setLive(v.economics))
       // A failed preview leaves the last good figures rather than blanking the
       // table: stale-but-labelled beats empty, and the SAVE is what is authoritative.
@@ -38,14 +34,12 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
   }
   const [modes, setModes] = useState<Record<string, number>>({});
   const [addons, setAddons] = useState<Record<string, number>>({});
-  const [floor, setFloor] = useState<number | undefined>();
   const [profit, setProfit] = useState<number | undefined>();
 
   useEffect(() => {
     if (pricing.data) {
       setModes(Object.fromEntries(pricing.data.modes.map((m) => [m.key, m.credits])));
       setAddons(Object.fromEntries(pricing.data.addons.map((a) => [a.key, a.credits])));
-      setFloor(pricing.data.economics.creditFloorUsd);
       setProfit(pricing.data.economics.expectedProfitPct);
       setLive(null); // the freshly loaded view IS the truth; drop any preview
     }
@@ -58,7 +52,6 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
         body: {
           modes,
           addons,
-          ...(floor !== undefined ? { creditFloorUsd: floor } : {}),
           ...(profit !== undefined ? { expectedProfitPct: profit } : {}),
         },
       });
@@ -67,17 +60,6 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
       notifications.show({ message: err instanceof ApiError ? err.message : 'Failed', color: 'red' });
     }
   }
-
-  /**
-   * The floor the packs on screen imply. `undefined` when there is nothing to read
-   * one from — an empty catalog is not a floor of zero, which would derive a
-   * ceiling of zero and hold every job of this model.
-   */
-  const packsFloor = (() => {
-    const usable = (packs.data?.plans ?? []).filter((p) => p.priceUsd > 0 && p.credits > 0);
-    return usable.length ? Math.min(...usable.map((p) => p.priceUsd / p.credits)) : undefined;
-  })();
-  const stale = packsFloor !== undefined && Math.abs((floor ?? 0) - packsFloor) > 0.0001;
 
   if (pricing.isLoading) return <Card padding="lg"><Loader size="sm" /></Card>;
   if (pricing.error) return <Card padding="lg"><Alert color="red">{(pricing.error as Error).message}</Alert></Card>;
@@ -140,40 +122,19 @@ function PricingCard({ templateId, name, appId }: { templateId: string; name: st
 
       <Divider label="Economics — what a job may spend" labelPosition="left" my="sm" />
       <Group align="flex-start">
-        <NumberInput
-          label="Credit floor (USD)"
-          description={data.economics.creditFloorSource === 'stored' ? 'set for this model' : 'code default — nothing stored yet'}
-          min={0.0001}
-          max={1000}
-          step={0.01}
-          decimalScale={4}
-          w={220}
-          value={floor ?? data.economics.creditFloorUsd}
-          onChange={(v) => {
-            const n = typeof v === 'number' ? v : undefined;
-            setFloor(n);
-            if (n) repreview({ creditFloorUsd: n });
-          }}
-        />
-        {/* No "read from Stripe" button any more: the packs table above IS the
-            Stripe read, so a second round trip to compute `min(price/credits)`
-            from the same data was a button that could only ever agree with the
-            rows beside it. What is worth surfacing is the DIVERGENCE — a stored
-            floor that no longer matches the catalog is what silently drifts every
-            ceiling, and a button nobody presses never showed it. */}
-        <Stack gap={4} pt={26}>
-          {packsFloor === undefined ? (
-            <Text size="xs" c="dimmed" maw={230}>No pack to read a floor from — the stored figure stands.</Text>
-          ) : stale ? (
-            <>
-              <Button size="compact-sm" variant="light" color="orange" onClick={() => { setFloor(packsFloor); repreview({ creditFloorUsd: packsFloor }); }}>
-                Use {usd(packsFloor)} from the packs
-              </Button>
-              <Text size="xs" c="orange" maw={230}>The stored floor is not what the packs sell at.</Text>
-            </>
-          ) : (
-            <Text size="xs" c="dimmed" pt={4} maw={230}>Matches the cheapest pack above.</Text>
-          )}
+        {/* Read-only, and that is the point: the floor is `min(price / credits)`
+            over this model's packs, so it is a consequence of the table above and
+            not a number anyone types. A hand-typed one decides every ceiling on
+            this page and matches nothing anybody is sold. The API recomputes it on
+            every pack write and when this page is read. */}
+        <Stack gap={2} w={220}>
+          <Text size="xs" fw={500}>Credit floor</Text>
+          <Text size="xl" fw={700}>{usd(data.economics.creditFloorUsd)}</Text>
+          <Text size="xs" c="dimmed">
+            {data.economics.creditFloorSource === 'stored'
+              ? 'the cheapest credit in the packs above'
+              : 'no packs yet — the deployment default stands'}
+          </Text>
         </Stack>
         <NumberInput
           label="Expected profit (%)"

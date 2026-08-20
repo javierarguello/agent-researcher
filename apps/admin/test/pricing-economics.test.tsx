@@ -107,8 +107,11 @@ beforeEach(() => { state.economics = undefined; calls.length = 0; });
 describe('the economics section', () => {
   it('shows both inputs and the ceilings they produce', async () => {
     show();
-    // `toHaveValue` is jest-dom and this suite does not install it; read the DOM.
-    expect((await screen.findByLabelText(/credit floor/i) as HTMLInputElement).value).toBe('0.806');
+    // The floor is READ-ONLY: it is `min(price / credits)` over the packs, so it is
+    // a consequence of the catalog and not a number anyone types. A hand-typed one
+    // decides every ceiling on this page and matches nothing anybody is sold.
+    expect(await screen.findByText('$0.81')).toBeTruthy();
+    expect(screen.queryByLabelText(/credit floor/i), 'the floor is editable again').toBeNull();
     expect((screen.getByLabelText(/expected profit/i) as HTMLInputElement).value).toBe('40');
     // The derived figures, per tier, in dollars — the thing an admin cannot work
     // out from the two inputs at a glance.
@@ -135,31 +138,28 @@ describe('the economics section', () => {
     expect(await screen.findByText('capped')).toBeTruthy();
   });
 
-  it('offers the packs\' floor only when the stored one has drifted from it', async () => {
-    // There is no "read from Stripe" button any more: the packs table on this same
-    // card IS the Stripe read, so a second round trip to compute
-    // `min(price / credits)` from the same rows could only ever agree with them.
-    // What is worth surfacing is the DIVERGENCE — a stored floor that no longer
-    // matches the catalog is what silently drifts every ceiling on the page, and a
-    // button nobody presses never showed it.
+  it('asks the API to refresh the floor from the catalog when the page is read', async () => {
+    // Self-healing, and the only path left: the floor cannot be typed, so the one
+    // way it goes stale is someone editing a price in the Stripe dashboard. Reading
+    // this page with an app in hand is what notices.
     show();
-    await screen.findByLabelText(/credit floor/i);
-    expect(screen.queryByRole('button', { name: /read from stripe/i })).toBeNull();
-    expect(calls.some((c) => c.path.includes('/credit-floor'))).toBe(false);
-    // The fixture's packs are $69/80 = $0.8625 at their cheapest, and the stored
-    // floor is 0.806 — so it HAS drifted, and the offer names the figure.
-    expect(await screen.findByRole('button', { name: /use \$0\.86 from the packs/i })).toBeTruthy();
+    await screen.findByText('$0.81');
+    const read = calls.find((c) => c.path.startsWith('/admin/pricing/') && !c.path.includes('/preview'));
+    expect(read?.path).toContain('appId=fbizlab');
   });
 
-  it('sends both economics fields when saving, not just the credits', async () => {
-    // They are the same PUT as the tier prices. Left out, an admin editing the
-    // margin would watch it silently revert.
+  it('sends the margin when saving, and never the floor', async () => {
+    // The margin is the same PUT as the tier prices. Left out, an admin editing it
+    // would watch it silently revert.
     show();
     await screen.findByLabelText(/expected profit/i);
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
     await waitFor(() => {
       const put = calls.find((c) => c.init?.method === 'PUT');
-      expect(put?.init?.body).toMatchObject({ creditFloorUsd: 0.806, expectedProfitPct: 40 });
+      expect(put?.init?.body).toMatchObject({ expectedProfitPct: 40 });
+      // …and NOT the floor: the API refuses it, and sending it would be this screen
+      // claiming to own a number the packs decide.
+      expect('creditFloorUsd' in (put!.init!.body as object)).toBe(false);
     });
   });
 });

@@ -94,10 +94,17 @@ export function useArchivePlan() {
   });
 }
 
-export function usePricing(templateId: string) {
+/**
+ * `appId` is not a filter — it tells the API which catalog to refresh the credit
+ * floor from before answering. The floor is derived from the packs and stored for
+ * the worker, so reading this page is also what heals it when someone edits a price
+ * in the Stripe dashboard directly.
+ */
+export function usePricing(templateId: string, appId?: string) {
   return useQuery({
-    queryKey: ['pricing', templateId],
-    queryFn: () => api<PricingView>(`/admin/pricing/${encodeURIComponent(templateId)}`),
+    queryKey: ['pricing', templateId, appId],
+    queryFn: () =>
+      api<PricingView>(`/admin/pricing/${encodeURIComponent(templateId)}${appId ? `?appId=${encodeURIComponent(appId)}` : ''}`),
   });
 }
 
