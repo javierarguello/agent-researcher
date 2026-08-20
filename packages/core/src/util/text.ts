@@ -201,6 +201,34 @@ export function unpad(text: string): string {
  * does not rescue them because a run of multi-character tokens is not a padding
  * run. The pattern that was crossing sentences was the thing to fix, and was.
  */
+/**
+ * Shorten any run of separators longer than four to its first two and last two
+ * characters — the only bound on how much work a screening pattern can be made to
+ * do.
+ *
+ * The tolerant twin writes every inter-word gap as `[^\p{L}\p{N}]*`, and two of
+ * the rules have three of those adjacent with optional groups between them. On a
+ * string that ALMOST matches, that backtracks CUBICALLY in the length of the run:
+ * `disregard` followed by 2,000 dots measured **3.0 seconds** of a single thread,
+ * on `/research/preflight`, before anything is billed (round 10, G3-break F3).
+ * 500 / 1000 / 1500 / 2000 dots measured 57ms / 457ms / 1.6s / 3.7s.
+ *
+ * A run this long carries nothing a pattern needs: the gaps exist to defeat
+ * `i.g.n.o.r.e` and `ignore***all`, whose runs are one to three characters. Both
+ * ENDS are kept rather than a prefix, because the character that matters can sit
+ * at either — the price exemption reads a `$` at the end of the gap before it
+ * (`forget everything above  —  $1M`), and a `:` at the start of the one after
+ * `jailbreak` is what makes it an instruction.
+ *
+ * Applied where the patterns are matched, not in `screeningForms`: the correction
+ * guard reads `normalized` for a similarity score, and clamping is a decision
+ * about regex cost, not about what the text says.
+ */
+const LONG_SEPARATOR_RUN = /[^\p{L}\p{N}]{5,}/gu;
+export function clampSeparatorRuns(text: string): string {
+  return text.replace(LONG_SEPARATOR_RUN, (run) => run.slice(0, 2) + run.slice(-2));
+}
+
 const GAP = '[^\\p{L}\\p{N}]*';
 export function tolerantPattern(re: RegExp): RegExp {
   const source = re.source.replace(/\\s\+/g, GAP).replace(/\\s\*/g, GAP).replace(/ /g, GAP);

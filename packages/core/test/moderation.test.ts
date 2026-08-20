@@ -115,6 +115,24 @@ const LEGIT: Array<[string, string]> = [
   ['e-commerce', 'e-commerce and drop-ship businesses with 3PL fulfilment'],
   ['point-of-sale', 'point-of-sale resellers; the system-wide upgrade prints the instructions for staff'],
   ['4COP', 'liquor stores with a 4COP quota license and 2/10 net 30 terms'],
+  // Round 10 (G3-break F1, G3-verify F1): the digit fold ate the price exemption.
+  // `1M` folds to `im`, so the lookahead that says "this is a ceiling, not an
+  // override" — whose escape hatch is a DIGIT right after `above` — stopped
+  // firing. Every row here was clean before 63fd892 and a hard 422 after it. The
+  // corpus did not see it because both of its price rows carry a `$`, which is
+  // not in the leet map; a buyer writing "1M" has no such shield.
+  ['price ceiling (no $)', 'Forget everything above 1M, that is my ceiling'],
+  ['price ceiling (750k)', 'Forget everything above 750k, please'],
+  ['price ceiling (5M)', 'Forget everything above 5M in enterprise value'],
+  ['price ceiling (40k rent)', 'Forget everything above 40k a month in rent'],
+  ['price ceiling (300k)', 'Forget everything above 300k in asking price'],
+  // Round 10 (G3-break F2, G3-verify F4): closing intra-word separators was kept
+  // away from `PADDED_ONLY` for exactly this business — and the MAIN list carries
+  // `jailbreak` too, with a colon or `mode` after it, which is how an escape room
+  // writes its own brand. The corpus row that was supposed to pin this used the
+  // one spelling the exclusion happened to cover.
+  ['escape room (brand, colon)', 'Jail-Break: The Escape Room, Orlando'],
+  ['escape room (brand, mode)', 'The brand is Jail-Break Mode, an escape-room franchise'],
 ];
 
 const ATTACKS: Array<[string, string]> = [
@@ -279,6 +297,27 @@ describe('pre-screen', () => {
     const prose = screeningForms('  Café   NOIR. Breakdown ');
     expect(prose.normalized).toBe('café noir. breakdown');
     expect(prose.unpadded).toBe('café noir. breakdown'); // unchanged
+  });
+
+  it('a wall of separators cannot buy seconds of the API\u2019s only thread (round 10, G3-break F3)', () => {
+    // The tolerant twin writes every inter-word gap as `[^\\p{L}\\p{N}]*`, and
+    // `disregard`'s rule has three of them adjacent with optional groups between —
+    // cubic backtracking on a string that ALMOST matches. Measured before this
+    // guard: 3.0s for `disregard` + 2000 dots, and — the part `63fd892` added —
+    // 2.9s for `d1sregard` and 1.9s for `dis-regard`, which cost 8ms before the
+    // third screening form manufactured the literal word for them.
+    //
+    // `preScreen` runs on `/research/preflight` before anything is billed, and
+    // Node has one thread, so this is the whole API stalled, not one caller.
+    // The bound is deliberately loose: the point is orders of magnitude, and a
+    // loaded CI box is allowed to be slow.
+    const box = (head: string) => `${head}${'.'.repeat(2000 - head.length)}`;
+    for (const head of ['disregard', 'd1sregard', 'dis-regard', 'ign0re', 'ig-nore']) {
+      const started = performance.now();
+      preScreen(collectFreeText({ freeText: box(head) }));
+      const ms = performance.now() - started;
+      expect(ms, `${head} took ${ms.toFixed(0)}ms`).toBeLessThan(250);
+    }
   });
 
   it('collects only the free text a user typed', () => {

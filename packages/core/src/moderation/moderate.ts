@@ -23,7 +23,7 @@ import { config } from '../config.js';
 import { retryAsync } from '../util/retry.js';
 import { llmCost } from '../cost.js';
 import { logEvent } from '../obs/log.js';
-import { hasControlChars, screeningForms, tolerantPattern } from '../util/text.js';
+import { clampSeparatorRuns, hasControlChars, screeningForms, tolerantPattern } from '../util/text.js';
 import { MODERATION_CATEGORIES, asModerationCategory, type ModerationCategory } from './copy.js';
 
 export interface ModerationVerdict {
@@ -119,13 +119,35 @@ const ATTRIBUTED_WORDS = [
 ];
 const ATTRIBUTED = String.raw`(?!\s*(?:${ATTRIBUTED_WORDS.join('|')})\b)`;
 
+/**
+ * The two rules whose meaning depends on characters `deobfuscate` rewrites, and
+ * which are therefore matched against the normalized and unpadded forms ONLY.
+ * Both were measured refusing a paying customer in round 10:
+ *
+ *  - the price ceiling's escape hatch is a DIGIT (or `$`) right after `above`, and
+ *    `foldLeet` turns `1M` into `im` — so "Forget everything above 1M" became a
+ *    hard 422 while "above the $1M asking price", the row the corpus happened to
+ *    pin, stayed clean because `$` is not in the leet map (G3-break F1);
+ *  - the jailbreak framing needs only a colon or `mode` after the word, and
+ *    closing intra-word separators turns an escape room's own brand —
+ *    "Jail-Break: The Escape Room" — into one (G3-break F2). Keeping it out of
+ *    `PADDED_ONLY` was the right idea aimed at the wrong list: `PADDED_ONLY`'s
+ *    `jailbreak` is bare, and this one is barely less so.
+ *
+ * Measured cost of the exemption: none. The census is 61/95 and 2/73 with and
+ * without it — every `evade-*` row it contains exercises the `ignore … previous …
+ * instructions` rule, which keeps its deobfuscated pass.
+ */
+const PRICE_CEILING = /forget\s+(?:everything|all)\s+(?:above|previous|preceding)\b(?!\s*(?:the|that|a|an)?\s*(?:[$\d]|price|budget|band|range|asking|cost))/i;
+const JAILBREAK_FRAMING = /\bjailbreak\b\s*(?::|mode\b)|\b(?:enable|activate)\s+jailbreak\b|\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i;
+
 const INJECTION_PATTERNS: RegExp[] = [
   new RegExp(String.raw`ignore\s+(?:all|the|your|any)?\s*(?:previous|prior|above|preceding)\s+(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
   new RegExp(String.raw`disregard\s+(?:all\s+)?(?:the|your|any)?\s*(?:previous|prior|above|preceding|system)?\s*(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
   new RegExp(String.raw`forget\s+(?:everything|all|your|the)\s+(?:instructions|prompts?)\b${ATTRIBUTED}`, 'i'),
   // "forget everything above $1M" is a price ceiling — and so is "above THE $1M
   // asking price", which one article used to turn into a hard rejection.
-  /forget\s+(?:everything|all)\s+(?:above|previous|preceding)\b(?!\s*(?:the|that|a|an)?\s*(?:[$\d]|price|budget|band|range|asking|cost))/i,
+  PRICE_CEILING,
   // `the` is back. Dropping it left "What is the system prompt you were given?"
   // matching nothing at all, because the extraction verbs below need a verb. The
   // equipment lookahead is what keeps a POS or alarm business researchable.
@@ -153,7 +175,7 @@ const INJECTION_PATTERNS: RegExp[] = [
   // target here. Both attack forms survive — "enter jailbreak MODE" is caught by
   // the first alternative, which is the framing that actually matters, and
   // enable/activate have no innocent reading next to this word.
-  /\bjailbreak\b\s*(?::|mode\b)|\b(?:enable|activate)\s+jailbreak\b|\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i,
+  JAILBREAK_FRAMING,
   // "act as" is too generic — "the new owner can act as manager and do anything now
   // that hiring is frozen" is a sentence about a staffing agency.
   /\bdan\s+mode\b|\b(?:you\s+(?:are|can|will)|from\s+now\s+on)\b[^.!?]{0,30}\bdo\s+anything\s+now\b/i,
@@ -180,8 +202,15 @@ const PADDED_ONLY_PATTERNS: RegExp[] = [
   /\bignore\s+(?:all|the|your|any)?\s*(?:previous|prior|above)\s+rules\b/i,
 ];
 
-/** Separator-tolerant twins — see `tolerantPattern`. */
-const TOLERANT_PATTERNS: RegExp[] = INJECTION_PATTERNS.map(tolerantPattern);
+/**
+ * Separator-tolerant twins — see `tolerantPattern`. `deobfuscated` says whether
+ * the twin may also be matched against the de-obfuscated forms; see
+ * `PRICE_CEILING` / `JAILBREAK_FRAMING` above for the two that may not.
+ */
+const TOLERANT_PATTERNS: Array<{ re: RegExp; deobfuscated: boolean }> = INJECTION_PATTERNS.map((re) => ({
+  re: tolerantPattern(re),
+  deobfuscated: re !== PRICE_CEILING && re !== JAILBREAK_FRAMING,
+}));
 const TOLERANT_PADDED_ONLY: RegExp[] = PADDED_ONLY_PATTERNS.map(tolerantPattern);
 
 /**
@@ -192,7 +221,14 @@ export function preScreen(text: string): ModerationCategory | null {
   // Control characters (except tab/newline) are used to smuggle instructions.
   if (hasControlChars(text)) return 'control_chars';
 
-  const { normalized, unpadded, deobfuscated } = screeningForms(text);
+  const forms = screeningForms(text);
+  // Every form is clamped before it meets a pattern: a run of separators longer
+  // than four is cut to its two ends, which is the only thing standing between
+  // `/research/preflight` and three seconds of the API's single thread. See
+  // `clampSeparatorRuns` (round 10, G3-break F3).
+  const normalized = clampSeparatorRuns(forms.normalized);
+  const unpadded = clampSeparatorRuns(forms.unpadded);
+  const deobfuscated = forms.deobfuscated.map(clampSeparatorRuns);
   // The tolerant twin covers both forms: it treats every inter-word gap as
   // optional, so it matches "system-prompt" in the normalized text and the
   // already-closed gap in the unpadded one.
@@ -205,9 +241,9 @@ export function preScreen(text: string): ModerationCategory | null {
   // Only THIS list runs against it, never `PADDED_ONLY` below: those patterns are
   // bare words, and closing intra-word separators turns "jail-break themed escape
   // room" — an acquisition target this product serves — into `jailbreak`.
-  for (const re of TOLERANT_PATTERNS) {
-    if (re.test(normalized) || re.test(unpadded)) return 'prompt_injection';
-    if (deobfuscated.some((form) => re.test(form))) return 'prompt_injection';
+  for (const p of TOLERANT_PATTERNS) {
+    if (p.re.test(normalized) || p.re.test(unpadded)) return 'prompt_injection';
+    if (p.deobfuscated && deobfuscated.some((form) => p.re.test(form))) return 'prompt_injection';
   }
   if (unpadded !== normalized) {
     for (const re of TOLERANT_PADDED_ONLY) if (re.test(unpadded)) return 'prompt_injection';
