@@ -326,13 +326,22 @@ describe('1 · honest baseline on the red-team model (essential by default: budg
       expect(r.out.meta.sections ?? []).toEqual([]); // nothing degraded — the honest run is whole
     }
     // The property every attack row is measured against: the honest obedient
-    // control is 4 turns / 10 loop calls / ~47k loop chars — at PRODUCTION density,
+    // control is 4 turns / 10 loop calls / ~48k loop chars — at PRODUCTION density,
     // 8 results per query; it read ~42k while the fixture returned 5 (R8-30). A cap
     // that stops THIS is a cap on the product.
+    //
+    // The bound moved 52k → 54k on 2026-08-20, and the reason is a real cost worth
+    // seeing rather than absorbing: `SELF_DISCLOSURE_RULE` is 535 characters
+    // (~134 tokens) and it is in EVERY system prompt of EVERY agent, on every loop
+    // call and every write. Here that is +840 chars across 10 loop calls. On the
+    // honest comprehensive fixture — 157 loop calls + 15 writes — it is ~92k chars,
+    // roughly 23k tokens a job, about $0.03 at the flagship's rates. That is the
+    // price of telling the model not to describe itself, paid on every job whether
+    // or not anyone attacks.
     expect(b.out.turnsUsed).toBe(4);
     expect(obedient.seen.filter((p) => p.kind === 'loop').length).toBe(10);
     expect(loopChars(obedient.seen)).toBeGreaterThan(43_000);
-    expect(loopChars(obedient.seen)).toBeLessThan(52_000);
+    expect(loopChars(obedient.seen)).toBeLessThan(54_000);
     // …and the engine's $ is a per-call figure: 13 calls × fixed usage + 4 search turns.
     expect(b.out.trace.cost.searchCalls).toBe(4);
     expect(b.out.trace.cost.inputTokens).toBe(13 * 200);

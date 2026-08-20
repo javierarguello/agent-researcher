@@ -29,6 +29,7 @@ import { payload, poisonWeb } from '../fixtures/poisoned-web.js';
 import { installObedientProvider } from '../mocks/obedient-llm.js';
 import { redTeamModel } from '../fixtures/red-team-model.js';
 import { ECHO_MIN_WORDS, findPromptEcho } from '../../src/engine/prompt-echo.js';
+import { SELF_DISCLOSURE_RULE, buildSystemPrompt } from '../../src/engine/prompt.js';
 import { MockLlmProvider, sampleFromSchema } from '../mocks/llm.js';
 import { __setProviderForTests } from '../../src/llm/models.js';
 import type { GenerateOptions, GenerateResult } from '../../src/llm/provider.js';
@@ -229,5 +230,48 @@ describe('E-legit · the guard must not eat an honest report', () => {
     // A shorter genuine overlap — a report restating part of a rule — survives.
     expect(findPromptEcho('The analysis will report only what the evidence supports.', system)).toBeUndefined();
     expect(ECHO_MIN_WORDS).toBe(15);
+  });
+});
+
+describe('E · the rule, and who gets blamed for a leak', () => {
+  it('tells every agent not to describe itself — in the system prompt, not per template', async () => {
+    // An instruction, NOT a guarantee: it is the same kind of thing the attacking
+    // page is, which is why the redaction exists downstream of it. It earns its
+    // place by being free of false positives and by stopping the obedient case
+    // before the guard has to.
+    //
+    // In `buildSystemPrompt` rather than in each `basePrompt`: a rule a new model
+    // can forget to copy is a rule the second model in the catalog will not have.
+    const prompt = buildSystemPrompt(redTeamModel, redTeamModel.paramsSchema.parse({}) as Record<string, unknown>);
+    expect(prompt).toContain(SELF_DISCLOSURE_RULE);
+    expect(SELF_DISCLOSURE_RULE).toMatch(/never write a prompt/i);
+    // …and it reaches the agents, not just the builder: every structured call.
+    const mock = installObedientProvider([]);
+    await runResearch({
+      template: redTeamModel,
+      params: redTeamModel.paramsSchema.parse({}) as Record<string, unknown>,
+      jobId: 'rt-e-rule', generatedAt: 't',
+    });
+    const writes = mock.seen.filter((s) => s.kind === 'structured');
+    expect(writes.length).toBeGreaterThan(0);
+    for (const w of writes) expect(w.system, 'an agent was not told').toContain(SELF_DISCLOSURE_RULE);
+  });
+
+  it('books a leak as an incident against the JOB, never as a strike against the buyer', async () => {
+    // The asymmetry, and it is the whole answer to "the attack can come from both
+    // sides". It can — and the responsible party differs:
+    //
+    //   · the BUYER's own text is refused by the moderation path before a job
+    //     exists (`prompt_injection` covers "override or REVEAL system prompts"),
+    //     and `recordModerationStrike` blocks the account at four. That predates
+    //     this work and is asserted in `apps/api/test/security.test.ts`.
+    //   · a FETCHED PAGE reaches the model with no pre-screen at all. When the
+    //     guard fires here the buyer is the person it happened TO, and striking
+    //     them would block a customer for a listing that ranked well.
+    const { out } = await attack('prompt-dump');
+    expect(out.promptEchoes?.length, 'the leak was not booked at all').toBeGreaterThan(0);
+    expect(out.promptEchoes![0]!.agentId, 'the incident does not name the agent').toBeTruthy();
+    // Admin-only, in English, beside the section keys — never shown to the buyer.
+    expect((out.trace.warnings ?? []).join(' ')).toMatch(/repeating this agent/i);
   });
 });

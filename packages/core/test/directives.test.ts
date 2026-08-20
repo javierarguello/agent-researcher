@@ -58,8 +58,14 @@ describe('structured directives — a closed vocabulary instead of prose', () =>
   });
 
   it('adds nothing at all when the buyer selected nothing', () => {
-    expect(buildSystemPrompt(template, params())).toBe(template.basePrompt);
-    expect(buildSystemPrompt(template, params({ directives: {} }))).toBe(template.basePrompt);
+    // Asserted on the DIRECTIVES block rather than on equality with `basePrompt`:
+    // every system prompt also carries `SELF_DISCLOSURE_RULE` now, and an equality
+    // check would have made adding any engine-wide rule look like a directives bug.
+    for (const p of [params(), params({ directives: {} })]) {
+      const prompt = buildSystemPrompt(template, p);
+      expect(prompt).not.toContain('CLIENT DIRECTIVES');
+      expect(prompt.startsWith(template.basePrompt), 'the base prompt is no longer first').toBe(true);
+    }
   });
 
   it('rejects a directive key the model never declared', () => {

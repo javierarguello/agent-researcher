@@ -153,6 +153,46 @@ export async function recordRequestLlmCost(input: {
  * is a configuration, readable directly and true on every request; counting it
  * would drown the incidents it sits next to.
  */
+/**
+ * A model wrote our own prompt into a section, and the guard removed it.
+ *
+ * An INCIDENT with no strike, and the asymmetry is the point. An extraction attempt
+ * can come from either side, and the responsible party is different:
+ *
+ *   - The BUYER's own text goes through the pre-screen and the classifier, which
+ *     already call it `prompt_injection` ("override or reveal system prompts"),
+ *     refuse the request 422, and strike the account — four and it is blocked. That
+ *     path is complete and predates this.
+ *   - A FETCHED PAGE reaches the model with no pre-screen at all, because it never
+ *     passed through our API. When the guard fires on a write, the cause is almost
+ *     always a page, and the buyer is the person it happened TO. Striking them would
+ *     block a customer for a listing that ranked well.
+ *
+ * So this counts, names the agent, and stops. What an admin does with a source that
+ * tries it is a decision nobody has taken yet, and the counter is what makes taking
+ * it possible.
+ */
+export async function recordPromptEcho(input: {
+  appId: string;
+  userId: string;
+  agentId: string;
+  fields: number;
+}): Promise<void> {
+  const now = nowIso();
+  const date = utcDate();
+  await ensureUserSeen(input.appId, input.userId, date);
+  const inc = {
+    promptEchoBlocked: FieldValue.increment(1),
+    promptEchoFields: FieldValue.increment(input.fields),
+    promptEchoLastAt: now,
+    updatedAt: now,
+  };
+  await Promise.all([
+    appStats().doc(input.appId).set({ appId: input.appId, ...inc }, { merge: true }),
+    dailyDoc(input.appId, date).set({ appId: input.appId, date, expireAt: expireAt(), ...inc }, { merge: true }),
+  ]);
+}
+
 export async function recordModerationDegraded(input: {
   appId: string;
   userId: string;
@@ -312,6 +352,10 @@ export interface AppStatsRollup {
   requestLlmCalls: number;
   /** Requests allowed through because the moderation classifier could not answer. */
   moderationFailOpen: number;
+  /** Writes in which the guard removed our own prompt from a section (never a strike). */
+  promptEchoBlocked?: number;
+  promptEchoFields?: number;
+  promptEchoLastAt?: string;
   revenueUsd: number;
   purchases: number;
   creditsPurchased: number;

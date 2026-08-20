@@ -337,6 +337,12 @@ export interface ResearchOutput {
   trace: JobTrace;
   /** Current resumable state (persist when status is 'incomplete'). */
   checkpoint: Checkpoint;
+  /**
+   * Writes in which the guard removed our own prompt (`engine/prompt-echo.ts`).
+   * Empty on every ordinary run. The caller books it as an incident; nothing here
+   * strikes the buyer, who is usually the person it happened to.
+   */
+  promptEchoes?: Array<{ agentId: string; fields: number }>;
 }
 
 export interface RunResearchInput {
@@ -444,6 +450,8 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // Seeded from the checkpoint: a warning is about the JOB, not about the dispatch
   // that happened to notice it.
   const warnings: string[] = [...(input.resume?.warnings ?? [])];
+  /** Writes the prompt-echo guard emptied, for the caller to book (never a strike). */
+  const promptEchoes: Array<{ agentId: string; fields: number }> = [];
   /**
    * Research turns this JOB has spent, across dispatches.
    *
@@ -756,7 +764,19 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
           let ok = false;
           let failure: Error | undefined;
           try {
-            const { slice, handoff } = await runAgent({ template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit, trace: at, spend, research, handoffs });
+            const { slice, handoff } = await runAgent({
+              template: effTemplate, agent, brief, language, depth, system, evidence, report, counter, emit,
+              trace: at, spend, research, handoffs,
+              // Booked as an incident, and NOT as a strike against the buyer. An
+              // extraction attempt can come from either side and the responsible
+              // party differs: the buyer's own text is refused and struck by the
+              // moderation path before a job exists, while a page reaching the model
+              // is something that happened TO them. `warnings` is admin-only.
+              onPromptEcho: (fields) => {
+                promptEchoes.push({ agentId: agent.id, fields: fields.length });
+                warnings.push(`${agent.id}: removed ${fields.length} field(s) repeating this agent's own instructions (${fields.join(', ')}).`);
+              },
+            });
             // A rewrite REPLACES the section. When it comes back with fewer items
             // than it was handed, say so where an admin reads — a note, never a
             // refusal: dropping a duplicate, a sold listing or a misleading chart is
@@ -971,7 +991,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     trace.finishedAt = new Date().toISOString();
     await persistTrace();
     await emit('held', `Held at the cost ceiling with ${pending.length} step(s) unfinished — awaiting review.`, 'held');
-    return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint };
+    return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint, ...(promptEchoes.length ? { promptEchoes } : {}) };
   }
 
   // Not finalizing yet → return 'incomplete' so a re-dispatch resumes the rest.
@@ -981,7 +1001,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     trace.finishedAt = new Date().toISOString();
     await persistTrace();
     await emit('incomplete', `Incomplete: ${pending.length} step(s) still pending — will resume.`, 'incomplete');
-    return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint };
+    return { report, meta: makeMeta(), sources: evidence.sources, language, turnsUsed: counter.turns, trace, checkpoint, ...(promptEchoes.length ? { promptEchoes } : {}) };
   }
 
   // Reaching here with the ceiling crossed means every step finished anyway — the
@@ -1097,6 +1117,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
     turnsUsed: counter.turns,
     trace,
     checkpoint: snapshot(),
+    ...(promptEchoes.length ? { promptEchoes } : {}),
   };
 }
 
@@ -1142,6 +1163,11 @@ async function runAgent(ctx: {
   research: { done: boolean; touched: Set<string>; fetched: Set<string> };
   /** What every finished agent reported, keyed by agent id. */
   handoffs: Record<string, string>;
+  /**
+   * The guard removed our own prompt from this agent's write — an INCIDENT, not a
+   * failure. The caller books it; the agent carries on with the rest of its slice.
+   */
+  onPromptEcho?: (fields: string[]) => void;
   // Returns the slice only. Cost lives in the sink, read by the caller on BOTH
   // paths — returning it as well would invite someone tidying this signature to
   // add it back, doubling every agent's cost with the suite still green.
@@ -1258,14 +1284,14 @@ async function runAgent(ctx: {
             depthDirective,
           });
     const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-    return splitHandoff(guardPromptEcho(sres.value as Record<string, unknown>, system, language, note));
+    return splitHandoff(guardPromptEcho(sres.value as Record<string, unknown>, system, language, note, ctx.onPromptEcho));
   }
 
   // synthesizer — compose from upstream only.
   await note(`Composing (${owned.join(', ')}).`, 'composing');
   const text = buildSynthesizerPrompt({ agent, brief, sections, context: context.sections, handoffs: context.handoffs, current: context.current, lang: language, depthDirective });
   const sres = await synthesizeStructured({ model: synthModel, system, messages: [{ role: 'user', text }], schema, spend: ctx.spend });
-  return splitHandoff(guardPromptEcho(sres.value as Record<string, unknown>, system, language, note));
+  return splitHandoff(guardPromptEcho(sres.value as Record<string, unknown>, system, language, note, ctx.onPromptEcho));
 }
 
 /**
@@ -1288,10 +1314,12 @@ function guardPromptEcho(
   system: string,
   language: string,
   note: (m: string, kind?: ProgressKind, detail?: string) => unknown,
+  onEcho?: (fields: string[]) => void,
 ): Record<string, unknown> {
   const { value: clean, redacted } = redactPromptEcho(value, system, degradedSectionNote(language));
   if (redacted.length) {
     void note(`Removed ${redacted.length} field(s) that repeated this agent's own instructions.`, 'composing');
+    onEcho?.(redacted);
   }
   return clean as Record<string, unknown>;
 }

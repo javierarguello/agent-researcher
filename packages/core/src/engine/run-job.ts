@@ -31,7 +31,7 @@ import { generateHeadline } from '../jobs/headline.js';
 import { createCostSink, emptyCost } from '../cost.js';
 import { resolveMode } from '../mode.js';
 import { getModelPricing, resolveModeCeiling } from '../credits/pricing.js';
-import { recordReportStats } from '../stats/store.js';
+import { recordPromptEcho, recordReportStats } from '../stats/store.js';
 import { jobLogger } from '../obs/log.js';
 import { runResearch, type Checkpoint, type JobTrace } from './research-engine.js';
 
@@ -322,7 +322,18 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
           // would throw away whatever it has finished since.
           if (!(await stillOurs())) {
             log.warn('checkpoint.skipped', { reason: 'another dispatch owns this job' });
-            return;
+
+
+    // The guard removed our own prompt from a write. Booked as an INCIDENT and
+    // never as a strike: the buyer's own text is refused and struck by the
+    // moderation path before a job exists, so a leak reaching a model here came from
+    // a page, and they are the person it happened to. Best-effort — a stats blip
+    // must not fail a report the buyer paid for.
+    for (const echo of output.promptEchoes ?? []) {
+      await recordPromptEcho({ appId: input.appId, userId: input.userId, agentId: echo.agentId, fields: echo.fields })
+        .catch((err) => log.warn('stats.prompt_echo_failed', { message: (err as Error).message }));
+      log.warn('report.prompt_echo', { agentId: echo.agentId, fields: echo.fields });
+    }            return;
           }
           await uploadJson(CHECKPOINT, cp);
           checkpointsSaved += 1;
