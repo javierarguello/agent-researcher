@@ -64,6 +64,10 @@ app.post('/render-pdf', async (req, reply) => {
 });
 
 app.post('/run', async (req, reply) => {
+  // The clock that kills this request starts NOW, not when the engine does: the
+  // headline call and the checkpoint download sit in between, and on a resume the
+  // download is the whole report's worth of JSON. Read once, at the top.
+  const requestStart = Date.now();
   const body = (req.body ?? {}) as { jobId?: string };
   const jobId = body.jobId?.trim();
   if (!jobId) return reply.code(400).send({ error: 'Missing jobId.' }); // 4xx = no retry
@@ -84,6 +88,14 @@ app.post('/run', async (req, reply) => {
       userId: job.userId,
       template: job.template,
       params: job.params,
+      // Stop starting agents before Cloud Run kills the request, so the dispatch
+      // ends with a checkpoint and a 503 the queue resumes from — instead of being
+      // killed mid-agent, which loses that agent's spend twice: never added to
+      // `trace.cost`, and re-run from zero next dispatch (C5). The budget and the
+      // measurement behind it are in `config.workflow.dispatchBudgetSeconds`.
+      ...(config.workflow.dispatchBudgetSeconds > 0
+        ? { deadlineAt: requestStart + config.workflow.dispatchBudgetSeconds * 1000 }
+        : {}),
     });
     // 'incomplete' → some steps still failing; return a RETRYABLE status so Cloud
     // Tasks re-dispatches with backoff and runJob resumes from its checkpoint.

@@ -341,6 +341,31 @@ export const config = {
      * up, or close it. 0 or negative disables the ceiling.
      */
     maxJobCostUsd: float('MAX_JOB_COST_USD', 20),
+    /**
+     * Wall clock ONE dispatch may spend before it stops starting new agents,
+     * checkpoints, and hands the rest to a re-dispatch. 0 disables it.
+     *
+     * The platform ceiling is 1800s and it is not raisable: Cloud Run kills the
+     * request at its `--timeout` (`infra/deploy.sh`), and Cloud Tasks caps a
+     * dispatch deadline for an HTTP target at 30 minutes, so a longer job cannot be
+     * bought by a bigger number anywhere — only by spanning dispatches, which the
+     * checkpoint already supports. Until now nothing in the worker watched the
+     * clock: `runJob` ran to the end and Cloud Run killed it mid-agent, and the
+     * in-flight agents' spend was lost twice — never added to `trace.cost`, and
+     * re-run from zero next dispatch (C5).
+     *
+     * 1500 = 1800 − 300, and the 300 is measured rather than picked. The two real
+     * comprehensive runs in `out/*` finished in **1241s and 1309s** (69% and 73% of
+     * the budget) and their longest single agent was `deal-scout` at **455s and
+     * 565s**. So: a reserve that both of those runs clear without splitting, and
+     * which is comfortably longer than the tail agents (44–61s measured) that are
+     * the only ones still starting that late. What it does NOT buy is protection
+     * from a wave-1 producer that starts before the line and overruns — by 1500s
+     * wave 1 has been done for 800s in both runs, but a job unlike those two can
+     * still be killed mid-agent, and that is the case the number is a bet against.
+     * Re-measure it if the DAG changes shape.
+     */
+    dispatchBudgetSeconds: int('JOB_DISPATCH_BUDGET_SECONDS', 1500),
   },
   search: {
     braveApiKey: str('BRAVE_API_KEY'),

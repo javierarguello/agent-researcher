@@ -88,11 +88,14 @@ export function runModel(
   template: ResearchTemplate<any>,
   params: Record<string, unknown>,
   jobId: string,
+  /** Anything else the engine takes — a wall-clock deadline, `finalize`, progress. */
+  extra: Partial<Parameters<typeof runResearch>[0]> = {},
 ): Promise<ResearchOutput> {
   return runResearch({
     template,
     params: template.paramsSchema.parse(params) as Record<string, unknown>,
     jobId,
     generatedAt: '2026-07-27T00:00:00.000Z',
+    ...extra,
   });
 }

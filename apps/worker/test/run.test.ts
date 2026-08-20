@@ -26,7 +26,7 @@ vi.mock('@agent-researcher/core', async (importOriginal) => ({
   sendAppEmail: notify,
 }));
 
-import { createJob, getApp, createApp, getJob, markCompleted, markHeld, setJobSummary, sectionsNotice } from '@agent-researcher/core';
+import { config, createJob, getApp, createApp, getJob, markCompleted, markHeld, setJobSummary, sectionsNotice } from '@agent-researcher/core';
 import { app } from '../src/index.js';
 
 const JOB = 'job-1';
@@ -244,6 +244,46 @@ describe('requests that are not worth retrying', () => {
     const res = await run('nope');
     expect(res.statusCode).toBe(404);
     expect(runJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('the wall-clock budget reaches the engine', () => {
+  it('hands runJob a deadline, measured from when the REQUEST arrived', async () => {
+    // The guard that never reaches production is not a guard: every test of the
+    // deadline itself lives in `packages/core` and calls `runJob` directly with a
+    // `deadlineAt`, so all of them stay green with this line deleted. This is the
+    // only place that says the worker passes one at all.
+    //
+    // Measured from the request, not from the engine: the headline call and the
+    // checkpoint download happen in between, and on a resume that download is the
+    // whole report's worth of JSON. Starting the clock later would spend that time
+    // twice.
+    await seedJob();
+    runJob.mockResolvedValueOnce({ files: [], reportBytes: 1, sourcesFound: 0, status: 'completed' });
+    const before = Date.now();
+    await run();
+    const after = Date.now();
+
+    const arg = runJob.mock.calls.at(-1)![0] as { deadlineAt?: number };
+    const budgetMs = config.workflow.dispatchBudgetSeconds * 1000;
+    expect(arg.deadlineAt, 'the worker started no clock at all').toBeDefined();
+    expect(arg.deadlineAt!).toBeGreaterThanOrEqual(before + budgetMs);
+    expect(arg.deadlineAt!, 'the clock started later than the request').toBeLessThanOrEqual(after + budgetMs);
+  });
+
+  it('passes none when the budget is switched off', async () => {
+    // 0 disables it, and that has to mean "behave exactly as before this existed"
+    // rather than "a deadline of now", which would stop every dispatch immediately.
+    const prev = config.workflow.dispatchBudgetSeconds;
+    (config.workflow as { dispatchBudgetSeconds: number }).dispatchBudgetSeconds = 0;
+    try {
+      await seedJob('job-nobudget');
+      runJob.mockResolvedValueOnce({ files: [], reportBytes: 1, sourcesFound: 0, status: 'completed' });
+      await run('job-nobudget');
+      expect((runJob.mock.calls.at(-1)![0] as { deadlineAt?: number }).deadlineAt).toBeUndefined();
+    } finally {
+      (config.workflow as { dispatchBudgetSeconds: number }).dispatchBudgetSeconds = prev;
+    }
   });
 });
 

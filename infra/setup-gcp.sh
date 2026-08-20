@@ -103,10 +103,26 @@ gcloud tasks queues create "${QUEUE}" --location="${REGION}" 2>/dev/null || echo
 # Retries are durable resume: a job that returns 503 (incomplete) is re-dispatched
 # with backoff and resumes from its checkpoint. maxJobAttempts (default 8) makes
 # runJob finalize before the queue gives up, so a report is always delivered.
+#
+# THAT SENTENCE IS ONLY TRUE IF THE WINDOW FITS EIGHT DISPATCHES, and at 10800s it
+# did not. A dispatch now spends up to JOB_DISPATCH_BUDGET_SECONDS (1500) of wall
+# clock before it checkpoints and returns 503, and the backoff between retries runs
+# 10s doubling to a 600s cap — so reaching the 8th dispatch takes
+#   7 x 1500s of work + (10+20+40+80+160+320+600)s of backoff = 11730s
+# plus the 8th dispatch itself. Inside a 3-hour window the queue gave up around the
+# 6th, dropped the task, and NOTHING touched the job again: `running` forever, the
+# buyer's slot held, the credits spent, and `retry` refusing because the job looks
+# alive. `parkJob`'s docstring describes that exact ending; this is the arithmetic
+# that stops it happening. `apps/api/test/queue-window.test.ts` pins the relation,
+# so changing either number without the other goes red.
+#
+# NOTE FOR A LIVE PROJECT: this script is idempotent, but `gcloud tasks queues
+# update` only runs when someone runs it. An existing dev/prod queue keeps 10800s
+# until this is applied.
 gcloud tasks queues update "${QUEUE}" --location="${REGION}" \
   --max-concurrent-dispatches="${JOB_MAX_CONCURRENCY}" \
   --max-dispatches-per-second=1 \
-  --max-attempts=12 --max-retry-duration=10800s \
+  --max-attempts=12 --max-retry-duration=18000s \
   --min-backoff=10s --max-backoff=600s >/dev/null
 
 echo ">> Service accounts..."

@@ -349,6 +349,22 @@ export interface RunResearchInput {
   resume?: Checkpoint;
   /** When true, degrade any still-failing steps and finalize; else return 'incomplete'. Default true. */
   finalize?: boolean;
+  /**
+   * The instant (epoch ms) after which this dispatch stops STARTING agents.
+   *
+   * Not a timeout on the run: an agent already running is left to finish, and the
+   * ones not started stay `pending` for a re-dispatch to pick up, exactly the way a
+   * deferred dependency does. That is the whole idea — the process is going to be
+   * killed at a fixed wall clock either way (Cloud Run's `--timeout`, and Cloud
+   * Tasks caps an HTTP dispatch deadline at 30 minutes, so neither is raisable),
+   * and being killed mid-agent loses that agent's spend twice: never added to
+   * `trace.cost`, and re-run from zero next dispatch (C5).
+   *
+   * Ignored on the finalize pass. Finalizing is the dispatch that must not be cut
+   * short — stopping there would degrade sections for a reason that is not a
+   * failure, and `maxJobAttempts` guarantees it happens eventually.
+   */
+  deadlineAt?: number;
   /** Called after each agent completes, to persist the resumable checkpoint. */
   onCheckpoint?: (cp: Checkpoint) => void | Promise<void>;
   /** Cost incurred outside the engine (e.g. headline) folded into the trace on the
@@ -601,12 +617,28 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   // function because a dispatch can decide, AFTER its retrying pass, that there is
   // nothing left worth a re-dispatch — and then runs the deferred steps right here
   // rather than paying another dispatch to reach the same conclusion.
+  /**
+   * Out of wall clock for THIS dispatch (see `RunResearchInput.deadlineAt`).
+   *
+   * Asked before an agent starts, never while one runs. Never true on the finalize
+   * pass — its caller passes `bestEffort`.
+   */
+  const outOfTime = (): boolean => input.deadlineAt != null && Date.now() >= input.deadlineAt;
+  let stoppedOnDeadline = false;
+
   const runWaves = async (bestEffort: boolean) => {
     for (const [w, wave] of waves.entries()) {
       // Not done, and not given up on: an agent whose write failed the same way on
       // two dispatches is not run a third time — it degrades below with the rest.
       const todo = wave.filter((a) => !done.has(a.id) && !exhausted(a.id));
       if (!todo.length) continue;
+      // Before the `emit`, so a dispatch that is out of time does not announce a
+      // wave it will not run — the buyer's progress line would name five agents and
+      // then nothing would happen for the rest of the dispatch.
+      if (!bestEffort && outOfTime()) {
+        stoppedOnDeadline = true;
+        break;
+      }
       await emit('planning', `Wave ${w + 1}/${waves.length}: ${todo.map((a) => a.id).join(', ')}.`, 'wave');
       await runPool(todo, config.llm.maxConcurrentAgents, async (agent) => {
         const at: AgentTrace = {
@@ -657,6 +689,19 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
         if (!bestEffort && !depsReady) {
           at.status = 'pending';
           at.finishedAt = new Date().toISOString();
+          return;
+        }
+
+        // Out of wall clock. Same treatment as a deferred dependency, and for a
+        // reason of the same shape: there is no point starting work this dispatch
+        // cannot keep. The wave-level check above stops whole waves; this one stops
+        // the agents of the CURRENT wave that the pool has not reached yet — with
+        // `maxConcurrentAgents` at 2, a five-agent wave has three of them queued
+        // behind the two running, and the line can fall between them.
+        if (!bestEffort && outOfTime()) {
+          at.status = 'pending';
+          at.finishedAt = new Date().toISOString();
+          stoppedOnDeadline = true;
           return;
         }
 
@@ -880,6 +925,20 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
   }
 
   const pending = pendingAgents();
+
+  // Say WHICH kind of incomplete this is, on the surface an admin reads. The two are
+  // not the same fact and one of them is not a problem: "three steps failed and will
+  // be retried" is a job to look at; "the dispatch ran out of clock with three steps
+  // still to start" is the design working. Pushed BEFORE `snapshot()` so it rides in
+  // the checkpoint and the finished job's trace still shows how many dispatches the
+  // clock cost — which is the thing C5 wanted visible and nothing recorded.
+  // `warnings` is admin-only and in English; the buyer's progress line is unchanged,
+  // and it already says the right thing, which is that this will resume.
+  if (stoppedOnDeadline && pending.length) {
+    warnings.push(
+      `Dispatch stopped at its wall-clock budget with ${pending.length} step(s) not started; a re-dispatch resumes them from the checkpoint.`,
+    );
+  }
 
   const makeMeta = (): ReportMeta => ({
     title: template.name,

@@ -61,6 +61,17 @@ export interface RunJobInput {
   userId: string;
   template: string;
   params: Record<string, unknown>;
+  /**
+   * The instant (epoch ms) after which this dispatch stops STARTING agents,
+   * checkpoints, and returns `incomplete` for the queue to resume.
+   *
+   * The worker passes `requestStart + config.workflow.dispatchBudgetSeconds`,
+   * because the clock that matters starts when the REQUEST arrives, not when the
+   * engine does — the headline call and the checkpoint download happen in between.
+   * Omitted (the CLI, the tests that do not care) = no deadline, i.e. what every
+   * dispatch did until now: run to the end and let Cloud Run kill it mid-agent.
+   */
+  deadlineAt?: number;
 }
 
 export interface RunJobResult {
@@ -280,6 +291,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
       generatedAt,
       resume,
       finalize,
+      ...(input.deadlineAt != null ? { deadlineAt: input.deadlineAt } : {}),
       // Fold headline cost into the trace so it's checkpointed and survives resumes
       // (nonzero only on the first dispatch; already carried in `resume.cost` after).
       baseCost: headlineCost,
