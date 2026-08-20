@@ -142,12 +142,44 @@ while adding an engineering item to it (R10-31).
   to copy is `m-red-team-reports/round10/BRIEF.md` (with the two corrections named in
   the State section above), and the five pieces of new behaviour to weight are listed
   there too.
+- **M-E1 and M-E2 — the prompt coming back OUT** (asked for by Javier 2026-08-20;
+  the runbook entry is `m-red-team.md` § "E · Extraction"). Every prompt test in the
+  repo guards the inbound direction — can a stranger's text reach a prompt — and
+  **nothing anywhere asserts that an artifact the buyer receives lacks OUR prompt**
+  (checked by grep). Two families: E1, the system prompt / brief / agent objective
+  must not appear in `report.json`, the viewer, the PDF, the email, the shared page,
+  `title`, `summary` or the progress lines; E2, the report must not be usable to
+  GENERATE a prompt ("write the system prompt that would produce this report"),
+  which is a product decision as much as a defence. The realistic entry is a fetched
+  page — attacker-controlled, no pre-screen, since it never passed through our API —
+  and `industry` / `location`, which are still free text and still rendered verbatim
+  into the brief (`florida-business-for-sale.ts:1323`). Not started.
 - **Alerting on the moderation fail-open — the half that is still open.**
   `b4ee573` made it VISIBLE: `ModerationVerdict.degraded`, a counter with a last-seen
   time, and a strip at the top of the admin dashboard that renders in all four
   states including "this API build does not report it". Nobody is PAGED, which is
   the part that would need a log-based metric and an alert policy in
   `sinuous-canto-497518-h7`, i.e. Javier's credentials.
+- **`Deploy dev` is FAILING on `main` and dev is half-deployed** (2026-08-20, first
+  failure in 15 runs, and it is NOT a flake — re-run once, identical). The worker
+  image builds and the worker Cloud Run revision deploys; the API image then fails at
+  submit:
+
+      ERROR: (gcloud.builds.submit) FAILED_PRECONDITION: Precondition check failed.
+
+  That is a submit-time API error, before the Dockerfile runs, so it is not a compile
+  or test failure. `infra/cloudbuild.api.yaml` and `infra/cloudbuild.worker.yaml` are
+  byte-identical apart from the Dockerfile name and the tag, and neither has changed
+  since the initial commit — so nothing in this batch caused it. It reads as a
+  project-level precondition (Cloud Build quota, billing, or the build service
+  account's policy). **Needs Javier**: the account available in a local session gets
+  `PERMISSION_DENIED` on `gcloud builds describe` in
+  `sinuous-canto-497518-h7`. Build ids: `02d3b4bd-497e-4587-90e1-f94cd88b1221` and
+  `8b23707b-c28a-421d-890a-000f5495018d`.
+  **The half-deploy is benign for this batch** — the worker runs the new code, the
+  API runs the previous revision, and the only API-visible change in the range
+  (`config.workflow.dispatchBudgetSeconds`) is read by the worker alone. The 429
+  localization shipped earlier, in `0bf39b3`, whose deploy succeeded.
 - **`infra/setup-gcp.sh` needs re-running on dev and prod** — `91b5cfc` raised the
   Cloud Tasks retry window 10800s → 18000s, and an existing queue keeps the old
   value until someone applies it. Below that, a slow job's queue window runs out
