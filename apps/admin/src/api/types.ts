@@ -354,6 +354,14 @@ export interface CreditPack {
   sub?: string;
   popular?: boolean;
   features?: string[];
+  /**
+   * Every locale's copy, with NO fallback applied — `sub`/`features` above are one
+   * language resolved through English, which is right for a page and wrong for a
+   * form: an editor shown the fallback cannot tell "no French copy" from "French
+   * copy that happens to match English", and saving would write the fallback in as
+   * a translation.
+   */
+  copy?: { sub: Record<string, string>; features: Record<string, string[]> };
 }
 
 /** What the admin sends to create or update one. */

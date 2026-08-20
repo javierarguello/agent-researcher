@@ -213,6 +213,25 @@ describe('listing and retiring', () => {
   });
 });
 
+describe('the copy an EDITOR is given', () => {
+  it('is every locale, with no fallback applied', async () => {
+    // `sub`/`features` are one language resolved through English, which is right
+    // for a page and wrong for a form: an editor shown the fallback cannot tell "no
+    // French copy" from "French copy identical to English", and saving it would
+    // write English in as the French translation. The listing carries both, and the
+    // editor reads `copy`.
+    await put('scout', { ...base, sub: { en: 'Curious buyers', es: 'Compradores curiosos' }, features: { en: ['A', 'B'] } });
+    const r = await app.inject({ method: 'GET', url: `/admin/plans?appId=fbizlab&templateId=${MODEL}`, headers: auth(await adminToken()) });
+    const pack = r.json().plans[0];
+    expect(pack.copy.sub).toEqual({ en: 'Curious buyers', es: 'Compradores curiosos' });
+    expect('fr' in pack.copy.sub, 'the English fallback leaked in as French').toBe(false);
+    expect(pack.copy.features).toEqual({ en: ['A', 'B'] });
+    // …and the RESOLVED field is still there for anything that renders rather than
+    // edits: French gets English, which is the fallback doing its job.
+    expect(pack.sub).toBe('Curious buyers');
+  });
+});
+
 describe('who may touch the catalog', () => {
   /**
    * `requireAdmin` guards all three routes, and it is not the token's word that

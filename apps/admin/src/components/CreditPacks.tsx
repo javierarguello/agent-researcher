@@ -16,7 +16,7 @@
 import { useState } from 'react';
 import {
   ActionIcon, Alert, Badge, Button, Group, Loader, Modal, NumberInput, Stack, Switch,
-  Table, TagsInput, Text, TextInput, Tooltip,
+  Table, Tabs, TagsInput, Text, TextInput, Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Mono } from './Mono';
@@ -27,22 +27,39 @@ import type { CreditPack } from '../api/types';
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const perCredit = (p: { priceUsd: number; credits: number }) => p.priceUsd / p.credits;
 
+/**
+ * The languages a pack's copy is written in.
+ *
+ * Hardcoded here rather than fetched: it is the set the buyer's app renders, and a
+ * pack with copy in a language nothing displays is copy nobody reads. English first
+ * — it is the fallback every other locale falls back TO, so a pack with only `en`
+ * is complete, and a pack with `es` and no `en` shows Spanish to a French buyer.
+ */
+const LANGS = ['en', 'es', 'fr', 'pt'] as const;
+type Lang = (typeof LANGS)[number];
+
 interface Draft {
   planId: string;
   name: string;
   credits: number;
   priceUsd: number;
   popular: boolean;
-  sub: string;
-  features: string[];
+  /** Per locale, empty where nothing is written — never the English fallback. */
+  sub: Record<string, string>;
+  features: Record<string, string[]>;
   /** The price this draft was OPENED with — null for a new pack. */
   openedAtPriceUsd: number | null;
 }
 
-const emptyDraft = (): Draft => ({ planId: '', name: '', credits: 20, priceUsd: 29, popular: false, sub: '', features: [], openedAtPriceUsd: null });
+const emptyDraft = (): Draft => ({ planId: '', name: '', credits: 20, priceUsd: 29, popular: false, sub: {}, features: {}, openedAtPriceUsd: null });
 const draftOf = (p: CreditPack): Draft => ({
-  planId: p.planId, name: p.name, credits: p.credits, priceUsd: p.priceUsd,
-  popular: !!p.popular, sub: p.sub ?? '', features: p.features ?? [], openedAtPriceUsd: p.priceUsd,
+  planId: p.planId, name: p.name, credits: p.credits, priceUsd: p.priceUsd, popular: !!p.popular,
+  // `copy`, not `sub`/`features`: those are ONE language resolved through the
+  // English fallback, and saving them back would write English in as a translation
+  // for every locale that has none.
+  sub: { ...(p.copy?.sub ?? {}) },
+  features: { ...(p.copy?.features ?? {}) },
+  openedAtPriceUsd: p.priceUsd,
 });
 
 export function CreditPacks({ appId, templateId }: { appId: string | undefined; templateId: string }) {
@@ -66,8 +83,11 @@ export function CreditPacks({ appId, templateId }: { appId: string | undefined; 
           credits: d.credits,
           priceUsd: d.priceUsd,
           popular: d.popular,
-          ...(d.sub ? { sub: { en: d.sub } } : {}),
-          ...(d.features.length ? { features: { en: d.features } } : {}),
+          // Only locales that actually carry something. An empty string would be
+          // stored as a translation and then rendered as one — a blank subtitle on
+          // the French pricing page, where the English fallback used to be.
+          sub: Object.fromEntries(Object.entries(d.sub).filter(([, v]) => v.trim())),
+          features: Object.fromEntries(Object.entries(d.features).filter(([, v]) => v.length)),
           // Only when it actually moves. Sent always, the server would treat every
           // save as a reprice and the confirmation would stop meaning anything.
           ...(d.openedAtPriceUsd !== null && d.priceUsd !== d.openedAtPriceUsd ? { expectedPriceUsd: d.openedAtPriceUsd } : {}),
@@ -189,8 +209,44 @@ export function CreditPacks({ appId, templateId }: { appId: string | undefined; 
                 onChange={(v) => setDraft({ ...draft, credits: typeof v === 'number' ? v : draft.credits })} />
             </Group>
             <Text size="xs" c="dimmed">{usd(draft.priceUsd / Math.max(draft.credits, 1))} per credit</Text>
-            <TextInput label="Subtitle" value={draft.sub} onChange={(e) => setDraft({ ...draft, sub: e.currentTarget.value })} />
-            <TagsInput label="Features" value={draft.features} onChange={(v) => setDraft({ ...draft, features: v })} />
+            {/* One tab per language the buyer's app renders. English is not
+                special here except that everything else falls back to it, which is
+                why its tab says so — a pack with only `en` is finished, a pack with
+                `es` and no `en` shows Spanish to a French buyer. */}
+            {/* `keepMounted={false}`: Mantine keeps every panel in the DOM by
+                default, which puts four inputs labelled "Subtitle" in the
+                accessibility tree at once — ambiguous for a screen reader and for
+                anything else reading the form by label. */}
+            <Tabs defaultValue="en" keepMounted={false}>
+              <Tabs.List>
+                {LANGS.map((l) => (
+                  <Tabs.Tab key={l} value={l}>
+                    <Group gap={4}>
+                      {l.toUpperCase()}
+                      {l !== 'en' && !draft.sub[l] && !draft.features[l]?.length && (
+                        <Badge size="xs" color="gray" variant="outline">falls back</Badge>
+                      )}
+                    </Group>
+                  </Tabs.Tab>
+                ))}
+              </Tabs.List>
+              {LANGS.map((l: Lang) => (
+                <Tabs.Panel key={l} value={l} pt="sm">
+                  <TextInput
+                    label="Subtitle"
+                    description={l === 'en' ? 'What every other language falls back to.' : 'Empty = show the English one.'}
+                    value={draft.sub[l] ?? ''}
+                    onChange={(e) => setDraft({ ...draft, sub: { ...draft.sub, [l]: e.currentTarget.value } })}
+                  />
+                  <TagsInput
+                    label="Features"
+                    mt="sm"
+                    value={draft.features[l] ?? []}
+                    onChange={(v) => setDraft({ ...draft, features: { ...draft.features, [l]: v } })}
+                  />
+                </Tabs.Panel>
+              ))}
+            </Tabs>
             <Switch label="Recommended (popular)" checked={draft.popular} onChange={(e) => setDraft({ ...draft, popular: e.currentTarget.checked })} />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setDraft(null)}>Cancel</Button>

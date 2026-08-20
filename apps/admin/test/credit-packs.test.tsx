@@ -16,7 +16,15 @@ import { MantineProvider } from '@mantine/core';
 const { calls } = vi.hoisted(() => ({ calls: [] as Array<{ path: string; init?: { method?: string; body?: Record<string, unknown> } }> }));
 
 const PACKS = [
-  { planId: 'scout', templateId: 'm1', name: 'Scout', priceUsd: 29, credits: 20, priceId: 'p1' },
+  {
+    planId: 'scout', templateId: 'm1', name: 'Scout', priceUsd: 29, credits: 20, priceId: 'p1',
+    // What the API returns for an editor: every locale, no fallback applied. `sub`
+    // is the resolved one a RENDERER would use — English here, because there is no
+    // French copy — and the editor must not confuse the two.
+    sub: 'Curious buyers',
+    features: ['A', 'B'],
+    copy: { sub: { en: 'Curious buyers', es: 'Compradores curiosos' }, features: { en: ['A', 'B'] } },
+  },
   { planId: 'investor', templateId: 'm1', name: 'Investor', priceUsd: 69, credits: 80, priceId: 'p2', popular: true },
   // No `templateId`: a pack from before packs were per-model. It sells for every
   // model the app offers, which is not visible from its price alone.
@@ -126,5 +134,62 @@ describe('editing a pack', () => {
     await screen.findByText(/change what customers are charged/i);
     await userEvent.click(screen.getByRole('button', { name: /keep \$29\.00/i }));
     expect(saved()).toBeUndefined();
+  });
+});
+
+describe('the copy, in four languages', () => {
+  it('edits each locale on its own, and never writes the English fallback in as a translation', async () => {
+    // The trap this shape avoids: an editor fed the RESOLVED copy shows "Curious
+    // buyers" under FR — the fallback — and saving it stores English as the French
+    // translation. From then on the fallback is invisible, and a real French line
+    // has to be found and removed rather than simply added.
+    show();
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Edit' }))[0]!);
+    await screen.findByLabelText('Subtitle');
+
+    // ES has copy; FR does not and says so.
+    await userEvent.click(screen.getByRole('tab', { name: /ES/ }));
+    expect((screen.getByLabelText('Subtitle') as HTMLInputElement).value).toBe('Compradores curiosos');
+    await userEvent.click(screen.getByRole('tab', { name: /FR/ }));
+    expect((screen.getByLabelText('Subtitle') as HTMLInputElement).value).toBe('');
+
+    await userEvent.type(screen.getByLabelText('Subtitle'), 'Acheteurs curieux');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(saved()).toBeTruthy());
+    const body = saved()!.init!.body as { sub: Record<string, string>; features: Record<string, string[]> };
+    expect(body.sub).toEqual({ en: 'Curious buyers', es: 'Compradores curiosos', fr: 'Acheteurs curieux' });
+    // …and PT, which was never touched, is absent rather than blank — a stored
+    // empty string renders as an empty subtitle where the fallback used to be.
+    expect('pt' in body.sub).toBe(false);
+    expect(body.features).toEqual({ en: ['A', 'B'] });
+  });
+
+  it('REMOVES a locale that is cleared, rather than storing it blank', async () => {
+    // The case the filter is for, and the one the test above cannot see: a locale
+    // that was never touched is simply absent either way. Emptying one that HAD
+    // copy has to delete it — stored as `''` it is a translation that renders as a
+    // blank subtitle on the Spanish pricing page, where the English fallback was.
+    show();
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Edit' }))[0]!);
+    await screen.findByLabelText('Subtitle');
+    await userEvent.click(screen.getByRole('tab', { name: /ES/ }));
+    await userEvent.clear(screen.getByLabelText('Subtitle'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(saved()).toBeTruthy());
+    const body = saved()!.init!.body as { sub: Record<string, string> };
+    expect('es' in body.sub, 'a cleared locale was stored as an empty string').toBe(false);
+    expect(body.sub.en, 'and the others are untouched').toBe('Curious buyers');
+  });
+
+  it('marks the languages that fall back, so "no copy" is visible without clicking each tab', async () => {
+    show();
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Edit' }))[0]!);
+    await screen.findByLabelText('Subtitle');
+    // ES has copy, FR and PT do not. EN is never marked — it IS the fallback.
+    expect(screen.getByRole('tab', { name: /ES/ }).textContent).not.toContain('falls back');
+    expect(screen.getByRole('tab', { name: /FR/ }).textContent).toContain('falls back');
+    expect(screen.getByRole('tab', { name: /PT/ }).textContent).toContain('falls back');
+    expect(screen.getByRole('tab', { name: /EN/ }).textContent).not.toContain('falls back');
   });
 });

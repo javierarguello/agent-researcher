@@ -2922,7 +2922,8 @@ app.get(
     if (!stripeConfigured()) return reply.code(503).send({ error: 'Billing is not configured.' });
     const { appId, templateId } = req.query as { appId: string; templateId?: string };
     if (!isValidAppId(appId)) return reply.code(400).send({ error: `Invalid appId: ${appId}` });
-    return { plans: await listStripePlans(appId, 'en', templateId) };
+    // `withCopy`: the editor needs every locale, not the resolved fallback.
+    return { plans: await listStripePlans(appId, 'en', { templateId, withCopy: true }) };
   },
 );
 
@@ -3056,7 +3057,7 @@ app.post(
     // This MODEL's packs, not the app's: the ceiling for a model has to derive from
     // the cheapest credit that model is actually sold at. Untagged packs count —
     // they sell for every model the app offers.
-    const packs = await listStripePlans(appId, 'en', templateId);
+    const packs = await listStripePlans(appId, 'en', { templateId });
     const floor = creditFloorFrom(packs);
     // An empty or unusable catalog is NOT a floor of zero — that would derive a
     // ceiling of zero and hold every job of this model. Say so and change nothing.

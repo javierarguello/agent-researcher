@@ -5,7 +5,7 @@
  * needed here.
  */
 import Stripe from 'stripe';
-import { config, logEvent } from '@agent-researcher/core';
+import { config, logEvent, SUPPORTED_LANGS } from '@agent-researcher/core';
 
 let client: Stripe | undefined;
 
@@ -49,6 +49,29 @@ export interface StripePlan {
   sub?: string;
   popular?: boolean;
   features?: string[];
+  /**
+   * The marketing copy in EVERY language, for an editor rather than a renderer.
+   *
+   * `sub`/`features` above are one language — resolved with the English fallback,
+   * which is right for a page and wrong for a form: an editor shown the fallback
+   * cannot tell "no French copy" from "French copy identical to English", and
+   * saving would write the fallback in as a translation. Only the admin listing
+   * asks for this.
+   */
+  copy?: { sub: Record<string, string>; features: Record<string, string[]> };
+}
+
+/** Every locale's copy, straight off the metadata — no fallback applied. */
+function copyOf(md: Record<string, string>): NonNullable<StripePlan['copy']> {
+  const sub: Record<string, string> = {};
+  const features: Record<string, string[]> = {};
+  for (const lang of SUPPORTED_LANGS) {
+    const sKey = lang === BASE_LANG ? 'sub' : `sub_${lang}`;
+    const fKey = lang === BASE_LANG ? 'features' : `features_${lang}`;
+    if (md[sKey]) sub[lang] = md[sKey]!;
+    if (md[fKey]) features[lang] = md[fKey]!.split('|').map((f) => f.trim()).filter(Boolean);
+  }
+  return { sub, features };
 }
 
 /**
@@ -64,7 +87,7 @@ function localized(md: Record<string, string>, base: string, lang: string): stri
 }
 
 /** Build a plan from a product + its resolved default price, in `lang`. */
-function planFromProduct(product: Stripe.Product, price: Stripe.Price, lang: string): StripePlan {
+function planFromProduct(product: Stripe.Product, price: Stripe.Price, lang: string, withCopy = false): StripePlan {
   const md = product.metadata ?? {};
   const planId = String(md.planId ?? product.id);
   const sub = localized(md, 'sub', lang) ?? product.description ?? undefined;
@@ -81,6 +104,7 @@ function planFromProduct(product: Stripe.Product, price: Stripe.Price, lang: str
     ...(md.popular === 'true' ? { popular: true } : {}),
     // Features: pipe-separated, e.g. "≈4 reports|Basic ROI|…"
     ...(features ? { features: features.split('|').map((f) => f.trim()).filter(Boolean) } : {}),
+    ...(withCopy ? { copy: copyOf(md) } : {}),
   };
 }
 
@@ -105,7 +129,11 @@ export function isValidAppId(appId: string): boolean {
   return APP_ID_RE.test(appId);
 }
 
-export async function listStripePlans(appId: string, lang = 'en', templateId?: string): Promise<StripePlan[]> {
+export async function listStripePlans(
+  appId: string,
+  lang = 'en',
+  opts: { templateId?: string; withCopy?: boolean } = {},
+): Promise<StripePlan[]> {
   if (!isValidAppId(appId)) {
     // Returning [] silently would show an empty pricing page with nothing in the
     // logs to explain it.
@@ -119,11 +147,11 @@ export async function listStripePlans(appId: string, lang = 'en', templateId?: s
   });
   return res.data
     .filter((p) => p.default_price && typeof p.default_price === 'object')
-    .map((p) => planFromProduct(p, p.default_price as Stripe.Price, lang))
+    .map((p) => planFromProduct(p, p.default_price as Stripe.Price, lang, opts.withCopy))
     // A pack with no `templateId` predates the field and sells for every model the
     // app offers — dropping those would empty the pricing page of every deployment
     // that has ever taken money. One that names a model is listed only for it.
-    .filter((p) => !templateId || !p.templateId || p.templateId === templateId)
+    .filter((p) => !opts.templateId || !p.templateId || p.templateId === opts.templateId)
     .sort((a, b) => a.priceUsd - b.priceUsd);
 }
 
