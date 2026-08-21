@@ -5,7 +5,7 @@
 #   bash infra/prod-secrets.sh status              # what exists, what is missing
 #   bash infra/prod-secrets.sh deploy-sa           # gh-deploy-prod SA + GCP_SA_KEY_PROD
 #   bash infra/prod-secrets.sh secrets             # every _PROD secret deploy.sh reads
-#   bash infra/prod-secrets.sh webhook             # the real STRIPE_WEBHOOK_SECRET_PROD
+#   bash infra/prod-secrets.sh webhook [--create]  # the real STRIPE_WEBHOOK_SECRET_PROD
 #   bash infra/prod-secrets.sh vars <API_URL>      # the repo VARIABLES (public values)
 #
 # Everything here is idempotent: an existing secret is left alone unless you pass
@@ -226,14 +226,69 @@ cmd_secrets() {
   note "Done. Missing anything? bash infra/prod-secrets.sh status"
 }
 
+# Exactly the events the handler acts on (apps/api/src/index.ts:2040-2063). Stripe's
+# API takes concrete names, not the `product.*` shorthand the dashboard's grouping
+# suggests, and the handler matches on the PREFIX — so every member is listed.
+STRIPE_EVENTS=(
+  checkout.session.completed
+  checkout.session.async_payment_succeeded
+  checkout.session.async_payment_failed
+  product.created product.updated product.deleted
+  price.created price.updated price.deleted
+)
+
+# Create the LIVE endpoint through the Stripe API and keep the secret it returns.
+# `secret` comes back ONLY in the creation response — every later GET omits it, and
+# then the dashboard's reveal is the only copy.
+create_stripe_endpoint() {
+  local url="$1" sk="$2"
+  local args=(-sS https://api.stripe.com/v1/webhook_endpoints -u "${sk}:"
+              --data-urlencode "url=${url}" -d "description=agent-researcher prod")
+  for e in "${STRIPE_EVENTS[@]}"; do args+=(-d "enabled_events[]=${e}"); done
+
+  # An endpoint on this URL already? Stripe happily creates a second one, and then
+  # two secrets are valid, one of them the one nobody wrote down.
+  local existing
+  existing="$(curl -sS -G https://api.stripe.com/v1/webhook_endpoints -u "${sk}:" -d limit=100 \
+    | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);if(j.error){console.error(j.error.message);process.exit(2)};const m=(j.data||[]).filter(e=>e.url===process.argv[1]);console.log(m.map(e=>e.id).join(' '))})" "$url")"
+  if [[ -n "$existing" ]]; then
+    echo "!! An endpoint for that URL already exists: ${existing}" >&2
+    echo "!! Its secret is not returned by the API after creation. Either reveal it in" >&2
+    echo "!! the dashboard and paste it below, or delete that endpoint and re-run:" >&2
+    echo "!!   curl -X DELETE https://api.stripe.com/v1/webhook_endpoints/${existing%% *} -u 'sk_live_…:'" >&2
+    return 1
+  fi
+
+  curl "${args[@]}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);if(j.error){console.error(j.error.message);process.exit(2)}console.log(j.secret||'')})"
+}
+
 cmd_webhook() {
   local url; url="$(actual_api_url)"
-  [[ -n "$url" ]] || die "The prod API is not deployed yet — there is no URL to point Stripe at."
-  echo "   Endpoint to create/verify in the Stripe LIVE dashboard:"
-  echo "     ${url}/credits/webhook"
-  echo "     events: checkout.session.completed, checkout.session.async_payment_succeeded,"
-  echo "             checkout.session.async_payment_failed, product.*, price.*"
-  FORCE=1 ask_secret STRIPE_WEBHOOK_SECRET_PROD "Signing secret for THAT endpoint (whsec_…)" 1 '^whsec_'
+  [[ -n "$url" ]] || url="$(predicted_api_url)"
+  [[ -n "$url" ]] || die "No prod API URL — deploy first, or pass one: STRIPE_WEBHOOK_URL=… prod-secrets.sh webhook"
+  url="${STRIPE_WEBHOOK_URL:-${url}/credits/webhook}"
+
+  echo "   Endpoint: ${url}"
+  echo "   Events:   ${STRIPE_EVENTS[*]}"
+
+  # --create does it through the API so the secret never has to be read off a
+  # screen and retyped. Without it, create the endpoint in the dashboard (LIVE
+  # mode, top-left switch) and paste the secret.
+  if [[ " $* " == *" --create "* ]]; then
+    local sk="${STRIPE_SECRET_KEY_PROD:-}"
+    if [[ -z "$sk" ]]; then
+      printf '   Stripe LIVE secret key (sk_live_…): ' >&2
+      read -rs sk < /dev/tty || true; printf '\n' >&2
+    fi
+    [[ "$sk" == sk_live_* ]] || die "That is not a LIVE key. A test key would create a TEST endpoint and store a test whsec in prod: every real purchase would then fail signature verification."
+    echo "   This CREATES a live webhook endpoint in your Stripe account. Ctrl-C to stop."
+    local secret; secret="$(create_stripe_endpoint "$url" "$sk")" || die "Stripe refused the request (see above)."
+    [[ "$secret" == whsec_* ]] || die "Stripe returned no signing secret. Nothing was stored."
+    FORCE=1 put_secret STRIPE_WEBHOOK_SECRET_PROD "$secret"
+  else
+    echo "   (pass --create to have this script create it through the Stripe API)"
+    FORCE=1 ask_secret STRIPE_WEBHOOK_SECRET_PROD "Signing secret for THAT endpoint (whsec_…)" 1 '^whsec_'
+  fi
   echo
   note "Redeploy so the API picks it up:"
   echo "   git commit --allow-empty -m 'chore: redeploy prod with the live webhook secret'"
@@ -283,7 +338,7 @@ case "${1:-status}" in
   status)    cmd_status ;;
   deploy-sa) cmd_deploy_sa ;;
   secrets)   cmd_secrets ;;
-  webhook)   cmd_webhook ;;
+  webhook)   shift; cmd_webhook "$@" ;;
   vars)      shift; cmd_vars "${1:-}" ;;
-  *) die "Usage: prod-secrets.sh <status|deploy-sa|secrets|webhook|vars [API_URL]> [--force]" ;;
+  *) die "Usage: prod-secrets.sh <status|deploy-sa|secrets|webhook [--create]|vars [API_URL]> [--force]" ;;
 esac
