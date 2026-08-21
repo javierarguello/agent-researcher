@@ -274,6 +274,71 @@ Javier's account and Javier's call.
 
 ---
 
+## P-7 · Edit the catalog in sandbox, publish it to live from the admin — `open`
+
+**Asked for by Javier, 2026-08-21**, while creating the first LIVE packs by hand:
+a tab in the admin's Pricing screen showing the SANDBOX catalog, editable there and
+promotable to live with a button — and the same screen in the DEV admin able to edit
+but never to publish.
+
+**What blocks it today, and it is one line.** `apps/api/src/stripe.ts:16-20` builds a
+single client from `config.stripe.secretKey`. A deployment holds exactly one key:
+dev's is `sk_test_`, prod's is `sk_live_` (verified on the running services,
+2026-08-21). So the prod admin cannot *see* the sandbox catalog — not a UI decision,
+the API has nothing to ask with.
+
+**The key already exists.** It is `STRIPE_SECRET_KEY_DEV`; nothing has to be created
+in Stripe. What does not exist is its presence in prod — a GitHub secret only reaches
+the workflow that names it, and `deploy.yml` passes only `STRIPE_SECRET_KEY_PROD`.
+
+### Option A — a sandbox tab in the prod admin
+
+1. `deploy.yml` passes `STRIPE_SANDBOX_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY_DEV }}`
+   for prod; `deploy.sh` adds it to the API block **and to the `|`-delimiter guard**.
+2. `stripe()` becomes `stripe(mode)` with two cached clients. Nine call sites today:
+   `products.search` x2, `products.create`, `prices.create`, `products.update` x4,
+   `products.retrieve` (`stripe.ts:143-303`), plus `checkout.sessions.create` and
+   `webhooks.constructEvent` in `apps/api/src/index.ts`.
+3. **The mode is accepted ONLY on catalog endpoints.** Checkout and the webhook never
+   take it. This is the whole risk of the feature: a checkout created with the test
+   client is a buyer who pays and never gets credits, and the webhook verifying a
+   signature against the wrong account is the same failure from the other end. Pin it
+   with tests before the tab exists, not after.
+4. `POST /admin/plans/:planId/publish` upserts the live product by
+   `metadata.appId + planId` — the key `resolveStripePlan` already identifies packs
+   by. Prices are immutable in Stripe, so publishing a price change creates a Price
+   and repoints `default_price`, exactly as `stripe.ts:278` already does.
+5. It must carry the existing `expectedPriceUsd` guard: publishing IS a live price
+   change, and the caller has to state the figure it believes it is replacing.
+
+**The dev restriction falls out for free, and better than a permission.** The dev API
+holds no live key, so `publish` cannot work there even if someone calls the endpoint
+by hand. The UI hides the button when the API reports no live catalog configured —
+capability, not a flag a client could ignore.
+
+### Option B — export/import, no second key
+
+Dev exports the catalog as JSON, prod imports it through the same upsert and the same
+price guard. No live tab, no test credential in prod, most of the value.
+
+### What to weigh
+
+- Prod would store a test credential. The blast radius if it leaks is nil (test
+  data), but it is one more secret to rotate — and reusing the `_DEV` secret means a
+  dev-key rotation breaks prod's tab **silently**: the deploy still succeeds and the
+  symptom is an empty tab or a 401 from Stripe. Alias it and say so in the workflow
+  header.
+- **Publishing moves more than prices.** The credit floor is derived from the live
+  packs and every per-mode cost ceiling derives from the floor, so the button changes
+  what a job may SPEND. The Pricing screen already previews that; the publish flow
+  should show the preview for the post-publish state, not the current one.
+
+**Not needed to launch** (noted 2026-08-21, mid first release): packs are created
+directly in prod from the same form. This earns its place the first time editing
+four-language copy twice in two environments is the actual annoyance.
+
+---
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
