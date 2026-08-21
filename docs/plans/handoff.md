@@ -93,6 +93,12 @@ runtime SAs.
 Blocking, **in this order** — the order is the content, several steps cannot be
 brought forward:
 
+Two scripts do the mechanical half: `infra/prod-secrets.sh`
+(`status` | `deploy-sa` | `secrets` | `webhook` | `vars`) and `infra/seed-prod.sh`.
+Start with `bash infra/prod-secrets.sh status` — it lists what is missing and, until
+the service exists, predicts the prod API URL from dev's (the Cloud Run hash is per
+project+region).
+
 1. **The `_PROD` GitHub secrets.** `deploy.sh` REFUSES a prod deploy without
    `AUTH_JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and
    `POSTMARK_SERVER_TOKEN` — because `--set-env-vars` replaces the whole
@@ -120,9 +126,13 @@ brought forward:
    SPAs are compiled against the slugs `admin` / `fbizlab`. So:
    `ENV=prod npm run apps -- create --appId admin --role admin --admin-emails …` and
    the same for `fbizlab` with `--allowed-templates florida-business-for-sale`.
-   Then `emailFrom` and `webUrl` on `fbizlab` — **the CLI cannot write either**, so
-   `PATCH /admin/apps/fbizlab` with the admin apiKey. Without them registration
-   answers 500 and no buyer can verify an email.
+   Then `emailFrom` and `webUrl` on `fbizlab`; without them registration answers 500
+   and no buyer can verify an email. The CLI grew `--email-from` / `--web-url` for
+   this (2026-08-21): they were reachable only through `PATCH /admin/apps/:appId`,
+   which needs an admin SESSION — a Google id_token for an address already in
+   `adminEmails` — and the admin SPA renders neither field, so on an empty Firestore
+   it was a closed loop. `bash infra/seed-prod.sh --admin-emails … --confirm` does
+   all of it.
 7. **The Stripe catalog in the LIVE account.** Today it exists only in the sandbox —
    the API only ever holds its own `STRIPE_SECRET_KEY`, so dev writes test and prod
    writes live, and neither can reach the other. Deploy the admin SPA first

@@ -273,7 +273,21 @@ It prints both apiKeys once. Then, for real logins, configure each app:
 npm run apps -- update --appId fbizlab --google-client-id <id>.apps.googleusercontent.com
 # whitelist admin login emails on the admin app (doc id `admin`)
 npm run apps -- update --appId admin --admin-emails "you@co.com"
+# the From address and the origin email links are built from — REQUIRED, or
+# /auth/register answers 500 and nobody can verify an email
+npm run apps -- update --appId fbizlab \
+  --email-from "FloridaBizLab <no-reply@floridabizlabs.com>" \
+  --web-url https://agent-researcher-prod-fbizlab.web.app
 ```
+
+**A new environment has no `reset:dev`.** That script refuses any `ENV` but `dev`,
+so prod comes up with an empty Firestore and nothing seeds it:
+`bash infra/seed-prod.sh --admin-emails "you@co.com" --confirm` creates both app
+docs under their slug ids (never a UUID — `apps seed-admin` mints one, and the SPAs
+are compiled against `admin` / `fbizlab`), and updates instead of recreating when a
+doc already exists, because `createApp` writes with `.set()` and would mint a new
+apiKey over the old doc. Its companion `infra/prod-secrets.sh` creates the `_PROD`
+secrets and variables — `status` first, it prints what is missing.
 
 For billing, create Stripe Prices tagged `metadata { appId: "fbizlab", planId:
 "<planId>", credits: N }` (see [credits.md](credits.md)). Point Stripe's

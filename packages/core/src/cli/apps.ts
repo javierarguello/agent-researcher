@@ -7,17 +7,35 @@
  *   npm run apps -- update --appId <id> [--active true|false] [--rate 20|none]
  *
  * Requires ADC + Firestore access. The apiKey is printed only at creation time.
+ *
+ * `--email-from` and `--web-url` are here because during a first bring-up this is
+ * the ONLY surface that can write them. The API route that carries them
+ * (`PATCH /admin/apps/:appId`) needs an admin SESSION — a Google id_token for an
+ * address already listed in the app's `adminEmails` — and the admin SPA never
+ * renders either field. So on an empty prod Firestore the two of them were
+ * unreachable, and without them `POST /auth/register` answers 500: no buyer can
+ * verify an email, which is every buyer.
  */
+import { pathToFileURL } from 'node:url';
 import { createApp, listApps, updateApp, getApp, deleteApp } from '../apps/store.js';
 import { ensureDefaultSettings, getSettings, updateSettings } from '../settings/store.js';
 
+/** The argv `run` was called with — set on entry so `arg` reads the same list. */
+let argv: string[] = [];
+
 function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? String(process.argv[i + 1]) : undefined;
+  const i = argv.indexOf(`--${name}`);
+  return i >= 0 && argv[i + 1] ? String(argv[i + 1]) : undefined;
 }
 
-async function main() {
-  const cmd = process.argv[2];
+/**
+ * Exported so a test can drive the real commands against the in-memory Firestore.
+ * The flag→field wiring is the part that breaks silently: `updateApp` has accepted
+ * `emailFrom`/`webUrl` all along, and the CLI simply never passed them.
+ */
+export async function run(input: string[]): Promise<void> {
+  argv = input;
+  const cmd = argv[2];
 
   switch (cmd) {
     case 'seed-admin': {
@@ -50,6 +68,8 @@ async function main() {
         googleClientId: arg('google-client-id'),
         adminEmails: emails ? emails.split(',').map((e) => e.trim().toLowerCase()) : undefined,
         allowedTemplates: arg('allowed-templates')?.split(',').map((t) => t.trim()),
+        emailFrom: arg('email-from'),
+        webUrl: arg('web-url')?.replace(/\/$/, ''),
       });
       console.log(JSON.stringify(created, null, 2));
       console.log('\n>> SAVE THIS apiKey — it is not shown again.');
@@ -76,6 +96,8 @@ async function main() {
         googleClientId?: string;
         adminEmails?: string[];
         allowedTemplates?: string[];
+        emailFrom?: string;
+        webUrl?: string;
       } = {};
       const active = arg('active');
       if (active != null) patch.active = active === 'true';
@@ -89,6 +111,14 @@ async function main() {
       if (emails != null) patch.adminEmails = emails.split(',').map((e) => e.trim().toLowerCase());
       const tmpls = arg('allowed-templates');
       if (tmpls != null) patch.allowedTemplates = tmpls.split(',').map((t) => t.trim());
+      const from = arg('email-from');
+      if (from != null) patch.emailFrom = from;
+      // Trailing slash stripped here rather than trusted: the value is concatenated
+      // into `${webUrl}/verify?token=…` (apps/api/src/index.ts:481), and a double
+      // slash in a verification link is the kind of thing nobody tests until a
+      // buyer cannot sign in.
+      const web = arg('web-url');
+      if (web != null) patch.webUrl = web.replace(/\/$/, '');
       const updated = await updateApp(appId, patch);
       if (!updated) throw new Error(`Unknown app: ${appId}`);
       console.log(JSON.stringify({ ...updated, apiKey: `${updated.apiKey.slice(0, 8)}…` }, null, 2));
@@ -109,7 +139,7 @@ async function main() {
       break;
     }
     case 'settings': {
-      const sub = process.argv[3];
+      const sub = argv[3];
       if (sub === 'set') {
         const patch: { appRateLimitPerHour?: number | null; userRateLimitPerHour?: number | null } = {};
         const a = arg('app');
@@ -124,12 +154,18 @@ async function main() {
     }
     default:
       console.error('Usage: apps <seed-admin|create|list|update|get|delete|settings> [flags]');
+      console.error('  create/update flags: --appId --name --role --rate --google-client-id');
+      console.error('                       --admin-emails --allowed-templates --email-from --web-url');
       console.error('  settings [set --app N|none --user N|none]');
       process.exit(1);
   }
 }
 
-main().catch((err) => {
-  console.error(err.message ?? err);
-  process.exit(1);
-});
+// Only when this file IS the program. A test that imports it must not run a
+// command — and must not take the process down through the `catch` below.
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  run(process.argv).catch((err) => {
+    console.error(err.message ?? err);
+    process.exit(1);
+  });
+}
