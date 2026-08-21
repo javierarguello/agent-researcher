@@ -59,8 +59,33 @@ WORKER_IMAGE="${REPO}/worker:${ENV}"
 API_SA_EMAIL="${PREFIX}-api@${PROJECT_ID}.iam.gserviceaccount.com"
 WORKER_SA_EMAIL="${PREFIX}-worker@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# Env vars shared by API + worker (comma-delimited).
-COMMON_ENV="ENV=${ENV},GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},RESEARCH_BUCKET=${BUCKET},FIRESTORE_DATABASE=${DATABASE},RESEARCH_MAX_TURNS=${MAX_TURNS},BRAVE_API_KEY=${BRAVE_API_KEY},TAVILY_API_KEY=${TAVILY_API_KEY},SEARCH_COST_PER_CALL_USD=${SEARCH_COST_PER_CALL_USD},BRAVE_COST_PER_CALL_USD=${BRAVE_COST_PER_CALL_USD},POSTMARK_SERVER_TOKEN=${POSTMARK_SERVER_TOKEN},LLM_GATHER_MAX_OUTPUT_TOKENS=${LLM_GATHER_MAX_OUTPUT_TOKENS},LLM_GATHER_THINKING_BUDGET=${LLM_GATHER_THINKING_BUDGET},MAX_JOB_COST_USD=${MAX_JOB_COST_USD}"
+# Env vars shared by API + worker.
+#
+# DELIMITED WITH '|', NOT ',' — and the flag value carries the `^|^` prefix that
+# tells gcloud so. A comma-delimited list cannot express a value that CONTAINS a
+# comma, and one of ours does: CORS_ORIGINS is "origin,origin" the moment a
+# deployment serves more than one site. gcloud does not fail on the comma inside
+# the value, it splits there and then rejects the half with no '=' in it:
+#   ERROR: Bad syntax for dict arg: [https://…-admin.web.app]
+# Measured on 2026-08-21, the first prod release: the worker (whose block has no
+# CORS_ORIGINS) deployed, the API did not. Dev had never hit it because
+# CORS_ORIGINS_DEV is unset and falls back to '*'.
+ENV_SEP='|'
+COMMON_ENV="ENV=${ENV}|GCP_PROJECT_ID=${PROJECT_ID}|GCP_LOCATION=${REGION}|RESEARCH_BUCKET=${BUCKET}|FIRESTORE_DATABASE=${DATABASE}|RESEARCH_MAX_TURNS=${MAX_TURNS}|BRAVE_API_KEY=${BRAVE_API_KEY}|TAVILY_API_KEY=${TAVILY_API_KEY}|SEARCH_COST_PER_CALL_USD=${SEARCH_COST_PER_CALL_USD}|BRAVE_COST_PER_CALL_USD=${BRAVE_COST_PER_CALL_USD}|POSTMARK_SERVER_TOKEN=${POSTMARK_SERVER_TOKEN}|LLM_GATHER_MAX_OUTPUT_TOKENS=${LLM_GATHER_MAX_OUTPUT_TOKENS}|LLM_GATHER_THINKING_BUDGET=${LLM_GATHER_THINKING_BUDGET}|MAX_JOB_COST_USD=${MAX_JOB_COST_USD}"
+
+# The delimiter moved the problem, it did not remove it: a value containing '|'
+# would now split the same way. Nothing we pass today can (URLs, hex secrets, sk_
+# keys, decimals), so this is the guard that keeps that true — a loud failure
+# before the deploy beats a service that comes up with half a value.
+for _name in CORS_ORIGINS TAVILY_API_KEY BRAVE_API_KEY POSTMARK_SERVER_TOKEN \
+             STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET AUTH_JWT_SECRET TURNSTILE_SECRET \
+             SEARCH_COST_PER_CALL_USD BRAVE_COST_PER_CALL_USD MAX_JOB_COST_USD; do
+  if [[ "${!_name}" == *"${ENV_SEP}"* ]]; then
+    echo "!! ${_name} contains '${ENV_SEP}', which is the delimiter --set-env-vars is parsed with." >&2
+    echo "!! Change the delimiter in infra/deploy.sh (and this list) rather than the value." >&2
+    exit 1
+  fi
+done
 
 # `--set-env-vars` REPLACES the service environment: a name absent from COMMON_ENV
 # is deleted from the running service, not left alone. That makes a missing secret a
@@ -95,7 +120,7 @@ gcloud run deploy "${WORKER_SERVICE}" \
   --timeout 1800 \
   --min-instances 0 --max-instances "${JOB_MAX_CONCURRENCY}" \
   --memory 2Gi --cpu 1 \
-  --set-env-vars "${COMMON_ENV}"
+  --set-env-vars "^${ENV_SEP}^${COMMON_ENV}"
 
 WORKER_URL="$(gcloud run services describe "${WORKER_SERVICE}" --region "${REGION}" --format='value(status.url)')"
 echo ">> [${ENV}] Worker URL: ${WORKER_URL}"
@@ -116,7 +141,7 @@ gcloud run deploy "${API_SERVICE}" \
   --min-instances 0 --max-instances 4 \
   --memory 512Mi --cpu 1 \
   --allow-unauthenticated \
-  --set-env-vars "${COMMON_ENV},WORKER_SERVICE_NAME=${WORKER_SERVICE},WORKER_REGION=${REGION},WORKER_SERVICE_URL=${WORKER_URL},TASKS_QUEUE=${QUEUE},TASKS_REGION=${REGION},TASKS_INVOKER_SA=${API_SA_EMAIL},JOB_MAX_CONCURRENCY=${JOB_MAX_CONCURRENCY},STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY},STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET},AUTH_JWT_SECRET=${AUTH_JWT_SECRET},TURNSTILE_SECRET=${TURNSTILE_SECRET},CORS_ORIGINS=${CORS_ORIGINS},APP_ENV=production"
+  --set-env-vars "^${ENV_SEP}^${COMMON_ENV}|WORKER_SERVICE_NAME=${WORKER_SERVICE}|WORKER_REGION=${REGION}|WORKER_SERVICE_URL=${WORKER_URL}|TASKS_QUEUE=${QUEUE}|TASKS_REGION=${REGION}|TASKS_INVOKER_SA=${API_SA_EMAIL}|JOB_MAX_CONCURRENCY=${JOB_MAX_CONCURRENCY}|STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}|STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}|AUTH_JWT_SECRET=${AUTH_JWT_SECRET}|TURNSTILE_SECRET=${TURNSTILE_SECRET}|CORS_ORIGINS=${CORS_ORIGINS}|APP_ENV=production"
 
 echo ">> [${ENV}] Done."
 gcloud run services describe "${API_SERVICE}" --region "${REGION}" --format='value(status.url)'

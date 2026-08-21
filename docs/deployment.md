@@ -142,6 +142,13 @@ Every value has a default (import never throws). Grouped as in `config.ts`.
 |---|---|---|
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins for web frontends (`*` in dev). |
 
+Its comma is why `deploy.sh` builds `--set-env-vars` with `^|^` and a `|`
+delimiter. gcloud's default parse splits the whole flag on commas, so a value
+containing one is torn in half and the piece without an `=` is rejected —
+`Bad syntax for dict arg: [https://…-admin.web.app]`. It surfaced on the first
+prod deploy (2026-08-21) and only there: dev leaves `CORS_ORIGINS_DEV` unset and
+falls back to `*`. The script now refuses to deploy if any value contains a `|`.
+
 ### LLM
 | Var | Default | Purpose |
 |---|---|---|
