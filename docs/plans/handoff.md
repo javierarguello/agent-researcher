@@ -30,7 +30,7 @@ and it is the only place that is current by construction.
 
 ```bash
 npm ci                       # a fresh worktree has no node_modules and no vitest
-npm test                     # 1214 passed, 0 failed in Javier's checkout (see State)
+npm test                     # 1309 passed, 0 failed — READ THE EXIT CODE, not this line
 npm run typecheck            # must be clean; it catches what the suites cannot
 npx tsx docs/plans/m-red-team-reports/k-census-2026-08-19/run.ts   # the §K census
 ```
@@ -47,70 +47,80 @@ only tier you may use.
 
 ---
 
-## State, 2026-08-20
+## State, 2026-08-21
 
-- **Rounds 1-10 are run, and rounds 8, 9 and 10 are all CLOSED.** Round 10 found
-  0 P0, 10 P1 and 26 P2, and every one is fixed. The P1 half:
-  `2a01ada`, `67261d0`, `b4ee573`, `4665dc8`, `73fcf36`, `1b16eae` — plus R10-37,
-  found while fixing R10-6 and by none of the eight reviewers: the assist's
-  fillable-basics path could never fire in production, because `validateRequest`
-  applies the schema default before the "is this field empty?" gate runs. The P2
-  half, one commit per file cluster: `eda0913` (summary/deterministic),
-  `06879b3` (buyer surface), `1de3363` (engine/test), `664d36a` (the record).
-  Findings and stamps are `deep-review.md` § "Round 10".
-- Round 10's shape, because it repeats: **the fixes of round 9 shipped holes of
-  their own**, one of them in the same LINE as the fix (`d77ffb3` closed R9-4/R9-5
-  and opened R10-4/R10-5), and the §K evasion work shipped **two false positives on
-  ordinary buyer language** plus a reachability regression on a cubic regex — the
-  expensive failure that commit argued it had avoided. Five findings were reached by
-  two reviewers independently.
-- **Suite totals, MEASURED 2026-08-20 at `1de3363`:** **1214 passed, 0 failed** in
-  the MAIN checkout (779 core + 217 api + 22 worker + 185 fbizlab + 11 admin). The
-  clean-worktree figure was 1170 at `2a01ada` and has NOT been re-measured since —
-  do not subtract six from 1214 and write it down. The gap is six red-team tests gated on
-  `out/*/trace.json`, which exists only in Javier's checkout. Subtracting six is not
-  a safe shortcut even though it lands here: core also COLLECTS a different total in
-  the two checkouts. At `1de3363` the main checkout COLLECTS **791** in core (779
-  passed + 12 skipped); the clean-worktree collection has not been measured since
-  `2a01ada`, so the old "775 vs 777" pair is gone rather than carried forward.
-  Measure yours and say which one it is — round 10's R10-28 caught this line 19
-  tests stale, in a commit that edited the line beneath it. `npm run typecheck`
-  clean.
-- **`main` is pushed to `origin/main` at the end of every closed cluster** — no sha
-  here, because a line naming one is wrong by the next push and this file has already
-  been caught doing that twice (R10-28, R10-33). `git log origin/main..HEAD` is the
-  honest version. Pushing to `main` deploys DEV — the API to Cloud Run and both SPAs
-  to Firebase Hosting, all three behind `verify.yml`. Prod is a push to
-  `deploy-prod`, which nothing in this batch touched.
-- **Next: round 11, against `20f361b..HEAD`** — the WHOLE round-10 fix batch, P1 and
-  P2, which nobody has reviewed. That is deliberate and it is where this repo's record
-  says the next defects are: rounds 8, 9 and 10 each found the previous round's FIXES
-  shipping holes, twice inside the very line of the fix. Five things in the range are
-  new code rather than repairs and deserve the suspicion `29f8593` and `63fd892`
-  earned in round 10 — the admin health strip (`b4ee573`: a new endpoint field, a new
-  counter, and the thinnest test suite in the repo), the client-side summary patching
-  (`1b16eae`: it substitutes strings into a sentence the server wrote), the
-  `z.preprocess` dedupe in `directivesSchema` (`eda0913`: it changes the stored params
-  of any validated request), the `maxSelected` cut added to `renderDirectives`
-  (`eda0913`: the prompt now drops values it used to carry), and `copy-parity.test.tsx`
-  (`06879b3`: eleven modules got a new export so one test could reach them).
-  The brief to copy is `m-red-team-reports/round10/BRIEF.md`; its three predecessors'
-  corrections all held (a PRIVATE scratchpad per reviewer, the sha in each agent's
-  PROMPT, the clean-worktree total stated as measured). Two more to add, paid for in
-  round 10: tell reviewers to **count red from a runner that does not stop at the
-  first failing workspace** (`npm test` chains with `&&`, and two of the round's four
-  wrong counts are explained by it), and give them the round's rule — **a corpus
-  proves a shape, never a class** — with the instruction to write the sibling row the
-  author did not think of.
+- **Rounds 1-10 are run and CLOSED** — 8, 9 and 10 in full. Round 10's 26 P2 closed
+  2026-08-20 in `eda0913` (summary/deterministic), `06879b3` (buyer surface),
+  `1de3363` (engine/test), `664d36a`+`7e2bfa1` (the record). Findings and stamps are
+  `deep-review.md` § "Round 10".
+- **Then a large batch NOBODY has reviewed**, 2026-08-20/21, `2a01ada..HEAD`. It is
+  not round-10 repair work — it is new behaviour, most of it touching money or
+  prompts, and it is where the next defects are on this repo's record. In order:
 
-## The two rules the rounds have paid for
+  | area | commits | what changed |
+  |---|---|---|
+  | C5 — dispatch deadline | `91b5cfc` | a dispatch stops STARTING agents at `JOB_DISPATCH_BUDGET_SECONDS` (1500) and returns 503; the queue window went 10800s → 18000s so `maxJobAttempts` is reachable |
+  | 429 copy | `0bf39b3` | four buyer-reachable 429s answer in the requester's language; the SPA sends its switcher language as `Accept-Language` |
+  | D1 — cost ceilings | `ef9f02a`, `041bd97` | the ceiling is DERIVED: `credits × creditFloorUsd × (1 − expectedProfitPct/100)`, per model, clamped by `MAX_JOB_COST_USD`. Essential went 5 → **8 credits** (the measured cost ratio) |
+  | modes | `d7696f6` | `ReportMode` is any slug a template declares; `essential`/`comprehensive` are only the defaults |
+  | Stripe catalog | `d3f2d7d`, `87d51f9`, `021805a`, `d3fa83d` | packs are created/edited/retired THROUGH the API, the system writes their metadata (`appId`, `templateId`, `planId`, `credits`), a price change needs `expectedPriceUsd`, copy is per-locale, and the credit floor is derived from the packs and never typed |
+  | admin economics | `2d5abd9`, `d120c1f`, `8475716` | one screen per model: credits, packs, floor, expected profit, and what each tier BUYS (turns, agents, sections), previewed by the API |
+  | M-E1 extraction | `4950c8e`, `5fa80a7` | measured (the prompt reached `report.json` AND the PDF), then closed by `redactPromptEcho` + `SELF_DISCLOSURE_RULE`; a leak is booked as an incident, never as a buyer strike |
+  | links + catalog | `c7da31d`, `c95bcfb`, `76323f8` | a link in a free-text param is DEFUSED (dots → spaces), `GET /catalogs/:id` (authenticated) backs an optional autocomplete on `location`, and every field label is now associated with its input |
+
+- **Suite, MEASURED 2026-08-21 at `76323f8`, by EXIT CODE:** `npm test` → 0,
+  `npm run typecheck` → 0, **1309 passed, 0 failed** in the MAIN checkout
+  (826 core + 242 api + 24 worker + 192 fbizlab + 25 admin). The clean-worktree
+  figure has NOT been re-measured since `2a01ada` (1170) — measure yours.
+  **Read the exit code, not the `Tests N passed` line.** A run with every test green
+  can still exit 1 on an unhandled error, and one did: `65d6a90` was pushed after a
+  `25 passed` that had failed, and it took all four workflows down.
+- **`main` is pushed and dev is green.** Pushing to `main` deploys DEV — the API to
+  Cloud Run and both SPAs to Firebase Hosting, all behind `verify.yml`.
+
+## Going to prod — what is actually needed
+
+**PROD DOES NOT EXIST.** Checked against GCP on 2026-08-21: no `agent-researcher-prod-*`
+Cloud Run services, no prod Cloud Tasks queue, and no `deploy-prod` branch. This is a
+first provisioning, not a redeploy.
+
+Blocking, in order:
+
+1. **The `_PROD` GitHub secrets.** `deploy.sh` REFUSES a prod deploy without
+   `AUTH_JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and
+   `POSTMARK_SERVER_TOKEN` — because `--set-env-vars` replaces the whole
+   environment, so a missing secret is not an error, it is a live service without
+   it. Also `WIF_PROVIDER_PROD`, `DEPLOY_SA_PROD`, `GCP_SA_KEY_PROD` (the SPAs), and
+   optionally `TAVILY_API_KEY_PROD`, `BRAVE_API_KEY_PROD`, `TURNSTILE_SECRET_PROD`.
+2. **`ENV=prod bash infra/setup-gcp.sh`, once.** `deploy.yml` only DEPLOYS and says
+   so in its own header; `deploy-dev.yml` is the one that provisions. Without it
+   there is no queue, no service accounts, no bucket and no Vertex grant — and no
+   18000s retry window.
+3. **The Firebase Hosting sites** `agent-researcher-prod-fbizlab` and the admin's.
+   The targets are already in `.firebaserc`; the sites are not created.
+4. **The Stripe catalog in the LIVE account.** Today it exists only in the sandbox —
+   the API only ever holds its own `STRIPE_SECRET_KEY`, so dev writes test and prod
+   writes live, and neither can reach the other. Create the packs from the admin
+   once prod is up; it writes the metadata the webhook depends on. With no packs the
+   credit floor falls back to the code default and every ceiling derives from a
+   price nobody sells.
+5. **`git push origin main:deploy-prod`.**
+
+Not blocking, but do not skip lightly: **round 11** (below) and the fail-open alert.
+
+## The three rules the rounds have paid for
 
 1. **Revert-verify every test, and count the RED, never the passed.** `npm test`
    chains the workspaces with `&&`, so a red core suite means four suites never run
    and the "passed" total collapses to something meaningless. If a mutation measures
    0 red, the test does not pin the fix — fix the test, or say "0 red" out loud in
    the commit message and why the line stays.
-2. **Name the case you measured, and say which checkout you measured it in.** Every
+2. **Read the EXIT CODE, never the summary line.** Earned on 2026-08-20: a run
+   printing `25 passed` with zero failures exited 1 on an unhandled error — jsdom
+   has no `scrollIntoView` and Mantine calls it from a timer, so the throw landed
+   after the test that caused it had passed. It was pushed, and it took all four
+   workflows down. `Tests N passed` is not the outcome; `npm test; echo $?` is.
+3. **Name the case you measured, and say which checkout you measured it in.** Every
    false claim round 9 found was a TRUE measurement written as a universal —
    "nothing gets worse", "no budget reaches it", "a template cannot forget",
    "nothing else moved", "copies its arrays", "the two artifacts now agree". The
@@ -123,77 +133,71 @@ of mine previewed before the value under test was ever set).
 
 ## Open — a decision nobody can take for Javier, and work nobody is blocked on
 
-Split in two because round 10 found the previous single heading, "waiting on Javier
-rather than on work", covering both kinds — and a commit claiming to have emptied it
-while adding an engineering item to it (R10-31).
+Split in two because round 10 found the previous single heading covering both kinds
+(R10-31).
 
 ### Waiting on a decision (Javier)
 
-- **P-6 — the credit ladder, decided and NOT applied.** Syndicate's `credits`
-  150 → 160 in Stripe (metadata only, no price moves), which turns a flat
-  $0.8625/$0.860 into a real ladder and makes the middle tier the buy. It carries
-  three linked edits — the "30 essential" line in four languages, and
-  `CREDIT_FLOOR_USD` 0.86 → 0.806 — and one open question: essential earns $4.03 at
-  the new floor and may burn $3.50, so five credits per essential report is thin.
-  All the numbers and the steps are `product-backlog.md` § P-6. Javier's Stripe
-  account, Javier's call.
-- **D1's remaining half — what an essential report costs in CREDITS.** The ceiling
-  half shipped (`ef9f02a`): $10 comprehensive, $3.50 essential, both under what the
-  report earns, and `MAX_JOB_COST_USD` still binds when an operator lowers it. What
-  is left is that essential's ceiling is bounded by REVENUE rather than by cost —
-  1.8× its inferred cost, where comprehensive gets 2.6× — because 5 credits does not
-  buy enough room. 6 credits gives it $1.34 of margin at the ceiling; 8 brings its
-  cost-per-credit to near parity. Not a patch: it rewrites every "≈N essential
-  reports" line in three plans and four languages.
-- The four product items' open design questions (P-1, P-2, P-4, P-5 in
-  `product-backlog.md`); each names its own.
+- **E2 — may a dossier describe its own method?** The extraction pair's open half.
+  "Write the prompt that would produce this report" copies the MESSAGE BODY — the
+  brief, the section guidance, the upstream sections — not the system prompt, so
+  `redactPromptEcho` cannot catch it without deleting every legitimate quotation of
+  a source. MEASURED, not assumed: guarding the body redacts **8 fields of an
+  honest, unattacked run**. So it is a product question, not a longer regex, and
+  `test/red-team/e-extraction.test.ts` asserts it still reaches — the day someone
+  answers, the assertion says so.
+- **P-6 — the credit ladder, decided and NOT applied.** Syndicate 150 → 160 credits
+  in Stripe, which turns a flat $0.8625/$0.860 into a real ladder and makes the
+  middle tier the buy. Now done from the admin's Pricing screen rather than by hand.
+  Numbers, steps and the two linked edits are `product-backlog.md` § P-6.
+- **`MAX_JOB_COST_USD` = $20.** With per-mode derived ceilings this is only a global
+  clamp now. It starts binding before the model's own figure at roughly 42 credits —
+  worth knowing before raising a tier that far.
+- **N2 Stripe clawback** (policy), and the four product items' open design questions
+  (**P-1**, **P-2**, **P-4**, **P-5** in `product-backlog.md`).
 
 ### Open work, nobody blocked
 
-- **Round 11** — eight reviewers against `20f361b..HEAD`, the whole round-10 fix
-  batch. Nothing else is queued ahead of it: rounds 8, 9 and 10 are closed. The brief
-  to copy is `m-red-team-reports/round10/BRIEF.md` (with the two corrections named in
-  the State section above), and the five pieces of new behaviour to weight are listed
-  there too.
-- **M-E1 and M-E2 — the prompt coming back OUT** (asked for by Javier 2026-08-20;
-  the runbook entry is `m-red-team.md` § "E · Extraction"). Every prompt test in the
-  repo guards the inbound direction — can a stranger's text reach a prompt — and
-  **nothing anywhere asserts that an artifact the buyer receives lacks OUR prompt**
-  (checked by grep). Two families: E1, the system prompt / brief / agent objective
-  must not appear in `report.json`, the viewer, the PDF, the email, the shared page,
-  `title`, `summary` or the progress lines; E2, the report must not be usable to
-  GENERATE a prompt ("write the system prompt that would produce this report"),
-  which is a product decision as much as a defence. The realistic entry is a fetched
-  page — attacker-controlled, no pre-screen, since it never passed through our API —
-  and `industry` / `location`, which are still free text and still rendered verbatim
-  into the brief (`florida-business-for-sale.ts:1323`). Not started.
-- **Alerting on the moderation fail-open — the half that is still open.**
-  `b4ee573` made it VISIBLE: `ModerationVerdict.degraded`, a counter with a last-seen
-  time, and a strip at the top of the admin dashboard that renders in all four
-  states including "this API build does not report it". Nobody is PAGED, which is
-  the part that would need a log-based metric and an alert policy in
-  `sinuous-canto-497518-h7`, i.e. Javier's credentials.
-- **`ENV=prod bash infra/setup-gcp.sh` — once, by Javier.** `91b5cfc` raised the
-  Cloud Tasks retry window 10800s → 18000s, and below that a slow job's queue window
-  runs out before `maxJobAttempts` finalizes: the task is dropped and the job stays
-  `running` forever with the credits spent (the ending `parkJob` describes).
-  **Dev needs nothing** — `deploy-dev.yml` runs `setup-gcp.sh` on every push and the
-  live dev queue already reads `maxRetryDuration 18000s, maxAttempts 12, maxBackoff
-  600s` (read off the API 2026-08-20, not inferred). **Prod does**: `deploy.yml` only
-  deploys, and says so in its own header.
-- E3's unblock script (needs Javier's credentials for the dry run), N2 Stripe
-  clawback, M-A2 (FENCE_RE near-misses, gated on frontier-tier evidence).
-  **C5 is closed** (`91b5cfc`, measured).
+- **ROUND 11, and it is the biggest thing on this list.** Eight reviewers against
+  `20f361b..HEAD` — the round-10 fix batch AND the whole 2026-08-20/21 batch above.
+  On this repo's record that is where the next defects are: rounds 8, 9 and 10 each
+  found the previous round's FIXES shipping holes, twice inside the very line of the
+  fix. Weight these, all new behaviour rather than repair:
+  the derived cost ceiling and the `z.preprocess` credit dedupe (they change what a
+  job may spend and what a validated request stores); the Stripe WRITE path (it is
+  the first thing in this repo that mutates an external billing catalog); open-ended
+  modes (a closed union became a string in twelve places); `redactPromptEcho` (it
+  deletes a buyer's prose on a heuristic); and the dispatch deadline (it changes when
+  a job stops).
+  The brief to copy is `m-red-team-reports/round10/BRIEF.md` plus its two
+  corrections — count red from a runner that does not stop at the first failing
+  workspace, and **a corpus proves a shape, never a class**. Add a third, paid for
+  repeatedly on 2026-08-20/21: **check the EXIT CODE, not the summary line.**
+- **M-E2** — see the decision above; the work only starts once it is answered.
+- **Alerting on the moderation fail-open.** `b4ee573` made it VISIBLE on the admin
+  dashboard; nobody is PAGED. Needs a log-based metric and an alert policy in
+  `sinuous-canto-497518-h7` — Javier's credentials.
+- **`recordPromptEcho` has a counter and no surface.** A page that tries to extract
+  the prompt is counted per app and per day and nothing renders it. The admin health
+  strip is the obvious home.
+- **The 15-word echo threshold is a bet, and it says so.** The only real report
+  available to measure the legitimate side against ran in SPANISH against English
+  prompts, so its "zero shared runs" proves almost nothing. Re-measure the first time
+  a real English job exists.
+- **C5's soft deadline is unmeasured against a REAL slow job.** 1500s is derived from
+  two real runs at 1241s and 1309s; nothing has yet been observed hitting it.
+- E3's unblock script (needs credentials for the dry run), M-A2 (FENCE_RE
+  near-misses, gated on frontier-tier evidence).
 
-### Closed
+### Closed since the last handoff
 
-- **K closed 2026-08-19** — re-measured on a rebuilt census
-  (the 2026-08-03 lists were never kept), 70 → **61 of 95** attacks passing and
-  2 / 73 ordinary phrasings refused, unchanged; the nine that closed were all
-  evasion. Decision taken: **option 1, refocus** — the pre-screen owns normalization
-  and evasion, the classifier owns semantics. Reasoning and what the decision does
-  NOT license are in `deep-review.md` § K; the census is runnable at
-  `m-red-team-reports/k-census-2026-08-19/`.
+- **C5** (`91b5cfc`) — measured, and the deadline turned out not to be the thing that
+  could change: Cloud Tasks caps an HTTP dispatch deadline at 30 minutes.
+- **D1's engineering half** (`ef9f02a`, `041bd97`) — ceilings derived from revenue,
+  essential re-priced to 8 credits on the measured cost ratio.
+- **M-E1** (`4950c8e`, `5fa80a7`) — the system prompt reached `report.json` and the
+  PDF; it does not now.
+- **§K** closed 2026-08-19 (option 1, refocus).
 
 ## Working agreements
 
