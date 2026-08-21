@@ -1,6 +1,6 @@
 # Handoff — the entry point
 
-Last updated 2026-08-20. For whoever picks this up without the conversation that
+Last updated 2026-08-21. For whoever picks this up without the conversation that
 produced it. (No sha here on purpose: the previous one named `ec66323`, a commit
 that never touched this file, two edits before the one that left it — round 10,
 R10-33. `git log -1 -- docs/plans/handoff.md` is the honest version of that line.)
@@ -80,9 +80,20 @@ only tier you may use.
 
 ## Going to prod — what is actually needed
 
-**PROD DOES NOT EXIST.** Checked against GCP on 2026-08-21: no `agent-researcher-prod-*`
-Cloud Run services, no prod Cloud Tasks queue, and no `deploy-prod` branch. This is a
-first provisioning, not a redeploy.
+**PROD EXISTS AS OF 2026-08-21, AND IT IS NOT SELLING YET.** The backend is up; the
+two things a buyer touches are not. Measured against GCP, not assumed:
+
+| Up | Not yet |
+|---|---|
+| API `https://agent-researcher-prod-api-b74fjmzlha-uc.a.run.app` — `/health` 200, CORS admits only the two Hosting origins | the prod Firestore is **empty**: no `admin` app, no `fbizlab` app (step 6) |
+| worker, queue (18000s window), bucket, Firestore `agent-researcher-prod`, 9 indexes READY, both runtime SAs | the two Google OAuth clients, so **nobody can log in** (step 7) |
+| every `_PROD` secret except the optional `BRAVE_API_KEY_PROD`; all eight repo variables | the Stripe LIVE catalog — no packs, so no checkout and every ceiling derives from the code default (step 8) |
+| both Hosting sites created; `deploy-prod` branch exists and deploys green | neither SPA is deployed (steps 8-9) |
+
+Two things nobody has verified: whether `STRIPE_WEBHOOK_SECRET_PROD` holds the real
+signing secret or the placeholder (GitHub never returns a secret's value — list the
+live endpoints to find out), and whether the Postmark sender for the address that
+will land in `emailFrom` is verified. Both fail at the first real buyer, not at deploy.
 
 One GCP project, one owner account, one Artifact Registry repo (images tagged
 `:dev` / `:prod`). Everything else is named `agent-researcher-prod-*` by
@@ -91,7 +102,9 @@ the permissions, which are the same project-level grants to a second pair of
 runtime SAs.
 
 Blocking, **in this order** — the order is the content, several steps cannot be
-brought forward:
+brought forward. Steps 1-5 are DONE (2026-08-21); they stay written down because a
+second environment repeats them and because two of them only look obvious in
+hindsight:
 
 Two scripts do the mechanical half: `infra/prod-secrets.sh`
 (`status` | `deploy-sa` | `secrets` | `webhook` | `vars`) and `infra/seed-prod.sh`.
@@ -115,7 +128,17 @@ project+region).
    The targets are already in `.firebaserc`; the sites are not created.
 4. **`git push origin main:deploy-prod`**, then read the API URL off Cloud Run. This
    is also what unblocks the two chicken-and-egg items below, both of which need a
-   URL that does not exist until the service does.
+   URL that does not exist until the service does. The URL is PREDICTABLE, though —
+   the Cloud Run hash is per project+region, so prod's is dev's with the service
+   name swapped, and it came out exactly as predicted.
+   The first attempt FAILED here, and it is worth knowing why: `deploy.sh` built one
+   comma-delimited `--set-env-vars`, and `CORS_ORIGINS` with two origins contains a
+   comma, so gcloud split the value and rejected the half without an `=`. The worker
+   deployed and the API did not — half an environment, the public half missing. Dev
+   never hit it because `CORS_ORIGINS_DEV` is unset and falls back to `*`. Fixed in
+   `46c5c81` (custom delimiter `^|^`, plus a guard that refuses a value containing
+   one). Nothing in the suite executes `deploy.sh`, so this one is pinned by a guard,
+   not by a test.
 5. **The Stripe LIVE webhook**: endpoint `POST <api>/credits/webhook` for
    `checkout.session.completed`, `.async_payment_succeeded`,
    `.async_payment_failed`, `product.*`, `price.*`; then the real
