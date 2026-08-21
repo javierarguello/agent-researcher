@@ -121,6 +121,8 @@ import {
   resolveModeCeiling,
   creditFloorFrom,
   modesOf,
+  getCatalog,
+  listCatalogs,
   modeShapes,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
@@ -1084,6 +1086,14 @@ app.post(
     let validated;
     try {
       validated = validateRequest(req.body);
+      // Silent for the buyer — their meaning survived the dots — and never silent
+      // in the record: a link that got as far as a validated request is the one
+      // channel that could have handed a page straight to an agent.
+      if (validated.defusedLinks?.length) {
+        logEvent({ jobId: '-', appId: req.auth!.appId, userId: req.auth!.email }, 'WARNING', 'request.links_defused', {
+          params: validated.defusedLinks, template: validated.template,
+        });
+      }
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message });
     }
@@ -1389,6 +1399,14 @@ app.post(
     let validated;
     try {
       validated = validateRequest(req.body);
+      // Silent for the buyer — their meaning survived the dots — and never silent
+      // in the record: a link that got as far as a validated request is the one
+      // channel that could have handed a page straight to an agent.
+      if (validated.defusedLinks?.length) {
+        logEvent({ jobId: '-', appId: req.auth!.appId, userId: req.auth!.email }, 'WARNING', 'request.links_defused', {
+          params: validated.defusedLinks, template: validated.template,
+        });
+      }
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message });
     }
@@ -2752,6 +2770,46 @@ app.post(
     const token = await signReadToken({ email: job.userId, appId: job.appId, jobId });
     logEvent({ jobId, appId: job.appId, userId: job.userId }, 'INFO', 'job.read_token', { by: req.auth!.email });
     return { token, appId: job.appId, jobId, expiresInSeconds: 15 * 60 };
+  },
+);
+
+/**
+ * Shared value lists a client may offer for a param — see `paramsUi.catalog`.
+ *
+ * AUTHENTICATED, and not because the contents are secret: Florida's counties are a
+ * matter of public record. It is that an unauthenticated endpoint is a surface with
+ * its own rate limit, its own abuse story and its own place in every future review,
+ * bought for a list only a logged-in buyer's form ever draws. `jwtAuth` already
+ * guards everything that is not explicitly public, so this is the default rather
+ * than a decision — worth stating because the temptation with reference data is to
+ * open it.
+ *
+ * Two routes on purpose: a client picking a catalog does not need 124 rows to do it.
+ */
+app.get(
+  '/catalogs',
+  { schema: { summary: 'List the shared value catalogs', tags: ['templates'], security: sec } },
+  async () => ({ catalogs: listCatalogs() }),
+);
+
+app.get(
+  '/catalogs/:catalogId',
+  {
+    schema: {
+      summary: 'One catalog’s values, for a param that points at it',
+      tags: ['templates'],
+      security: sec,
+      params: { type: 'object', required: ['catalogId'], properties: { catalogId: { type: 'string', maxLength: 128 } } },
+    },
+  },
+  async (req, reply) => {
+    const { catalogId } = req.params as { catalogId: string };
+    const catalog = getCatalog(catalogId);
+    if (!catalog) return reply.code(404).send({ error: `Unknown catalog: ${catalogId}` });
+    // Immutable in practice — the counties last changed in 1925 — so let a client
+    // hold it. The manifest cache TTL is the shorter of the two anyway.
+    reply.header('Cache-Control', `private, max-age=${PUBLIC_BROWSER_MAX_AGE}`);
+    return catalog;
   },
 );
 

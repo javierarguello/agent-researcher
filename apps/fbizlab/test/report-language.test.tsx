@@ -29,6 +29,9 @@ vi.mock('../src/api/hooks', async (orig) => ({
     seen.langs.push(lang ?? null);
     return { data: { steps: [], modes: [], sections: [] } };
   },
+  // A field with a `catalog` hint fetches its list; a mock without this makes
+  // every form in the file throw on an undefined hook.
+  useCatalog: () => ({ data: undefined, isLoading: false }),
 }));
 vi.mock('../src/components/ReportViewer', () => ({ ReportViewer: () => null }));
 vi.mock('../src/components/DownloadPdf', () => ({ DownloadPdf: () => null }));

@@ -63,6 +63,9 @@ vi.mock('../src/api/hooks', () => ({
   useBalance: () => ({ data: { balance: 40 } }),
   usePlans: () => ({ data: { plans: [{ planId: 'p1', credits: 10, priceUsd: 20 }] } }),
   useTemplates: () => ({ data: { templates: [] } }),
+  // A field with a `catalog` hint fetches its list; a mock without this makes
+  // every form in the file throw on an undefined hook.
+  useCatalog: () => ({ data: undefined, isLoading: false }),
 }));
 
 import { ApiError } from '../src/api/client';

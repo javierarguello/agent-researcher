@@ -1117,7 +1117,10 @@ export const floridaBusinessForSale: ResearchTemplate<FloridaBusinessParams> = {
           'Pest control', 'Medical practices', 'Franchises',
         ],
       },
-      location: { label: 'Location', help: 'Geographic focus within Florida.', placeholder: 'e.g. Miami-Dade County, FL' },
+      // `catalog`, not `suggestions`: 124 counties and cities are too many to inline
+      // per template and per language, and the next Florida model wants the same
+      // list. Still free text — the autocomplete is there to save typing.
+      location: { label: 'Location', help: 'Geographic focus within Florida. Pick one or describe your own area.', placeholder: 'e.g. Miami-Dade County, FL', catalog: 'florida-locations' },
       mode: { label: 'Report tier', help: 'Essential = ~half the cost, core sections. Comprehensive = full long-form report.' },
       language: { label: 'Report language', help: 'Language the final report is written in.', optionLabels: LANGUAGE_LABELS },
       askingPriceMin: { label: 'Asking price (min)', help: 'Minimum asking price (USD). Leave blank for no floor.' },

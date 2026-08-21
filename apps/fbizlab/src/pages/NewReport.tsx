@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
 import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
 import { captchaConfigured } from '../auth/captcha';
-import { useBalance, useCreateJob, useMyStats, usePreflight, useTemplates, type PreflightResult } from '../api/hooks';
+import { useBalance, useCatalog, useCreateJob, useMyStats, usePreflight, useTemplates, type PreflightResult } from '../api/hooks';
 import { ApiError, DRAFT_KEY, clearDraftId, draftId } from '../api/client';
 import type { DirectiveFieldInfo, ParamsUi } from '../api/types';
 
@@ -448,6 +448,17 @@ export function NewReport() {
   // localized. Nothing about them is declared here on purpose: a new directive
   // field (or a new language for an existing one) is a template change, and this
   // form picks it up without a deploy of its own.
+  /**
+   * The catalog this form needs, if any.
+   *
+   * ONE per form, and the first field that declares one wins — a hook cannot be
+   * called inside the field loop, and no shipped model has two. When one does, this
+   * is the line that has to become a map, and it will be obvious because the second
+   * field will quietly have no autocomplete.
+   */
+  const catalogKey = Object.keys(ui?.fields ?? {}).find((k) => ui?.fields?.[k]?.catalog);
+  const fieldCatalog = useCatalog(catalogKey ? ui!.fields![catalogKey]!.catalog : undefined);
+
   const directives = model?.directives ?? [];
   const dirKey = model?.directivesKey ?? 'directives';
   const dirVals = (params[dirKey] as Record<string, unknown>) ?? {};
@@ -646,6 +657,9 @@ export function NewReport() {
     const prop = props[key];
     const val = params[key];
     const sugg = ui?.fields?.[key]?.suggestions ?? [];
+    // Only the field that declares one pays for it: `useCatalog` is disabled
+    // without an id, so a model with no catalogs makes no request at all.
+    const catalogItems = key === catalogKey ? (fieldCatalog.data?.items ?? []) : [];
     const isArray = prop?.type === 'array';
     return (
       <div className="field" key={key}>
@@ -654,13 +668,27 @@ export function NewReport() {
           <Tags value={(val as string[]) ?? []} onChange={(v) => set(key, v)} suggestions={sugg} placeholder={t.add} />
         ) : (
           <>
+            {/* A catalog turns the field into an autocomplete and NOTHING else: the
+                param stays free text, because a buyer who wants "the I-4 corridor"
+                or "Broward, north of Sunrise" is describing something real that no
+                list contains. `list=` is the browser's own datalist — it filters as
+                you type, it never blocks a value that is not in it, and it needs no
+                dropdown of our own to get keyboard and mobile behaviour right. */}
             <input
               className="input"
               maxLength={prop?.maxLength ?? 200}
               placeholder={ph(key)}
               value={(val as string) ?? ''}
+              {...(catalogItems.length ? { list: `nr-cat-${key}` } : {})}
               onChange={(e) => set(key, e.target.value)}
             />
+            {catalogItems.length > 0 && (
+              <datalist id={`nr-cat-${key}`}>
+                {catalogItems.map((it) => (
+                  <option key={it.value} value={it.value} label={it.group} />
+                ))}
+              </datalist>
+            )}
             {sugg.length > 0 && (
               <div className="chips">
                 {sugg.map((sg) => (

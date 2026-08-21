@@ -34,6 +34,12 @@ const { hooks, state } = vi.hoisted(() => ({
   },
 }));
 
+/** What `GET /catalogs/places` would answer — values this client has never seen. */
+const CATALOG = [
+  { value: 'Someplace County, XX', group: 'Counties' },
+  { value: 'Otherplace, XX', group: 'Cities' },
+];
+
 /** A model this client has never heard of, in a language it does not speak. */
 const MANIFEST = {
   id: 'imaginary-model',
@@ -68,7 +74,9 @@ const MANIFEST = {
     rows: [['gridRegion', 'parcelUse'], ['capacityMwMin']],
     fields: {
       gridRegion: { label: 'Grid region', placeholder: 'e.g. ERCOT West', suggestions: ['ERCOT West', 'MISO South'] },
-      parcelUse: { label: 'Parcel use' },
+      // A catalog hint: the client knows nothing about this list, fetches it by id
+      // and offers it as autocomplete. The field is still free text.
+      parcelUse: { label: 'Parcel use', catalog: 'places' },
       capacityMwMin: { label: 'Capacity MW (min)' },
       interconnectQueueOnly: { label: 'In the interconnect queue only' },
       soilNotes: { label: 'Soil notes' },
@@ -123,6 +131,9 @@ vi.mock('../src/api/hooks', () => ({
   useMyStats: () => ({ data: { inProgress: 0, blocked: false, total: 0, ready: 0, failed: 0 } }),
   useCreateJob: () => ({ mutateAsync: hooks.createJob, isPending: false }),
   usePreflight: () => ({ mutateAsync: hooks.preflight, isPending: false }),
+  // A field with a `catalog` hint fetches its list; a mock without this makes
+  // every form in the file throw on an undefined hook.
+  useCatalog: (id?: string) => ({ data: id === 'places' ? { id, label: 'Places', items: CATALOG } : undefined, isLoading: false }),
 }));
 vi.mock('../src/auth/captcha', () => ({ captchaConfigured: () => false }));
 vi.mock('../src/components/Turnstile', () => ({ Turnstile: () => null }));
@@ -1135,5 +1146,47 @@ describe('the "in your own words" box feeds the assist and is never a param', ()
     const params = await order();
     expect(params.directives).toBeUndefined();
     expect(params.keywords).toBeUndefined();
+  });
+});
+
+describe('a field with a catalog', () => {
+  it('offers the list as autocomplete and still takes anything typed', async () => {
+    // Autocomplete, not a dropdown: `location` is free text because a buyer who
+    // wants "the I-4 corridor" is describing something real that no list contains.
+    // The datalist filters as you type and never blocks a value outside it.
+    await renderForm();
+    const input = await screen.findByPlaceholderText('e.g. ERCOT West');
+    // Queried through the datalist rather than the label, which ties the input to
+    // the list in one assertion — and because the form's `<label>` carries no
+    // `htmlFor`, so nothing associates it with its input. That is a real
+    // accessibility gap in every field of this form; it is recorded rather than
+    // fixed here, because fixing it touches every field and every query in this file.
+    const parcel = document.querySelector('input[list="nr-cat-parcelUse"]') as HTMLInputElement;
+    expect(parcel, 'the field offers no list').toBeTruthy();
+
+    const options = [...document.querySelectorAll('#nr-cat-parcelUse option')].map((o) => o.getAttribute('value'));
+    expect(options).toEqual(['Someplace County, XX', 'Otherplace, XX']);
+
+    // …and a value nobody listed goes through to the request untouched.
+    await userEvent.type(input, 'ERCOT West');
+    await userEvent.clear(parcel);
+    await userEvent.type(parcel, 'the corridor between two towns');
+    expect((await previewedParams()).parcelUse).toBe('the corridor between two towns');
+  });
+
+  it('asks for nothing when no field declares one', async () => {
+    // The field that declares a catalog pays for it; a model with none makes no
+    // request at all. Asserted through the hook, which is disabled without an id.
+    const seen: Array<string | undefined> = [];
+    const spy = vi.spyOn(await import('../src/api/hooks'), 'useCatalog');
+    spy.mockImplementation(((id?: string) => { seen.push(id); return { data: undefined, isLoading: false }; }) as never);
+    try {
+      await renderForm();
+      await screen.findByPlaceholderText('e.g. ERCOT West');
+      // De-duplicated: the component re-renders, and the hook is called each time.
+      expect([...new Set(seen.filter(Boolean))]).toEqual(['places']);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

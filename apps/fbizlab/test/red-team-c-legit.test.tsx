@@ -22,6 +22,9 @@ vi.mock('../src/api/hooks', async (orig) => ({
   useJob: () => ({ data: job.current }),
   useJobReport: () => ({ data: undefined }),
   useTemplate: () => ({ data: { steps: [{ id: 'research', label: 'Investigando el mercado', description: 'Buscamos anuncios y datos de mercado.' }], modes: [], sections: [] } }),
+  // A field with a `catalog` hint fetches its list; a mock without this makes
+  // every form in the file throw on an undefined hook.
+  useCatalog: () => ({ data: undefined, isLoading: false }),
 }));
 vi.mock('../src/components/DownloadPdf', () => ({ DownloadPdf: () => null }));
 import { JobView } from '../src/pages/JobView';

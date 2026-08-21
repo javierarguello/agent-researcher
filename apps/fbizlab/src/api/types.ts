@@ -4,7 +4,7 @@ export interface SessionResponse { token: string; user: SessionUser; expiresInSe
 export interface ModeInfo { key: string; label: string; credits: number; }
 export interface AddonInfo { key: string; label: string; description?: string; credits: number; }
 export interface StepInfo { id: string; label: string; description?: string; }
-export interface ParamFieldUi { label?: string; help?: string; suggestions?: string[]; optionLabels?: Record<string, string>; placeholder?: string; widget?: string; }
+export interface ParamFieldUi { label?: string; help?: string; suggestions?: string[]; optionLabels?: Record<string, string>; placeholder?: string; widget?: string; /** A shared list this field offers as autocomplete — see `GET /catalogs/:id`. Offered, never enforced. */ catalog?: string; }
 export interface ParamRangeUi { label: string; minKey: string; maxKey: string; min: number; max: number; step?: number; prefix?: string; }
 export interface ParamsUi { rows?: string[][]; fields?: Record<string, ParamFieldUi>; hidden?: string[]; ranges?: ParamRangeUi[]; advanced?: string[]; }
 

@@ -142,6 +142,18 @@ export interface ParamFieldUi {
   /** One-line explanation shown under the field to help the user choose. */
   help?: string;
   /**
+   * A shared catalog (`catalogs/registry.ts`) whose values a client may offer as
+   * autocomplete for this field — bigger than `suggestions`, and reusable across
+   * models rather than inlined per template.
+   *
+   * OFFERED, never enforced: the field stays whatever its schema says, which for
+   * `location` is free text, because a buyer who wants "the I-4 corridor" is
+   * describing something real that no list contains. `validateTemplate` refuses an
+   * id no catalog answers to — a hint pointing at nothing renders as a field with
+   * no autocomplete and no error, which is the kind of thing nobody notices.
+   */
+  catalog?: string;
+  /**
    * Suggested values offered as a dropdown that STILL allows manual entry
    * (autocomplete for a string field, tag suggestions for an array field).
    */

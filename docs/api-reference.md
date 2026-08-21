@@ -98,13 +98,11 @@ Errors:
   is stripped from the manifest and refused here rather than silently ignored
   (`packages/core/src/index.ts:285`). A client that has it on an open tab is told to
   reload, not quietly given a different request than the one it sent.
-- `400` — a link in a free-text param:
-  `{ error: "Links are not accepted in location — we find and check the sources
-  ourselves. Describe what you are looking for instead." }`. A URL a client supplies
-  would be fetched by an agent, and a fetched page is the one surface that sees no
-  pre-screen and no classifier — it never passed through this API. Refused rather
-  than stripped, and it is NOT a moderation strike: pasting a broker's link is
-  usually someone being helpful.
+Links in free-text params are **defused, not refused**: `bizbuysell.com` is stored
+and prompted as `bizbuysell com`. A URL a client supplies would otherwise be fetched
+by an agent, and a fetched page is the one surface that sees no pre-screen and no
+classifier — it never passed through this API. Nothing is rejected and no strike is
+recorded; the meaning survives, and the request goes through.
 - `400` — a param the model has RETIRED (`instructions`, `preferredSources`):
   `{ error: "This model no longer accepts free-text instructions. Reload the page
   and try again." }`.

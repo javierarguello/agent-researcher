@@ -17,6 +17,24 @@ export function useTemplates(lang: string) {
 export function useTemplate(id: string | null, lang: string) {
   return useQuery({ queryKey: ['template', id, lang], enabled: !!id, queryFn: () => api<TemplateManifest>(`/templates/${encodeURIComponent(id!)}?lang=${lang}`), staleTime: 5 * 60_000 });
 }
+/**
+ * A shared value list a param points at (`paramsUi.fields[x].catalog`).
+ *
+ * Cached for the session: the counties last changed in 1925, and re-fetching 124
+ * rows every time someone opens the form is the kind of thing that only shows up
+ * as a slow field on a bad connection.
+ */
+export function useCatalog(catalogId: string | undefined) {
+  return useQuery({
+    enabled: !!catalogId,
+    queryKey: ['catalog', catalogId],
+    queryFn: () => api<{ id: string; label: string; items: Array<{ value: string; label?: string; group?: string }> }>(
+      `/catalogs/${encodeURIComponent(catalogId!)}`,
+    ),
+    staleTime: Infinity,
+  });
+}
+
 export function useJobs() {
   return useQuery({
     queryKey: ['jobs'],

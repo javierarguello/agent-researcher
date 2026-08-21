@@ -105,7 +105,9 @@ export type { LogContext, JobLogger, Severity } from './obs/log.js';
 
 // Report modes (public cost/scope knob) + internal depth
 export { modeShapes, effectiveTemplate, agentTurns, type ModeShape } from './mode-shape.js';
-export { findLink, paramsWithLinks } from './moderation/links.js';
+export { findLink, defuseLinks, defuseParamLinks, paramsWithLinks } from './moderation/links.js';
+export { getCatalog, listCatalogs } from './catalogs/registry.js';
+export type { Catalog, CatalogItem } from './catalogs/types.js';
 export { REPORT_MODES, modeParamSchema, resolveMode, modesOf, defaultModeOf, isModeKey, validateModes, DEFAULT_MODES, creditsForMode, maxCostForMode, ceilingFromCredits } from './mode.js';
 export type { ReportMode, ModeConfig } from './mode.js';
 export { LANGUAGE_LABELS } from './languages.js';
@@ -221,12 +223,19 @@ export { screeningForms, similarity, sanitizeProposal, hasControlChars } from '.
 
 import { z } from 'zod';
 import { modesOf } from './mode.js';
-import { paramsWithLinks } from './moderation/links.js';
+import { defuseParamLinks } from './moderation/links.js';
 import { getTemplate } from './templates/registry.js';
 
 export interface ValidatedRequest {
   template: string;
   params: Record<string, unknown>;
+  /**
+   * Param paths whose text carried something link-shaped, now defused (see
+   * `defuseParamLinks`). Present only when something changed. Not an error and not
+   * shown to the buyer — their meaning survived — but a link that got this far is
+   * worth being able to count.
+   */
+  defusedLinks?: string[];
 }
 
 /**
@@ -312,28 +321,30 @@ export function validateRequest(body: unknown): ValidatedRequest {
     }
   }
 
-  // A link in what the buyer typed. We choose the sources; they do not.
+  // A link in what the buyer typed is DEFUSED, not refused: the dots become spaces
+  // and the scheme goes, so `bizbuysell.com` reaches the model as `bizbuysell com`
+  // — the same meaning, and no longer something `fetch_page` can be handed.
   //
-  // Checked BEFORE the schema so the message is about the link rather than about
-  // whatever else the request got wrong, and checked on the RAW params so a value
-  // the schema would coerce or default cannot smuggle one past.
+  // Refusing was the first version and it forced a conservative pattern, because a
+  // false positive cost a customer their request. Defusing costs one space, so the
+  // pattern can be loose and wrong: "St.Petersburg, FL" becomes "St Petersburg, FL",
+  // which is the same place (Javier, 2026-08-21).
   //
-  // Not a moderation strike: someone pasting a broker's URL into "industry" is
-  // being helpful. Malice through this channel still has to say something the
-  // pre-screen catches to earn one.
-  const linked = paramsWithLinks(sent);
-  if (linked.length) {
-    throw new Error(
-      `Links are not accepted in ${linked.join(', ')} — we find and check the sources ourselves. ` +
-        'Describe what you are looking for instead.',
-    );
-  }
+  // Before the schema, so a `.max(200)` cannot reject a value we were about to
+  // shorten anyway, and on the RAW params, so nothing the schema coerces slips past.
+  const { params: defusedParams, defused } = defuseParamLinks(sent);
 
-  const parsed = template.paramsSchema.safeParse(raw.params ?? {});
+  const parsed = template.paramsSchema.safeParse(defusedParams);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
     throw new Error(`Invalid params: ${issues}`);
   }
 
-  return { template: templateId, params: parsed.data as Record<string, unknown> };
+  return {
+    template: templateId,
+    params: parsed.data as Record<string, unknown>,
+    // For the record rather than for the buyer: their meaning is intact, and a
+    // link that reached this far is worth being able to count later.
+    ...(defused.length ? { defusedLinks: defused } : {}),
+  };
 }

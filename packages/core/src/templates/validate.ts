@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { modelAliases } from '../llm/models.js';
 import { validateDirectives } from './directives.js';
 import { validateModes } from '../mode.js';
+import { getCatalog } from '../catalogs/registry.js';
 // The leaf module, not the registry: the registry imports THIS file.
 import { LANGUAGE_LABELS } from '../languages.js';
 import { agentKind, hasResearchLoop } from './types.js';
@@ -41,6 +42,15 @@ export function validateTemplate(t: ResearchTemplate<any>): string[] {
   for (const [key, cfg] of Object.entries(t.modes ?? {})) {
     for (const k of cfg?.exclude ?? []) {
       if (!sectionKeys.has(k)) err(`mode "${key}" excludes unknown section "${k}"`);
+    }
+  }
+
+  // A `paramsUi.catalog` pointing at nothing renders as a field with no
+  // autocomplete and no error — the kind of thing nobody notices until someone
+  // asks why the list stopped appearing.
+  for (const [key, field] of Object.entries(t.paramsUi?.fields ?? {})) {
+    if (field?.catalog && !getCatalog(field.catalog)) {
+      err(`paramsUi.fields.${key} points at unknown catalog "${field.catalog}"`);
     }
   }
 

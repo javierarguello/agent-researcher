@@ -730,3 +730,45 @@ describe('what a rate-limited buyer is actually told', () => {
     expect(blocked.json().error).toMatch(/has alcanzado el l[ií]mite/i);
   });
 });
+
+describe('the catalogs endpoint', () => {
+  // The app seeding lives inside the describe above, so a signed token for an app
+  // that does not exist is a 401 — which is what the two cases below were getting
+  // while claiming the route was broken.
+  beforeEach(async () => {
+    await seedApp('fbizlab');
+  });
+
+  it('needs a session — reference data is not a reason to open a route', () => {
+    // Not because Florida's counties are secret; they are a matter of public record.
+    // An unauthenticated route is a surface with its own rate limit, its own abuse
+    // story and its own place in every future review, bought for a list only a
+    // logged-in buyer's form ever draws.
+    return Promise.all([
+      app.inject({ method: 'GET', url: '/catalogs' }),
+      app.inject({ method: 'GET', url: '/catalogs/florida-locations' }),
+    ]).then((rs) => {
+      for (const r of rs) expect(r.statusCode).toBe(401);
+    });
+  });
+
+  it('serves the list and one catalog to a signed-in buyer', async () => {
+    const t = await token('fbizlab', 'u@x.com');
+    const list = await app.inject({ method: 'GET', url: '/catalogs', headers: auth(t) });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().catalogs.map((c: { id: string }) => c.id)).toContain('florida-locations');
+
+    const one = await app.inject({ method: 'GET', url: '/catalogs/florida-locations', headers: auth(t) });
+    expect(one.statusCode).toBe(200);
+    expect(one.json().items.filter((i: { group: string }) => i.group === 'Counties')).toHaveLength(67);
+    // A buyer may hold it: the counties last changed in 1925.
+    expect(one.headers['cache-control']).toContain('private');
+  });
+
+  it('404s an unknown catalog rather than answering with an empty one', async () => {
+    // An empty list renders as a field whose autocomplete silently stopped working.
+    const t = await token('fbizlab', 'u@x.com');
+    const r = await app.inject({ method: 'GET', url: '/catalogs/nope', headers: auth(t) });
+    expect(r.statusCode).toBe(404);
+  });
+});

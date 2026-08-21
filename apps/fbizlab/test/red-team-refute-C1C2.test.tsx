@@ -38,6 +38,9 @@ vi.mock('../src/api/hooks', async (orig) => ({
   useJob: () => ({ data: job.current }),
   useJobReport: () => ({ data: REPORT }),
   useTemplate: () => ({ data: TEMPLATE }),
+  // A field with a `catalog` hint fetches its list; a mock without this makes
+  // every form in the file throw on an undefined hook.
+  useCatalog: () => ({ data: undefined, isLoading: false }),
 }));
 vi.mock('../src/components/DownloadPdf', () => ({ DownloadPdf: () => null }));
 // ── ReadReport: the share link (real ReportViewer, api client mocked like read-report-notice.test.tsx) ──
