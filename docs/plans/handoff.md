@@ -84,29 +84,61 @@ only tier you may use.
 Cloud Run services, no prod Cloud Tasks queue, and no `deploy-prod` branch. This is a
 first provisioning, not a redeploy.
 
-Blocking, in order:
+One GCP project, one owner account, one Artifact Registry repo (images tagged
+`:dev` / `:prod`). Everything else is named `agent-researcher-prod-*` by
+`setup-gcp.sh` and `deploy.sh`, so prod is dev with a different suffix — including
+the permissions, which are the same project-level grants to a second pair of
+runtime SAs.
+
+Blocking, **in this order** — the order is the content, several steps cannot be
+brought forward:
 
 1. **The `_PROD` GitHub secrets.** `deploy.sh` REFUSES a prod deploy without
    `AUTH_JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and
    `POSTMARK_SERVER_TOKEN` — because `--set-env-vars` replaces the whole
    environment, so a missing secret is not an error, it is a live service without
-   it. Also `WIF_PROVIDER_PROD`, `DEPLOY_SA_PROD`, `GCP_SA_KEY_PROD` (the SPAs), and
-   optionally `TAVILY_API_KEY_PROD`, `BRAVE_API_KEY_PROD`, `TURNSTILE_SECRET_PROD`.
+   it. Plus `GCP_SA_KEY_PROD` (the API deploy AND both SPAs — an owner SA key, the
+   dev shape; `deploy.yml` used to ask for WIF secrets that were never created
+   anywhere in this project, fixed 2026-08-21) and optionally `TAVILY_API_KEY_PROD`,
+   `BRAVE_API_KEY_PROD`. `TURNSTILE_SECRET_PROD` already exists.
 2. **`ENV=prod bash infra/setup-gcp.sh`, once.** `deploy.yml` only DEPLOYS and says
    so in its own header; `deploy-dev.yml` is the one that provisions. Without it
    there is no queue, no service accounts, no bucket and no Vertex grant — and no
    18000s retry window.
 3. **The Firebase Hosting sites** `agent-researcher-prod-fbizlab` and the admin's.
    The targets are already in `.firebaserc`; the sites are not created.
-4. **The Stripe catalog in the LIVE account.** Today it exists only in the sandbox —
+4. **`git push origin main:deploy-prod`**, then read the API URL off Cloud Run. This
+   is also what unblocks the two chicken-and-egg items below, both of which need a
+   URL that does not exist until the service does.
+5. **The Stripe LIVE webhook**: endpoint `POST <api>/credits/webhook` for
+   `checkout.session.completed`, `.async_payment_succeeded`,
+   `.async_payment_failed`, `product.*`, `price.*`; then the real
+   `STRIPE_WEBHOOK_SECRET_PROD` and a redeploy. The first deploy has to carry a
+   placeholder, because `deploy.sh` refuses an empty one.
+6. **Seed the prod Firestore — it is empty, and nothing seeds it.** `reset:dev`
+   refuses any ENV but dev, and `apps seed-admin` mints a **UUID** appId while both
+   SPAs are compiled against the slugs `admin` / `fbizlab`. So:
+   `ENV=prod npm run apps -- create --appId admin --role admin --admin-emails …` and
+   the same for `fbizlab` with `--allowed-templates florida-business-for-sale`.
+   Then `emailFrom` and `webUrl` on `fbizlab` — **the CLI cannot write either**, so
+   `PATCH /admin/apps/fbizlab` with the admin apiKey. Without them registration
+   answers 500 and no buyer can verify an email.
+7. **The Stripe catalog in the LIVE account.** Today it exists only in the sandbox —
    the API only ever holds its own `STRIPE_SECRET_KEY`, so dev writes test and prod
-   writes live, and neither can reach the other. Create the packs from the admin
-   once prod is up; it writes the metadata the webhook depends on. With no packs the
-   credit floor falls back to the code default and every ceiling derives from a
-   price nobody sells.
-5. **`git push origin main:deploy-prod`.**
+   writes live, and neither can reach the other. Deploy the admin SPA first
+   (`workflow_dispatch`), then create the packs from its Pricing screen; it writes
+   the metadata the webhook depends on. With no packs the credit floor falls back to
+   the code default and every ceiling derives from a price nobody sells.
+8. **The fbizlab SPA, LAST.** Its build bakes the catalog and
+   `scripts/fetch-plans.mjs` exits 1 on an empty one, in **each of en/es/fr/pt** — so
+   the prod build cannot succeed before step 7, and the run that step 4's push
+   triggers is expected to go red.
 
 Not blocking, but do not skip lightly: **round 11** (below) and the fail-open alert.
+Also unset in every environment: `SEARCH_COST_PER_CALL_USD_*`,
+`BRAVE_COST_PER_CALL_USD_*`, `MAX_JOB_COST_USD_*` (repo *variables*, read by
+`deploy.yml`). They fall back to the code defaults, and the Brave default is **$0** —
+a paid Brave key without `BRAVE_COST_PER_CALL_USD_PROD` books every search at zero.
 
 ## The three rules the rounds have paid for
 

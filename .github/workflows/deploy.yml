@@ -5,15 +5,20 @@
 # NOTE: this workflow only DEPLOYS; run `ENV=prod bash infra/setup-gcp.sh` once
 # to provision prod resources (deploy-dev.yml runs setup automatically for dev).
 #
+# AUTH — a service-account key, the same shape dev uses (deploy-dev.yml).
+# This step used to read WIF_PROVIDER_PROD / DEPLOY_SA_PROD, and Workload Identity
+# Federation was never set up in this project: no pool, no provider, and not even a
+# WIF_PROVIDER_DEV to copy from. The first prod deploy would have failed at the auth
+# step, before anything it guards. prod and dev share one GCP project and one owner
+# account — only the resource names differ (agent-researcher-{dev,prod}-*) — so the
+# deploy identity is dev's, with a prod key.
+#
 # Required GitHub secrets (per environment, suffixed _DEV / _PROD):
-#   WIF_PROVIDER_DEV / WIF_PROVIDER_PROD
-#       Workload Identity Federation provider resource, e.g.
-#       projects/NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
-#   DEPLOY_SA_DEV / DEPLOY_SA_PROD
-#       Deploy service account email the pipeline impersonates. It needs:
-#       roles/run.admin, roles/cloudbuild.builds.editor,
-#       roles/artifactregistry.writer, roles/iam.serviceAccountUser
-#       (to act as the runtime SAs), roles/storage.admin (Cloud Build staging).
+#   GCP_SA_KEY_PROD
+#       JSON key of the prod deploy service account. Owner on the project, like
+#       gh-deploy-dev: the simplest role that can create Firestore DBs, buckets,
+#       SAs and IAM bindings. The two Firebase Hosting prod workflows read this
+#       same secret.
 #   TAVILY_API_KEY_DEV / TAVILY_API_KEY_PROD   (optional web-search key)
 #   STRIPE_SECRET_KEY_*, STRIPE_WEBHOOK_SECRET_*, AUTH_JWT_SECRET_*,
 #   POSTMARK_SERVER_TOKEN_*, TURNSTILE_SECRET_*, BRAVE_API_KEY_*
@@ -32,8 +37,7 @@ on:
     branches: [deploy-prod]
 
 permissions:
-  contents: read
-  id-token: write # required for Workload Identity Federation
+  contents: read # no id-token: nothing here federates an identity any more
 
 jobs:
   # Nothing deploys that has not passed the suite. Six workflows shipped straight
@@ -56,12 +60,11 @@ jobs:
             echo "name=dev" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Authenticate to Google Cloud (WIF)
+      - name: Authenticate to Google Cloud (service-account key)
         uses: google-github-actions/auth@v2
         with:
           project_id: sinuous-canto-497518-h7
-          workload_identity_provider: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.WIF_PROVIDER_PROD || secrets.WIF_PROVIDER_DEV }}
-          service_account: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.DEPLOY_SA_PROD || secrets.DEPLOY_SA_DEV }}
+          credentials_json: ${{ github.ref == 'refs/heads/deploy-prod' && secrets.GCP_SA_KEY_PROD || secrets.GCP_SA_KEY_DEV }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2

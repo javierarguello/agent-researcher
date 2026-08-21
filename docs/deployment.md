@@ -75,10 +75,15 @@ config (`TASKS_QUEUE`, `TASKS_REGION`, `TASKS_INVOKER_SA` = the API SA),
   if missing), then `deploy.sh`. Passes secrets `TAVILY_API_KEY_DEV`,
   `STRIPE_SECRET_KEY_DEV`, `STRIPE_WEBHOOK_SECRET_DEV`, `AUTH_JWT_SECRET_DEV`, and
   var `CORS_ORIGINS_DEV`.
-- **`deploy.yml`** — on push to `deploy-prod`. Auths via **Workload Identity
-  Federation** (`WIF_PROVIDER_PROD` / `DEPLOY_SA_PROD`), then `deploy.sh` only
-  (prod resources must be provisioned once manually with `ENV=prod
-  setup-gcp.sh`). It passes the **whole** secret set, and it has to:
+- **`deploy.yml`** — on push to `deploy-prod`. Auths with a **service-account
+  key** (`GCP_SA_KEY_PROD`), exactly like dev, then `deploy.sh` only (prod
+  resources must be provisioned once manually with `ENV=prod setup-gcp.sh`). It
+  read `WIF_PROVIDER_PROD` / `DEPLOY_SA_PROD` until 2026-08-21, and Workload
+  Identity Federation had never been set up in this project — no pool, no
+  provider, and no `WIF_PROVIDER_DEV` either — so the first prod deploy would
+  have failed at the auth step. Both environments live in one GCP project under
+  one owner account and differ only in resource names, so the deploy identity is
+  the same shape as dev's. It passes the **whole** secret set, and it has to:
   `deploy.sh` deploys with `--set-env-vars`, which REPLACES the service
   environment, so a secret the workflow does not pass is **erased** from the
   running service. "Set it on the service" is not an option — the next deploy

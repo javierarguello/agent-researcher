@@ -8,6 +8,8 @@
 #   firebase hosting:sites:create agent-researcher-prod-admin --project sinuous-canto-497518-h7
 #   gh variable set ADMIN_PROD_API_BASE_URL     --body "https://<prod-cloud-run-api-url>"
 #   gh variable set ADMIN_PROD_GOOGLE_CLIENT_ID --body "<prod-oauth-client-id>.apps.googleusercontent.com"
+#   # only if a buyer app is served from something other than *.web.app:
+#   gh variable set ADMIN_PROD_APP_URL_PATTERN  --body "https://{appId}.example.com"
 #   gh secret set GCP_SA_KEY_PROD < prod-sa-key.json   # may equal the dev key if same project
 #
 name: Deploy admin SPA (prod)
@@ -49,6 +51,10 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ vars.ADMIN_PROD_API_BASE_URL }}
           VITE_ADMIN_GOOGLE_CLIENT_ID: ${{ vars.ADMIN_PROD_GOOGLE_CLIENT_ID }}
+          # The buyer-facing URL the job detail links to. Its default (config.ts) is
+          # the DEV pattern, so a prod admin built without this sends an operator
+          # looking at a prod job to the dev app — same path, different data.
+          VITE_APP_URL_PATTERN: ${{ vars.ADMIN_PROD_APP_URL_PATTERN || 'https://agent-researcher-prod-{appId}.web.app' }}
         run: npm run build -w @agent-researcher/admin
 
       - name: Authenticate to Google Cloud (prod service-account key)
