@@ -152,7 +152,7 @@ function SecHead({ n, title, hint, right }: { n: string; title: string; hint?: s
 }
 
 /** Minimal tags input for the advanced arrays. */
-function Tags({ value, onChange, suggestions, placeholder }: { value: string[]; onChange: (v: string[]) => void; suggestions?: string[]; placeholder: string }) {
+function Tags({ id, value, onChange, suggestions, placeholder }: { id?: string; value: string[]; onChange: (v: string[]) => void; suggestions?: string[]; placeholder: string }) {
   const [draft, setDraft] = useState('');
   const add = (s: string) => { const v = s.trim(); if (v && !value.includes(v)) onChange([...value, v]); setDraft(''); };
   return (
@@ -160,7 +160,7 @@ function Tags({ value, onChange, suggestions, placeholder }: { value: string[]; 
       {value.map((tag) => (
         <span key={tag} className="badge" style={{ cursor: 'pointer' }} onClick={() => onChange(value.filter((x) => x !== tag))}>{tag} ✕</span>
       ))}
-      <input list="nr-sugg" value={draft} placeholder={value.length ? '' : placeholder} onChange={(e) => setDraft(e.target.value)}
+      <input id={id} list="nr-sugg" value={draft} placeholder={value.length ? '' : placeholder} onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(draft); } }} />
       {suggestions && <datalist id="nr-sugg">{suggestions.map((s) => <option key={s} value={s} />)}</datalist>}
     </div>
@@ -661,11 +661,17 @@ export function NewReport() {
     // without an id, so a model with no catalogs makes no request at all.
     const catalogItems = key === catalogKey ? (fieldCatalog.data?.items ?? []) : [];
     const isArray = prop?.type === 'array';
+    // `htmlFor`/`id`, which nothing here had: a bare `<label>` beside an input is
+    // associated with NOTHING. A screen reader announces the box unlabelled, a
+    // click on the text does not focus it, and `getByLabelText` — the query a test
+    // would naturally reach for — finds no control. The names are the model's
+    // (`label(key)` comes from the manifest), so this costs one attribute per field.
+    const id = `nr-f-${key}`;
     return (
       <div className="field" key={key}>
-        <label>{label(key)}</label>
+        <label htmlFor={id}>{label(key)}</label>
         {isArray ? (
-          <Tags value={(val as string[]) ?? []} onChange={(v) => set(key, v)} suggestions={sugg} placeholder={t.add} />
+          <Tags id={id} value={(val as string[]) ?? []} onChange={(v) => set(key, v)} suggestions={sugg} placeholder={t.add} />
         ) : (
           <>
             {/* A catalog turns the field into an autocomplete and NOTHING else: the
@@ -675,6 +681,7 @@ export function NewReport() {
                 you type, it never blocks a value that is not in it, and it needs no
                 dropdown of our own to get keyboard and mobile behaviour right. */}
             <input
+              id={id}
               className="input"
               maxLength={prop?.maxLength ?? 200}
               placeholder={ph(key)}
@@ -710,12 +717,13 @@ export function NewReport() {
 
   const numField = (key: string) => {
     const v = params[key];
+    const id = `nr-f-${key}`;
     return (
       <div className="field" key={key}>
-        <label>{label(key)}</label>
+        <label htmlFor={id}>{label(key)}</label>
         <div className="nr-money">
           <span>$</span>
-          <input className="input" type="number" min={0} inputMode="numeric" placeholder="0"
+          <input id={id} className="input" type="number" min={0} inputMode="numeric" placeholder="0"
             value={v == null ? '' : String(v)}
             onChange={(e) => set(key, e.target.value === '' ? undefined : Math.max(0, Math.floor(Number(e.target.value)) || 0))} />
         </div>

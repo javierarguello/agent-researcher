@@ -1156,12 +1156,10 @@ describe('a field with a catalog', () => {
     // The datalist filters as you type and never blocks a value outside it.
     await renderForm();
     const input = await screen.findByPlaceholderText('e.g. ERCOT West');
-    // Queried through the datalist rather than the label, which ties the input to
-    // the list in one assertion — and because the form's `<label>` carries no
-    // `htmlFor`, so nothing associates it with its input. That is a real
-    // accessibility gap in every field of this form; it is recorded rather than
-    // fixed here, because fixing it touches every field and every query in this file.
-    const parcel = document.querySelector('input[list="nr-cat-parcelUse"]') as HTMLInputElement;
+    // By LABEL, which only works because the field now associates one: see the
+    // accessibility test below.
+    const parcel = screen.getByLabelText('Parcel use') as HTMLInputElement;
+    expect(parcel.getAttribute('list')).toBe('nr-cat-parcelUse');
     expect(parcel, 'the field offers no list').toBeTruthy();
 
     const options = [...document.querySelectorAll('#nr-cat-parcelUse option')].map((o) => o.getAttribute('value'));
@@ -1188,5 +1186,24 @@ describe('a field with a catalog', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('the form is usable without a mouse or eyes', () => {
+  it('associates every field label with its input', async () => {
+    // A bare `<label>` beside an input is associated with NOTHING: a screen reader
+    // announces the box unlabelled, clicking the text does not focus it, and
+    // `getByLabelText` — the query a test naturally reaches for — finds no control.
+    // Every field in this form was like that, and the labels are the MANIFEST's, so
+    // fixing it costs one attribute and no copy.
+    await renderForm();
+    await screen.findByPlaceholderText('e.g. ERCOT West');
+    for (const name of ['Grid region', 'Parcel use', 'Capacity MW (min)']) {
+      const el = screen.getByLabelText(name);
+      expect(el.tagName, `${name} is labelled but not an input`).toBe('INPUT');
+    }
+    // Clicking the label focuses the box, which is the behaviour the attribute buys.
+    await userEvent.click(screen.getByText('Grid region'));
+    expect(document.activeElement).toBe(screen.getByLabelText('Grid region'));
   });
 });
