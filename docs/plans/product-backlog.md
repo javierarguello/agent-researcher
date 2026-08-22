@@ -192,7 +192,7 @@ whoever is extending the code.
 
 ---
 
-## P-6 · A credit ladder where buying more is cheaper, and the MIDDLE is the buy — `decided, not applied`
+## P-6 · A credit ladder where buying more is cheaper, and the MIDDLE is the buy — `decided, applying in the prod catalog`
 
 **Asked for by Javier, 2026-08-20**, alongside the per-mode cost ceiling (D1's
 engineering half, shipped in `ef9f02a`). Two goals in his words: buying more credits
@@ -230,10 +230,27 @@ touched, and no code changes: nothing about plans is hardcoded in this repo (che
 by grep; the SPA renders whatever `/plans` returns, and price/credits/`popular`/`sub`
 /`features` are all Stripe Product metadata, `apps/api/src/stripe.ts`).
 
-**What must move WITH it, or the page lies.** Syndicate's `features` says
-"≈8 comprehensive or 30 essential reports". At 160 credits it is 8 and **32**. That
-string exists in four languages — `features`, `features_es`, `features_fr`,
-`features_pt`, pipe-separated — and all four need the 30 → 32.
+**What must move WITH it, or the page lies — and it already does.** CORRECTED
+2026-08-22: this paragraph used to say Syndicate's "≈8 comprehensive or 30 essential"
+becomes 8 and **32**. That arithmetic assumed essential costs 5 credits, which stopped
+being true in `ef9f02a`/`041bd97` (D1 re-priced it to **8** on the measured cost
+ratio) and the marketing copy was never touched. Read off the live sandbox catalog on
+2026-08-22, all three plans overstate what a pack buys:
+
+| plan | `features` says | true at essential = 8 cr |
+|---|---|---|
+| Scout (20 cr) | ≈1 comprehensive or **4** essential | ≈1 comprehensive or **2** essential |
+| Investor (80 cr) | ≈4 comprehensive or **16** essential | ≈4 comprehensive or **10** essential |
+| Syndicate (160 cr) | ≈8 comprehensive or **30** essential | ≈8 comprehensive or **20** essential |
+
+The comprehensive figures are right (18 credits: 20/18→1, 80/18→4, 160/18→8). Every
+essential figure is inflated 60-100%. Each string exists in four languages —
+`features`, `features_es`, `features_fr`, `features_pt`, pipe-separated — so this is
+twelve edits, not one, and it is a claim made to a buyer about what their money buys.
+
+This is the defect class the review rounds keep finding: a number copied into prose
+stops tracking the value it was copied from. Nothing recomputes these strings, and
+nothing tests them against `modes[key].credits`.
 
 **The linked consequence, and it is the reason this is a decision rather than a
 config edit.** `CREDIT_FLOOR_USD` (`packages/core/src/mode.ts`) is the cheapest a
@@ -260,14 +277,24 @@ parity with comprehensive. That is a change to `modes.essential.credits`
 `/admin/pricing`) and it rewrites every "≈N essential reports" line in all three
 plans and four languages. **Not taken.**
 
-**Steps, when Javier decides:**
-1. Stripe → Product "Florida Biz Lab Syndicate" → metadata `credits` 150 → 160.
-2. Same product, metadata `features`, `features_es`, `features_fr`, `features_pt` →
-   "30 essential" → "32 essential".
-3. `CREDIT_FLOOR_USD` 0.86 → 0.806 in `packages/core/src/mode.ts`, with the date and
-   the three source prices in its docstring updated to match.
-4. `npm test` — `mode-ceiling.test.ts` is what proves no ceiling crossed the new
-   floor. Bust the plans cache (`bustPublicCache`) or wait out `PUBLIC_TTL_MS`.
+**Steps.** In PROD there is no migration at all — the catalog is being created from
+scratch (2026-08-22), so the packs are simply created with these numbers:
+
+1. Syndicate: `credits` **160**, price unchanged at $129.
+2. The essential counts in all three plans, in four languages each: 4→2, 16→10,
+   30→20. Twelve strings.
+3. `CREDIT_FLOOR_USD` — **already done**: `config.ts:385` is 0.806 and its docstring
+   says it anticipates this change. The floor is also DERIVED at runtime now
+   (`syncCreditFloor`, `apps/api/src/index.ts:2834`, `min(priceUsd/credits)` over the
+   model's packs), so creating Syndicate at 160/$129 derives exactly 0.806 and the
+   stored value agrees with the default.
+4. `npm test` — `mode-ceiling.test.ts` proves no ceiling crossed the floor. In the
+   SANDBOX (where the old numbers are live) bust the plans cache or wait out
+   `PUBLIC_TTL_MS`.
+
+**Open, and it is small:** whether to apply the same to the sandbox so dev and prod
+tell the buyer the same thing. Leaving dev wrong means the next person to read a
+pricing page reads the wrong one.
 
 **Not applied.** The catalog is live billing on an external service; changing it is
 Javier's account and Javier's call.
