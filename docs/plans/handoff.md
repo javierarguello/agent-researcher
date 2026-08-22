@@ -1,6 +1,6 @@
 # Handoff — the entry point
 
-Last updated 2026-08-21. For whoever picks this up without the conversation that
+Last updated 2026-08-22. For whoever picks this up without the conversation that
 produced it. (No sha here on purpose: the previous one named `ec66323`, a commit
 that never touched this file, two edits before the one that left it — round 10,
 R10-33. `git log -1 -- docs/plans/handoff.md` is the honest version of that line.)
@@ -30,7 +30,7 @@ and it is the only place that is current by construction.
 
 ```bash
 npm ci                       # a fresh worktree has no node_modules and no vitest
-npm test                     # 1309 passed, 0 failed — READ THE EXIT CODE, not this line
+npm test                     # 1313 passed, 0 failed — READ THE EXIT CODE, not this line
 npm run typecheck            # must be clean; it catches what the suites cannot
 npx tsx docs/plans/m-red-team-reports/k-census-2026-08-19/run.ts   # the §K census
 ```
@@ -68,9 +68,10 @@ only tier you may use.
   | M-E1 extraction | `4950c8e`, `5fa80a7` | measured (the prompt reached `report.json` AND the PDF), then closed by `redactPromptEcho` + `SELF_DISCLOSURE_RULE`; a leak is booked as an incident, never as a buyer strike |
   | links + catalog | `c7da31d`, `c95bcfb`, `76323f8` | a link in a free-text param is DEFUSED (dots → spaces), `GET /catalogs/:id` (authenticated) backs an optional autocomplete on `location`, and every field label is now associated with its input |
 
-- **Suite, MEASURED 2026-08-21 at `76323f8`, by EXIT CODE:** `npm test` → 0,
-  `npm run typecheck` → 0, **1309 passed, 0 failed** in the MAIN checkout
-  (826 core + 242 api + 24 worker + 192 fbizlab + 25 admin). The clean-worktree
+- **Suite, MEASURED 2026-08-21 at `86b49ef`, by EXIT CODE:** `npm test` → 0,
+  `npm run typecheck` → 0, **1313 passed, 0 failed** in the MAIN checkout
+  (830 core + 242 api + 24 worker + 192 fbizlab + 25 admin; +4 from
+  `test/apps-cli.test.ts`). The clean-worktree
   figure has NOT been re-measured since `2a01ada` (1170) — measure yours.
   **Read the exit code, not the `Tests N passed` line.** A run with every test green
   can still exit 1 on an unhandled error, and one did: `65d6a90` was pushed after a
@@ -80,20 +81,62 @@ only tier you may use.
 
 ## Going to prod — what is actually needed
 
-**PROD EXISTS AS OF 2026-08-21, AND IT IS NOT SELLING YET.** The backend is up; the
-two things a buyer touches are not. Measured against GCP, not assumed:
+**PROD IS ONE DEPLOY AWAY FROM SELLING, and that deploy is deliberately not run**
+(state of 2026-08-22, every line measured, nothing assumed). The whole backend and the
+whole money path are up and verified; the buyer-facing SPA is held back on purpose
+until four things only Javier can do in third-party consoles are confirmed.
 
-| Up | Not yet |
+**Up and verified**
+
+| What | Evidence |
 |---|---|
-| API `https://agent-researcher-prod-api-b74fjmzlha-uc.a.run.app` — `/health` 200, CORS admits only the two Hosting origins | the prod Firestore is **empty**: no `admin` app, no `fbizlab` app (step 6) |
-| worker, queue (18000s window), bucket, Firestore `agent-researcher-prod`, 9 indexes READY, both runtime SAs | the two Google OAuth clients, so **nobody can log in** (step 7) |
-| every `_PROD` secret except the optional `BRAVE_API_KEY_PROD`; all eight repo variables | the Stripe LIVE catalog — no packs, so no checkout and every ceiling derives from the code default (step 8) |
-| both Hosting sites created; `deploy-prod` branch exists and deploys green | neither SPA is deployed (steps 8-9) |
+| API `https://agent-researcher-prod-api-b74fjmzlha-uc.a.run.app` | `/health` 200 |
+| worker, queue (18000s window), bucket, Firestore `agent-researcher-prod`, 9 indexes READY, both runtime SAs | `ENV=prod setup-gcp.sh`, re-read from gcloud |
+| CORS | preflight from `https://floridabizlabs.com` → 204 + matching `allow-origin`; an unlisted origin gets no header |
+| app docs seeded | `admin` (role admin, whitelist `miltonjaviera@gmail.com`) and `fbizlab` (`allowedTemplates`, `emailFrom`, `webUrl=https://floridabizlabs.com`), both under slug ids |
+| OAuth client ids | dev's two clients REUSED (Javier's call). Doc and repo variable compared field by field — they match, which is what the `aud` check needs |
+| admin SPA `https://agent-researcher-prod-admin.web.app` | deployed; bundle greps show the prod API URL, the admin client id, and `https://floridabizlabs.com` as the buyer-app link |
+| custom domain `floridabizlabs.com` | A → 199.36.158.100 on both GoDaddy NS and four public resolvers, TXT `hosting-site=agent-researcher-prod-fbizlab`, TLS cert issued by Google Trust Services (16 min after the records landed) |
+| consent screen | **In production**, external. The 100-user cap does NOT apply: the app requests no scopes at all (`google.accounts.id.initialize` with only a `client_id`), so it is basic sign-in |
+| Stripe LIVE catalog | 3 packs, four languages, `templateId` on all three, `popular` on Investor. Ladder $1.4500 → $0.8625 → **$0.8063**/credit |
+| derived credit floor | `creditFloorUsd = 0.80625` written by `syncCreditFloor` on its own, matching the code default. Ceilings: essential (8 cr) earns $6.45 → spends at most **$3.87**; comprehensive (18 cr) earns $14.51 → **$8.71**; the $20 global clamp sits above both |
+| **the LIVE webhook, signature and all** | ten deliveries at 14:54-14:55 UTC on 2026-08-22, all **200**, zero 400 in 24h. A placeholder or mismatched secret returns 400 on every one — so `STRIPE_WEBHOOK_SECRET_PROD` is real. This was the last open unknown |
 
-Two things nobody has verified: whether `STRIPE_WEBHOOK_SECRET_PROD` holds the real
-signing secret or the placeholder (GitHub never returns a secret's value — list the
-live endpoints to find out), and whether the Postmark sender for the address that
-will land in `emailFrom` is verified. Both fail at the first real buyer, not at deploy.
+**Not done, and every one of them is in a console this repo cannot reach**
+
+1. **Authorized JavaScript origins.** Client `…-gm5p0a9a…` needs
+   `https://floridabizlabs.com` + `https://agent-researcher-prod-fbizlab.web.app`;
+   client `…-8js401r7…` needs `https://agent-researcher-prod-admin.web.app`. Without
+   these nobody logs in — not the buyer, not the operator. **Unverifiable from a CLI:
+   Google exposes no API for a Web client's origins. Ask, or try the login.**
+2. **Turnstile.** `TURNSTILE_SECRET_PROD` is set, so the check is ENFORCED for
+   `fbizlab`, and a widget only works on hostnames registered in Cloudflare. Both
+   prod hostnames have to be added or register/login/reset/contact all fail.
+3. **Postmark.** `pm-bounces.floridabizlabs.com → pm.mtasv.net` exists, but no SPF at
+   the apex and no DKIM at the usual selectors. If the sender is not verified,
+   `/auth/register` answers 500 with nothing in the response explaining why.
+4. **`www`.** A CNAME to the apex today, so it reaches Firebase with no certificate of
+   its own — a full-page TLS warning. Either add it in Hosting with a redirect, or
+   delete the CNAME so it simply does not resolve.
+
+**The one command that finishes the launch**, once 1-3 are confirmed:
+
+```bash
+gh workflow run "Deploy fbizlab SPA (prod)"    # builds from deploy-prod, not main
+```
+
+It bakes the catalog into `dist/plans.json` at build time and **fails on purpose** if
+any of the four languages comes back empty. Then verify
+`https://floridabizlabs.com/plans.json` carries 20/80/160 credits and 2/10/20
+essential, and run the end-to-end: register → verification email → real purchase →
+job → PDF.
+
+**A trap this cost us a rebuild to learn:** the public landing does NOT read the API.
+Its pricing comes from `plans.json`, baked at build time by
+`apps/fbizlab/scripts/fetch-plans.mjs`. A Stripe edit shows up on the site only after
+a rebuild (a nightly cron — dev 06:20 UTC, prod 07:20 UTC — or `workflow_dispatch`).
+The webhook busting the API cache in ~4 seconds is a different path: it serves the
+authenticated SPA, not the landing.
 
 One GCP project, one owner account, one Artifact Registry repo (images tagged
 `:dev` / `:prod`). Everything else is named `agent-researcher-prod-*` by
@@ -101,10 +144,9 @@ One GCP project, one owner account, one Artifact Registry repo (images tagged
 the permissions, which are the same project-level grants to a second pair of
 runtime SAs.
 
-Blocking, **in this order** — the order is the content, several steps cannot be
-brought forward. Steps 1-5 are DONE (2026-08-21); they stay written down because a
-second environment repeats them and because two of them only look obvious in
-hindsight:
+**Steps 1-8 below are all DONE** (2026-08-21/22). They stay written down because the
+next environment repeats them in this exact order, several cannot be brought forward,
+and three of them only look obvious in hindsight:
 
 Two scripts do the mechanical half: `infra/prod-secrets.sh`
 (`status` | `deploy-sa` | `secrets` | `webhook` | `vars`) and `infra/seed-prod.sh`.
@@ -255,6 +297,34 @@ Split in two because round 10 found the previous single heading covering both ki
   near-misses, gated on frontier-tier evidence).
 
 ### Closed since the last handoff
+
+**The 2026-08-21/22 launch batch** — five defects found by DOING the release rather
+than by reviewing it, which is worth noting on a repo that reviews everything:
+
+- **`deploy.yml` authenticated with WIF that never existed** in this project — no
+  pool, no provider, not even a `WIF_PROVIDER_DEV` to copy. The first prod deploy
+  would have died at the auth step, before any guard it protects. Now a key, like
+  dev (`40c2432`).
+- **A `CORS_ORIGINS` with two origins could not be deployed at all** (`46c5c81`).
+  One comma-delimited `--set-env-vars` cannot express a value containing a comma;
+  gcloud split it and rejected the half with no `=`. REPRODUCED on the first prod
+  deploy: the worker came up, the API did not. Dev never hit it because
+  `CORS_ORIGINS_DEV` is unset and falls back to `*`. Fixed with the `^|^` delimiter
+  plus a guard. **0 red** — nothing in the suite executes `deploy.sh`.
+- **`emailFrom` and `webUrl` had no reachable surface** on an empty Firestore: no CLI
+  flags, no field in the admin SPA, and the one route that carries them needs an
+  admin SESSION whose whitelist lives in the doc you are trying to create. Closed by
+  `--email-from` / `--web-url` on the CLI, with `main()` refactored to an exported
+  `run(argv)` so tests drive the real commands (`86b49ef`, +4 tests, revert-verified
+  4 red).
+- **The pricing page overstated what every pack buys.** Essential went 5 → 8 credits
+  in `ef9f02a` and the marketing copy never followed, so all three plans promised
+  60-100% more essential reports than the credits cover. P-6's own instructions
+  repeated the stale arithmetic. Corrected in the backlog (`5c41368`) and in the
+  sandbox catalog; the LIVE catalog was created with the right numbers from the
+  start.
+- **The admin SPA linked prod jobs to the DEV app** — `VITE_APP_URL_PATTERN` defaults
+  to the dev pattern and the prod workflow never passed it (`40c2432`).
 
 - **C5** (`91b5cfc`) — measured, and the deadline turned out not to be the thing that
   could change: Cloud Tasks caps an HTTP dispatch deadline at 30 minutes.
