@@ -81,18 +81,24 @@ together and makes both replay-safe under Cloud Tasks' at-least-once delivery.
 
 The plan catalog is defined **in Stripe**, not the codebase (`apps/api/src/stripe.ts`):
 
-- Create a Stripe **Product** + **Price** per pack.
-- **Convention (metadata-driven, no lookup_key):** put `metadata.appId = <appId>`,
-  `metadata.planId = <planId>`, and `metadata.credits = <n>` on the Price (or
-  Product; Price metadata wins on merge).
+- Create a Stripe **Product** + **Price** per pack — in practice through
+  `POST /admin/plans`, which writes the metadata below so nobody has to remember it.
+- **Convention (metadata-driven, no lookup_key):** the catalog metadata lives on the
+  **PRODUCT** — `appId`, `planId`, `credits`, and optionally `templateId` (the model
+  the pack is sold FOR; absent means every model the app offers). A product may have
+  several Prices but exactly one `default_price`, and that is the amount charged and
+  listed.
+- Both lookups are `products.search` (`stripe.ts:143`, `:195`) with
+  `expand: ['data.default_price']`, not `prices.search`.
 
-`StripePlan` resolved from a Price:
-`{ planId, name, priceUsd, credits, priceId }`.
+`StripePlan` resolved from a Product + its default price:
+`{ planId, templateId?, name, priceUsd, credits, priceId, … }`.
 
-- **`listStripePlans(appId)`** — `prices.search` for `active AND
-  metadata['appId'] == appId`, sorted by price. Powers `GET /credits/plans`.
-- **`resolveStripePlan(appId, planId)`** — `prices.search` for `active AND
-  metadata['appId'] == appId AND metadata['planId'] == planId`. Powers checkout.
+- **`listStripePlans(appId, lang, opts)`** — every active product of the app, sorted
+  by price. Powers the public `GET /plans?appId=&lang=` (and `GET /credits/plans`
+  for a session).
+- **`resolveStripePlan(appId, planId)`** — the one pack, by `appId` + `planId`.
+  Powers checkout.
 
 ### Checkout → webhook → grant
 
@@ -105,11 +111,50 @@ The plan catalog is defined **in Stripe**, not the codebase (`apps/api/src/strip
 3. Stripe calls `POST /credits/webhook`. The handler verifies the
    `Stripe-Signature` against `STRIPE_WEBHOOK_SECRET` using the **raw** request
    body (the API keeps `rawBody` on every request for exactly this).
-4. On `checkout.session.completed` with the expected metadata, it calls
-   `recordPurchase` (idempotent by `payment_intent` id, falling back to the
-   session id) with `amountUsd = amount_total/100`. **Only if newly applied**, it
-   folds the purchase into per-app stats (`recordPurchaseStats`) — safe under
-   at-least-once webhook delivery. Always returns `200 { received: true }`.
+4. On `checkout.session.completed` **or `checkout.session.async_payment_succeeded`**
+   with the expected metadata, it calls `recordPurchase` (idempotent by
+   `payment_intent` id, falling back to the session id) with
+   `amountUsd = amount_total/100`. **Only if newly applied**, it folds the purchase
+   into per-app stats (`recordPurchaseStats`) — safe under at-least-once webhook
+   delivery. Always returns `200 { received: true }`.
+
+   A session whose `payment_status` is neither `paid` nor `no_payment_required` is
+   logged and NOT credited (`index.ts:2065`): with a delayed-notification method the
+   checkout finishes before the money arrives, and crediting there hands out credits
+   for a payment that can still fail.
+
+### The webhook endpoint — the nine events, and what breaks without each
+
+The handler acts on exactly these (`index.ts:2040`, `:2051`, `:2063`). Stripe's API
+takes concrete names — `product.*` is a dashboard grouping, not a value you can send —
+and the code matches on the PREFIX, so every member is listed:
+
+| Event | Missing it means |
+|---|---|
+| `checkout.session.completed` | **The buyer pays and never receives credits.** The worst failure this system has |
+| `checkout.session.async_payment_succeeded` | Same, for delayed-notification methods only: `completed` arrived `unpaid`, the code correctly refused to credit, and the event that says the money landed never comes |
+| `checkout.session.async_payment_failed` | Only the `credits.purchase_failed` log is lost; nothing is credited either way |
+| `product.created` `product.updated` `product.deleted` | The catalog stays stale for up to `PUBLIC_TTL_MS` (30 min) after any edit |
+| `price.created` `price.updated` `price.deleted` | Same, for a price change — the one edit a buyer notices |
+
+One endpoint **per environment**, because the two Stripe accounts cannot see each
+other and each API holds only its own key:
+
+| Stripe | Endpoint | Signing secret |
+|---|---|---|
+| sandbox / test | `https://agent-researcher-dev-api-…/credits/webhook` | `STRIPE_WEBHOOK_SECRET_DEV` |
+| live | `https://agent-researcher-prod-api-…/credits/webhook` | `STRIPE_WEBHOOK_SECRET_PROD` |
+
+`bash infra/prod-secrets.sh webhook --create` creates the live one with these nine
+events and stores the secret Stripe returns — that `secret` field comes back **only**
+in the creation response, so a hand-made endpoint has to be read off the dashboard.
+
+**How to verify it actually arrives**, rather than assuming: change something visible
+in Stripe (a product's `sub`) and watch `GET /plans` serve the new value. Measured in
+the sandbox on 2026-08-22 — **3.8 seconds** end to end. Without the webhook the same
+edit takes up to 30 minutes to appear, which reads exactly like "my change didn't
+save". A signature mismatch shows up as `400` in the endpoint's Stripe event log, and
+that is the symptom of a stored secret belonging to a different endpoint.
 
 If Stripe isn't configured (`STRIPE_SECRET_KEY` unset), `/credits/plans` returns
 `{ plans: [] }` and `/credits/checkout` returns `503`.

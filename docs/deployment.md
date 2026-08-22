@@ -130,6 +130,12 @@ Every value has a default (import never throws). Grouped as in `config.ts`.
 | `STRIPE_SECRET_KEY` | — | Stripe API key. Unset → billing endpoints disabled (`/plans` empty, `/checkout` 503). |
 | `STRIPE_WEBHOOK_SECRET` | — | Verifies `/credits/webhook` signatures. Required for purchases to grant. |
 
+One endpoint per Stripe account (sandbox → the dev API, live → the prod API), each
+with its own signing secret, and **nine specific events** — three that decide whether
+a payment becomes credits and six that keep the catalog from serving 30-minute-old
+prices. The list, what each one's absence breaks, and how to verify delivery instead
+of assuming it: [credits.md](credits.md#the-webhook-endpoint--the-nine-events-and-what-breaks-without-each).
+
 ### Auth
 | Var | Default | Purpose |
 |---|---|---|
