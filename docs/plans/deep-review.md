@@ -2540,3 +2540,214 @@ corpus proves a shape, never a class** — with the instruction to write the sib
 row the author did not think of.
 
 ---
+
+## Field findings — from three real comprehensive runs, 2026-08-22/23 (not a review round)
+
+Three paid runs of `florida-business-for-sale@3` were made to produce a public sample
+report. Traces: `out/local-17595c42` (Tampa Bay, tight filters), `out/local-4ed81938`
+(statewide, loose — the one published as `samples/florida-hvac-statewide`), and
+`out/local-52835003` (statewide again, under the first version of F-1's fix). They
+cost **$3.5751**, **$3.3065** and **$2.9783** against a derived comprehensive ceiling
+of **$8.7075** (18 credits × $0.80625 × 0.6, `resolveModeCeiling`, identical in dev
+and prod, read from Firestore 2026-08-22) — 41%, 38% and 34% of it, gross margin
+75-79% against the 40% floor. The ceilings needed nothing. Six other things came out
+of the runs. **All of this is in the working tree, not yet committed** — stamp it when
+it lands.
+
+**F-1 · An enricher added a business nobody shortlisted, and it reached the buyer —
+fixed, and the FIRST fix was wrong.**
+`local-4ed81938`: `deal-scout` (the producer) delivered 7 shortlist rows and 6 deep
+dives, `valuation-analyst` kept the 6, and `deep-dive-refiner` — an ENRICHER —
+returned **7**, having gone looking and found a listing of its own. Measured
+consequence: that business appears in `deep_dives` and NOWHERE else in the report —
+not in the shortlist, `financial_analysis.projections`, any of the five charts,
+`recommendations` or `executive_summary` — because every one of those agents had
+already written against the producer's six. A full page about a business the rest of
+the dossier does not know exists. The engine already watched the mirror case (M-A1: a
+rewrite that comes back SHORTER is noted and warned); longer was unrecorded.
+
+The fix is `ReportSection.itemKeys` (`templates/types.ts`) — a section that declares
+it says its SET belongs to its producer — enforced where the enricher's slice is
+merged (`research-engine.ts`), with an admin-only `warning` and the analyst's full
+write left in `at.output` so a dropped item is recoverable. `deep_dives` declares
+`['business', 'sourceUrl']`; `charts` deliberately declares nothing, because its
+refiner is allowed to add one.
+
+**The first version dropped every unmatched item, and the very next real run refuted
+it.** In `local-52835003` the refiner returned the SAME six listings with one of them
+retitled AND re-sourced — `… | $815K+ Revenue | 18+ Year` at
+`/business-for-sale/…/2099954/` came back as `… | 18+ Years | Port St. Lucie` at
+`/hvac-businesses-for-sale-in-port-saint-lucie-fl/…/2099954/`, the same bizquest
+listing id. Both identities moved at once, the guard read it as an invention, and the
+buyer lost a page of paid research on a business that WAS shortlisted — reported by
+the mirror note as an honest shrink. Losing a real profile is worse than carrying an
+extra one, and the corpus of one run says this shape is at least as common as the
+defect. So the rule is now ARITHMETIC, with identity only choosing candidates: an
+enricher may not GROW the set, and at most `after.length - before.length` unmatched
+items come off, last ones first. Seven back from six still loses the invention; six
+back from six changes nothing however the titles moved.
+
+Eight tests in `test/enricher-additions.test.ts`, four mutations verified: merging the
+unfiltered slice, removing the surplus cap (reds the run-52835003 case), dropping the
+FIRST unmatched instead of the last (reds the case where a rewrite and an invention
+are both unmatched — taking the earlier one deletes the rewrite and DELIVERS the
+invention), and removing the `itemKeys` declaration. The two branches that would cost
+a buyer most are pinned: an enricher REBUILDING a section its producer never delivered
+keeps everything (the `reconstructed` path), and a producer that delivered an EMPTY
+set is a delivery, so a refiner's profiles come off WITH a warning rather than
+silently filling a section nobody shortlisted for.
+
+**F-2 · A third of one run's prose links were labelled with their own URL — fixed.**
+`local-4ed81938`: **36 of 165** prose links render as
+`[https://www.linkedin.com/posts/…-activity-7387468055867449344-bm7P](the same url)`.
+`local-17595c42`, an hour earlier: **0 of 189**; `local-52835003`: **0 of 170**. So it
+is a coin flip per report, not a rarity, and the artifact shows a 120-character
+unbreakable token mid-sentence. `sourceLabel()` only ever bounded the Sources rows.
+Fixed with a `linkLabel` twin in `pdf/report-html.ts` and
+`fbizlab/src/lib/safe-href.ts` (kept identical, for the reason those files already
+record): a label that IS a url renders as its host, clipped by the same bound as a
+Sources row (R10-8's lesson — `hostname` has no length limit); a human-written label
+is untouched; GFM autolinks get it for free. Ten tests across the two suites,
+asserted through `buildReportHtml` and `ReportViewer` rather than on the helper, and
+revert-verified in both.
+
+**F-3 · The honest query is 256 characters, not 118 — `open`.**
+`test/red-team/d-legit.test.ts` § 4 pinned the July corpus at 81 queries, max 118
+chars, with the property that a query cap "must be ≥ 2× the longest honest observed",
+asserted as `2 × max ≤ 300`. Across five runs (187 queries) the longest honest query
+is **256 chars**, and it is not a model flourish: it is the deal-scout's `site:` chain
+over the EIGHT marketplaces `florida-business-for-sale` declares in `sites`, plus the
+buyer's own figures. So the honest maximum is a function of the TEMPLATE'S
+configuration and moves whenever a site is added — and the floor for a future cap is
+now **≥ 512**. Nothing caps query length in the code today (there is no `MAX_QUERY`),
+so nothing is being cut; what the old 300 would mean is 1.17× headroom, one extra
+marketplace away from truncating the scout's primary search. The test now states the
+floor rather than blessing a number.
+
+**F-4 · Two corpus tests were calibrated before the fixes they now measure.**
+`test/red-team/refute-b1.test.ts` asserted, over every run in `out/`, that no writer
+cites past the 48th source. True of the July pair, false of the August runs — 30 and
+36 deep citations against 0 and 3 — and the reason is `1fa5d31` (2026-08-17), the
+OWN-FIRST fix for M-B1 itself: `rankEvidence(…, prefer)` puts an agent's own results
+first, and in a 15-agent run an agent's own results are deep in a store thirteen
+agents filled ahead of it. The July traces predate it; the August ones are the first
+real evidence the fix works. Store ORDER stopped being a proxy for what a writer could
+see, so the test now asserts per-run the property that survives both regimes — every
+citation is a search result or a page the job fetched, nothing invented — plus one
+regime-specific shape each, split on the run's `startedAt`. Revert-verified by moving
+the cutoff date.
+
+`test/red-team/refute-B2.test.ts` broke the same way and produced a finding worth
+more than the repair (see F-6).
+
+**F-5 · The refiner rewrites a listing's `sourceUrl`, and not always to a listing —
+`open`.** In `local-52835003` the `deep-dive-refiner` replaced four of the six
+`sourceUrl`s its producer had set: two to different sites entirely
+(`bizbuysell.com/Business-Opportunity/…` → `joinaccredited.com/deals/…`,
+`bizquest.com/business-for-sale/…` → `dealstream.com/d/biz-sale/plumbers/m0e000`) and
+one to a SEARCH page
+(`sunbeltnetwork.com/business-search/business-results/ss-hvac-businesses-in-florida-25`).
+The template tells the SCOUT to "cite each listing's OWN detail-page URL (the specific
+listing), never the search/browse page"; the refiner's `focus` says nothing about it,
+and the refiner is the pass whose URLs actually ship. What the buyer gets is a
+"source ↗" link beside a profile's figures that does not open the listing those
+figures came from. `local-4ed81938` (published) has 0 of these; `local-52835003` has
+2, which is why it is not the published sample. Two candidate fixes, neither built:
+say it in the refiner's `focus` (cheap, unenforced), or refuse a `sourceUrl` rewrite
+whose host changes when the producer's URL is still reachable (enforced, and needs a
+rule for the honest case where the scout's URL was the wrong one).
+
+**F-6 · The zero-turn plan-loops are gone, and the plan-breaker floor moved from 3 to
+4 — `open` (it changes a proposed abuse limit).**
+`refute-B2.test.ts` read the July pair and found two agents (`risk-analyst`,
+`deep-dive-refiner`) that hit the iteration bound having spent **0 turns** — 22 plans
+and 4 cached reads, buying nothing — and concluded that "no honest agent ever emitted
+3 plans in a row", so a consecutive-PLAN breaker at 3 or 4 costs no honest agent.
+Across the three August runs, **no agent finishes with zero turns** (the pathology is
+July-only, and this is the first production evidence of that), but honest agents that
+go on to spend turns DO emit **3 plans in a row**. A breaker at 3 would now cut one.
+The floors are **≥4 consecutive plans** and **≥6 consecutive free calls** (5 observed,
+in July's refiner and in `local-4ed81938`). The test now scopes the July sequences to
+the July traces and states the floors over the whole corpus.
+
+**F-7 · The public sample published our unit economics — fixed before it shipped.**
+The static dossier the landing links to (`apps/fbizlab/public/sample-dossier.json`)
+carried `meta.cost` verbatim: `usd 3.306488`, the llm/search split, 1.78M input and
+195k output tokens, 61 search calls. That is the exact block
+`redactReportForBuyer` (`apps/api/src/index.ts`) deletes for anyone who is not an
+admin — "minus what is ours" — and on the same page as the mode's credit price it is
+the gross margin of every report we sell, computable by anyone. The cause is the
+shape this repo keeps finding: a SECOND path to the same artifact that does not pass
+the boundary where the policy lives. This one is read off disk by a build script and
+served as a static asset, so the API's redaction could not apply. The generator now
+applies the same policy, and `test/sample-dossier.test.ts` proves it did — with the
+premise asserted first (the stored artifact HAS the figures), so the test cannot pass
+by measuring nothing.
+
+**F-8 · The engine's evidence tags reach the buyer's artifact — fixed at the render
+boundary.** `buildDossier` numbers a writer's evidence `[S1]…[S48]` / `[P1]…`, and
+`SYSTEM` tells the model in as many words: "Do not use bare `[S3]`/`[P2]` tags". It
+emits them anyway in **every** run measured — 84, 84, 122, 133 and 146 across the
+five in `out/`. In the published sample: 122, of which **77 label a real link**
+(`[S2](https://…)`) and **45 are bare in prose**. Neither is readable: `S2` is our
+vocabulary, and a bare `[S27]` resolves to nothing at all — the numbering is
+per-agent, from `rankEvidence`'s ordering of THAT writer's dossier, while the
+report's own Sources list is numbered over the whole store, so `[S27]` is not source
+27 and following it would be worse than dropping it.
+
+Fixed in the two renderers rather than in the engine, so it reaches reports already
+delivered: `linkLabel(text, href)` resolves a tag-labelled link to the source's host,
+and `stripEvidenceTags` removes a bare tag with the space before it, so the sentence
+closes up. Twins in `pdf/report-html.ts` and `fbizlab/src/lib/safe-href.ts`. The
+viewer's four Markdown call sites were collapsed into one `Md` component first — a
+rule applied to three of four prose paths is this codebase's recurring defect, and
+the mutation that reds the risk-list test proves the fourth was real. `[Plumbing &
+HVAC SEO]`, a genuine link label from the same report, is untouched: the digit is
+what tells a tag from a name.
+
+**F-9 · Whether the same figures are exposed in Cloud Storage today — checked, they
+are not.** Asked directly, and answered against the live project rather than the
+code: both buckets have **uniform bucket-level access ON**, **no `allUsers` /
+`allAuthenticatedUsers` binding**, and only two principals besides project-level
+legacy roles — the worker (`objectAdmin`) and the API (`objectViewer`). Every serving
+path was enumerated: only `/research/:jobId/report` and `/research/:jobId/files/:name`
+read a stored object, both redact `report.json` for non-admins, `trace.json` and
+`metadata.json` are `ADMIN_ONLY_FILES` (404, not 403), and `checkpoint.json` is never
+in `job.files` — which is composed explicitly, not from `listJobFiles` — so it 404s
+too. `sources.json` IS buyer-reachable and holds `{title, url, snippet}` only:
+scraped evidence, no economics, no prompts, no agent ids. The stored `report.json`
+still contains `meta.cost` by design ("the stored object stays whole — the policy
+belongs at the boundary").
+
+Two things left open by that check, neither a door standing open:
+- **`publicAccessPrevention` is `inherited`, not `enforced`, on both buckets.** Today
+  nothing is public; enforcing it makes "nothing is public" a property rather than a
+  current fact, and costs one command per bucket.
+- **`signRead` / `signJobFiles` are still exported from core and called by nobody**
+  (`packages/core/src/index.ts`; the only references outside `storage/gcs.ts` are test
+  mocks). They are the old mechanism — the one that handed a caller URLs straight to
+  the raw objects — kept alive as an export. A future caller reaching for the obvious
+  helper reintroduces exactly what the proxy was built to end.
+
+Three things worth carrying into round 11:
+- **A measurement test that reads `out/` is skipped in CI** (a fresh checkout has no
+  `out/`), so it only ever runs on a developer's machine — and any new local run can
+  turn the suite red by existing. That is the tripwire working, but "the suite is
+  green" means something different in the two places.
+- **`refute-B2.test.ts` resolves the corpus from `process.cwd()`**
+  (`resolve(process.cwd(), '../../out')`), so it finds the traces under
+  `npm test` (cwd = `packages/core`) and silently skips under
+  `npx vitest run --root packages/core` from the repo root. Three of its tests were
+  measured GREEN that way during this work while they were in fact not running. Count
+  from `npm test`; a corpus test that skips itself looks identical to one that passes.
+  `refute-b1.test.ts` resolves the same directory from `import.meta.url` and does not
+  have this problem — the two files disagree, and one of them is wrong.
+- **The local CLI does not run under the derived ceiling.** `run-job.ts` resolves
+  `resolveModeCeiling(...)`; `cli/run-local.ts` calls `runResearch` directly and the
+  engine falls back to the deployment-wide `MAX_JOB_COST_USD` — all three traces say
+  `costCeilingUsd: 20`, against the $8.7075 the same job may spend in prod. Every run
+  was far below either number, so nothing was hidden; what it means is that a sample
+  generated locally is not evidence that those params stay inside the prod ceiling.
+  Only the measured cost is.
+
+---

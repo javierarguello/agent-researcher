@@ -366,6 +366,78 @@ four-language copy twice in two environments is the actual annoyance.
 
 ---
 
+## P-8 · The admin says which environment it is driving — `open`
+
+**Asked for by Javier, 2026-08-22.** Nothing in the admin says whether it is dev or
+prod. The header is `agent-researcher` plus a grape `admin` badge and the operator's
+email (`apps/admin/src/components/Layout.tsx:31`, verified by reading); the two
+deployments differ only in the URL bar
+(`agent-researcher-dev-admin.web.app` vs `-prod-admin`, README § Environments) and in
+one build-time value, `VITE_API_BASE_URL` (`apps/admin/src/config.ts:3`).
+
+**Why it is worth building:** the admin is where the irreversible things happen —
+`/pricing` writes the per-model credit overrides that DERIVE every job's cost ceiling
+(`packages/core/src/credits/pricing.ts:97`), the catalog screens create, re-price and
+retire live Stripe products (P-7), and users can be granted credits. "Which database
+and which Stripe account is this?" is a safety question, and today it is answered by
+reading the URL bar.
+
+**What to build, in order of how much it is worth:**
+1. **A badge that says the environment**, beside the `admin` one, coloured so dev and
+   prod cannot be mistaken for each other at a glance.
+2. **A link to the other environment**, so hopping dev↔prod is deliberate rather than
+   a hand-edited URL.
+3. **A mismatch warning** — see the product decision below.
+
+**Product decision, unresolved — where the badge gets its answer.** Two sources, and
+they are not equivalent:
+- *Build time* (`import.meta.env`, a new `VITE_ENV` or one derived from the API URL):
+  free, but it states what the bundle was BUILT for. A prod bundle deployed to the dev
+  site — or a local `npm run dev` pointed at the prod API by an `.env` — says the
+  comforting thing while the writes land somewhere else.
+- *Runtime* (the API answers): honest, because what matters is which Firestore and
+  which Stripe the click reaches, and only the API knows. `config.env` exists
+  (`packages/core/src/config.ts:49`) but is exposed by no endpoint — `/health` returns
+  `{ ok: true }` and nothing more (`apps/api/src/index.ts:267`), so this is a small
+  API change plus one more field on a response the admin already makes.
+
+The runtime answer is the one that cannot lie, and it makes (3) possible: badge what
+the API said, and shout when the build disagrees with it. Whether `/health` grows the
+field or it rides the admin session response is the open call; `/health` is
+unauthenticated, so anything added there is public.
+
+**Not started.** No code exists for this.
+
+---
+
+## P-9 · The public sample dossier is client-rendered, so a crawler may see nothing — `open`
+
+**Raised while building it, 2026-08-23.** `/sample` renders a real dossier from
+`public/sample-dossier.json` (`apps/fbizlab/src/pages/SampleReport.tsx`), and `App`
+marks it `index, follow` — correctly: it is the one page that shows what the product
+actually produces, and it is now the destination of the hero's "see a sample summary"
+and of the "Inside a summary" section.
+
+But the landing's SEO comes from `scripts/prerender-seo.mjs`, which emits one static
+HTML file per language with a localized `<head>` and JSON-LD, and it knows nothing
+about this route: a request to `/sample` serves `index.html`, so a crawler that does
+not run JS sees the ENGLISH LANDING'S title and description over an empty body, and
+one that does run JS sees a dossier with the landing's `<head>`.
+
+**What to build:** the sample's own `<head>` (title, description, canonical,
+og:image) and, if it is worth it, a prerendered body. The body is the expensive half
+and the decision: the report is 196 kB of JSON and prerendering it means shipping a
+second copy as HTML. The `<head>` alone is cheap and gets most of the value.
+
+**Product decision, unresolved:** whether the sample is a marketing PAGE (prerender
+the executive summary and the shortlist, let the rest hydrate) or a demo behind a
+link (head only, leave it out of `sitemap.xml`). It is currently NOT in the sitemap,
+which is the honest state for a page whose content a crawler may not see.
+
+**Not started.**
+
+---
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
