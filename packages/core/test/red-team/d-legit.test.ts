@@ -638,11 +638,20 @@ describe('3 · what an honest run pays for ONE flaky provider call', () => {
 describe('4 · honest sizes for a cap to have a property behind it', () => {
   const OUT = path.resolve(HERE, '../../../../out');
   const realTraces = existsSync(OUT) ? readdirSync(OUT).map((d) => path.join(OUT, d, 'trace.json')).filter((f) => existsSync(f)) : [];
-  it.skipIf(realTraces.length === 0)('honest queries: 81 real gemini-2.5-flash queries in out/*/trace.json — p50 68, p90 90, max 118 chars (a `site:` OR-chain from the deal-scout focus text)', () => {
-    // From the July local runs kept in `out/` (real model, real search). The
-    // longest honest query is a legitimate `site:a OR site:b OR site:c` chain that
-    // the deal-scout's own focus text invites. A query cap must be ≥ 2× the longest
-    // honest query observed (≥ 236) or it cuts a query the template asks for.
+  it.skipIf(realTraces.length === 0)('honest queries: 187 real gemini-2.5-flash queries in out/*/trace.json — p50 69, p90 98, max 256 chars (the deal-scout’s `site:` chain over the eight marketplaces the template declares)', () => {
+    // From the local runs kept in `out/` (real model, real search): the July pair
+    // plus three August comprehensive runs. The longest honest query is not a model
+    // flourish — it is the deal-scout's `site:` chain over the EIGHT marketplaces
+    // `florida-business-for-sale` declares in `sites`, plus the buyer's own figures,
+    // and it is 256 characters. The July corpus alone said 118, which is what makes
+    // the number worth re-measuring rather than trusting: the honest maximum is a
+    // function of the template's configuration, so it moves whenever a site is added.
+    //
+    // A query cap must be ≥ 2× the longest honest query observed (≥ 512) or it cuts a
+    // query the template itself asks for. Nothing caps query length in the code today
+    // (there is no `MAX_QUERY`), so this is the floor for whoever builds one — and
+    // note what the old 300 would now mean: not a cut, but 1.17× headroom, one extra
+    // marketplace away from truncating the scout's primary search.
     const queries: string[] = [];
     let longestNote = 0;
     for (const f of realTraces) {
@@ -658,10 +667,14 @@ describe('4 · honest sizes for a cap to have a property behind it', () => {
     // eslint-disable-next-line no-console
     console.table([{ 'real queries': L.length, min: L[0], p50: p(0.5), p90: p(0.9), max: L[L.length - 1], 'longest trace note': longestNote }]);
     expect(L.length).toBeGreaterThan(50);
-    expect(L[L.length - 1]).toBeLessThanOrEqual(150); // no honest query anywhere near a 300-char cap
+    // The shape, which has held across every corpus: the bulk are short and the tail
+    // is `site:` chains. p90 is under 100 characters in 187 real queries.
+    expect(p(0.9)).toBeLessThanOrEqual(120);
     expect(queries.some((q) => /site:\S+ OR site:/.test(q))).toBe(true); // …and the long ones are `site:` chains
-    // The property for a cap: ≥ 2× the longest honest observed.
-    expect(2 * L[L.length - 1]!).toBeLessThanOrEqual(300);
+    // The property for a cap: ≥ 2× the longest honest observed. Stated as the floor a
+    // cap has to clear rather than as a number this file blesses — re-measure before
+    // choosing one, and re-measure again after adding a site to any template.
+    expect(2 * L[L.length - 1]!).toBeLessThanOrEqual(512);
   });
 
   it('honest sections: Florida asks for 18 prose fields of ≥150–600 words; the largest real section is deep_dives at 40.5k chars (6 profiles); exec summary 8.9–10.0k chars', () => {

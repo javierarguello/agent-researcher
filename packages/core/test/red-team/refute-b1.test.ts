@@ -160,39 +160,109 @@ describeMock('B1 refute · the SNIPPET half with a sparse corpus (5 matching pag
 });
 
 /**
- * The two July runs the repo keeps under out/local-… : 199 and 174 sources; every
- * writer's citations against the first 48. If the writers could see past 48 the
- * citations would spread; they do not.
+ * Every local run the repo keeps under out/local-… , split by the fix they ran
+ * under.
+ *
+ * The July pair (2026-07-07, 199 and 174 sources) predates OWN-FIRST ranking
+ * (`1fa5d31`, 2026-08-17, the M-B1 fix): every writer read the head of one shared
+ * store, so citations could not spread and did not — 0 and 3 URLs cited past the
+ * 48th. The August runs are the first real traces written AFTER it, and they cite
+ * 30 and 36 URLs past the 48th out of stores of 215 and 237.
+ *
+ * That reversal is the fix working, not a regression, and it is why store ORDER
+ * stopped being a proxy for what a writer could see: `rankEvidence(…, prefer)`
+ * puts an agent's own results first, and in a 15-agent run an agent's own results
+ * are deep in a store that thirteen other agents filled ahead of it.
+ *
+ * So the per-run assertion is the one that survives both regimes and is the one a
+ * buyer cares about: a writer cites evidence the job actually holds. The
+ * regime-specific shapes are asserted once each, below.
  */
 const OUT_DIR = new URL('../../../../out/', import.meta.url).pathname;
 const runs = existsSync(OUT_DIR) ? readdirSync(OUT_DIR).filter((d) => existsSync(`${OUT_DIR}${d}/trace.json`) && existsSync(`${OUT_DIR}${d}/sources.json`)) : [];
 
-describe.skipIf(!runs.length)('B1 refute · the real July traces: no writer cites past the 48th source', () => {
-  it.each(runs)('%s: citations land in the first 48 (or on a fetched [P] page); the rest of the store is cited by nobody', (run) => {
-    const trace = JSON.parse(readFileSync(`${OUT_DIR}${run}/trace.json`, 'utf8')) as { agents: Array<{ id: string; output?: unknown; notes: string[] }> };
-    const sources = JSON.parse(readFileSync(`${OUT_DIR}${run}/sources.json`, 'utf8')) as Array<{ url: string }>;
-    const idx = new Map(sources.map((s, i) => [s.url, i] as const));
-    const cited = new Set<string>();
-    const walk = (o: unknown): void => {
-      if (Array.isArray(o)) o.forEach(walk);
-      else if (o && typeof o === 'object') Object.entries(o).forEach(([k, v]) => ((k === 'sourceUrl' || k === 'url') && typeof v === 'string' ? cited.add(v) : walk(v)));
-      else if (typeof o === 'string') for (const m of o.matchAll(/\((https?:\/\/[^)\s]+)\)/g)) cited.add(m[1]!);
-    };
-    for (const a of trace.agents) walk(a.output);
-    const inHead = [...cited].filter((u) => (idx.get(u) ?? -1) < 48 && idx.has(u)).length;
-    const beyond = [...cited].filter((u) => (idx.get(u) ?? -1) >= 48);
-    const notInSources = [...cited].filter((u) => !idx.has(u)).length; // fetched pages that were never a search result
-    const fetches = trace.agents.reduce((n, a) => n + a.notes.filter((x) => /Fetched [1-9]/.test(x)).length, 0);
+/** The dispatch that shipped OWN-FIRST ranking. A trace older than this read the shared head. */
+const OWN_FIRST_SHIPPED = '2026-08-17';
+
+interface RunFacts {
+  run: string;
+  sources: number;
+  cited: number;
+  inHead: number;
+  beyond: string[];
+  /** Cited URLs that were never a search result: pages an agent fetched. */
+  notInSources: number;
+  fetches: number;
+  ownFirst: boolean;
+}
+
+function factsFor(run: string): RunFacts {
+  const trace = JSON.parse(readFileSync(`${OUT_DIR}${run}/trace.json`, 'utf8')) as {
+    agents: Array<{ id: string; output?: unknown; notes: string[] }>;
+    startedAt?: string;
+  };
+  const sources = JSON.parse(readFileSync(`${OUT_DIR}${run}/sources.json`, 'utf8')) as Array<{ url: string }>;
+  const idx = new Map(sources.map((s, i) => [s.url, i] as const));
+  const cited = new Set<string>();
+  const walk = (o: unknown): void => {
+    if (Array.isArray(o)) o.forEach(walk);
+    else if (o && typeof o === 'object') Object.entries(o).forEach(([k, v]) => ((k === 'sourceUrl' || k === 'url') && typeof v === 'string' ? cited.add(v) : walk(v)));
+    else if (typeof o === 'string') for (const m of o.matchAll(/\((https?:\/\/[^)\s]+)\)/g)) cited.add(m[1]!);
+  };
+  for (const a of trace.agents) walk(a.output);
+  return {
+    run,
+    sources: sources.length,
+    cited: cited.size,
+    inHead: [...cited].filter((u) => (idx.get(u) ?? -1) < 48 && idx.has(u)).length,
+    beyond: [...cited].filter((u) => (idx.get(u) ?? -1) >= 48),
+    notInSources: [...cited].filter((u) => !idx.has(u)).length,
+    fetches: trace.agents.reduce((n, a) => n + a.notes.filter((x) => /Fetched [1-9]/.test(x)).length, 0),
+    ownFirst: (trace.startedAt ?? '') >= OWN_FIRST_SHIPPED,
+  };
+}
+
+describe.skipIf(!runs.length)('B1 refute · the real traces: what a writer cites, before and after own-first', () => {
+  it.each(runs)('%s: every citation is evidence the job actually holds — a search result, or a page it fetched', (run) => {
+    const f = factsFor(run);
     // eslint-disable-next-line no-console
-    console.log(`${run}: ${sources.length} sources; ${cited.size} distinct URLs cited by all writers: ${inHead} in first-48, ${beyond.length} beyond (${beyond.join(', ') || '—'}), ${notInSources} not a search result (fetched pages; ${fetches} fetches landed, store < 14)`);
-    expect(sources.length).toBeGreaterThan(48 * 3);
-    expect(fetches).toBeLessThan(14); // the PAGE half never bound in July
-    // The few beyond-48 URLs cited are pages some agent FETCHED (they render as
-    // [P] whatever their snippet index): never more than the fetches that landed,
-    // never a spread over the 126-151 sources past the cut.
-    expect(beyond.length).toBeLessThanOrEqual(fetches);
-    expect(beyond.length).toBeLessThan(sources.length * 0.03);
-    expect(inHead).toBeGreaterThan(cited.size * 0.6);
+    console.log(
+      `${f.run}: ${f.sources} sources, own-first ${f.ownFirst}; ${f.cited} distinct URLs cited: ` +
+        `${f.inHead} in first-48, ${f.beyond.length} beyond, ${f.notInSources} not a search result (${f.fetches} fetches landed)`,
+    );
+    expect(f.sources).toBeGreaterThan(48 * 3);
+    // The property that holds in BOTH regimes and is the one that would matter to a
+    // buyer: a citation past the rendered window is a page the job fetched, not a URL
+    // a writer produced from nowhere. `notInSources` is bounded by the fetches that
+    // landed; everything else cited is in the store by construction.
+    expect(f.notInSources).toBeLessThanOrEqual(f.fetches);
+  });
+
+  it('before own-first, a writer could only cite the head — and did', () => {
+    const pre = runs.map(factsFor).filter((f) => !f.ownFirst);
+    expect(pre.length, 'the July pair is the pre-fix corpus').toBeGreaterThan(0);
+    for (const f of pre) {
+      // The original refutation, kept exactly: the few beyond-48 URLs are pages some
+      // agent FETCHED (they render as [P] whatever their snippet index), never a
+      // spread over the 126-151 sources past the cut.
+      expect(f.beyond.length, f.run).toBeLessThanOrEqual(f.fetches);
+      expect(f.beyond.length, f.run).toBeLessThan(f.sources * 0.03);
+      expect(f.inHead, f.run).toBeGreaterThan(f.cited * 0.6);
+    }
+  });
+
+  it('after own-first, writers cite their OWN evidence, which is deep in a store thirteen agents filled first', () => {
+    const post = runs.map(factsFor).filter((f) => f.ownFirst);
+    expect(post.length, 'the August runs are the post-fix corpus').toBeGreaterThan(0);
+    for (const f of post) {
+      // 30 and 36 of ~63 distinct citations sit past the 48th source, against 0 and 3
+      // in July. Mutation that reds this: drop `prefer` from the `rankEvidence` calls
+      // in `buildProducerSynthPrompt`/`buildEnricherSynthPrompt` — every writer is
+      // back on the shared head and the deep half of the store goes uncited, which is
+      // M-B1 exactly.
+      expect(f.beyond.length, f.run).toBeGreaterThan(f.fetches);
+      expect(f.beyond.length, f.run).toBeGreaterThan(f.cited * 0.25);
+    }
   });
 });
 

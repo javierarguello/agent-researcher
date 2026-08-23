@@ -33,7 +33,18 @@ const OUT_DIR = resolve(process.cwd(), '../../out');
 const traceDirs = existsSync(OUT_DIR) ? readdirSync(OUT_DIR).filter((d) => existsSync(resolve(OUT_DIR, d, 'trace.json'))) : [];
 
 interface TraceAgent { id: string; role: string; turnsUsed?: number; notes?: string[]; cost?: { usd?: number; searchCalls?: number; inputTokens?: number } }
-interface Trace { agents: TraceAgent[]; language: string; cost?: { usd: number } }
+interface Trace { agents: TraceAgent[]; language: string; cost?: { usd: number }; startedAt?: string }
+
+/**
+ * The July pair, told apart from the August runs by the date they started.
+ *
+ * This file's sequences were read off the two runs that existed when it was
+ * written, and three of its claims are about THOSE runs: the two zero-turn
+ * plan-loops, the refiner's `PcPcPFP`, and "no honest agent ever emitted 3 plans in
+ * a row". The first two are history — a trace does not change — and the third was a
+ * claim about honest behaviour in general, which is the one the August runs move.
+ */
+const JULY = '2026-08-01';
 
 const florida = getTemplate('florida-business-for-sale')!;
 const budgetOf = (id: string) => florida.agents.find((a) => a.id === id)?.researchBudget ?? NaN;
@@ -125,9 +136,10 @@ describe.skipIf(traceDirs.length === 0)('refute B2 · the two real July traces (
     expect(minGap).toBeGreaterThan(1000);
   });
 
-  it('the honest maximum: 2 consecutive plans (every non-pathological agent), but 5 consecutive FREE calls in the honest deep-dive-refiner (P c P c P, then its one paid fetch) — a ≥4 free-call breaker cuts a real honest agent before its only paid turn', () => {
-    const rows: Array<{ dir: string; agent: string; seq: string; maxPlans: number; maxFree: number; turns: number }> = [];
+  it('the honest maximum across five runs: 3 consecutive plans (it was 2 in the July pair, so a breaker at 3 now cuts an honest agent) and 5 consecutive FREE calls — and the two zero-turn plan-loops are July-only', () => {
+    const rows: Array<{ dir: string; agent: string; seq: string; maxPlans: number; maxFree: number; turns: number; july: boolean }> = [];
     for (const { dir, trace } of loadTraces()) {
+      const july = (trace.startedAt ?? '') < JULY;
       for (const a of trace.agents) {
         const seq = (a.notes ?? []).filter(isTool).map(kindOf).join('');
         if (!seq) continue;
@@ -136,23 +148,33 @@ describe.skipIf(traceDirs.length === 0)('refute B2 · the two real July traces (
           cp = ch === 'P' ? cp + 1 : 0; mp = Math.max(mp, cp);
           cf = ch === 'P' || ch === 'c' ? cf + 1 : 0; mf = Math.max(mf, cf);
         }
-        rows.push({ dir, agent: a.id, seq, maxPlans: mp, maxFree: mf, turns: a.turnsUsed ?? 0 });
+        rows.push({ dir, agent: a.id, seq, maxPlans: mp, maxFree: mf, turns: a.turnsUsed ?? 0, july });
       }
     }
     // eslint-disable-next-line no-console
     console.table(rows);
-    const pathological = rows.filter((r) => r.turns === 0);
+    const julyRows = rows.filter((r) => r.july);
+    const pathological = julyRows.filter((r) => r.turns === 0);
     const honest = rows.filter((r) => r.turns > 0);
     expect(pathological.map((r) => r.agent).sort()).toEqual(['deep-dive-refiner', 'risk-analyst']);
     expect(pathological.every((r) => r.maxPlans >= 16)).toBe(true);
-    // No honest agent ever emitted 3 plans in a row: a consecutive-PLAN breaker at
-    // 3 or 4 costs no real honest agent and ends both plan-loops at call 3-4.
-    expect(Math.max(...honest.map((r) => r.maxPlans))).toBe(2);
-    // But the honest refiner (1 paid turn) re-read the shortlist first: P c P c P F P.
-    const honestRefiner = honest.find((r) => r.agent === 'deep-dive-refiner')!;
+    // …and they are a JULY phenomenon. Across the three August comprehensive runs
+    // (2026-08-22/23) NO agent finishes with zero turns: every agent-run spends at
+    // least one paid turn. This is a measurement, not a mutation target — if a
+    // zero-turn loop comes back, it is telling you the plan-loop returned, which is
+    // what this whole file was opened for.
+    expect(rows.filter((r) => !r.july && r.turns === 0)).toEqual([]);
+    // The honest July refiner (1 paid turn) re-read the shortlist first: P c P c P F P.
+    const honestRefiner = julyRows.find((r) => r.agent === 'deep-dive-refiner' && r.turns > 0)!;
     expect(honestRefiner.seq).toBe('PcPcPFP');
     expect(honestRefiner.maxFree).toBe(5);
-    // B-legit's "honest peaks at 3" is its own personas; the real honest peak is 5.
+    // The FLOORS a breaker has to clear, over the whole corpus rather than over the
+    // pair that happened to exist first — and the number MOVED. July said no honest
+    // agent ever emitted 3 plans in a row, so "a consecutive-PLAN breaker at 3 or 4
+    // costs no real honest agent"; the August runs emit 3 in a row in honest agents
+    // that go on to spend turns, so a breaker at 3 now cuts one. ≥4 is the floor for
+    // plans, ≥6 for free calls (5 observed, in July's refiner and in `local-4ed81938`).
+    expect(Math.max(...honest.map((r) => r.maxPlans))).toBe(3);
     expect(Math.max(...honest.map((r) => r.maxFree))).toBe(5);
   });
 });
