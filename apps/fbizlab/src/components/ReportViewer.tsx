@@ -1,5 +1,5 @@
 import Markdown from 'react-markdown';
-import { proseUrl, safeHref, sourceLabel } from '../lib/safe-href';
+import { linkLabel, proseUrl, safeHref, sourceLabel, stripEvidenceTags } from '../lib/safe-href';
 import remarkGfm from 'remark-gfm';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
@@ -127,6 +127,19 @@ function ChartSpecRender({ spec, f }: { spec: ChartSpec; f: NumFmt }) {
  * drawn an image. If a model ever needs pictures, that is an allowlisted asset
  * pipeline, not Markdown.
  */
+/**
+ * `linkLabel` over an anchor's children, when there is one string to apply it to.
+ *
+ * react-markdown hands `[text](url)` a single string child; a label carrying its
+ * own markup (`[**bold**](url)`) arrives as an element and is left alone — it is
+ * not a bare url, which is the only case this exists for.
+ */
+function shortenUrlText(children: React.ReactNode, href: string): React.ReactNode {
+  if (typeof children === 'string') return linkLabel(children, href);
+  if (Array.isArray(children) && children.length === 1 && typeof children[0] === 'string') return linkLabel(children[0], href);
+  return children;
+}
+
 const MD = {
   // A link with no href left after `proseUrl` (an unsafe scheme) is its text, not a
   // dead anchor styled as a live one.
@@ -142,10 +155,27 @@ const MD = {
   // onto every prose anchor in the buyer's report (round 9, R9-23). Inert, and not
   // attacker-controlled — but the subject of this override is what that spread is
   // allowed to carry, and it audited one of the two props that do not belong.
-  a: ({ title: _title, node: _node, ...p }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => (p.href ? <a {...p} target="_blank" rel="noopener noreferrer" /> : <>{p.children}</>),
+  // The text is `linkLabel`ed: a citation whose label is its own url — or one of the
+  // engine's `[S2]` evidence tags — shows the host instead. It applies to the anchor only —
+  // the same string sitting in prose without a link is the model's sentence, not
+  // ours to rewrite — and it reaches GFM autolinks too, which are links whose text
+  // is the url BY CONSTRUCTION.
+  a: ({ title: _title, node: _node, children, ...p }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) =>
+    p.href ? <a {...p} target="_blank" rel="noopener noreferrer">{shortenUrlText(children, p.href)}</a> : <>{children}</>,
   img: () => null,
 };
-const Prose = ({ md }: { md: string }) => <div className="prose"><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{md}</Markdown></div>;
+/**
+ * Every prose path in this file goes through here.
+ *
+ * The four call sites used to repeat these props (a paragraph, a risk, a checklist
+ * item, a bullet list), which is four places to remember when the rule changes —
+ * and `stripEvidenceTags` is exactly such a rule: applied to three of the four, the
+ * fourth still shows the engine's `[S8]` to the reader.
+ */
+const Md = ({ md }: { md: string }) => (
+  <Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{stripEvidenceTags(md)}</Markdown>
+);
+const Prose = ({ md }: { md: string }) => <div className="prose"><Md md={md} /></div>;
 
 /** A row of coral-accented stat tiles: { value, label }. */
 function Tiles({ items }: { items: Array<{ value: string; label: string }> }) {
@@ -246,7 +276,7 @@ function DealCard({ d, l, f, cover, coverLabels }: { d: Obj; l: Record<string, s
           <div className="rv-flabel">{humanizeKey('risks')}</div>
           {(d.risks as unknown[]).every(isRisk)
             ? <RiskList items={d.risks as Risk[]} />
-            : <ul className="rv-bullets">{(d.risks as string[]).map((r, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{r}</Markdown></li>)}</ul>}
+            : <ul className="rv-bullets">{(d.risks as string[]).map((r, i) => <li key={i}><Md md={r} /></li>)}</ul>}
         </div>
       )}
       {safeHref(url) && <a className="mono accent" style={{ fontSize: 11, display: 'inline-block', marginTop: 10 }} href={safeHref(url)!} target="_blank" rel="noreferrer">source ↗</a>}
@@ -279,7 +309,7 @@ function Checklist({ categories }: { categories: Array<{ category: string; items
     <div key={i}>
       <div className="rv-flabel">{c.category}</div>
       <ul className="rv-check">{c.items.map((it, j) => (
-        <li key={j}><span className="rv-checkbox" /><span><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{it}</Markdown></span></li>
+        <li key={j}><span className="rv-checkbox" /><span><Md md={it} /></span></li>
       ))}</ul>
     </div>
   ))}</div>;
@@ -379,7 +409,7 @@ function Value({ v, k, l, f }: { v: unknown; k?: string; l: Record<string, strin
     if (v.every(isRisk)) return <RiskList items={v as Risk[]} />;
     if (v.every(isMetric)) return <MetricTiles items={v as Metric[]} />;
     if (isTransactions(v)) return <TransactionsTable rows={v} l={l} f={f} />;
-    if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Markdown remarkPlugins={[remarkGfm]} components={MD} urlTransform={proseUrl}>{x as string}</Markdown></li>)}</ul>;
+    if (v.every((x) => typeof x === 'string')) return <ul className="rv-bullets">{v.map((x, i) => <li key={i}><Md md={x as string} /></li>)}</ul>;
     return <div className="stack" style={{ gap: 10 }}>{v.map((x, i) => <div key={i} className="rv-card"><ObjectFields o={x as Obj} l={l} f={f} /></div>)}</div>;
   }
   if (typeof v === 'object') {

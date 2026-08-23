@@ -43,6 +43,83 @@ export function proseUrl(url: string): string {
 export const SOURCE_LABEL_MAX = 160;
 
 /**
+ * The engine's own evidence tags, as they reach an artifact.
+ *
+ * `buildDossier` numbers the evidence it hands a writer `[S1]…[S48]` (snippets) and
+ * `[P1]…` (fetched pages), and the system prompt tells the model in as many words:
+ * "Do not use bare `[S3]`/`[P2]` tags". It emits them anyway, in every real run
+ * measured — 84 to 146 per report across the five in `out/`, 122 in the published
+ * sample: 77 as the LABEL of a real link (`[S2](https://…)`) and 45 bare in prose.
+ *
+ * Neither belongs in front of a reader. `S2` is our vocabulary, and the bare ones
+ * resolve to nothing at all: the numbering is per-agent, from `rankEvidence`'s
+ * ordering of that writer's dossier, while the report's own Sources list is numbered
+ * over the whole store — so `[S27]` is not source 27, and following it would be
+ * worse than dropping it.
+ *
+ * A tag with a url behind it keeps the url and shows the host (`linkLabel`); a tag
+ * with nothing behind it is removed, with the space before it, so the sentence it
+ * interrupted closes up. `[Plumbing & HVAC SEO]` — a real link label from the same
+ * report — is not a tag: the digit is required.
+ */
+const EVIDENCE_TAG_BODY = String.raw`[SP]\d{1,3}(?:\s*,\s*[SP]\d{1,3})*`;
+const EVIDENCE_TAG = new RegExp(String.raw`^\[?${EVIDENCE_TAG_BODY}\]?$`);
+const BARE_EVIDENCE_TAG = new RegExp(String.raw`[ \t]*\[${EVIDENCE_TAG_BODY}\](?!\()`, 'g');
+
+/** Markdown with the engine's dangling evidence tags removed. Tags that label a link are left to `linkLabel`. */
+export function stripEvidenceTags(md: string): string {
+  return md.replace(BARE_EVIDENCE_TAG, '');
+}
+
+/** The host of an http(s) url, without `www.` — '' when it is not one. */
+function hostOf(url: string): string {
+  const m = /^https?:\/\/(?:www\.)?([^/?#\s]+)/i.exec(url.trim());
+  return m ? m[1]! : '';
+}
+
+/**
+ * What a prose link SHOWS when its text is the destination all over again.
+ *
+ * A model citing evidence writes `[https://www.linkedin.com/posts/…-activity-7387468055867449344-bm7P](the same url)`
+ * often enough to matter: **36 of the 165** prose links in the 2026-08-22
+ * statewide run carry the url as their own label, against **0** in the Tampa run
+ * an hour earlier — so this is a coin flip per report, not a rarity. Rendered
+ * verbatim it is a 120-character unbreakable token mid-sentence: it pushes the
+ * page sideways in the viewer and runs off the column in the PDF.
+ *
+ * The HOST is the half a reader needs from a citation ("who says so"), and it is
+ * the half the page's author does not choose. The full url is not lost: it stays
+ * in the `href` and in the Sources list, which is where someone goes to check it.
+ *
+ * A label that IS a url is shown as its host; so is one of the engine's own
+ * evidence tags (`[S2](https://…)`), which is our vocabulary rather than a name for
+ * anything the reader can use. Every other label is the author's words and is left
+ * exactly as written, however long.
+ *
+ * Clipped by the same bound as a Sources row for the same reason: `hostname` has
+ * no length limit, so a 4,000-character host is the text of a live anchor
+ * (round 10, R10-8).
+ *
+ * Keep identical to its twin in `packages/core/src/pdf/report-html.ts`; the two
+ * copies exist because the PDF cannot import from the SPA, not because they may
+ * differ.
+ */
+export function linkLabel(text: string, href = ''): string {
+  const clip = (host: string) => {
+    const c = Array.from(host);
+    return c.length > SOURCE_LABEL_MAX ? `${c.slice(0, SOURCE_LABEL_MAX - 1).join('')}…` : host;
+  };
+  const ownHost = hostOf(text);
+  if (ownHost) return clip(ownHost);
+  // `[S2](https://…)`: our tag over their url. The href is the honest label.
+  if (EVIDENCE_TAG.test(text.trim())) {
+    const linked = hostOf(href);
+    if (linked) return clip(linked);
+  }
+  return text;
+}
+
+/**
  * The HOST, then the page's own title, clipped. The title is whatever the page's
  * author put in `<title>`; the host is the one thing about a source its author
  * does not choose.
