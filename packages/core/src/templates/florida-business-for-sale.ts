@@ -584,11 +584,16 @@ const sections: ReportSection[] = [
     key: 'deep_dives',
     title: 'Detailed Listing Profiles',
     guidance:
-      'For each of the top targetCount listings, a rich full-page profile (each field several sentences to ' +
-      'paragraphs): overview, detailed financials, implied multiple, itemized included assets, lease/real- ' +
-      'estate terms, reason for sale + what it signals, concrete growth opportunities, and ≥3 specific risks. ' +
-      'Cite the source URL.',
+      'For each of the top targetCount listings FROM THE SHORTLIST, a rich full-page profile (each field ' +
+      'several sentences to paragraphs): overview, detailed financials, implied multiple, itemized included ' +
+      'assets, lease/real-estate terms, reason for sale + what it signals, concrete growth opportunities, and ' +
+      '≥3 specific risks. Cite the source URL.',
     schema: z.array(deepDive),
+    // The set of businesses belongs to `deal-scout`, which writes it alongside the
+    // shortlist; the two enrichers deepen these profiles and do not extend them.
+    // `sourceUrl` is here so a refiner that retitles a profile it deepened keeps it:
+    // the listing page it re-opened is the identity that does not move.
+    itemKeys: ['business', 'sourceUrl'],
   },
   {
     key: 'financial_analysis',
@@ -896,7 +901,10 @@ const agents: AgentSpec[] = [
     focus:
       'For each profile, fill gaps left by the scout and valuation passes — missing revenue/SDE/cash flow, ' +
       'lease terms, included assets, reason for sale, and concrete risks. Keep the implied multiples already ' +
-      'added. fetch_page listing URLs for details still marked n/a. Expand each profile toward a full page.',
+      'added. fetch_page listing URLs for details still marked n/a. Expand each profile toward a full page. ' +
+      'Deepen the profiles you were handed and add no others: a listing that is not in the shortlist has no ' +
+      'row, no projection, no chart and no recommendation anywhere else in this report, so a profile of it ' +
+      'reaches the buyer alone and is dropped before delivery.',
   },
   {
     id: 'chart-analyst',

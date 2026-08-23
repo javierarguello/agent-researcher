@@ -777,14 +777,57 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
                 warnings.push(`${agent.id}: removed ${fields.length} field(s) repeating this agent's own instructions (${fields.join(', ')}).`);
               },
             });
-            // A rewrite REPLACES the section. When it comes back with fewer items
-            // than it was handed, say so where an admin reads — a note, never a
-            // refusal: dropping a duplicate, a sold listing or a misleading chart is
-            // a rewrite doing its job, and the trace still holds the analyst's
-            // output. What this catches is the other case: a pass that came back
-            // shorter for no reason, delivered green (M-A1).
+            // What the report takes from an enricher's rewrite. `slice` itself stays
+            // as the analyst wrote it — it is what `at.output` records, and an item
+            // the guard below drops has to stay recoverable there.
+            const merged: Record<string, unknown> = { ...slice };
+            // A rewrite REPLACES the section, so both directions need watching. When
+            // it comes back with fewer items than it was handed, say so where an admin
+            // reads — a note, never a refusal: dropping a duplicate, a sold listing or
+            // a misleading chart is a rewrite doing its job, and the trace still holds
+            // the analyst's output. What that catches is the case that used to ship
+            // green: a pass that came back shorter for no reason (M-A1). Longer is the
+            // other direction, and it is not symmetrical — see the guard below.
             for (const key of agent.enriches ?? []) {
-              for (const [label, before, after] of arrayFields(key, report[key], slice[key])) {
+              // The mirror of the shrink note below, and the case it did not cover: a
+              // rewrite that comes back LONGER because the enricher went looking and
+              // brought back a listing of its own. Measured on the 2026-08-22
+              // statewide run — `deep-dive-refiner` returned a 7th profile for a
+              // business `deal-scout` never shortlisted, and since every other agent
+              // had already run against the producer's six, that business appeared in
+              // no shortlist row, no projection, no chart, no recommendation and not
+              // in the executive summary. A page about a business the rest of the
+              // dossier does not know exists is worse than not having researched it.
+              //
+              // Only for a section that declares `itemKeys` (deep_dives does, `charts`
+              // deliberately does not — its refiner is allowed to add one), and only
+              // when the producer actually delivered a version: an enricher that wrote
+              // the section from nothing on the finalize pass is `reconstructed`, and
+              // everything in it is new by definition. `arrayPairs` already yields
+              // nothing when `before` is absent, so that second test changes no
+              // behaviour today and is written out anyway — the cost of it ever
+              // becoming false is the buyer's whole section, not one item.
+              const itemKeys = effTemplate.sections.find((x) => x.key === key)?.itemKeys;
+              if (itemKeys?.length && report[key] !== undefined) {
+                for (const [label, before, after] of arrayPairs(key, report[key], merged[key])) {
+                  const { kept, dropped } = keepKnownItems(itemKeys, before, after);
+                  if (!dropped.length) continue;
+                  setArrayField(merged, key, label, kept);
+                  const named = dropped.slice(0, 3).map((d) => `"${d.slice(0, 80)}"`).join(', ');
+                  const rest = dropped.length > 3 ? ` +${dropped.length - 3} more` : '';
+                  const line =
+                    `rewrite of "${label}" came back ${after.length} where the producer listed ${before.length}, and ` +
+                    `${dropped.length} of the extra item(s) match nothing it listed (${named}${rest}); those are not in ` +
+                    `the report — every other agent wrote against the producer's set. ` +
+                    `The full write is in the analyst's trace output.`;
+                  at.notes.push(`${new Date().toISOString()} ${line}`);
+                  // …and where an admin actually reads it, for the reason the shrink
+                  // twin below records: `notes` reach no screen and `slimAgents()`
+                  // blanks them on the next dispatch.
+                  warnings.push(`${new Date().toISOString()} Agent "${agent.id}" ${line}`);
+                }
+              }
+              for (const [label, before, after] of arrayFields(key, report[key], merged[key])) {
                 if (after < before) {
                   at.notes.push(`${new Date().toISOString()} rewrite of "${label}" returned ${after} item(s) where the current version had ${before}; the previous version is in the analyst's trace output.`);
                   // …and where an admin actually reads. The note alone reached no
@@ -808,7 +851,7 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
                 }
               }
             }
-            Object.assign(report, slice);
+            Object.assign(report, merged);
             if (handoff) handoffs[agent.id] = handoff;
             at.status = 'ok';
             at.output = slice;
@@ -1430,16 +1473,90 @@ function contextFor(
  * is restructuring, not shrinking.
  */
 function arrayFields(key: string, before: unknown, after: unknown): Array<[string, number, number]> {
-  if (Array.isArray(before) && Array.isArray(after)) return [[key, before.length, after.length]];
+  return arrayPairs(key, before, after).map(([label, b, a]) => [label, b.length, a.length]);
+}
+
+/**
+ * The same traversal, handing back the ARRAYS rather than their lengths — one
+ * definition, because the shrink note and the invented-item guard below ask two
+ * questions about exactly the same set of fields, and two traversals that disagree
+ * about which fields those are is the class of defect this file keeps recording.
+ */
+function arrayPairs(key: string, before: unknown, after: unknown): Array<[string, unknown[], unknown[]]> {
+  if (Array.isArray(before) && Array.isArray(after)) return [[key, before, after]];
   if (before && after && typeof before === 'object' && typeof after === 'object' && !Array.isArray(before) && !Array.isArray(after)) {
-    const out: Array<[string, number, number]> = [];
+    const out: Array<[string, unknown[], unknown[]]> = [];
     for (const [k, v] of Object.entries(before as Record<string, unknown>)) {
       const w = (after as Record<string, unknown>)[k];
-      if (Array.isArray(v) && Array.isArray(w)) out.push([`${key}.${k}`, v.length, w.length]);
+      if (Array.isArray(v) && Array.isArray(w)) out.push([`${key}.${k}`, v, w]);
     }
     return out;
   }
   return [];
+}
+
+/**
+ * Write an array back into the merged slice at `label` — `"deep_dives"` or
+ * `"findings.listings"` — cloning the level it touches, never the analyst's own
+ * object: `at.output` keeps `slice`, and the trace is where a dropped item is
+ * recovered from.
+ */
+function setArrayField(merged: Record<string, unknown>, key: string, label: string, value: unknown[]): void {
+  if (label === key) {
+    merged[key] = value;
+    return;
+  }
+  merged[key] = { ...(merged[key] as Record<string, unknown>), [label.slice(key.length + 1)]: value };
+}
+
+/** One item's identities, for `ReportSection.itemKeys`: trimmed, casefolded, no trailing slash. */
+function identities(item: unknown, itemKeys: string[]): string[] {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+  const o = item as Record<string, unknown>;
+  return itemKeys
+    .map((k) => o[k])
+    .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+    .map((v) => v.trim().toLowerCase().replace(/\/$/, ''));
+}
+
+/**
+ * `after`, minus the SURPLUS: an enricher may not grow a producer-owned set, so at
+ * most `after.length - before.length` unmatched items come off, last ones first.
+ *
+ * The cap is the whole design, and it was learned the expensive way. The first
+ * version dropped every item whose identity was absent from `before`, and the first
+ * real run under it (`out/local-52835003`) had `deep-dive-refiner` return the SAME
+ * six listings with one of them retitled AND re-sourced — `… | $815K+ Revenue | 18+
+ * Year` at `/business-for-sale/…/2099954/` came back as `… | 18+ Years | Port St.
+ * Lucie` at `/hvac-businesses-for-sale-in-port-saint-lucie-fl/…/2099954/`. Both
+ * identities moved at once, so it read as an invention and the buyer lost a page of
+ * paid research on a business that WAS shortlisted, while the mirror note reported it
+ * as an honest shrink. Losing a real profile is worse than carrying an extra one.
+ *
+ * With the cap, a rewrite that returns no more than it was handed changes nothing —
+ * a retitle is a rewrite, which is what an enricher is for — and the case this guard
+ * exists for still cannot survive: 7 back from 6 has exactly one surplus slot, and
+ * the invented listing is the one item matching nothing.
+ *
+ * "Last ones first" because a model appends what it went and found; when more items
+ * are unmatched than there are surplus slots, the ones nearer the top are the
+ * producer's, rewritten.
+ *
+ * An item with no readable identity is kept regardless: not being able to tell is not
+ * the same as knowing it was invented.
+ */
+function keepKnownItems(itemKeys: string[], before: unknown[], after: unknown[]): { kept: unknown[]; dropped: string[] } {
+  const surplus = after.length - before.length;
+  if (surplus <= 0) return { kept: after, dropped: [] };
+  const known = new Set(before.flatMap((item) => identities(item, itemKeys)));
+  const unmatched = after
+    .map((item, i) => ({ i, ids: identities(item, itemKeys) }))
+    .filter(({ ids }) => ids.length > 0 && !ids.some((id) => known.has(id)));
+  const cut = new Map(unmatched.slice(-surplus).map(({ i, ids }) => [i, ids[0]!] as const));
+  return {
+    kept: after.filter((_, i) => !cut.has(i)),
+    dropped: [...cut.values()],
+  };
 }
 
 function pick(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {

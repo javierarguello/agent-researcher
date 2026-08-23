@@ -25,6 +25,34 @@ export interface ReportSection {
    * "every section has a producer" validation. Provide `derive` to compute it.
    */
   derived?: boolean;
+  /**
+   * The fields that identify one ITEM of this section, for a section whose SET
+   * belongs to its producer: an enricher may deepen those items, rewrite them and
+   * drop them, but it may not GROW the set. When a rewrite comes back longer, the
+   * surplus is dropped — as many unmatched items as the set grew by, last ones
+   * first — so a refiner that merely retitled a profile can never lose it.
+   *
+   * Declared per section because it is not a universal rule — `charts` has a
+   * refiner whose job includes adding one — and it needs the model's own notion of
+   * identity, which only the model knows.
+   *
+   * An item is "the same" as one it shares ANY of these fields with (compared
+   * trimmed, casefolded, without a trailing slash). More than one because either can
+   * move on its own — and a real run had BOTH move at once for one profile
+   * (`out/local-52835003`), which is what the surplus cap above is for: identity
+   * decides WHICH items are candidates, the arithmetic decides how many. An item
+   * carrying none of these fields is KEPT — an identity we cannot read is not
+   * evidence of an invention.
+   *
+   * Measured, not theoretical (2026-08-22, `out/local-4ed81938`): the
+   * `deep-dive-refiner` returned a SEVENTH listing profile that `deal-scout` never
+   * shortlisted, and the business appeared nowhere else in the report — not in the
+   * shortlist, the projections, the five charts, the recommendations or the
+   * executive summary, because every one of those agents had already run against
+   * the producer's six. A full page about a business the rest of the dossier does
+   * not know exists.
+   */
+  itemKeys?: string[];
   /** Builds a derived section's value from the accumulated evidence + report. */
   derive?: (input: {
     sources: Array<{ title: string; url: string; snippet: string }>;

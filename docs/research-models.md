@@ -33,6 +33,7 @@ Each `ReportSection` owns a **Zod sub-schema**:
 | `schema` | Typed Zod shape this section contributes. |
 | `derived` | If true, the engine fills it deterministically (no producing agent). |
 | `derive({ sources, report })` | Builds a derived section's value from the accumulated evidence + report. |
+| `itemKeys` | The fields that identify one ITEM of this section, when the SET belongs to its producer: an enricher may deepen, rewrite and drop those items, but it may not grow the set. Optional — declare it only where it is true. |
 
 The full report schema is the **composition** of every section's sub-schema
 (`reportSchemaOf(template)` → `z.object({ [key]: schema, … })`). This is the
@@ -48,6 +49,18 @@ validates it.
 - **Derived sections** (`derived: true` + a `derive()` fn) are filled by the engine
   last, from the shared evidence store — e.g. `sources` maps every gathered URL to
   `{ id, url, label }`.
+- **A producer-owned set** (`itemKeys`) is the rule for a section an enricher
+  refines but does not extend. A rewrite that returns no more items than it was
+  handed changes nothing — a retitle is a rewrite. When it returns MORE, the surplus
+  comes off: as many unmatched items as the set grew by, last ones first, where "the
+  same item" means sharing ANY of those fields (trimmed, casefolded, no trailing
+  slash). So a refiner that found a listing of its own loses it, and one that merely
+  retitled a profile cannot lose it — noted on the agent's trace and raised as an
+  admin `warning`, with the analyst's full write still in `at.output`. It applies only when the producer
+  delivered a version: an enricher rebuilding a section its producer never wrote is
+  `reconstructed`, and everything in it is new by definition. `deep_dives` declares
+  `['business', 'sourceUrl']`; `charts` declares nothing, because its refiner is
+  allowed to add one.
 
 ## Modes — the single public cost/scope knob
 
