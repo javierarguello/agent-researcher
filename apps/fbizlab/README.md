@@ -11,6 +11,14 @@ credits via Stripe.
   the 4-language requirement (en/es/fr/pt), and SEO.
 - **Manifest-driven:** all forms, modes, add-ons, steps, and report sections come
   from `GET /templates?lang=` — nothing about a specific model is hardcoded here.
+- **One exception, deliberately:** the public sample dossier at **`/sample`** —
+  linked from the hero and from "Inside a summary" — is anonymous, so it cannot call
+  `/templates` (authenticated). It reads a single static file,
+  `public/sample-dossier.json`, generated from a REAL paid run by
+  `npm run sample:build` (repo root) and committed. Regenerate it after changing the
+  sample or a section title; `test/sample-dossier.test.ts` and
+  `packages/core/test/sample-dossier-titles.test.ts` fail while it is stale. The file
+  is fetched only when that route is opened — the landing does not carry its 196 kB.
 - **Pricing is never hardcoded:** plans come straight from Stripe via the API.
   The public landing calls `GET /plans?appId=fbizlab` (no auth, cached 30 min);
   the in-app Credits page calls `GET /credits/plans`. To change prices, edit the

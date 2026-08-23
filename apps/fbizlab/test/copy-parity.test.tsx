@@ -26,12 +26,13 @@ import { T as NewReport } from '../src/pages/NewReport';
 import { T as ReadReport } from '../src/pages/ReadReport';
 import { T as Reports } from '../src/pages/Reports';
 import { T as ResetPassword } from '../src/pages/ResetPassword';
+import { T as SampleReport } from '../src/pages/SampleReport';
 import { T as VerifyEmail } from '../src/pages/VerifyEmail';
 
 /** Every table in the app that is keyed by language. */
 const TABLES: Record<string, Record<string, unknown>> = {
   AppLayout, DownloadPdf, ApiAccess, Credits, JobView, Login,
-  NewReport, ReadReport, Reports, ResetPassword, VerifyEmail,
+  NewReport, ReadReport, Reports, ResetPassword, SampleReport, VerifyEmail,
 };
 
 /**

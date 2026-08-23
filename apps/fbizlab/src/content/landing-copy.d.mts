@@ -11,7 +11,7 @@ export interface LandingCopy {
   wwd: { kicker: string; title: string; body: string };
   benefits: { kicker: string; title: string; items: [string, string][] };
   hiw: { kicker: string; title: string; steps: [string, string][] };
-  insum: { kicker: string; title: string; body: string; disclaimer: string; items: string[] };
+  insum: { kicker: string; title: string; body: string; disclaimer: string; items: string[]; cta: string };
   usage: { kicker: string; title: string; body1: string; body2: string };
   pricing: { kicker: string; title: string; lead: string; creditsWord: string; popular: string; choose: string; noPlans: string };
   faq: { kicker: string; title: string; items: [string, string][] };

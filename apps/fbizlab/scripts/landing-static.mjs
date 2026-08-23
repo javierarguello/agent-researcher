@@ -37,7 +37,7 @@ export function renderLandingStatic(lang) {
       <div class="eyebrow">${esc(c.hero.kicker)}</div>
       <h1 class="h-xl">${esc(c.hero.title)}</h1>
       <p class="lead">${esc(c.hero.lead)}</p>
-      <div class="row" style="gap:12px;margin-top:4px;flex-wrap:wrap"><a class="btn btn--black" href="/login">${esc(c.hero.cta1)}</a><a class="btn btn--outline" href="#inside">${esc(c.hero.cta2)}</a></div>
+      <div class="row" style="gap:12px;margin-top:4px;flex-wrap:wrap"><a class="btn btn--black" href="/login">${esc(c.hero.cta1)}</a><a class="btn btn--outline" href="/sample">${esc(c.hero.cta2)}</a></div>
       <p class="fineprint">${esc(c.hero.disclaimer)}</p>
       <div class="mono muted" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;line-height:1.8">${esc(c.hero.tagline)}</div>
     </div>
@@ -60,7 +60,7 @@ export function renderLandingStatic(lang) {
   </div></section>`;
 
   const insum = `<section id="inside" class="section"><div class="container split">
-    <div class="stack" style="gap:16px;max-width:360px"><span class="eyebrow">${esc(c.insum.kicker)}</span><h2 class="h-lg">${esc(c.insum.title)}</h2><p class="soft" style="font-size:14.5px;line-height:1.6">${esc(c.insum.body)}</p><p class="fineprint">${esc(c.insum.disclaimer)}</p></div>
+    <div class="stack" style="gap:16px;max-width:360px"><span class="eyebrow">${esc(c.insum.kicker)}</span><h2 class="h-lg">${esc(c.insum.title)}</h2><p class="soft" style="font-size:14.5px;line-height:1.6">${esc(c.insum.body)}</p><a class="btn btn--black" style="align-self:flex-start" href="/sample">${esc(c.insum.cta)}</a><p class="fineprint">${esc(c.insum.disclaimer)}</p></div>
     <div class="sumlist">${c.insum.items.map((it, i) => `<div class="sumitem"><span class="mono">${pad(i)}</span>${esc(it)}</div>`).join('')}</div>
   </div></section>`;
 

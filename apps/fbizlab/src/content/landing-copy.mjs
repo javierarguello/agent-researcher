@@ -46,6 +46,7 @@ export const LANDING_COPY = {
       ],
     },
     insum: {
+      cta: 'Open the full sample dossier →',
       kicker: 'Inside a summary', title: 'See the information that matters at a glance',
       body: 'Depending on the information available, each AI-generated summary may organize details such as:',
       disclaimer: `${BRAND} does not independently verify the information provided by sellers, brokers, listings or third-party sources.`,
@@ -128,6 +129,7 @@ export const LANDING_COPY = {
       ],
     },
     insum: {
+      cta: 'Abrir el dossier de ejemplo completo →',
       kicker: 'Dentro de un resumen', title: 'Ve la información que importa de un vistazo',
       body: 'Según la información disponible, cada resumen generado por IA puede organizar detalles como:',
       disclaimer: `${BRAND} no verifica de forma independiente la información provista por vendedores, brokers, avisos o fuentes de terceros.`,
@@ -210,6 +212,7 @@ export const LANDING_COPY = {
       ],
     },
     insum: {
+      cta: 'Ouvrir le dossier d’exemple complet →',
       kicker: 'Dans un résumé', title: 'Voyez l’information qui compte d’un coup d’œil',
       body: 'Selon l’information disponible, chaque résumé généré par IA peut organiser des détails tels que :',
       disclaimer: `${BRAND} ne vérifie pas de façon indépendante les informations fournies par les vendeurs, courtiers, annonces ou sources tierces.`,
@@ -292,6 +295,7 @@ export const LANDING_COPY = {
       ],
     },
     insum: {
+      cta: 'Abrir o dossiê de exemplo completo →',
       kicker: 'Dentro de um resumo', title: 'Veja a informação que importa de relance',
       body: 'Dependendo da informação disponível, cada resumo gerado por IA pode organizar detalhes como:',
       disclaimer: `${BRAND} não verifica de forma independente as informações fornecidas por vendedores, corretores, anúncios ou fontes de terceiros.`,

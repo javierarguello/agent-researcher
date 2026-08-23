@@ -1,0 +1,21 @@
+{
+  "industry": "HVAC and plumbing services",
+  "location": "State of Florida, USA",
+  "mode": "comprehensive",
+  "language": "en",
+  "askingPriceMin": 150000,
+  "askingPriceMax": 3000000,
+  "minRevenue": 400000,
+  "minCashFlow": 120000,
+  "sbaFriendly": true,
+  "includeRealEstate": false,
+  "directives": {
+    "reasonForSale": ["owner_retiring", "estate_sale"],
+    "ownerInvolvement": "semi_absentee",
+    "dealStructure": ["seller_financing", "asset_purchase", "earnout"],
+    "buyerProfile": "first_time_buyer",
+    "timeline": "within_3_months",
+    "riskAppetite": "balanced",
+    "reportEmphasis": ["financials", "growth", "financing"]
+  }
+}

@@ -10,6 +10,7 @@ import { NewReport } from './pages/NewReport';
 import { JobView } from './pages/JobView';
 import { Credits } from './pages/Credits';
 import { ReadReport } from './pages/ReadReport';
+import { SampleReport } from './pages/SampleReport';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { ResetPassword } from './pages/ResetPassword';
 import { Privacy, Terms, Support } from './pages/Legal';
@@ -50,6 +51,9 @@ export function App() {
       <Route path="/api-access" element={<ApiAccess />} />
       <Route path="/contact" element={<ContactInfo />} />
       {/* Admin read-only report link (?rt=token) — auth is the token itself. */}
+      {/* Public, anonymous, no API: one static dossier from a real run. Outside
+          `RequireAuth` on purpose — it is the landing's "see a sample" made real. */}
+      <Route path="/sample" element={<SampleReport />} />
       <Route path="/report/:jobId" element={<ReadReport />} />
       <Route path="/app" element={<RequireAuth />}>
         <Route element={<AppLayout />}>

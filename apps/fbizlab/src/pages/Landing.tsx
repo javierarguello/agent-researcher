@@ -103,7 +103,11 @@ export function Landing() {
             <p className="lead">{c.hero.lead}</p>
             <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
               <button className="btn btn--black" onClick={go}>{c.hero.cta1}</button>
-              <button className="btn btn--outline" onClick={scrollTo('inside')}>{c.hero.cta2}</button>
+              {/* This button has always said "see a sample summary"; until the public
+                  dossier existed it scrolled to a list of bullet points. Now it opens
+                  one complete report from a real run. A `Link`, not a scroll: it is a
+                  page, and a crawler and a middle-click should both get there. */}
+              <Link className="btn btn--outline" to="/sample">{c.hero.cta2}</Link>
             </div>
             <p className="fineprint">{c.hero.disclaimer}</p>
             <div className="mono muted" style={{ fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', lineHeight: 1.8 }}>{c.hero.tagline}</div>
@@ -168,6 +172,7 @@ export function Landing() {
             <span className="eyebrow">{c.insum.kicker}</span>
             <h2 className="h-lg">{c.insum.title}</h2>
             <p className="soft" style={{ fontSize: 14.5, lineHeight: 1.6 }}>{c.insum.body}</p>
+            <Link className="btn btn--black" to="/sample" style={{ alignSelf: 'flex-start' }}>{c.insum.cta}</Link>
             <p className="fineprint">{c.insum.disclaimer}</p>
           </div>
           <div className="sumlist">
