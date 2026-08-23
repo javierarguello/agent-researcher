@@ -126,11 +126,11 @@ export function SampleReport() {
     <div className="read-shell">
       <div className="read-banner mono">
         <Link to="/">{t.back}</Link>
-        <span>{t.banner}</span>
+        <span className="read-banner__mid">{t.banner}</span>
         <Link className="btn btn--black btn--sm" to="/login">{t.cta}</Link>
       </div>
       <div className="read-body">
-        <div className="card" style={{ padding: 22, marginBottom: 24 }}>
+        <div className="card sample-intro">
           <div className="stack" style={{ gap: 10 }}>
             <h2 style={{ margin: 0 }}>{t.heading}</h2>
             <p className="soft" style={{ margin: 0, lineHeight: 1.6 }}>{t.body}</p>

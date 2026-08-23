@@ -117,6 +117,12 @@ p { margin: 0; }
 /* --- utility --- */
 .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .between { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+/* A flex item's default `min-width: auto` refuses to shrink below its content, so on
+   a phone the long half (a listing title) pushed the row 12px past its card and the
+   badge beside it was squeezed until its own text was clipped. The text half may
+   shrink and wrap; the badge may not. */
+.between > * { min-width: 0; }
+.between > .badge { flex: none; }
 .stack { display: flex; flex-direction: column; }
 .tag-popular { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 4px 8px; border-radius: var(--radius); }
 
@@ -211,7 +217,7 @@ p { margin: 0; }
 .tbl tr:last-child td { border-bottom: 0; }
 .tbl tbody tr { cursor: pointer; }
 .tbl tbody tr:hover { background: var(--bg-alt); }
-.badge { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: var(--radius); border: 1px solid var(--line); }
+.badge { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: var(--radius); border: 1px solid var(--line); white-space: nowrap; }
 .badge.running { color: #2563a8; border-color: #cfe0f2; background: #eef4fb; }
 .badge.completed { color: var(--positive); border-color: #cfe6d8; background: #eef7f1; }
 .badge.failed { color: var(--risk); border-color: #ecccc7; background: #fbeeec; }
@@ -408,7 +414,9 @@ p { margin: 0; }
 }
 
 /* ── Report viewer (nav · content · snapshot) ────────────── */
-.rv { display: grid; grid-template-columns: 190px minmax(0, 1fr) 290px; gap: 40px; align-items: start; }
+/* The side tracks grow with the viewport, so the extra width does not all land on
+   the prose measure: at 1680 that is contents 252 / report ~830 / snapshot 370. */
+.rv { display: grid; grid-template-columns: clamp(190px, 14vw, 260px) minmax(0, 1fr) clamp(290px, 21vw, 380px); gap: clamp(28px, 2.6vw, 52px); align-items: start; }
 .rv-nav, .rv-side { position: sticky; top: 84px; }
 .rv-nav ol { list-style: none; display: flex; flex-direction: column; gap: 1px; }
 .rv-nav li a { display: flex; gap: 12px; align-items: baseline; padding: 6px 0; font-size: 14px; color: var(--ink-soft); text-decoration: none; }
@@ -416,6 +424,9 @@ p { margin: 0; }
 .rv-nav__n { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: none; }
 
 .rv-main { min-width: 0; }
+/* Prose stops growing where a line stops being readable; tables, charts and cards
+   are outside `.prose` and keep the full track. */
+.rv-main .prose { max-width: 80ch; }
 .rv-eyebrow { display: inline-block; font-family: var(--mono); font-size: 10.5px; color: var(--accent); background: var(--accent-tint); padding: 5px 10px; border-radius: var(--radius); }
 .rv-title { font-size: clamp(30px, 3.6vw, 46px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.04; margin: 16px 0 10px; }
 .rv-meta { font-family: var(--mono); font-size: 12.5px; color: var(--muted); padding-bottom: 22px; border-bottom: 1px solid var(--line); }
@@ -431,10 +442,18 @@ p { margin: 0; }
 .rv-deal, .rv-card, .rv-mention { border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--bg-alt); padding: 18px 20px; }
 
 .rv-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 14px; }
-.rv-tile { background: var(--bg-alt); border-left: 3px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0; padding: 14px 16px; }
-.rv-tile__v { font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
-.rv-tile__l { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
-.rv-tile__h { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 3px; }
+/* Each tile is its own query container, so a value can be sized against the TILE
+   rather than the viewport. A one-word value cannot wrap: "Licensing" is 108px of
+   20px mono in a 128px track with 32px of padding, and it spilled over the tile's own
+   edge — while raising the track floor to fit it dropped the sixth badge onto a row
+   of its own. Scaling the glyphs is the answer to a box that got narrow; `min()`
+   keeps 20px as the ceiling, and the plain declaration above it is what a browser
+   without container queries reads. */
+.rv-tile { background: var(--bg-alt); border-left: 3px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0; padding: 14px 16px; container-type: inline-size; }
+.rv-tile__v { font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.rv-tile__v { font-size: min(20px, 13cqw); }
+.rv-tile__l { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+.rv-tile__h { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
 
 .rv-risk { border: 1px solid var(--line-soft); border-left: 3px solid var(--muted); border-radius: 0 var(--radius) var(--radius) 0; background: var(--bg-alt); padding: 16px 18px; }
 .rv-sev { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; border: 1px solid; padding: 2px 6px; border-radius: var(--radius); flex: none; }
@@ -483,8 +502,11 @@ p { margin: 0; }
 .rv-crit__k { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); flex: none; }
 .rv-crit__v { font-size: 12.5px; text-align: right; }
 
-@media (max-width: 1080px) { .rv { grid-template-columns: minmax(0, 1fr) 270px; } .rv-nav { display: none; } }
-@media (max-width: 760px) { .rv { grid-template-columns: 1fr; } .rv-side { position: static; } .rv-snapgrid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 1080px) { .rv { grid-template-columns: minmax(0, 1fr) clamp(240px, 27vw, 300px); } .rv-nav { display: none; } }
+/* Single column from 900, not 760: at 768 the two-track layout left the report 418px
+   beside a fixed 270px rail — the snapshot reads better under the report than beside
+   it once the report stops fitting a table. */
+@media (max-width: 900px) { .rv { grid-template-columns: 1fr; } .rv-side { position: static; } .rv-snapgrid { grid-template-columns: 1fr 1fr; } }
 
 /* ── Confirm modal ───────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(42, 40, 36, 0.42); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 100; overflow-y: auto; animation: fade .15s ease; }
@@ -520,9 +542,28 @@ p { margin: 0; }
 
 /* Admin read-only report view (?rt= token). A slim banner + the report, nothing else. */
 .read-shell { min-height: 100vh; background: var(--bg); }
-.read-banner { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; justify-content: space-between; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-tint); border-bottom: 1px solid #efdcb8; padding: 9px 20px; }
+.read-banner { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; justify-content: space-between; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-tint); border-bottom: 1px solid #efdcb8; padding: 9px clamp(12px, 3vw, 56px); }
+.read-banner__mid { flex: 1; text-align: center; }
+.sample-intro { padding: clamp(18px, 2.2vw, 30px); margin-bottom: 24px; }
+/* The card spans the full 1680 shell; its TEXT does not. Without this the intro ran
+   170 characters to a line while the report below it reads at 80. */
+.sample-intro > .stack { max-width: 92ch; }
+/* On a phone the row is a back link, a label and a call to action that is a full
+   sentence in four languages. The label is the one that can go: the page it names is
+   the page you are on. */
+@media (max-width: 640px) {
+  .read-banner { gap: 8px; letter-spacing: .06em; }
+  .read-banner__mid { display: none; }
+  .read-banner .btn--sm { padding: 7px 10px; font-size: 9px; }
+}
 .read-banner .pdf-link { text-transform: none; letter-spacing: 0; }
-.read-body { max-width: 1120px; margin: 0 auto; padding: 28px 20px 64px; }
+/* The dossier is a WORK SURFACE, not a marketing column: three tracks (contents,
+   report, snapshot) that all want room. It was capped at 1120px — narrower than the
+   site's own 1440 — which on a 1920 screen left the report itself 520px between two
+   400px margins, and made a 1024 laptop show MORE reading width than a desktop
+   (measured: main 674 at 1024, 520 at 1920). Fluid from here up, with the gutter
+   growing with the viewport instead of a fixed 20px. */
+.read-body { max-width: min(1680px, 100%); margin: 0 auto; padding: 28px clamp(20px, 3vw, 56px) 64px; }
 
 /* Download-PDF control (on-demand render → download; shows a spinner while generating) */
 .pdf-link { background: none; border: 0; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 0; }
