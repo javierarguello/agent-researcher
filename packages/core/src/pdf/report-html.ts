@@ -636,7 +636,16 @@ function sectionBodyHtml(v: unknown, l: Record<string, string>, t: PdfTheme, f: 
  * `business` — so another model's dossier had no cover statistics and no entity
  * cards, because nothing matched.
  */
-function collectDeals(report: Obj, cover: CoverSpec | undefined): Obj[] {
+/**
+ * The entities a model compares, merged across the sections its cover names.
+ *
+ * Exported because the public sample's build script needs the SAME merge to compute
+ * cover figures over the full report before it cuts it (`apps/fbizlab/scripts/
+ * build-sample.ts`): the preview drops listings, and a snapshot computed from what
+ * survives says the run found three targets when it found seven. The SPA keeps its
+ * own copy for the reason this file's other twins do — it cannot import from here.
+ */
+export function collectDeals(report: Obj, cover: CoverSpec | undefined): Obj[] {
   if (!cover) return [];
   const src = cover.from.flatMap((k: string) => (Array.isArray(report[k]) ? (report[k] as Obj[]) : []));
   const byName = new Map<string, Obj>();

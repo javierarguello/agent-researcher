@@ -15,7 +15,14 @@ credits via Stripe.
   linked from the hero and from "Inside a summary" — is anonymous, so it cannot call
   `/templates` (authenticated). It reads a single static file,
   `public/sample-dossier.json`, generated from a REAL paid run by
-  `npm run sample:build` (repo root) and committed. Regenerate it after changing the
+  `npm run sample:build` (repo root) and committed.
+- **It is a PREVIEW, cut in the file.** Every section carries its opening and the
+  first entries of each list; the executive summary keeps all its metric badges and
+  the snapshot states the whole run's figures (7 targets, $10.1M), not the three
+  listings that survived. The cut is in the artifact because the artifact is public:
+  a fade drawn in CSS over full text protects nothing a `curl` cannot read. 196 kB →
+  42 kB. Nothing is rewritten — every published string is a strict PREFIX of the
+  stored one, asserted field by field in `test/sample-dossier.test.ts`. Regenerate it after changing the
   sample or a section title; `test/sample-dossier.test.ts` and
   `packages/core/test/sample-dossier-titles.test.ts` fail while it is stale. The file
   is fetched only when that route is opened — the landing does not carry its 196 kB.

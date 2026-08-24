@@ -53,7 +53,7 @@ function show(uiLang = 'en') {
 describe('the public sample dossier', () => {
   it('renders a real report from one static file, with no API call', async () => {
     const { container } = show();
-    await waitFor(() => expect(container.querySelectorAll('a').length).toBeGreaterThan(300));
+    await waitFor(() => expect(container.querySelectorAll('a').length).toBeGreaterThan(50));
 
     expect(fetched).toEqual(['/sample-dossier.json']);
     // Something from deep inside the report, not just the page chrome: the shortlist
@@ -130,5 +130,57 @@ describe('the /sample route', () => {
       </MemoryRouter>,
     );
     expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('index, follow');
+  });
+});
+
+describe('the preview, said out loud', () => {
+  it('marks every cut section and says what it is a preview of', async () => {
+    const { container } = show();
+    await waitFor(() => expect(screen.getAllByText(/HVAC/i).length).toBeGreaterThan(0));
+
+    // The fade is CSS; what has to be TRUE is that a reader is told the body stops
+    // early — a body that just ends looks like the product ran out of things to say.
+    const sections = container.querySelectorAll('.rv-sec');
+    const faded = container.querySelectorAll('.rv-preview');
+    expect(sections.length).toBeGreaterThan(10);
+    expect(faded.length).toBe(sections.length);
+    expect(container.querySelectorAll('.rv-preview__note').length).toBe(sections.length);
+    expect(screen.getAllByText(/Preview — this section is cut short/).length).toBe(sections.length);
+  });
+
+  it('gives the count where there is one to give', async () => {
+    show();
+    // The shortlist is 3 of 7 and the profiles 1 of 6 — the numbers come from the
+    // artifact, which is the only thing that knows what was dropped.
+    await waitFor(() => expect(screen.getByText(/Showing 3 of 7/)).toBeTruthy());
+    expect(screen.getByText(/Showing 1 of 6/)).toBeTruthy();
+  });
+
+  it('does not carry the text it is a preview of', async () => {
+    // The point of cutting in the artifact rather than in CSS: what is not in the file
+    // cannot be read out of the page either. Both halves are asserted — the premise
+    // (the stored report HAS these) lives in `sample-dossier.test.ts`, which walks the
+    // prefix property field by field; here it is the page that must not show them.
+    const { container } = show();
+    await waitFor(() => expect(screen.getAllByText(/HVAC/i).length).toBeGreaterThan(0));
+    const text = container.textContent ?? '';
+    // A listing the stored shortlist carries and the published one drops…
+    expect(text).not.toContain('Absentee HVAC with two Locations In Central Florida');
+    expect(text).not.toContain('Established Florida Commercial Plumbing Contractor');
+    // …and a sentence from the tail of a long prose section, past its cut.
+    expect(text).not.toContain('These have their own transfer requirements');
+  });
+});
+
+describe('the snapshot describes the run, not the cut', () => {
+  it('shows the seven targets the run found, beside three published listings', async () => {
+    const { container } = show();
+    await waitFor(() => expect(screen.getAllByText(/HVAC/i).length).toBeGreaterThan(0));
+
+    const tiles = [...container.querySelectorAll('.rv-snaptile')].map((t) => (t.textContent ?? '').replace(/\s+/g, ' ').trim());
+    expect(tiles.some((t) => /Targets\s*7/i.test(t)), tiles.join(' | ')).toBe(true);
+    expect(tiles.some((t) => /\$10\.1M/.test(t)), tiles.join(' | ')).toBe(true);
+    // …while the page really does show only three of them.
+    expect(container.querySelectorAll('#sec-shortlist .rv-card, #sec-shortlist .rv-deal').length).toBeLessThanOrEqual(3);
   });
 });

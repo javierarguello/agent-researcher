@@ -1,12 +1,12 @@
 /**
  * The published sample renders — the artifact, not a fixture.
  *
- * `samples/florida-hvac-statewide/report.json` is a REAL comprehensive run
- * (`out/local-4ed81938`, 2026-08-22, $3.3065, 215 sources) kept in the repo to be
- * shown publicly. It is the only report in the tree that is both real and committed,
- * which makes it the one thing that can catch a viewer change against the shape a
- * live model actually produces — 18 sections, 410 anchors, metric badges, five
- * charts, prioritised risks, a projection table.
+ * `public/sample-dossier.json` is a preview of a REAL comprehensive run
+ * (`out/local-4ed81938`, 2026-08-22, $3.3065, 215 sources), and it is the file the
+ * site actually serves. It is the only report in the tree that is both real and
+ * committed, which makes it the one thing that can catch a viewer change against the
+ * shape a live model produces — 18 sections, metric badges, charts, prioritised
+ * risks, a projection table.
  *
  * Path resolved from `import.meta.url`, never from `process.cwd()`: a corpus test
  * that resolves relatively skips itself when the runner's cwd moves, and looks
@@ -25,11 +25,17 @@ class RO { observe() {} unobserve() {} disconnect() {} }
 // `URL` is jsdom's, and both `readFileSync(new URL(…))` and `fileURLToPath()` refuse it
 // with "The URL must be of scheme file".
 const HERE = import.meta.url.replace(/^file:\/\//, '').replace(/\/[^/]*$/, '');
-const SAMPLE = `${HERE}/../../../samples/florida-hvac-statewide/report.json`;
-const doc = JSON.parse(readFileSync(SAMPLE, 'utf8')) as { meta: Record<string, unknown>; report: Record<string, unknown> };
+// The PUBLISHED artifact, not the stored sample: what the site serves is a preview
+// of the run (`scripts/build-sample.ts`), and a viewer test that renders the full
+// report proves nothing about the page a visitor opens. The stored sample is read
+// too, but only as the premise for what the preview is a preview OF.
+const PUBLISHED = `${HERE}/../public/sample-dossier.json`;
+const STORED = `${HERE}/../../../samples/florida-hvac-statewide/report.json`;
+const doc = JSON.parse(readFileSync(PUBLISHED, 'utf8')) as { meta: Record<string, unknown>; report: Record<string, unknown>; sections: Array<{ key: string; title: string }> };
+const stored = JSON.parse(readFileSync(STORED, 'utf8')) as { report: Record<string, unknown> };
 
 const draw = () => {
-  const sections = Object.keys(doc.report).map((k) => ({ key: k, title: k }));
+  const sections = doc.sections;
   return { sections, ...render(<ReportViewer report={doc.report} sections={sections} meta={doc.meta} lang="en" />) };
 };
 
@@ -37,8 +43,9 @@ describe('the sample dossier the site will show', () => {
   it('draws every section of a real report', () => {
     const { sections, container } = draw();
     expect(sections.length).toBe(18);
-    // Non-vacuous: a viewer that rendered nothing would still "not throw".
-    expect(container.querySelectorAll('a').length).toBeGreaterThan(300);
+    // Non-vacuous: a viewer that rendered nothing would still "not throw". A preview
+    // is a fraction of the run, so the floor is what a cut dossier still carries.
+    expect(container.querySelectorAll('a').length).toBeGreaterThan(50);
   });
 
   it('shows no link labelled with a raw url', () => {
@@ -54,8 +61,8 @@ describe('the sample dossier the site will show', () => {
     // as a link label and 45 bare in prose, and a reader must see neither. `[S27]` is
     // per-agent dossier numbering, not a source number, so following it would be worse
     // than dropping it.
-    const raw = JSON.stringify(doc.report);
-    expect(raw.match(/\[[SP]\d/g)?.length, 'the premise: the stored report HAS them').toBeGreaterThan(100);
+    expect(JSON.stringify(stored.report).match(/\[[SP]\d/g)?.length, 'the premise: the stored report HAS them').toBeGreaterThan(100);
+    expect(JSON.stringify(doc.report).match(/\[[SP]\d/g)?.length, '…and so does the preview').toBeGreaterThan(5);
 
     const { container } = draw();
     const text = container.textContent ?? '';

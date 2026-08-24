@@ -397,6 +397,13 @@ function CommunitySentiment({ v, l }: { v: { overview?: string; mentions: Mentio
   );
 }
 
+/** "Showing 3 of 7." — only for a section that IS a list; prose has no count to give. */
+function countLine(preview: { cut: Record<string, { shown?: number; of?: number }>; count?: string }, key: string): string {
+  const { shown, of } = preview.cut[key] ?? {};
+  if (!preview.count || shown == null || of == null) return '';
+  return preview.count.replace('{shown}', String(shown)).replace('{of}', String(of));
+}
+
 /** Generic value renderer for arbitrary nested report fields. */
 function Value({ v, k, l, f }: { v: unknown; k?: string; l: Record<string, string>; f: NumFmt }) {
   if (v == null || v === '') return null;
@@ -471,7 +478,7 @@ function collectDeals(report: Obj, cover: CoverSpec | undefined): Obj[] {
  * ("<template>@<version>") is exposed (data-report-version) so components can
  * identify a report's version for analytics or explicit version branching later.
  */
-export function ReportViewer({ report, sections, title, lang = 'en', meta, request, currency, cover, coverLabels }: {
+export function ReportViewer({ report, sections, title, lang = 'en', meta, request, currency, cover, coverLabels, preview }: {
   report: Obj; sections?: Array<{ key: string; title: string }>; title?: string; lang?: string; meta?: Obj;
   /** ISO 4217 the model's figures are in (from its manifest). Default USD. */
   currency?: string;
@@ -488,6 +495,32 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
   coverLabels?: Record<string, string>;
   /** Request context appended to the right-rail Mandate card (mode, language, sources, credits). */
   request?: { modeLabel?: string | null; languageLabel?: string | null; sourcesFound?: number | null; creditsSpent?: number | null };
+  /**
+   * Render the named sections as PREVIEWS: the body fades out and says what it is a
+   * preview of.
+   *
+   * The fade is the honest half of a cut made somewhere else. The public sample's
+   * bodies are already truncated in the artifact (`scripts/build-sample.ts`), because
+   * a static JSON hides nothing a reader could not fetch — this only tells the reader
+   * that what they are looking at stops early, and how much it stops short of. A
+   * viewer that faded FULL text would be a lie told in CSS.
+   *
+   * Absent everywhere else: a buyer's own report is never a preview of itself.
+   */
+  preview?: {
+    /** Section key → what it is a preview of. `{}` marks a cut with no count to give. */
+    cut: Record<string, { shown?: number; of?: number }>;
+    /**
+     * Cover figures of the WHOLE run, keyed by `CoverSpec.labelKey`, when the report
+     * on screen is a preview of a bigger one. Without them this component aggregates
+     * the deals it was handed, and a cut report reports its own cut size.
+     */
+    snapshot?: Record<string, string>;
+    note: string;
+    /** `{shown}` / `{of}` are substituted per section, when the section is a list. */
+    count?: string;
+    cta?: React.ReactNode;
+  };
 }) {
   const l = RL[(lang as Lang)] ?? RL.en;
   const f = makeNumFmt(lang, currency);
@@ -528,6 +561,9 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
     // dictionary and its cover entries are Florida's vocabulary, so any other
     // model fell through to the raw key.
     const label = coverLabels?.[fig.labelKey] ?? l[fig.labelKey] ?? humanizeKey(fig.labelKey);
+    // A preview states the run's figure; only the labels are resolved here.
+    const given = preview?.snapshot?.[fig.labelKey];
+    if (given != null) { snap.push({ value: given, label }); continue; }
     if (fig.agg === 'count') { if (deals.length) snap.push({ value: String(deals.length), label }); continue; }
     const nums = deals.map((d) => d[fig.field ?? '']).filter(isNum);
     if (!nums.length) continue;
@@ -587,7 +623,17 @@ export function ReportViewer({ report, sections, title, lang = 'en', meta, reque
             {reconstructed.has(s.key) && <p className="rv-degraded soft">{l.reconstructedSection}</p>}
             {degraded.has(s.key)
               ? <p className="rv-degraded soft">{l.degradedSection}{statuses.length === 1 ? ` ${l.allElseOk}` : ''}</p>
-              : <SectionBody v={report[s.key]} l={l} f={f} cover={cover} coverLabels={coverLabels} />}
+              : preview?.cut[s.key]
+                ? (
+                  <>
+                    <div className="rv-preview"><SectionBody v={report[s.key]} l={l} f={f} cover={cover} coverLabels={coverLabels} /></div>
+                    <p className="rv-preview__note mono">
+                      {[preview.note, countLine(preview, s.key)].filter(Boolean).join(' ')}
+                      {preview.cta ? <> {preview.cta}</> : null}
+                    </p>
+                  </>
+                )
+                : <SectionBody v={report[s.key]} l={l} f={f} cover={cover} coverLabels={coverLabels} />}
           </section>
         ))}
       </div>

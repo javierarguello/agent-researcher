@@ -32,6 +32,10 @@ export const T = {
     reqL: 'The request behind it',
     fields: { industry: 'Industry', location: 'Where', price: 'Asking price', mode: 'Report tier', cost: 'What it costs' },
     credits: 'credits',
+    bodyPreview: 'Each section is shown as a preview: the opening of the real text, the first entries of each list. The dossier you generate carries all of it.',
+    previewNote: 'Preview — this section is cut short.',
+    previewCount: 'Showing {shown} of {of}.',
+    previewCta: 'Generate the full one',
     loading: 'Loading the sample dossier…',
     failed: 'The sample could not be loaded. Please try again.',
   },
@@ -46,6 +50,10 @@ export const T = {
     reqL: 'La solicitud que lo originó',
     fields: { industry: 'Industria', location: 'Dónde', price: 'Precio de venta', mode: 'Nivel del reporte', cost: 'Lo que cuesta' },
     credits: 'créditos',
+    bodyPreview: 'Cada sección se muestra como vista previa: el comienzo del texto real, las primeras entradas de cada lista. El dossier que generes trae todo.',
+    previewNote: 'Vista previa — esta sección está recortada.',
+    previewCount: 'Mostrando {shown} de {of}.',
+    previewCta: 'Genera el completo',
     loading: 'Cargando el dossier de ejemplo…',
     failed: 'No se pudo cargar el ejemplo. Inténtalo de nuevo.',
   },
@@ -60,6 +68,10 @@ export const T = {
     reqL: 'La demande à l’origine',
     fields: { industry: 'Secteur', location: 'Où', price: 'Prix demandé', mode: 'Niveau du rapport', cost: 'Ce que cela coûte' },
     credits: 'crédits',
+    bodyPreview: 'Chaque section est un aperçu : le début du texte réel, les premières entrées de chaque liste. Le dossier que vous générez contient tout.',
+    previewNote: 'Aperçu — cette section est tronquée.',
+    previewCount: 'Affichage de {shown} sur {of}.',
+    previewCta: 'Générez le rapport complet',
     loading: 'Chargement du dossier d’exemple…',
     failed: 'Impossible de charger l’exemple. Veuillez réessayer.',
   },
@@ -74,6 +86,10 @@ export const T = {
     reqL: 'O pedido que o originou',
     fields: { industry: 'Setor', location: 'Onde', price: 'Preço pedido', mode: 'Nível do relatório', cost: 'Quanto custa' },
     credits: 'créditos',
+    bodyPreview: 'Cada seção aparece como prévia: o início do texto real, as primeiras entradas de cada lista. O dossiê que você gerar traz tudo.',
+    previewNote: 'Prévia — esta seção está cortada.',
+    previewCount: 'Mostrando {shown} de {of}.',
+    previewCta: 'Gere o completo',
     loading: 'Carregando o dossiê de exemplo…',
     failed: 'Não foi possível carregar o exemplo. Tente novamente.',
   },
@@ -81,6 +97,8 @@ export const T = {
 
 interface Dossier {
   title?: string;
+  /** What each section is a preview OF, plus the run's cover figures. Written by `scripts/build-sample.ts`. */
+  preview?: { cut: Record<string, { shown?: number; of?: number }>; snapshot?: Record<string, string> };
   sections: Array<{ key: string; title: string }>;
   cover?: TemplateManifest['cover'];
   coverLabels?: TemplateManifest['coverLabels'];
@@ -134,6 +152,7 @@ export function SampleReport() {
           <div className="stack" style={{ gap: 10 }}>
             <h2 style={{ margin: 0 }}>{t.heading}</h2>
             <p className="soft" style={{ margin: 0, lineHeight: 1.6 }}>{t.body}</p>
+            <p className="soft" style={{ margin: 0, lineHeight: 1.6 }}>{t.bodyPreview}</p>
             {reportLang !== lang && <p className="mono soft" style={{ margin: 0, fontSize: 12 }}>{t.englishNote}</p>}
             {d && (
               <>
@@ -161,6 +180,16 @@ export function SampleReport() {
         {dossier.isError && <p className="soft mono" style={{ fontSize: 13 }}>{t.failed}</p>}
         {d && (
           <ReportViewer
+            // Every section here is already truncated in the file itself — see
+            // `scripts/build-sample.ts`. This says so on the page, and says of how
+            // much, rather than letting a body stop mid-thought with no explanation.
+            preview={{
+              cut: d.preview?.cut ?? {},
+              snapshot: d.preview?.snapshot,
+              note: t.previewNote,
+              count: t.previewCount,
+              cta: <Link to="/login">{t.previewCta} →</Link>,
+            }}
             report={d.report}
             sections={d.sections}
             title={d.title}
