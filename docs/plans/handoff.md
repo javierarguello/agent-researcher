@@ -49,10 +49,26 @@ only tier you may use.
 
 ## State, 2026-08-24
 
-**`main` is `3fa2278`. `deploy-prod` is `7a638c7`.** Prod is five commits behind and
-all five are safe to be behind: four docs commits and the Turnstile site-key change
-(whose two repo variables are already set, so the next prod release picks it up with
-nothing to do first).
+**`main` and `deploy-prod` are both `035b026`.** Released 2026-08-24, seven commits
+including the Turnstile site-key change (`9fc91fc` — so PROD now builds the widget key
+from `FBIZLAB_PROD_TURNSTILE_SITE_KEY`, and the build refuses a captcha-less bundle;
+the variable is set, which is why the run went green rather than failing loudly) and
+P-10/P-11 (`6f272b5`).
+
+**Verified on the running system, not on the workflow.** Cloud Run created and routed
+100% of traffic to new revisions — `agent-researcher-prod-api-00005-vw2` and
+`agent-researcher-prod-worker-00006-mwk`. `/health` 200; a CORS preflight from
+`https://floridabizlabs.com` answers 204 with the matching allow-origin while an
+unlisted origin gets no header; `GET /plans?appId=fbizlab` still returns 20/80/160
+credits; `floridabizlabs.com/{,sample,verify}` 200 and `www` 301. The prod bundle
+`/assets/index-BLS43sIi.js` really carries the new sentence, in English and Spanish —
+which is what proves the SPA half shipped rather than that a workflow said so.
+
+**NOT verified on prod, and worth knowing:** neither new mail has been exercised
+against the live system. Doing so costs money — a real job for the start mail, a real
+purchase for the receipt — so both are pinned by the suite (13 mutations, all red) and
+by nothing on prod. The first real buyer is the first real test. That is also the
+moment the DMARC problem below stops being theoretical.
 
 **Suite, MEASURED by EXIT CODE with P-10/P-11 in the tree:** `npm test` → 0,
 `npm run typecheck` → 0, **1400 passed** (863 core + 255 api + 24 worker + 233 fbizlab
