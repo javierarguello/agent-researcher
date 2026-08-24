@@ -76,8 +76,9 @@ jobs:
           VITE_API_BASE_URL: ${{ vars.FBIZLAB_DEV_API_BASE_URL }}
           VITE_GOOGLE_CLIENT_ID: ${{ vars.FBIZLAB_DEV_GOOGLE_CLIENT_ID }}
           VITE_APP_ID: fbizlab
-          # Public site key. Unset falls back to the default compiled into config.ts.
-          VITE_TURNSTILE_SITE_KEY: ${{ vars.FBIZLAB_DEV_TURNSTILE_SITE_KEY || '0x4AAAAAAD_OEtqrL5B2NN6f' }}
+          # Public site key, per environment — no fallback on purpose: a build with no
+          # key ships a site nobody can sign in to, and `vite.config.ts` refuses it.
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.FBIZLAB_DEV_TURNSTILE_SITE_KEY }}
         run: npm run build -w @agent-researcher/fbizlab
 
       - name: Authenticate to Google Cloud (service-account key)

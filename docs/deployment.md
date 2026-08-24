@@ -217,7 +217,6 @@ sends, password hashing), so they are capped per client IP and per target email.
 | `CHECKOUT_PER_HOUR_PER_USER` | `20` | Stripe checkout sessions per user per hour. |
 | `TRUSTED_PROXY_HOPS` | `0` | `X-Forwarded-For` entries added by infrastructure BEYOND the one holding the real peer. **0** when the API is reached directly on `*.run.app` (this deployment) — Cloud Run appends the peer, so the last entry is real. **1** behind a global external load balancer. Too high and every per-IP limit keys on a header the caller writes. |
 | `TURNSTILE_SECRET` | — | Cloudflare Turnstile secret for the registered widget. **Empty disables the bot check entirely** — every guarded flow behaves exactly as before. Server-side only. |
-| `TURNSTILE_SITE_KEY` | `0x4AAAAAAD_OEtqrL5B2NN6f` | Public site key. Ships in the HTML; the web app has the same default via `VITE_TURNSTILE_SITE_KEY`. |
 | `TURNSTILE_FLOWS` | `register,login,password-reset,contact,research,preflight` | Which flows require a solved widget. A route binds to a flow name, so protecting or unprotecting one is a deploy-time decision. |
 | `TURNSTILE_APPS` | `fbizlab` | Apps whose UI actually renders the widget. An app not listed is exempt — this is what keeps the admin SPA (and any headless consumer) from being locked out when the secret is set. |
 
@@ -230,11 +229,29 @@ gh secret set TURNSTILE_SECRET_DEV    # dev API
 gh secret set TURNSTILE_SECRET_PROD   # prod API
 ```
 
-Nothing else is required. The site key is public and already compiled into the
-web app, so `FBIZLAB_{DEV,PROD}_TURNSTILE_SITE_KEY` are optional GitHub
-*variables* that only matter if you point an environment at a different widget.
-A local `.env` is needed only to exercise the check while developing — leaving
-`TURNSTILE_SECRET` empty keeps it off, which is the default everywhere.
+The SITE key is the other half of that pair, and it is **required to build the
+web app**: `FBIZLAB_DEV_TURNSTILE_SITE_KEY` and `FBIZLAB_PROD_TURNSTILE_SITE_KEY`
+are GitHub *variables* (public value — a secret would be masked in logs and end
+up in the bundle anyway), read by the two `deploy-fbizlab*` workflows with no
+fallback.
+
+```bash
+gh variable set FBIZLAB_DEV_TURNSTILE_SITE_KEY  --body "0x…"
+gh variable set FBIZLAB_PROD_TURNSTILE_SITE_KEY --body "0x…"
+```
+
+`apps/fbizlab/vite.config.ts` **fails the build** when it is empty, and that is
+deliberate: an empty key renders no widget and sends no token, while the API
+enforces the check whenever its secret is set — so that bundle is a site where
+register, sign-in, password reset and contact all refuse, with nothing in the
+build saying why. Building locally needs `apps/fbizlab/.env` (copy
+`.env.example`); `npm run dev` is unaffected.
+
+Until 2026-08-24 the key was a hardcoded literal in `config.ts` and in both
+workflows' `||` fallbacks, with neither variable defined — every environment
+shipped the same widget, and it worked only because that literal happened to be
+the right one. The API also carried a `TURNSTILE_SITE_KEY` that nothing read;
+siteverify takes the secret, so it is gone.
 
 Because it is off until the secret exists, the safe rollout is: deploy the code
 first (no behaviour change), then set the secret when you want enforcement, and

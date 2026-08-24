@@ -249,8 +249,12 @@ export const config = {
    */
   captcha: {
     secret: str('TURNSTILE_SECRET'),
-    /** Public site key. Not a credential — it ships in the HTML. */
-    siteKey: str('TURNSTILE_SITE_KEY', '0x4AAAAAAD_OEtqrL5B2NN6f'),
+    // No `siteKey` here. The API never needed one — siteverify takes the SECRET —
+    // and the field was read by nothing while carrying a hardcoded widget id, so a
+    // rotation would have left a stale literal in the one place nobody looks. The
+    // public key belongs to the client that renders the widget: it comes from
+    // `VITE_TURNSTILE_SITE_KEY`, per environment, and the SPA refuses to build
+    // without it (`apps/fbizlab/vite.config.ts`).
     flows: new Set(
       str('TURNSTILE_FLOWS', 'register,login,password-reset,contact,research,preflight')
         .split(',')
