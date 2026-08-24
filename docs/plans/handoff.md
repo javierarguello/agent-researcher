@@ -49,7 +49,10 @@ only tier you may use.
 
 ## State, 2026-08-24
 
-**`main` and `deploy-prod` are both `035b026`.** Released 2026-08-24, seven commits
+**`deploy-prod` is `035b026`, and `main` is one docs commit past it** — this very
+paragraph, written after the release it describes. (Do not "fix" that by pushing docs
+to prod: a release ref that drifts forward for prose is a release ref that no longer
+says what is running.) Released 2026-08-24, seven commits
 including the Turnstile site-key change (`9fc91fc` — so PROD now builds the widget key
 from `FBIZLAB_PROD_TURNSTILE_SITE_KEY`, and the build refuses a captcha-less bundle;
 the variable is set, which is why the run went green rather than failing loudly) and
