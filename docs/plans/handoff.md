@@ -421,10 +421,30 @@ Split in two because round 10 found the previous single heading covering both ki
   honest, unattacked run**. So it is a product question, not a longer regex, and
   `test/red-team/e-extraction.test.ts` asserts it still reaches — the day someone
   answers, the assertion says so.
-- **P-6 — the credit ladder, decided and NOT applied.** Syndicate 150 → 160 credits
-  in Stripe, which turns a flat $0.8625/$0.860 into a real ladder and makes the
-  middle tier the buy. Now done from the admin's Pricing screen rather than by hand.
-  Numbers, steps and the two linked edits are `product-backlog.md` § P-6.
+- **P-6 — the credit ladder is APPLIED**, dev and prod, 2026-08-24, and re-credited
+  **1.5x** on top of it after Javier asked what margin there was to give more:
+  Scout 20→**30**, Investor 80→**120**, Syndicate 160→**240**, prices unchanged. The
+  buyer's price per comprehensive dossier fell from $16.12 to **$9.92**.
+
+  **The number that bounds this is not the margin, it is the CEILING**, and that is
+  the part worth carrying forward. `resolveModeCeiling` is
+  `credits × creditFloorUsd × (1 − expectedProfitPct/100)` and `creditFloorUsd` is
+  `min(priceUsd/credits)` over the whole catalog — so giving credits away lowers what
+  a job may spend, instantly and with no deploy. Measured: the ceiling went $8.71 →
+  **$5.81** (comprehensive) and $3.87 → **$2.58** (essential), against measured costs
+  of $3.58 and an ESTIMATED $1.75. Utilisation is now 62% and **68%**. At 2× credits
+  it would have been 82%, where one heavier-than-measured run parks a paying
+  customer's job as `held`.
+
+  Full numbers, the table of alternatives, and three open items — Scout barely moved
+  and 36 credits would make it two reports for free; essential's ceiling is now the
+  tighter one AND its cost was never measured; `EXPECTED_PROFIT_PCT = 40` is an
+  untouched dial worth 25% of ceiling — are in `product-backlog.md` § P-6.
+
+  **A trap for whoever changes a pack next:** the landing's prices come from
+  `plans.json`, baked at BUILD time. A catalog edit reaches the public page only on a
+  rebuild (`gh workflow run "Deploy fbizlab SPA (prod)" --ref deploy-prod` — and the
+  `--ref` is load-bearing, a bare dispatch builds the default branch).
 - **`MAX_JOB_COST_USD` = $20.** With per-mode derived ceilings this is only a global
   clamp now. It starts binding before the model's own figure at roughly 42 credits —
   worth knowing before raising a tier that far.

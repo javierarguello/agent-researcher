@@ -192,7 +192,7 @@ whoever is extending the code.
 
 ---
 
-## P-6 · A credit ladder where buying more is cheaper, and the MIDDLE is the buy — `decided, applying in the prod catalog`
+## P-6 · A credit ladder where buying more is cheaper, and the MIDDLE is the buy — `applied 2026-08-24, dev AND prod`
 
 **Asked for by Javier, 2026-08-20**, alongside the per-mode cost ceiling (D1's
 engineering half, shipped in `ef9f02a`). Two goals in his words: buying more credits
@@ -296,8 +296,82 @@ scratch (2026-08-22), so the packs are simply created with these numbers:
 tell the buyer the same thing. Leaving dev wrong means the next person to read a
 pricing page reads the wrong one.
 
-**Not applied.** The catalog is live billing on an external service; changing it is
-Javier's account and Javier's call.
+---
+
+### Applied 2026-08-24 — and then re-credited 1.5x on top of it
+
+Javier: *"me parece caro lo que cobramos para los créditos que damos, ¿qué margen
+tenemos para dar más créditos por cada plan?"* The ladder question and the margin
+question turned out to be the same question, because of a coupling nobody had looked
+at from this direction.
+
+**The measurement.** Gross margin per comprehensive dossier was **75-86%** depending
+on the pack (72-82% net of Stripe), against the three paid runs ever measured
+($2.98 / $3.31 / $3.58). A buyer was paying **$16.12-$29.00 per report**. There was
+a lot of room.
+
+**But the margin is not what bounds this — the CEILING is.** `resolveModeCeiling` is
+`credits x creditFloorUsd x (1 - expectedProfitPct/100)`, and `creditFloorUsd` is
+`min(priceUsd / credits)` across the whole catalog. So **giving more credits lowers
+what a job is allowed to spend**, automatically and with no deploy — which is D1's
+design working exactly as intended and pulling the wrong way here. A job over the
+ceiling does not fail; it parks as `held` and waits for an admin.
+
+Modelled against the measured cost, this is the whole decision:
+
+| x credits | ceiling (comp) | ceiling used | $/report at the top pack | gross margin |
+|---:|---:|---:|---:|---:|
+| 1.00x (before) | $8.71 | 41% | $16.12 | 75% |
+| 1.25x | $6.97 | 51% | $11.73 | 69% |
+| **1.50x (applied)** | **$5.81** | **62%** | **$9.92** | **63%** |
+| 1.75x | $4.98 | 72% | $8.60 | 57% |
+| 2.00x | $4.35 | **82%** | $7.59 | 51% |
+
+1.5x was taken: the buyer's price per dossier drops **38%** and the ceiling still has
+room for a run heavier than any of the three measured. At 2x a single heavier run
+parks a paying customer's job.
+
+**What was written**, through `PUT /admin/plans` — the API's own route, not the
+Stripe SDK, so the credit-floor sync, the cache bust and the `plan.saved` log all
+happened as they do from the Pricing screen:
+
+| pack | price | credits | $/cr | now promises |
+|---|---:|---:|---:|---|
+| Scout | $29 | 20 -> **30** | $0.9667 | ~1 comprehensive or 3 essential |
+| Investor | $69 | 80 -> **120** | $0.5750 | ~6 comprehensive or 15 essential |
+| Syndicate | $129 | 160 -> **240** | $0.5375 | ~13 comprehensive or 30 essential |
+
+Verified on both live systems: floor `$0.5375` **stored** (not the code default),
+ceilings **$5.8050** comprehensive / **$2.5800** essential, and both landings
+re-baked — `plans.json` is built from the catalog at BUILD time, so a Stripe edit
+reaches the public page only on a rebuild. Dev and prod carry identical numbers.
+
+**Two things done deliberately, both of which have bitten this repo before:**
+
+- **The report counts were DERIVED from the mode credits, not typed.** Essential went
+  5 -> 8 once and the marketing copy did not follow, so every pack promised 60-100%
+  more essential reports than the credits covered. The script reads `modes.essential`
+  and `modes.comprehensive` and computes the line.
+- **The full per-locale copy was read back and re-sent.** `upsertStripePlan` now
+  clears marketing keys it is not given (round 11, money-1, fixed the same day), so
+  passing only `en` would have silently deleted es/fr/pt.
+
+### Still open on this
+
+- **Scout barely moved and it is the pack where "expensive" bites hardest.** At 30
+  credits it still buys ONE comprehensive ($29 for one report); the headline only
+  went from "2 essential" to "3 essential". At **36** it buys **two**, and at
+  $0.8056/cr it stays far above the new $0.5375 floor — so it would cost nothing in
+  ceiling. Raised with Javier, unanswered.
+- **`essential`'s ceiling is now TIGHTER than comprehensive's** — 68% used versus
+  62% — and essential's cost was never measured: the $1.75 comes from the template's
+  own "~49% of comprehensive" ratio, not from a run. This is the number to watch.
+- **`EXPECTED_PROFIT_PCT = 40` has never been touched.** Lowering it to 25 widens
+  every ceiling by 25% without moving a price or a credit, and it is the right dial
+  if more credits are wanted later — better than pushing the floor down blind.
+- **Balances already bought are unaffected.** Someone who bought Syndicate before
+  today holds 160; the same $129 now grants 240. Nearly theoretical at current
+  volume, but it is an `admin/credits/grant` if anyone asks.
 
 ---
 
