@@ -49,10 +49,19 @@ only tier you may use.
 
 ## State, 2026-08-24
 
-**`deploy-prod` is `035b026`, and `main` is one docs commit past it** — this very
-paragraph, written after the release it describes. (Do not "fix" that by pushing docs
-to prod: a release ref that drifts forward for prose is a release ref that no longer
-says what is running.) Released 2026-08-24, seven commits
+**`deploy-prod` is `035b026`. `main` has moved past it** — the round-11 fix batch
+(`018dde1`) and the docs commits around it. (A release ref that drifts forward for
+prose is a release ref that no longer says what is running, so it stays put until
+someone releases deliberately.)
+
+> **PROD IS RUNNING A PROMISE WE KNOW IS FALSE.** `035b026` includes the start mail
+> whose footer says "if something goes wrong we return your credits, and you'll hear
+> about it here" — in four languages — and the job screen telling a HELD buyer to
+> close the page. Both are wrong and both are fixed in `018dde1`, which is **not
+> released**. Every dossier started on prod right now sends that mail. This is the
+> first thing to deploy, ahead of anything new.
+
+Released 2026-08-24, seven commits
 including the Turnstile site-key change (`9fc91fc` — so PROD now builds the widget key
 from `FBIZLAB_PROD_TURNSTILE_SITE_KEY`, and the build refuses a captcha-less bundle;
 the variable is set, which is why the run went green rather than failing loudly) and
@@ -424,24 +433,34 @@ Split in two because round 10 found the previous single heading covering both ki
 
 ### Open work, nobody blocked
 
-- **ROUND 11, and it is the biggest thing on this list.** Eight reviewers against
-  `20f361b..HEAD` — the round-10 fix batch, the whole 2026-08-20/21 batch, AND the
-  2026-08-22/24 one (F-1 … F-10, the public `/sample` surface, and the verify screen
-  now signing people in — new public surface and changed auth behaviour, which this
-  repo's record says to weigh heaviest).
-  On this repo's record that is where the next defects are: rounds 8, 9 and 10 each
-  found the previous round's FIXES shipping holes, twice inside the very line of the
-  fix. Weight these, all new behaviour rather than repair:
-  the derived cost ceiling and the `z.preprocess` credit dedupe (they change what a
-  job may spend and what a validated request stores); the Stripe WRITE path (it is
-  the first thing in this repo that mutates an external billing catalog); open-ended
-  modes (a closed union became a string in twelve places); `redactPromptEcho` (it
-  deletes a buyer's prose on a heuristic); and the dispatch deadline (it changes when
-  a job stops).
-  The brief to copy is `m-red-team-reports/round10/BRIEF.md` plus its two
-  corrections — count red from a runner that does not stop at the first failing
-  workspace, and **a corpus proves a shape, never a class**. Add a third, paid for
-  repeatedly on 2026-08-20/21: **check the EXIT CODE, not the summary line.**
+- **ROUND 11 RAN, and it is not closed** — a first pass, 2026-08-24, all of it in
+  `deep-review.md` § "Round 11". Eight subsystem reviewers over `20f361b..HEAD` (68
+  commits, 141 non-docs files, nothing uncovered), each followed by one adversary told
+  to refute by default. **47 findings: 40 survived, 7 killed, 5 fixed in `018dde1`.**
+
+  **Read the survivor count with a discount, and this is the whole point of the entry.**
+  A 15% kill rate is LOW for a round instructed to default to refuted; the adversaries
+  judged a slice at a time and a batch verdict is a lenient one. **15 survivors are
+  reproduced, 25 are only reasoned** — the reasoned ones are leads, not facts, and each
+  still owes the reproduction its finder never did. Do not fix from one.
+
+  **What is still owed.** Four reproduced P1 remain open: `echo-book-1` (the prompt-echo
+  incident counter is dead code, so the guard `018dde1` just fixed runs with its own
+  reporting off), `enricher-swap-1` (a SWAP past the F-1 guard delivers an invented
+  listing and loses a paid-for one — the exact pair F-1 was rewritten to prevent),
+  `seed-1` (seeds DEV while printing that it seeds prod), `confirm-sentence-1` (R10-6's
+  fix is dead code for the only shipped mode). Then reproduce-or-kill the 25 reasoned
+  ones. Then **re-run `prompt` and `spa` properly**: both are large slices that came back
+  thin, and `prompt` covers `redactPromptEcho` and the moderation stack — 26 files, three
+  findings, which is a thin pass and not a clean bill.
+
+  **The method correction this round paid for, for whoever runs the next one:** one
+  adversary per SLICE is too weak. By the tenth finding it has already agreed nine times,
+  and agreeing is cheaper than reproducing. Spend the budget on **one refuter per
+  finding**, even at the cost of fewer finders. The other three rules stand and were
+  given to every agent: count red from a runner that does not stop at the first failing
+  workspace, **a corpus proves a shape never a class**, and **read the EXIT CODE, not the
+  summary line**.
 - **M-E2** — see the decision above; the work only starts once it is answered.
 - **Alerting on the moderation fail-open.** `b4ee573` made it VISIBLE on the admin
   dashboard; nobody is PAGED. Needs a log-based metric and an alert policy in
