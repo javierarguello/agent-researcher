@@ -1,6 +1,6 @@
 # Handoff — the entry point
 
-Last updated 2026-08-22. For whoever picks this up without the conversation that
+Last updated 2026-08-24. For whoever picks this up without the conversation that
 produced it. (No sha here on purpose: the previous one named `ec66323`, a commit
 that never touched this file, two edits before the one that left it — round 10,
 R10-33. `git log -1 -- docs/plans/handoff.md` is the honest version of that line.)
@@ -30,7 +30,7 @@ and it is the only place that is current by construction.
 
 ```bash
 npm ci                       # a fresh worktree has no node_modules and no vitest
-npm test                     # 1313 passed, 0 failed — READ THE EXIT CODE, not this line
+npm test                     # 1375 passed, 0 failed — READ THE EXIT CODE, not this line
 npm run typecheck            # must be clean; it catches what the suites cannot
 npx tsx docs/plans/m-red-team-reports/k-census-2026-08-19/run.ts   # the §K census
 ```
@@ -47,37 +47,57 @@ only tier you may use.
 
 ---
 
-## State, 2026-08-21
+## State, 2026-08-24
 
-- **Rounds 1-10 are run and CLOSED** — 8, 9 and 10 in full. Round 10's 26 P2 closed
-  2026-08-20 in `eda0913` (summary/deterministic), `06879b3` (buyer surface),
-  `1de3363` (engine/test), `664d36a`+`7e2bfa1` (the record). Findings and stamps are
-  `deep-review.md` § "Round 10".
-- **Then a large batch NOBODY has reviewed**, 2026-08-20/21, `2a01ada..HEAD`. It is
-  not round-10 repair work — it is new behaviour, most of it touching money or
-  prompts, and it is where the next defects are on this repo's record. In order:
+**`main` is `9fc91fc`. `deploy-prod` is `7a638c7`.** Prod is two commits behind and
+both are safe to be behind: a docs commit, and the Turnstile site-key change (whose
+two repo variables are already set, so the next prod release picks it up with nothing
+to do first).
 
-  | area | commits | what changed |
-  |---|---|---|
-  | C5 — dispatch deadline | `91b5cfc` | a dispatch stops STARTING agents at `JOB_DISPATCH_BUDGET_SECONDS` (1500) and returns 503; the queue window went 10800s → 18000s so `maxJobAttempts` is reachable |
-  | 429 copy | `0bf39b3` | four buyer-reachable 429s answer in the requester's language; the SPA sends its switcher language as `Accept-Language` |
-  | D1 — cost ceilings | `ef9f02a`, `041bd97` | the ceiling is DERIVED: `credits × creditFloorUsd × (1 − expectedProfitPct/100)`, per model, clamped by `MAX_JOB_COST_USD`. Essential went 5 → **8 credits** (the measured cost ratio) |
-  | modes | `d7696f6` | `ReportMode` is any slug a template declares; `essential`/`comprehensive` are only the defaults |
-  | Stripe catalog | `d3f2d7d`, `87d51f9`, `021805a`, `d3fa83d` | packs are created/edited/retired THROUGH the API, the system writes their metadata (`appId`, `templateId`, `planId`, `credits`), a price change needs `expectedPriceUsd`, copy is per-locale, and the credit floor is derived from the packs and never typed |
-  | admin economics | `2d5abd9`, `d120c1f`, `8475716` | one screen per model: credits, packs, floor, expected profit, and what each tier BUYS (turns, agents, sections), previewed by the API |
-  | M-E1 extraction | `4950c8e`, `5fa80a7` | measured (the prompt reached `report.json` AND the PDF), then closed by `redactPromptEcho` + `SELF_DISCLOSURE_RULE`; a leak is booked as an incident, never as a buyer strike |
-  | links + catalog | `c7da31d`, `c95bcfb`, `76323f8` | a link in a free-text param is DEFUSED (dots → spaces), `GET /catalogs/:id` (authenticated) backs an optional autocomplete on `location`, and every field label is now associated with its input |
+**Suite, MEASURED at `9fc91fc` by EXIT CODE:** `npm test` → 0, `npm run typecheck` → 0,
+**1375 passed** (856 core + 242 api + 24 worker + 228 fbizlab + 25 admin). Read the
+exit code, not the `Tests N passed` line.
 
-- **Suite, MEASURED 2026-08-21 at `86b49ef`, by EXIT CODE:** `npm test` → 0,
-  `npm run typecheck` → 0, **1313 passed, 0 failed** in the MAIN checkout
-  (830 core + 242 api + 24 worker + 192 fbizlab + 25 admin; +4 from
-  `test/apps-cli.test.ts`). The clean-worktree
-  figure has NOT been re-measured since `2a01ada` (1170) — measure yours.
-  **Read the exit code, not the `Tests N passed` line.** A run with every test green
-  can still exit 1 on an unhandled error, and one did: `65d6a90` was pushed after a
-  `25 passed` that had failed, and it took all four workflows down.
-- **`main` is pushed and dev is green.** Pushing to `main` deploys DEV — the API to
-  Cloud Run and both SPAs to Firebase Hosting, all behind `verify.yml`.
+**PROD IS LIVE AND SELLABLE.** Released 2026-08-24 by `git push origin main:deploy-prod`,
+which fires BOTH prod workflows (SPA and API+worker) behind `verify.yml`. Verified on
+the running system, not on the workflow: `/health` 200, CORS 204 for
+`https://floridabizlabs.com` and no header for an unlisted origin, `GET /plans` with
+the three live packs, `floridabizlabs.com/{,sample,verify}` 200. **A real buyer account
+was registered and verified on prod that day**, which is what proves Turnstile and the
+Postmark mail actually work — see § Security for what that leaves open about email.
+
+### What shipped 2026-08-22/24, and what it is owed
+
+Three paid comprehensive runs ($3.5751, $3.3065, $2.9783 against a $8.7075 derived
+ceiling) were made to produce a public sample, and they found more than they produced.
+All of it is `deep-review.md` § "Field findings" as **F-1 … F-10**, with the measured
+figures. In short:
+
+| | what changed | where |
+|---|---|---|
+| F-1 | an enricher may not GROW a producer-owned set (`ReportSection.itemKeys`) — a refiner had invented a 7th listing profile that appeared nowhere else in the report. The FIRST fix was refuted by the next real run and the rule is now arithmetic | `templates/types.ts`, `engine/research-engine.ts` |
+| F-2, F-8 | a citation shows its host, not 120 characters of query string, and the engine's `[S2]`/`[P3]` evidence tags never reach a reader. Fixed at the RENDER boundary, so it repairs reports already delivered | `pdf/report-html.ts` + `fbizlab/src/lib/safe-href.ts` (twins) |
+| F-7 | the public sample published `meta.cost` — our unit economics — because a static copy never passes the API boundary that redacts it | `apps/fbizlab/scripts/build-sample.ts` |
+| F-4, F-10 | three corpus tests were calibrated before the fixes they now measure; one flake took the gate down and the obvious repair made it blind | `test/red-team/refute-b1`, `refute-B2`, `d-legit`, `api/test/payments` |
+| — | the public sample dossier at `/sample`, cut to a PREVIEW in the artifact (196 kB → 42 kB), linked from the landing's hero | `SampleReport.tsx`, `build-sample.ts` |
+| — | every clean URL was served `max-age=3600`: a header rule matches the REQUEST path, and with `cleanUrls` + the SPA rewrite nothing a visitor asks for ends in `.html`. Every deploy took an hour to reach a returning visitor | both `firebase.json` |
+| — | verifying an email now signs the person in instead of sending them to retype the password they just proved | `VerifyEmail.tsx` |
+| — | the Turnstile site key is per-environment and the build REFUSES to produce a captcha-less bundle | `vite.config.ts`, both deploy workflows |
+
+**None of it has been adversarially reviewed**, and neither has the 2026-08-20/21 batch
+below it. Two of these are new public surface (`/sample`) or auth behaviour (verify
+signs in), which is the class this repo's record says to weigh heaviest.
+
+### The batch before it, also unreviewed (2026-08-20/21, `2a01ada..7a638c7`)
+
+Rounds 1-10 are run and CLOSED (findings and stamps in `deep-review.md`). What came
+after them is new behaviour, most of it touching money or prompts: the dispatch
+deadline (C5, `91b5cfc`), buyer-facing 429 copy (`0bf39b3`), cost ceilings derived
+from revenue (D1, `ef9f02a`/`041bd97`, essential 5 → 8 credits), open-ended modes
+(`d7696f6`), the Stripe catalog write path (`d3f2d7d`, `87d51f9`, `021805a`,
+`d3fa83d`), the admin economics screen (`2d5abd9`, `d120c1f`, `8475716`), the M-E1
+prompt-echo redaction (`4950c8e`, `5fa80a7`), and link defusing + the catalog endpoint
+(`c7da31d`, `c95bcfb`, `76323f8`).
 
 ## Going to prod — what is actually needed
 
@@ -298,6 +318,56 @@ REMOVE the only detection the thing it fixed had; a test that reads a value insi
 callback proves nothing about aliasing; and a test can pass for a false reason (one
 of mine previewed before the value under test was ever set).
 
+## Security — what is open, 2026-08-24
+
+Re-measured rather than carried over; the abuse/cost backlog was stale for two items
+(C5 and D1 are done and were not struck through). Ordered by what bites first.
+
+1. **The domain's mail fails DMARC, and it is OUR mail being quarantined.** Measured
+   with `dig` on `floridabizlabs.com`: `DMARC v=DMARC1; p=quarantine` **exists**, and
+   **SPF and DKIM are both absent** (`pm._domainkey` empty, no apex TXT). DMARC passes
+   on SPF *or* DKIM alignment; with neither, Postmark's mail fails it and a receiver
+   honouring the policy quarantines it. The verification mail does arrive — a prod
+   account was verified — but the mail a signup DEPENDS on is landing in spam by
+   policy. Closes with two DNS records: Postmark's DKIM TXT and an SPF including
+   `spf.mtasv.net`. **Javier — DNS.**
+2. **`publicAccessPrevention` is `inherited`, not `enforced`, on both buckets.**
+   Nothing is public today and that was verified against the live project (uniform
+   bucket-level access on, no `allUsers`/`allAuthenticatedUsers`, only the worker
+   `objectAdmin` and the API `objectViewer`). But that is a current fact, not a
+   property: one wrong binding reopens it. One command per bucket. **Javier — prod
+   infra.**
+3. **`signRead` / `signJobFiles` are still exported from core and called by nobody**
+   (`packages/core/src/index.ts`; the only other references are test mocks). They are
+   the mechanism the authenticated proxy replaced — URLs straight to the raw objects —
+   left loaded for whoever reaches for the obvious helper. Deleting them is a small
+   commit and nothing calls them.
+4. **E3's unblock script is still not run, and its approval no longer covers the
+   case.** `abuse-and-cost.md` § E3: approved 2026-07-31 *"because there is no
+   production data yet"*. There is now. Anyone who accumulated four pre-screen
+   rejections — which by the fix's own reasoning should never have earned a strike —
+   is blocked, including from buying credits, and nothing identifies them. Dry run
+   first (`npm run unblock:moderation`), read it, then `-- --confirm`. **Needs a fresh
+   decision from Javier now that prod holds real accounts.**
+5. **Nothing in the last two batches has been adversarially reviewed** — see § State.
+   On this repo's record that is where the next defects are, and round 11's scope has
+   grown accordingly.
+
+**Checked and found sound on 2026-08-24, so do not re-check without new evidence:**
+every path that serves a stored object (only `/research/:jobId/report` and
+`/research/:jobId/files/:name`; both redact `report.json` for non-admins,
+`trace.json`/`metadata.json` are `ADMIN_ONLY_FILES` and 404 for a buyer,
+`checkpoint.json` is never in `job.files`), `sources.json` (buyer-reachable and
+`{title,url,snippet}` only — no economics, no prompts, no agent ids), and the buckets
+themselves.
+
+**A method rule this cost a wrong public claim to learn:** a bot-detection widget
+cannot be tested by a bot. A headless probe logged Turnstile `600010` on dev and prod
+and it was written up here as "Turnstile is broken, nobody can register". `600xxx` is
+the challenge-EXECUTION family, not `110200` "domain not allowed", and headless Chrome
+with `--no-sandbox` is exactly the signature Turnstile exists to refuse. The
+instrument was the thing being measured. Use a real browser, or a real registration.
+
 ## Open — a decision nobody can take for Javier, and work nobody is blocked on
 
 Split in two because round 10 found the previous single heading covering both kinds
@@ -326,7 +396,10 @@ Split in two because round 10 found the previous single heading covering both ki
 ### Open work, nobody blocked
 
 - **ROUND 11, and it is the biggest thing on this list.** Eight reviewers against
-  `20f361b..HEAD` — the round-10 fix batch AND the whole 2026-08-20/21 batch above.
+  `20f361b..HEAD` — the round-10 fix batch, the whole 2026-08-20/21 batch, AND the
+  2026-08-22/24 one (F-1 … F-10, the public `/sample` surface, and the verify screen
+  now signing people in — new public surface and changed auth behaviour, which this
+  repo's record says to weigh heaviest).
   On this repo's record that is where the next defects are: rounds 8, 9 and 10 each
   found the previous round's FIXES shipping holes, twice inside the very line of the
   fix. Weight these, all new behaviour rather than repair:
@@ -353,6 +426,21 @@ Split in two because round 10 found the previous single heading covering both ki
   a real English job exists.
 - **C5's soft deadline is unmeasured against a REAL slow job.** 1500s is derived from
   two real runs at 1241s and 1309s; nothing has yet been observed hitting it.
+- **F-3 — a query cap must clear ≥512 characters**, not the 300 the test used to
+  assume. The longest honest query over five real runs is 256, and it is the
+  deal-scout's `site:` chain over the eight marketplaces the TEMPLATE declares — so
+  the honest maximum moves whenever a site is added. Nothing caps query length today.
+- **F-5 — the deep-dive refiner rewrites a listing's `sourceUrl`**, and not always to
+  a listing: in `out/local-52835003` it replaced four of six, two with a different
+  host and one with a SEARCH page. The template tells the SCOUT to cite the listing's
+  own detail page and says nothing to the refiner, whose URLs are the ones that ship.
+  A buyer gets a "source ↗" beside figures that does not open the listing they came
+  from.
+- **F-6 — the consecutive-plan breaker floor moved from 3 to 4.** The July pair said
+  no honest agent ever emitted 3 plans in a row; the August runs do, in agents that go
+  on to spend turns. Free-call floor stays ≥6. The zero-turn plan-loops that motivated
+  M-B2 do not appear in any August run — first production evidence that they are gone.
+- **The two GCS hardening items and the mail records** — see § Security, 1-3.
 - E3's unblock script (needs credentials for the dry run), M-A2 (FENCE_RE
   near-misses, gated on frontier-tier evidence).
 
