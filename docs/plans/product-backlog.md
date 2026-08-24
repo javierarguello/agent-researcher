@@ -661,6 +661,80 @@ first, then measure whether anyone still sits on this screen.
 
 ---
 
+## P-13 · Nobody knows how many people visit — `open`
+
+**Asked for by Javier, 2026-08-24.** Add Google Analytics so we can measure traffic.
+
+**What exists today: nothing.** Grepped — no `gtag`, no GTM, no Plausible, PostHog,
+Mixpanel or Umami anywhere in `apps/fbizlab`. The system has good FIRST-PARTY
+numbers about people who already signed up (`recordPurchaseStats`, `/me/stats`, the
+admin dashboard: users, purchases, revenue, credits) and **zero** about the step
+before that. We cannot answer how many people saw the landing, what fraction reached
+`/sample`, or where any of them came from — which is exactly the number that says
+whether the product has a demand problem or a conversion problem.
+
+**Technically it is small.** Neither Hosting target sets a `Content-Security-Policy`
+(`apps/fbizlab/firebase.json` sends only `Cache-Control`), so a third-party script
+tag is not blocked by anything today. The measurement id would follow the pattern
+every other build-time value already uses — a repo variable per environment
+(`FBIZLAB_{DEV,PROD}_GA_ID`) read in `vite.config.ts`, never a literal, and dev must
+not report into prod's property.
+
+### The thing that makes it NOT small
+
+**The Privacy Notice currently promises the opposite, in four languages.**
+`apps/fbizlab/src/pages/Legal.tsx` § "What we store":
+
+> "We store your account email (and name, if you provide one) and the research
+> summaries you generate. **That's it.** We don't build advertising profiles,
+> **track you across the web**, or sell or share your data."
+
+GA4 sets a first-party identifier and sends behavioural data to Google; with Google
+Signals or ads features on, "track you across the web" is a plain description of
+what it does. Shipping the tag without rewriting that paragraph makes the privacy
+page false — and this repo spent 2026-08-24 fixing three separate instances of
+exactly that (the start mail's refund promise, the `held` close-page line, the
+credits FAQ's "2–8 minutes"). The notice is `Updated July 2026` and that date has to
+move with it.
+
+**So the work is, in order:**
+
+1. **Decide what we are willing to promise.** The current paragraph is a real
+   selling point on a page about handing an AI your acquisition thesis. Three honest
+   shapes, and it is a product decision, not an engineering one:
+   - **GA4 with ads features and Signals OFF.** Cheapest to reconcile: the notice
+     changes from "we don't track" to "we count visits", advertising profiles stay
+     truthfully denied. Still Google, still a third-party identifier, still needs the
+     paragraph rewritten in four languages.
+   - **A cookieless analytics product** (Plausible, Fathom, Umami). Keeps the notice
+     almost as it stands, no consent banner, costs money, and gives less than GA.
+   - **GA4 as it comes.** Most data, and the notice loses a paragraph the brand is
+     currently making a point of.
+2. **Consent, and whether we need a banner.** The landing ships in en/es/fr/pt — the
+   last two are not decoration, they are the EU and Brazil. A consent gate is the
+   difference between "add a script tag" and "add a UI, a stored preference, and a
+   path where analytics never loads at all".
+3. **Only then the tag itself**, and the SPA half nobody remembers: this is a client
+   -routed app behind `cleanUrls` + the `**` rewrite, so one `page_view` fires at
+   load and every subsequent route change fires none unless something sends it. The
+   landing is also PRERENDERED (`scripts/prerender-seo.mjs`), so `/`, `/sample` and
+   the legal pages are real documents and the rest is not.
+4. **Decide whether it runs inside `/app` at all.** Measuring the logged-in product
+   means associating page views with people who have paid us, which is a different
+   promise from counting anonymous visitors to a marketing page. The cheap and
+   defensible first version is public pages only.
+
+**A cheaper thing worth pricing first:** Firebase Hosting already logs every request,
+and the API already writes structured events to Cloud Logging in the same project.
+A log-based count of landing requests answers "is anyone arriving?" with no third
+party, no consent question and no privacy rewrite — it just cannot tell you where
+they came from. If the real question is "is the traffic there at all", that is a
+dashboard, not a dependency.
+
+**Not started.**
+
+---
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04

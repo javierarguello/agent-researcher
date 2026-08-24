@@ -489,6 +489,15 @@ Split in two because round 10 found the previous single heading covering both ki
   on to spend turns. Free-call floor stays ≥6. The zero-turn plan-loops that motivated
   M-B2 do not appear in any August run — first production evidence that they are gone.
 - **The two GCS hardening items and the mail records** — see § Security, 1-3.
+- **P-13** — **nobody knows how many people visit** (`product-backlog.md`, asked for
+  2026-08-24). No analytics of any kind exists; the first-party numbers all start at
+  signup, so we cannot tell a demand problem from a conversion problem. The tag is the
+  easy part — no CSP blocks it. The hard part is that the Privacy Notice promises, in
+  four languages, "we don't build advertising profiles, track you across the web, or
+  sell or share your data", and GA contradicts that sentence. Decide what we are
+  willing to promise BEFORE the script goes in; this repo spent 2026-08-24 fixing
+  three defects of exactly that shape. A log-based count of Hosting requests answers
+  "is anyone arriving?" with no third party at all, and is worth pricing first.
 - **P-12** — the progress card shows ONE step and never says how far along the run is
   (`product-backlog.md`, asked for 2026-08-24). The ordered step list is already on the
   client; what is missing is honest position, and that is not a display problem:
