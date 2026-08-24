@@ -735,7 +735,7 @@ first, then measure whether anyone still sits on this screen.
 
 ---
 
-## P-13 · Nobody knows how many people visit — `open`
+## P-13 · Nobody knows how many people visit — `done (anonymous half); distinct-user counting still open`
 
 **Asked for by Javier, 2026-08-24.** Add Google Analytics so we can measure traffic.
 
@@ -805,7 +805,69 @@ party, no consent question and no privacy rewrite — it just cannot tell you wh
 they came from. If the real question is "is the traffic there at all", that is a
 dashboard, not a dependency.
 
-**Not started.**
+---
+
+### Built 2026-08-24 — the ANONYMOUS shape, which is why the privacy notice survived
+
+Javier asked for Firebase Analytics, then for it to be **anonymous**, then asked the
+question that decides everything: *"¿con esto podemos saber si el tráfico es de
+distintos users o el mismo?"* The answer is no, and he kept it anyway. That trade is
+the whole entry.
+
+`setConsent({ analytics_storage: 'denied', ad_storage: 'denied', ad_user_data:
+'denied', ad_personalization: 'denied' })`, called **before** the SDK is handed a
+config — GA4 cookieless mode. No `_ga` cookie, no persisted client id, nothing that
+follows a person between sessions or sites. The ordering is the feature, not a
+detail: consent applied after `getAnalytics` is consent applied after the first
+cookie is already written, and a test asserts the order rather than the call.
+
+**Because it is cookieless, the promise this item was written to protect never had to
+change.** The notice still says "we don't build advertising profiles, track you
+across the web, or sell or rent your data" — and that is TRUE of cookieless pings. A
+"Counting visits" section was ADDED in four languages saying what runs, that nothing
+is written to the device, and that there is nothing to opt out of because nothing is
+stored. Privacy pages' `Updated` moved to August; terms and support did not change
+and kept July. **No consent banner is required**, which is the other thing cookieless
+bought.
+
+**The path GA sees is a security control.** `/verify?token=…` and `/reset?token=…`
+carry single-purpose auth tokens and `/report/:jobId?rt=…` carries the share token
+that IS its authorization — the stock page-view snippet sends `pathname + search` and
+would have put live credentials in Google's logs. Query strings are dropped whole (a
+deny-list is one new `?foo=` from leaking) and path ids become the route's shape.
+
+**Prod only, by absence.** Nothing initializes without
+`VITE_FIREBASE_MEASUREMENT_ID`; only `deploy-fbizlab-prod.yml` passes it, so dev,
+local builds and the entire suite report nowhere because the id is not in the bundle.
+Measured: SDK in lazy chunks (~80 kB raw), main bundle **+2.3 kB**.
+
+Firebase Web App `fbizlab-prod` (`1:468953338236:web:b58d2535fe7e223da114f9`),
+measurement id `G-S0RDNZWJRL`; the project already had Google Analytics enabled.
+Seven `FBIZLAB_PROD_FIREBASE_*` repo variables; dev has none, deliberately.
+
+### What is STILL open, and it is the question that was asked
+
+**Distinct users.** Cookieless means GA cannot tell 300 visits by 300 people from 300
+visits by 3 — GA4 only *models* users, and modelling needs traffic thresholds this
+site is nowhere near, so it will show nothing. Volume, referrer, geo and device all
+work; "how many people" does not.
+
+Three ways forward, in the order they were put to Javier:
+
+- **Leave it (chosen).** Enough for "is anyone arriving, and from where".
+- **Grant `analytics_storage`.** One line of code, and then: a cookie, a privacy
+  paragraph rewritten in four languages, and — because the landing ships in fr/pt,
+  which is the EU and Brazil — a consent banner, which is a UI, a stored preference
+  and a path where analytics never loads. Not a toggle, a feature.
+- **Count distinct IPs from Hosting logs.** Firebase already logs every request in
+  the same GCP project. Distinct-IP-per-day is a rough but honest proxy that touches
+  no device, needs no consent and changes no copy. Wrong at the margins (NAT, mobile)
+  and decisive at the order of magnitude, which is the actual question today. Not
+  built.
+
+**One thing the code cannot enforce, written here instead: Google Signals must stay
+OFF on the GA4 property.** Consent mode denies its inputs, but the switch is a
+console setting outside the repo.
 
 ---
 

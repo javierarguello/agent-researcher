@@ -509,15 +509,23 @@ Split in two because round 10 found the previous single heading covering both ki
   on to spend turns. Free-call floor stays ≥6. The zero-turn plan-loops that motivated
   M-B2 do not appear in any August run — first production evidence that they are gone.
 - **The two GCS hardening items and the mail records** — see § Security, 1-3.
-- **P-13** — **nobody knows how many people visit** (`product-backlog.md`, asked for
-  2026-08-24). No analytics of any kind exists; the first-party numbers all start at
-  signup, so we cannot tell a demand problem from a conversion problem. The tag is the
-  easy part — no CSP blocks it. The hard part is that the Privacy Notice promises, in
-  four languages, "we don't build advertising profiles, track you across the web, or
-  sell or share your data", and GA contradicts that sentence. Decide what we are
-  willing to promise BEFORE the script goes in; this repo spent 2026-08-24 fixing
-  three defects of exactly that shape. A log-based count of Hosting requests answers
-  "is anyone arriving?" with no third party at all, and is worth pricing first.
+- **P-13 — anonymous traffic counting is IN** (prod only, `f8772aa`), and the part
+  that is still open is the part that was asked about. GA4 in **cookieless consent
+  mode** (`setConsent` with `analytics_storage: 'denied'`, before `getAnalytics`):
+  page views, referrer, geo and device all work; **distinct users do not** — GA4 only
+  models them and needs traffic thresholds this site is nowhere near. Javier was told
+  and kept it.
+  Because it is cookieless the privacy notice's "we don't track you across the web"
+  stayed TRUE and a disclosure was ADDED in four languages instead of a promise being
+  deleted — and no consent banner is needed. `legal-parity.test.tsx` is new: the legal
+  pages had no language-parity guard at all, which is how a four-language disclosure
+  could have shipped in one.
+  **If distinct users are ever wanted**, the cheap path is counting distinct IPs from
+  Hosting logs (no device, no consent, no copy change); the expensive one is granting
+  `analytics_storage`, which costs a cookie, a rewritten privacy paragraph and a real
+  consent banner for fr/pt. Both in `product-backlog.md` § P-13.
+  **Google Signals must stay OFF on the GA4 property** — consent mode denies its
+  inputs but the switch is in the console, not in this repo.
 - **P-12** — the progress card shows ONE step and never says how far along the run is
   (`product-backlog.md`, asked for 2026-08-24). The ordered step list is already on the
   client; what is missing is honest position, and that is not a display problem:
