@@ -107,6 +107,8 @@ export interface JobDetail {
   mode?: string | null; creditsSpent?: number | null;
   title: string | null; shortDescription: string | null;
   status: JobStatus; progress: JobProgress | null; cost: Cost | null; summary: JobSummary | null;
+  /** The completion email is coming for this job, so the screen may say so. */
+  notify?: boolean;
   createdAt: string; updatedAt: string; error: string | null;
   finishedAt?: string | null; files?: JobFileSigned[];
 }

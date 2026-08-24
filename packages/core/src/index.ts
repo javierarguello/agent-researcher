@@ -193,7 +193,8 @@ export type { CaptchaResult } from './auth/captcha.js';
 // Transactional email (shared Postmark, per-app From)
 export { sendAppEmail, EmailNotConfiguredError } from './email/postmark.js';
 export type { SendEmailInput } from './email/postmark.js';
-export { verifyEmailTemplate, resetPasswordTemplate, reportReadyTemplate } from './email/templates.js';
+export { verifyEmailTemplate, resetPasswordTemplate, reportReadyTemplate, reportStartedTemplate, creditsPurchasedTemplate } from './email/templates.js';
+export type { PurchaseReceipt } from './email/templates.js';
 
 // Pre-submission moderation of research params (prompt-injection + profanity gate)
 export { moderateResearchParams, preScreen, collectFreeText } from './moderation/moderate.js';

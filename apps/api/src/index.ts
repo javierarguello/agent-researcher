@@ -113,6 +113,8 @@ import {
   EmailNotConfiguredError,
   verifyEmailTemplate,
   resetPasswordTemplate,
+  reportStartedTemplate,
+  creditsPurchasedTemplate,
   InsufficientCreditsError,
   type RateLimitEntry,
   type LedgerEntryType,
@@ -1245,12 +1247,24 @@ app.post(
         }
       }
 
+      // Does this app send mail? The answer decides two things at once: whether the
+      // job page may tell the buyer to close the tab, and whether the start mail
+      // below is sent at all. ONE read, here, and the answer travels on the job —
+      // see `ResearchJob.notify` for why not on every poll.
+      //
+      // The condition is the worker's, not a new one (`notifyReportReady`:
+      // `emailFrom` AND `webUrl`, or it returns early). A screen that promises mail
+      // on a weaker test than the sender uses is a screen that promises mail nobody
+      // sends.
+      const notifyApp = await getApp(appId).catch(() => undefined);
+      const notify = !!(notifyApp?.emailFrom && notifyApp.webUrl);
+
       // Charged but no job is the one failure with no way back: `resolve` needs a
       // HELD job document to act on, so an admin cannot refund something that does
       // not exist — only read the ledger and grant by hand. Refund inline instead,
       // exactly as the enqueue failure below already does, since nothing has run.
       try {
-        await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent, slotHeld });
+        await createJob({ jobId, appId, userId, template: validated.template, params: validated.params, mode: mode.key, creditsSpent, slotHeld, notify });
       } catch (err) {
         const refunded =
           config.server.appEnv === 'local'
@@ -1314,6 +1328,26 @@ app.post(
       }
 
       logEvent(logCtx, 'INFO', 'job.queued', {});
+
+      // The start mail — sent only once the job is QUEUED, so it never announces a
+      // dossier that failed to enqueue and was refunded a few lines up.
+      //
+      // Best-effort and awaited-with-catch: the buyer's 202 must not wait on
+      // Postmark, and must not turn into a 500 because Postmark is down. A job that
+      // is running is the outcome; the mail is a courtesy on top of it.
+      //
+      // It carries no title — `headline` writes that inside the engine, which has
+      // not run yet — and no duration. The three measured comprehensive runs were
+      // 18, 20 and 17 minutes, but `essential` is a different job and no template
+      // declares an estimate, so any figure here would be invented at the one moment
+      // we cannot check it.
+      if (notify && notifyApp) {
+        const startTpl = reportStartedTemplate(notifyApp.name, `${notifyApp.webUrl}/app/jobs/${jobId}`, paramsLang(validated.params));
+        await sendAppEmail({ app: notifyApp, to: userId, subject: startTpl.subject, htmlBody: startTpl.html, textBody: startTpl.text })
+          .then(() => logEvent(logCtx, 'INFO', 'job.start_email_sent', {}))
+          .catch((err) => logEvent(logCtx, 'WARNING', 'job.start_email_failed', { message: (err as Error).message }));
+      }
+
       return reply.code(202).send({ jobId, status: 'queued' });
     } finally {
       // The job document now owns the slot (`slotHeld`), and every terminal path —
@@ -1608,6 +1642,16 @@ app.get(
       // showing what's being researched while the job runs.
       params: job.params,
       progress,
+      // Whether the completion email is coming — the one fact the job page needs
+      // before it can tell the buyer to close the tab. Recorded on the job at
+      // creation (see `ResearchJob.notify`), so this is a field read, not an app
+      // lookup on every poll.
+      //
+      // `=== true`, so a job created before the field existed reads FALSE and the
+      // screen simply says nothing. That is the safe direction: silence costs a
+      // buyer twenty minutes of watching, and a wrong promise costs them a dossier
+      // they think will be mailed to them and never is.
+      notify: job.notify === true,
       // Both admin-only, and for the same reason: what a job cost us, and which of
       // our own limits stopped it, are operational facts. The buyer gets `error`.
       // `refunded` reads the LEDGER, not the job. The admin page used to infer it
@@ -2011,11 +2055,83 @@ app.post(
       client_reference_id: userId,
       allow_promotion_codes: true, // Stripe-managed coupons/promo codes
       line_items: [{ price: plan.priceId, quantity: 1 }],
-      metadata: { appId, userId, planId: plan.planId, credits: String(plan.credits) },
+      // `lang` and `planName` are carried on the SESSION because the webhook has
+      // no request to read them from: it is Stripe calling us, hours later for a
+      // delayed method, with no Accept-Language and no catalog lookup in hand.
+      // `errorLang(req)` is the language the buyer's SWITCHER is on — the client
+      // sets `accept-language` from it on every call — so the receipt arrives in
+      // the language they bought in rather than the language their browser is in.
+      metadata: {
+        appId,
+        userId,
+        planId: plan.planId,
+        credits: String(plan.credits),
+        planName: plan.name.slice(0, 200),
+        lang: errorLang(req),
+      },
     });
     return { url: session.url, sessionId: session.id, credits: plan.credits };
   },
 );
+
+/**
+ * The receipt for a credit purchase — best-effort, and behind the GRANT's own
+ * idempotency.
+ *
+ * Two rules are load-bearing here and both are one-line mistakes to make.
+ *
+ * 1. **It rides `res.applied`, not a second key.** Stripe delivers at least once
+ *    and retries for days; `recordPurchase` is idempotent by `paymentId`, so a
+ *    redelivery returns `applied: false` and grants nothing. A mail keyed on
+ *    anything else — the event id, or nothing at all — sends a second receipt for
+ *    one purchase, and a buyer who gets two receipts reasonably believes they were
+ *    charged twice.
+ * 2. **It cannot throw.** This runs inside the webhook, where a throw is a 500
+ *    that Stripe retries for days and can disable the endpoint — which would stop
+ *    every OTHER customer's credits from landing. Postmark being down must cost
+ *    one missing receipt, never the billing path. So: caught, logged, 200 anyway.
+ *
+ * `balance` comes from the same transaction that granted, so it is the balance
+ * this purchase produced rather than a re-read that a concurrent job may already
+ * have spent against.
+ */
+async function sendPurchaseReceipt(input: {
+  meta: Record<string, string>;
+  credits: number;
+  amountUsd: number;
+  currency: string;
+  balance: number;
+  sessionId: string;
+}): Promise<void> {
+  const { meta: m } = input;
+  const ctx = { jobId: input.sessionId, appId: m.appId ?? '-', userId: m.userId ?? '-' };
+  try {
+    const appRec = await getApp(m.appId!);
+    // The same condition the worker's completion mail uses: an app with no sender
+    // and no web URL is an app that does not do email, and a receipt with no link
+    // back into the product is not the receipt this was approved as.
+    if (!appRec?.emailFrom || !appRec.webUrl) {
+      logEvent(ctx, 'INFO', 'credits.receipt_skipped', { reason: 'app has no emailFrom/webUrl' });
+      return;
+    }
+    const tpl = creditsPurchasedTemplate(
+      appRec.name,
+      {
+        credits: input.credits,
+        balance: input.balance,
+        planName: m.planName,
+        amount: input.amountUsd,
+        currency: input.currency,
+      },
+      `${appRec.webUrl}/app/credits`,
+      m.lang,
+    );
+    await sendAppEmail({ app: appRec, to: m.userId!, subject: tpl.subject, htmlBody: tpl.html, textBody: tpl.text });
+    logEvent(ctx, 'INFO', 'credits.receipt_sent', { credits: input.credits, balance: input.balance });
+  } catch (err) {
+    logEvent(ctx, 'ERROR', 'credits.receipt_failed', { message: (err as Error).message });
+  }
+}
 
 app.post(
   '/credits/webhook',
@@ -2087,6 +2203,7 @@ app.post(
         // Only fold into analytics the first time (webhook is at-least-once).
         if (res.applied) {
           await recordPurchaseStats({ appId: m.appId, userId: m.userId, amountUsd, credits });
+          await sendPurchaseReceipt({ meta: m, credits, amountUsd, currency: s.currency ?? 'usd', balance: res.balance, sessionId: s.id });
         }
         logEvent(
           { jobId: s.id, appId: m.appId, userId: m.userId },

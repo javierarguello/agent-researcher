@@ -10,10 +10,10 @@ import type { JobStatus, StepInfo, TemplateManifest } from '../api/types';
 
 /** Exported for `copy-parity.test.tsx`: every language must carry every key. */
 export const T = {
-  en: { back: '← Dossiers', working: 'Generating your dossier…', loadingReport: 'Loading dossier…', failed: 'This dossier could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.' },
-  es: { back: '← Dossiers', working: 'Generando tu dossier…', loadingReport: 'Cargando dossier…', failed: 'Este dossier no pudo completarse.', download: 'Descargar', files: 'Archivos', warnings: 'Notas', partial: 'Algunas secciones se entregaron parciales.' },
-  fr: { back: '← Dossiers', working: 'Génération de votre dossier…', loadingReport: 'Chargement du dossier…', failed: 'Ce dossier n’a pas pu être terminé.', download: 'Télécharger', files: 'Fichiers', warnings: 'Notes', partial: 'Certaines sections ont été livrées partielles.' },
-  pt: { back: '← Dossiês', working: 'Gerando seu dossiê…', loadingReport: 'Carregando dossiê…', failed: 'Este dossiê não pôde ser concluído.', download: 'Baixar', files: 'Arquivos', warnings: 'Notas', partial: 'Algumas seções foram entregues parciais.' },
+  en: { back: '← Dossiers', working: 'Generating your dossier…', loadingReport: 'Loading dossier…', failed: 'This dossier could not be completed.', download: 'Download', files: 'Files', warnings: 'Notes', partial: 'Some sections were delivered partial.', closeOk: 'You can relax and close this page — we’ll email you as soon as your dossier is ready.' },
+  es: { back: '← Dossiers', working: 'Generando tu dossier…', loadingReport: 'Cargando dossier…', failed: 'Este dossier no pudo completarse.', download: 'Descargar', files: 'Archivos', warnings: 'Notas', partial: 'Algunas secciones se entregaron parciales.', closeOk: 'Puedes cerrar esta página con tranquilidad: te avisamos por correo apenas tu dossier esté listo.' },
+  fr: { back: '← Dossiers', working: 'Génération de votre dossier…', loadingReport: 'Chargement du dossier…', failed: 'Ce dossier n’a pas pu être terminé.', download: 'Télécharger', files: 'Fichiers', warnings: 'Notes', partial: 'Certaines sections ont été livrées partielles.', closeOk: 'Vous pouvez fermer cette page l’esprit tranquille : nous vous préviendrons par e-mail dès que votre dossier sera prêt.' },
+  pt: { back: '← Dossiês', working: 'Gerando seu dossiê…', loadingReport: 'Carregando dossiê…', failed: 'Este dossiê não pôde ser concluído.', download: 'Baixar', files: 'Arquivos', warnings: 'Notas', partial: 'Algumas seções foram entregues parciais.', closeOk: 'Você pode fechar esta página tranquilo: avisamos por e-mail assim que seu dossiê estiver pronto.' },
 };
 const STATUS_LABEL: Record<string, Record<JobStatus, string>> = {
   en: { queued: 'Queued', running: 'Running', completed: 'Ready', failed: 'Failed', incomplete: 'Paused', held: 'Under review' },
@@ -88,6 +88,21 @@ export function JobView() {
             const line = progressLine(job.progress, (LANGS as readonly string[]).includes(reportLang) ? (reportLang as Lang) : lang);
             return line ? <p className="muted mono" style={{ fontSize: 12, marginTop: 6 }}>{line}</p> : null;
           })()}
+          {/* A comprehensive run takes about twenty minutes, and until now this card
+              said nothing about what happens if you close it — so the buyer's
+              reasonable model was "if I leave, I lose it", and they watched a
+              progress line for twenty minutes. The completion email has existed all
+              along (`apps/worker/src/index.ts`, `notifyReportReady`).
+
+              Gated on `job.notify`, which the API sets from the SAME condition the
+              worker sends on (`emailFrom` AND `webUrl` on the app record). Without
+              the gate this sentence would be a promise that happens to be true for
+              one app by coincidence, and silently false for the next one — and the
+              cost of that error falls on the buyer, who closes the tab and waits for
+              a mail nobody sends. `lang`, not `reportLang`: this is chrome, the
+              reader is being addressed right now, and it follows the switcher like
+              the badge and the buttons above it. */}
+          {job.notify && <p className="soft" style={{ fontSize: 13, margin: '10px 0 0' }}>{t.closeOk}</p>}
         </div>
       )}
 

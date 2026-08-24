@@ -37,12 +37,26 @@ function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function shell(appName: string, heading: string, body: string, cta: { label: string; url: string }, footer: string, linkLine: string, notice?: string): string {
+/**
+ * `rows` is the receipt's detail block — label/value pairs rendered as a small
+ * table between the body and the button.
+ *
+ * It takes PLAIN TEXT and escapes both halves here rather than accepting markup
+ * from the caller, which is the rule this file already states for `notice`: a
+ * plan name comes from the Stripe catalog, and the catalog is edited by a person
+ * in a form. Nothing reaches this template literal unchecked.
+ */
+function shell(appName: string, heading: string, body: string, cta: { label: string; url: string }, footer: string, linkLine: string, notice?: string, rows?: [string, string][]): string {
   // Between the body and the button, so it is read on the way to the report
   // rather than under it. Tinted and ruled, because the whole point is that it
   // must not be skimmed past.
   const noticeBlock = notice
     ? `<p style="font-size:14px;line-height:1.6;color:${INK};margin:0 0 22px;padding:12px 14px;background:#fdf6ee;border-left:3px solid ${ACCENT};border-radius:4px;">${notice}</p>`
+    : '';
+  const rowsBlock = rows?.length
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;border:1px solid #ece7dc;border-radius:6px;background:#fbf8f3;">${rows
+        .map(([label, value], i) => `<tr><td style="padding:11px 14px;font-size:13.5px;color:${MUTED};${i ? `border-top:1px solid #ece7dc;` : ''}">${escHtml(label)}</td><td align="right" style="padding:11px 14px;font-size:13.5px;font-weight:700;color:${INK};${i ? `border-top:1px solid #ece7dc;` : ''}">${escHtml(value)}</td></tr>`)
+        .join('')}</table>`
     : '';
   return `<!doctype html><html><body style="margin:0;background:#f5f0e8;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
@@ -54,6 +68,7 @@ function shell(appName: string, heading: string, body: string, cta: { label: str
       <tr><td style="padding:8px 36px 0;">
         <h1 style="font-size:22px;font-weight:800;letter-spacing:-0.02em;color:${INK};margin:12px 0 14px;">${heading}</h1>
         <p style="font-size:15px;line-height:1.6;color:${INK};margin:0 0 22px;">${body}</p>
+        ${rowsBlock}
         ${noticeBlock}
         <a href="${cta.url}" style="display:inline-block;background:${INK};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:0.04em;padding:13px 22px;border-radius:6px;">${cta.label}</a>
         <p style="font-size:12.5px;line-height:1.6;color:${MUTED};margin:24px 0 0;">${linkLine}<br><a href="${cta.url}" style="color:${ACCENT};word-break:break-all;">${cta.url}</a></p>
@@ -244,5 +259,156 @@ export function resetPasswordTemplate(appName: string, url: string, lang?: unkno
     html: shell(appName, t(RESET_HEADING, lang, v), t(RESET_BODY, lang, v),
       { label: t(RESET_CTA, lang, v), url }, t(RESET_FOOTER, lang, v), t(LINK_LINE, lang)),
     text: t(RESET_TEXT, lang, v),
+  };
+}
+
+// --- Report started ----------------------------------------------------------
+
+/**
+ * The mail that goes out when a dossier is QUEUED, not when it finishes.
+ *
+ * A comprehensive run takes about twenty minutes, and until now the only message
+ * about it arrived at the end — so the buyer's whole model of the wait was a
+ * progress line they had to sit in front of. This one exists to put a thread in
+ * their inbox from the beginning, with a link back into the job, so closing the
+ * tab costs them nothing.
+ *
+ * It deliberately names NO duration. The three measured comprehensive runs were
+ * 18, 20 and 17 minutes, but `essential` is a different job and nothing in the
+ * template declares an estimate — a number here would be a promise invented at
+ * the one moment we cannot check it.
+ *
+ * There is no report title either: `job.title` is written by `headline` inside
+ * the engine, which has not run yet when this is sent.
+ */
+const STARTED_SUBJECT: Copy = {
+  en: 'We’re building your {app} dossier',
+  es: 'Estamos generando tu dossier de {app}',
+  fr: 'Nous préparons votre dossier {app}',
+  pt: 'Estamos gerando seu dossiê do {app}',
+};
+const STARTED_HEADING: Copy = {
+  en: 'Your dossier is being generated', es: 'Tu dossier se está generando',
+  fr: 'Votre dossier est en cours de génération', pt: 'Seu dossiê está sendo gerado',
+};
+const STARTED_BODY: Copy = {
+  en: 'Our research agents are at work. You can close this and relax — we’ll email you the moment it’s ready, and this link brings you back to it at any time.',
+  es: 'Nuestros agentes de investigación ya están trabajando. Puedes cerrar todo y estar tranquilo: te avisamos por correo apenas esté listo, y este enlace te trae de vuelta cuando quieras.',
+  fr: 'Nos agents de recherche sont au travail. Vous pouvez tout fermer l’esprit tranquille : nous vous préviendrons par e-mail dès que ce sera prêt, et ce lien vous y ramène à tout moment.',
+  pt: 'Nossos agentes de pesquisa já estão trabalhando. Você pode fechar tudo e ficar tranquilo: avisamos por e-mail assim que estiver pronto, e este link traz você de volta a qualquer momento.',
+};
+const STARTED_CTA: Copy = {
+  en: 'Follow the progress', es: 'Seguir el progreso',
+  fr: 'Suivre la progression', pt: 'Acompanhar o progresso',
+};
+const STARTED_FOOTER: Copy = {
+  en: 'You don’t need to keep any page open. If something goes wrong we return your credits, and you’ll hear about it here.',
+  es: 'No necesitas dejar ninguna página abierta. Si algo sale mal te devolvemos los créditos, y te enteras por aquí.',
+  fr: 'Vous n’avez besoin de laisser aucune page ouverte. En cas de problème, vos crédits vous sont rendus et vous en serez informé ici.',
+  pt: 'Você não precisa deixar nenhuma página aberta. Se algo der errado, devolvemos seus créditos e você fica sabendo por aqui.',
+};
+const STARTED_TEXT: Copy = {
+  en: 'We’re building your {app} dossier\n\nOur research agents are at work. You can close everything — we’ll email you the moment it’s ready.\n\nFollow the progress: {url}',
+  es: 'Estamos generando tu dossier de {app}\n\nNuestros agentes de investigación ya están trabajando. Puedes cerrar todo: te avisamos por correo apenas esté listo.\n\nSeguir el progreso: {url}',
+  fr: 'Nous préparons votre dossier {app}\n\nNos agents de recherche sont au travail. Vous pouvez tout fermer : nous vous préviendrons par e-mail dès que ce sera prêt.\n\nSuivre la progression : {url}',
+  pt: 'Estamos gerando seu dossiê do {app}\n\nNossos agentes de pesquisa já estão trabalhando. Você pode fechar tudo: avisamos por e-mail assim que estiver pronto.\n\nAcompanhar o progresso: {url}',
+};
+
+export function reportStartedTemplate(appName: string, url: string, lang?: unknown): AccountEmail {
+  const v = { app: appName, url };
+  return {
+    subject: t(STARTED_SUBJECT, lang, v),
+    html: shell(appName, t(STARTED_HEADING, lang, v), t(STARTED_BODY, lang, v),
+      { label: t(STARTED_CTA, lang, v), url }, t(STARTED_FOOTER, lang, v), t(LINK_LINE, lang)),
+    text: t(STARTED_TEXT, lang, v),
+  };
+}
+
+// --- Credits purchased (the receipt) -----------------------------------------
+
+/**
+ * The receipt for a credit purchase.
+ *
+ * It names the CREDITS, not the charge: what was bought, how many credits, and
+ * the balance the buyer now has. Stripe can send its own receipt and it says
+ * neither of the last two — a dollar amount is what the card statement already
+ * shows, and the balance is the thing the buyer opens the app to check. Only one
+ * of the two is sent (Javier, 2026-08-24); sending both is the option that is
+ * clearly wrong.
+ *
+ * `amountUsd` / `currency` are optional because the ledger's authority is the
+ * CREDIT count — a session that somehow carried no total still produces an honest
+ * receipt, one line shorter, rather than one reading "$0.00".
+ */
+const RECEIPT_SUBJECT: Copy = {
+  en: '{app} receipt — {credits} credits added',
+  es: 'Comprobante de {app}: {credits} créditos añadidos',
+  fr: 'Reçu {app} — {credits} crédits ajoutés',
+  pt: 'Comprovante do {app} — {credits} créditos adicionados',
+};
+const RECEIPT_HEADING: Copy = {
+  en: 'Your credits are in', es: 'Tus créditos ya están',
+  fr: 'Vos crédits sont crédités', pt: 'Seus créditos já entraram',
+};
+const RECEIPT_BODY: Copy = {
+  en: 'Thank you. Your payment went through and the credits are already on your account — you can start a dossier right away.',
+  es: 'Gracias. Tu pago se procesó y los créditos ya están en tu cuenta: puedes empezar un dossier ahora mismo.',
+  fr: 'Merci. Votre paiement a été accepté et les crédits sont déjà sur votre compte : vous pouvez lancer un dossier dès maintenant.',
+  pt: 'Obrigado. Seu pagamento foi processado e os créditos já estão na sua conta: você pode começar um dossiê agora mesmo.',
+};
+const RECEIPT_CTA: Copy = {
+  en: 'View my credits', es: 'Ver mis créditos',
+  fr: 'Voir mes crédits', pt: 'Ver meus créditos',
+};
+const RECEIPT_FOOTER: Copy = {
+  en: 'Keep this email as your receipt. Credits do not expire. If anything looks wrong, reply to this message and we will sort it out.',
+  es: 'Guarda este correo como comprobante. Los créditos no caducan. Si algo no cuadra, responde a este mensaje y lo resolvemos.',
+  fr: 'Conservez cet e-mail comme reçu. Les crédits n’expirent pas. Si quelque chose ne va pas, répondez à ce message et nous le réglerons.',
+  pt: 'Guarde este e-mail como comprovante. Os créditos não expiram. Se algo estiver errado, responda a esta mensagem e resolvemos.',
+};
+const RECEIPT_ROW_PACK: Copy = { en: 'Pack', es: 'Pack', fr: 'Pack', pt: 'Pacote' };
+const RECEIPT_ROW_CREDITS: Copy = { en: 'Credits added', es: 'Créditos añadidos', fr: 'Crédits ajoutés', pt: 'Créditos adicionados' };
+const RECEIPT_ROW_PAID: Copy = { en: 'Paid', es: 'Pagado', fr: 'Payé', pt: 'Pago' };
+const RECEIPT_ROW_BALANCE: Copy = { en: 'New balance', es: 'Saldo nuevo', fr: 'Nouveau solde', pt: 'Novo saldo' };
+const RECEIPT_TEXT: Copy = {
+  en: '{app} receipt\n\nYour payment went through and {credits} credits are on your account.\n\nNew balance: {balance} credits\n\nView your credits: {url}',
+  es: 'Comprobante de {app}\n\nTu pago se procesó y {credits} créditos ya están en tu cuenta.\n\nSaldo nuevo: {balance} créditos\n\nVer tus créditos: {url}',
+  fr: 'Reçu {app}\n\nVotre paiement a été accepté et {credits} crédits sont sur votre compte.\n\nNouveau solde : {balance} crédits\n\nVoir vos crédits : {url}',
+  pt: 'Comprovante do {app}\n\nSeu pagamento foi processado e {credits} créditos estão na sua conta.\n\nNovo saldo: {balance} créditos\n\nVer seus créditos: {url}',
+};
+
+/** `usd` from a Stripe session is lowercase and `Intl` wants an ISO code. */
+function money(amount: number, currency: string, lang: unknown): string {
+  const code = (currency || 'usd').toUpperCase();
+  try {
+    return new Intl.NumberFormat(asLang(lang), { style: 'currency', currency: code }).format(amount);
+  } catch {
+    return `${code} ${amount.toFixed(2)}`;
+  }
+}
+
+export interface PurchaseReceipt {
+  credits: number;
+  /** The balance AFTER the grant — `recordPurchase` returns it from the same transaction. */
+  balance: number;
+  planName?: string;
+  amount?: number;
+  currency?: string;
+}
+
+export function creditsPurchasedTemplate(appName: string, receipt: PurchaseReceipt, url: string, lang?: unknown): AccountEmail {
+  const credits = String(receipt.credits);
+  const balance = String(receipt.balance);
+  const v = { app: appName, url, credits, balance };
+  const rows: [string, string][] = [];
+  if (receipt.planName?.trim()) rows.push([t(RECEIPT_ROW_PACK, lang), receipt.planName.trim()]);
+  rows.push([t(RECEIPT_ROW_CREDITS, lang), `+${credits}`]);
+  if (receipt.amount != null && receipt.amount > 0) rows.push([t(RECEIPT_ROW_PAID, lang), money(receipt.amount, receipt.currency ?? 'usd', lang)]);
+  rows.push([t(RECEIPT_ROW_BALANCE, lang), balance]);
+  return {
+    subject: t(RECEIPT_SUBJECT, lang, v),
+    html: shell(appName, t(RECEIPT_HEADING, lang, v), t(RECEIPT_BODY, lang, v),
+      { label: t(RECEIPT_CTA, lang, v), url }, t(RECEIPT_FOOTER, lang, v), t(LINK_LINE, lang), undefined, rows),
+    text: t(RECEIPT_TEXT, lang, v),
   };
 }

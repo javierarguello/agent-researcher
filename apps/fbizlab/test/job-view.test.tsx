@@ -158,3 +158,43 @@ describe('an incomplete report explains itself in the buyer’s words', () => {
     expect(screen.getByText(/One section could not be completed/)).toBeTruthy();
   });
 });
+
+/**
+ * P-10 — the screen's permission to walk away.
+ *
+ * A comprehensive run takes about twenty minutes and this card used to say
+ * nothing about closing it, so the buyer's reasonable model was "if I leave, I
+ * lose it". The completion mail has existed all along.
+ */
+describe('telling the buyer they can close the page', () => {
+  it('says so while the job is live, in the language the switcher is on', () => {
+    show({ status: 'running', progress: null, summary: null, notify: true }, 'es');
+    expect(screen.getByText(/cerrar esta página con tranquilidad/i)).toBeTruthy();
+  });
+
+  it('says NOTHING when the app cannot send the mail', () => {
+    // `notify` is the API's answer, taken from the SAME condition the worker sends
+    // on. Without the gate this line is a promise that is true for one app by
+    // coincidence and silently false for the next — and the buyer pays for the
+    // error by closing the tab and waiting for mail nobody sends.
+    show({ status: 'running', progress: null, summary: null, notify: false }, 'en');
+    expect(screen.queryByText(/close this page/i)).toBeNull();
+  });
+
+  it('…and nothing at all for a job that predates the flag', () => {
+    show({ status: 'running', progress: null, summary: null }, 'en');
+    expect(screen.queryByText(/close this page/i)).toBeNull();
+  });
+
+  it('stops saying it once the dossier is ready — there is nothing left to wait for', () => {
+    show({ status: 'completed', progress: null, summary: null, notify: true }, 'en');
+    expect(screen.queryByText(/close this page/i)).toBeNull();
+  });
+
+  it('and a held job still gets it — it is live, and the wait is longer, not shorter', () => {
+    // `held` is a live state: an admin is deciding, and the buyer can do nothing
+    // to hurry it. It is the state where sitting on the screen is most wasteful.
+    show({ status: 'held', progress: null, summary: null, notify: true }, 'en');
+    expect(screen.getByText(/close this page/i)).toBeTruthy();
+  });
+});

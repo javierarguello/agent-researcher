@@ -30,6 +30,8 @@ export interface CreateJobInput {
   creditsSpent?: number;
   /** True when the caller claimed an in-flight slot for this job (see slots.ts). */
   slotHeld?: boolean;
+  /** The owner will get the completion email — see `ResearchJob.notify`. */
+  notify?: boolean;
 }
 
 export async function createJob(input: CreateJobInput): Promise<ResearchJob> {
@@ -43,6 +45,7 @@ export async function createJob(input: CreateJobInput): Promise<ResearchJob> {
     ...(input.mode ? { mode: input.mode } : {}),
     ...(input.creditsSpent != null ? { creditsSpent: input.creditsSpent } : {}),
     ...(input.slotHeld ? { slotHeld: true } : {}),
+    ...(input.notify ? { notify: true } : {}),
     status: 'queued',
     files: [],
     bucketPath: `${config.storage.rootPrefix}/${input.jobId}`,

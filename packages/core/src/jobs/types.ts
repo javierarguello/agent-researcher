@@ -240,6 +240,22 @@ export interface ResearchJob {
   params: Record<string, unknown>;
   /** Report mode key (essential/comprehensive) — denormalized for list rendering. */
   mode?: string;
+  /**
+   * This job's owner will be emailed when it finishes.
+   *
+   * Recorded at CREATION rather than computed when the job page asks, for two
+   * reasons. It is the answer to "may the screen tell the buyer to close the tab?",
+   * and that screen polls every few seconds for twenty minutes — reading the app
+   * document on each poll is a Firestore read per poll for a fact that cannot
+   * change mid-job in any way that matters. And it is a fact ABOUT this job: the
+   * app was configured to send when the buyer pressed the button, which is when the
+   * promise was made.
+   *
+   * It mirrors the worker's own condition (`emailFrom` AND `webUrl`, both, or
+   * `notifyReportReady` returns early), so a screen that says "we will email you"
+   * says it exactly when the worker will.
+   */
+  notify?: boolean;
   /** Credits charged for this report (the mode cost at generation time). */
   creditsSpent?: number;
   /** Auto-generated short title (for dashboards / report lists). */

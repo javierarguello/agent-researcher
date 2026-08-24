@@ -9,7 +9,7 @@
  * à Miami". The whole job was in hand and `params.language` was never read.
  */
 import { describe, it, expect } from 'vitest';
-import { verifyEmailTemplate, reportReadyTemplate, resetPasswordTemplate } from '../src/email/templates.js';
+import { verifyEmailTemplate, reportReadyTemplate, resetPasswordTemplate, reportStartedTemplate, creditsPurchasedTemplate } from '../src/email/templates.js';
 
 const LANGS = ['en', 'es', 'fr', 'pt'] as const;
 
@@ -21,6 +21,8 @@ describe('account emails speak the buyer’s language', () => {
       () => LANGS.map((l) => verifyEmailTemplate('Florida Biz Labs', 'https://x/y', l)),
       () => LANGS.map((l) => resetPasswordTemplate('Florida Biz Labs', 'https://x/y', l)),
       () => LANGS.map((l) => reportReadyTemplate('Florida Biz Labs', 'Un titre', 'https://x/y', l)),
+      () => LANGS.map((l) => reportStartedTemplate('Florida Biz Labs', 'https://x/y', l)),
+      () => LANGS.map((l) => creditsPurchasedTemplate('Florida Biz Labs', { credits: 15, balance: 22 }, 'https://x/y', l)),
     ]) {
       const mails = build();
       expect(new Set(mails.map((m) => m.subject)).size).toBe(4);
@@ -84,10 +86,102 @@ describe('account emails speak the buyer’s language', () => {
         verifyEmailTemplate('Florida Biz Labs', 'https://x/y', l),
         resetPasswordTemplate('Florida Biz Labs', 'https://x/y', l),
         reportReadyTemplate('Florida Biz Labs', 'T', 'https://x/y', l),
+        reportStartedTemplate('Florida Biz Labs', 'https://x/y', l),
+        creditsPurchasedTemplate('Florida Biz Labs', { credits: 15, balance: 22 }, 'https://x/y', l),
       ]) {
-        expect(m.subject + m.html + m.text, l).not.toMatch(/\{app\}|\{url\}|\{title\}/);
+        expect(m.subject + m.html + m.text, l).not.toMatch(/\{app\}|\{url\}|\{title\}|\{credits\}|\{balance\}/);
         expect(m.html, l).toContain('https://x/y');
       }
     }
+  });
+});
+
+/**
+ * The two mails added for P-10 and P-11 (Javier, 2026-08-24): "we started your
+ * dossier, you can close the tab", and the receipt for the credits.
+ */
+describe('the dossier start mail', () => {
+  it('tells the reader they can walk away, in every language', () => {
+    // This mail exists for exactly one sentence. The distinctness check above is
+    // satisfied by four different strings that all forget to say it.
+    const anchors: Record<string, RegExp> = {
+      en: /close (this|everything)/i,
+      es: /cerrar todo/i,
+      fr: /tout fermer/i,
+      pt: /fechar tudo/i,
+    };
+    for (const [lang, re] of Object.entries(anchors)) {
+      const m = reportStartedTemplate('Florida Biz Labs', 'https://x/y', lang);
+      expect(`${m.html}\n${m.text}`, lang).toMatch(re);
+    }
+  });
+
+  it('promises no duration, in any language', () => {
+    // The three measured comprehensive runs were 18, 20 and 17 minutes — but
+    // `essential` is a different job and no template declares an estimate. A
+    // number here is a promise invented at the one moment it cannot be checked.
+    for (const l of LANGS) {
+      const m = reportStartedTemplate('Florida Biz Labs', 'https://x/y', l);
+      expect(`${m.subject}${m.html}${m.text}`, l).not.toMatch(/\d+\s*(min|minut|hora|heure|hour)/i);
+    }
+  });
+
+  it('carries the link back to the job in the body AND the text part', () => {
+    // The link is what makes closing the tab free. A plain-text client that gets
+    // the HTML stripped must still be able to get back.
+    for (const l of LANGS) {
+      const m = reportStartedTemplate('Florida Biz Labs', 'https://fbizlab.test/app/jobs/j1', l);
+      expect(m.html, l).toContain('https://fbizlab.test/app/jobs/j1');
+      expect(m.text, l).toContain('https://fbizlab.test/app/jobs/j1');
+    }
+  });
+});
+
+describe('the credit purchase receipt', () => {
+  it('names the credits and the balance — the two things Stripe’s own receipt cannot', () => {
+    // The whole reason this one is ours rather than Stripe's. A dollar amount is
+    // what the card statement already shows.
+    for (const l of LANGS) {
+      const m = creditsPurchasedTemplate('Florida Biz Labs', { credits: 15, balance: 22 }, 'https://x/y', l);
+      expect(m.html, l).toContain('+15');
+      expect(m.html, l).toContain('22');
+      expect(m.text, l).toContain('22');
+      expect(m.subject, l).toContain('15');
+    }
+  });
+
+  it('escapes a pack name — the catalog is edited by a person in a form', () => {
+    const m = creditsPurchasedTemplate('Florida Biz Labs', { credits: 3, balance: 3, planName: '<img src=x onerror=alert(1)>' }, 'https://x/y', 'en');
+    expect(m.html).not.toContain('<img src=x');
+    expect(m.html).toContain('&lt;img src=x');
+  });
+
+  it('drops the amount line rather than printing $0.00 — for a MISSING total and for a zero one', () => {
+    // The ledger's authority is the CREDIT count. A receipt one line shorter is
+    // honest; one that tells a buyer they paid $0.00 is not.
+    //
+    // Both halves, and the second is the one that nearly went untested. A first
+    // version of this test only passed `amount: undefined`, and the guard it was
+    // written for is `> 0` — so mutating `amount != null && amount > 0` down to
+    // `amount != null` measured **0 red**. Zero is not hypothetical either:
+    // `/credits/checkout` sets `allow_promotion_codes: true`, and a 100%-off coupon
+    // produces a real paid session with `amount_total: 0`.
+    const none = creditsPurchasedTemplate('Florida Biz Labs', { credits: 3, balance: 3 }, 'https://x/y', 'en');
+    const zero = creditsPurchasedTemplate('Florida Biz Labs', { credits: 3, balance: 3, amount: 0, currency: 'usd' }, 'https://x/y', 'en');
+    const some = creditsPurchasedTemplate('Florida Biz Labs', { credits: 3, balance: 3, amount: 19, currency: 'usd' }, 'https://x/y', 'en');
+    for (const m of [none, zero]) {
+      expect(m.html).not.toMatch(/0\.00/);
+      expect(m.html).not.toMatch(/>Paid</);
+    }
+    expect(some.html).toMatch(/\$19\.00/);
+    expect(some.html).toMatch(/>Paid</); // the control: the row exists when there IS a total
+  });
+
+  it('takes a lowercase Stripe currency code without falling over', () => {
+    // `session.currency` is `usd`, and `Intl` wants `USD`. The fallback must not
+    // be an exception inside a webhook.
+    const m = creditsPurchasedTemplate('Florida Biz Labs', { credits: 3, balance: 3, amount: 19, currency: 'eur' }, 'https://x/y', 'fr');
+    expect(m.html).not.toContain('undefined');
+    expect(m.html).toMatch(/19/);
   });
 });
