@@ -438,6 +438,85 @@ which is the honest state for a page whose content a crawler may not see.
 
 ---
 
+## P-10 · A dossier makes the buyer watch a screen, and nothing says they don't have to — `open`
+
+**Asked for by Javier, 2026-08-24**, looking at `/app/jobs/:id` on a running
+comprehensive job.
+
+A comprehensive run takes ~20 minutes (three measured: 18, 20 and 17 min,
+`out/local-*`). The screen polls and shows the live agent, and it says **nothing**
+about what happens if you close it — `JobView`'s copy table is status labels and
+nothing else (`apps/fbizlab/src/pages/JobView.tsx:19-22`, verified by reading). So the
+buyer's reasonable model is "if I close this, I lose it", and they sit and watch a
+progress line for twenty minutes.
+
+They do not have to: **the completion email already exists.** The worker sends
+`reportReadyTemplate` with a deep link to the job the moment it finishes
+(`apps/worker/src/index.ts:35`), in the report's language, and it carries the
+degraded-sections notice when there is one.
+
+**What to build, smallest first:**
+1. **Say it on the screen.** One line under the status while the job is live
+   (`JobView.tsx:46` already computes `live`): we will email you when it is ready,
+   you can close this. Copy in four languages, into `copy-parity.test.tsx`'s tables.
+2. **An email when the dossier STARTS**, not only when it ends — so the buyer has a
+   thread in their inbox from the beginning, and a link back.
+
+**Two things to settle before either is written:**
+
+- **Do not promise mail we do not send.** The worker sends nothing unless the app doc
+  has BOTH `emailFrom` and `webUrl` (`apps/worker/src/index.ts:22`, an early return).
+  `fbizlab` has both today, but the SPA cannot see them — it knows an `appId`, not the
+  app document. Either the manifest/session grows a `notifies: true` flag the screen
+  can read, or the line ships as a claim that is true for one app by coincidence.
+- **Is the start email worth its noise?** It arrives ~1 second after a click the buyer
+  just made, on the screen they are still looking at. Its value is the thread and the
+  link back for later; its cost is a second message per job. If (1) lands well, (2)
+  may be redundant — the honest order is (1), then ask.
+
+**And a dependency that outranks both** (see `handoff.md` § Security): the domain's
+mail currently fails DMARC — `p=quarantine` with SPF and DKIM both absent — so
+transactional mail is being quarantined by policy. Adding two more emails before those
+two DNS records exist multiplies the "it never arrived" surface rather than removing
+the wait.
+
+**Not started.**
+
+---
+
+## P-11 · Buying credits leaves no receipt — `open`
+
+**Asked for by Javier, 2026-08-24.** The Stripe webhook grants the credits and sends
+nothing: `checkout.session.completed` / `async_payment_succeeded` land at
+`apps/api/src/index.ts:2063`, the metadata is read and `grantCredits` runs, and there
+is no `sendAppEmail` anywhere in that block (verified by reading — the file's only
+three send sites are verify-email, password reset and contact, at `:484`, `:626` and
+`:748`). So the only trace of a purchase a buyer keeps is their card statement and
+whatever Stripe itself decides to send.
+
+**What to build:** a confirmation on a successful grant — what was bought, how many
+credits, the new balance, and a link into `/app/credits`. The ledger already holds
+everything it needs (`credits/ledger`, idempotent per event), and the app doc has the
+sender.
+
+**Product decision, unresolved — ours or Stripe's.** Stripe can send its own receipt
+(Dashboard → Customer emails), which costs no code and looks like Stripe. Ours can
+name the CREDITS rather than the charge, link into the app and carry the balance,
+which is what the buyer actually wants to know. They are not exclusive; sending both
+is the one option that is clearly wrong.
+
+**Where the care goes if it is ours:** the webhook is retried by Stripe, so the send
+belongs behind the same idempotency the grant uses, or a retried event mails the buyer
+twice for one purchase. The grant is already idempotent per event id; the mail has to
+ride the same key, not a second one.
+
+Same DMARC dependency as P-10: a receipt that lands in spam is worse than no receipt,
+because this one a buyer goes looking for.
+
+**Not started.**
+
+---
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
