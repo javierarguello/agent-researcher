@@ -78,11 +78,12 @@ describe('prod-only, enforced by absence', () => {
 describe('anonymous means cookieless, and that is set BEFORE the SDK starts', () => {
   beforeEach(() => { vi.resetModules(); });
 
-  it('denies analytics_storage and all three ad consents, before getAnalytics', async () => {
+  it('denies analytics_storage and all three ad consents, before the SDK initializes', async () => {
     // The ordering is the whole feature: consent applied after initialization is
     // consent applied after the first cookie has already been written.
     const calls: string[] = [];
     let consent: Record<string, string> | undefined;
+    let initOpts: { config?: Record<string, unknown> } | undefined;
     vi.doMock('../src/config', () => ({
       config: { firebase: { measurementId: 'G-TEST', apiKey: 'k', authDomain: 'a', projectId: 'p', storageBucket: 's', messagingSenderId: 'm', appId: 'x' } },
     }));
@@ -90,7 +91,7 @@ describe('anonymous means cookieless, and that is set BEFORE the SDK starts', ()
     vi.doMock('firebase/analytics', () => ({
       isSupported: async () => true,
       setConsent: (c: Record<string, string>) => { calls.push('setConsent'); consent = c; },
-      getAnalytics: () => { calls.push('getAnalytics'); return {}; },
+      initializeAnalytics: (_app: unknown, opts: { config?: Record<string, unknown> }) => { calls.push('initializeAnalytics'); initOpts = opts; return {}; },
       logEvent: (_a: unknown, name: string, params: unknown) => { calls.push(`logEvent:${name}`); void params; },
     }));
     const { trackPageView } = await import('../src/analytics');
@@ -103,8 +104,35 @@ describe('anonymous means cookieless, and that is set BEFORE the SDK starts', ()
       ad_user_data: 'denied',
       ad_personalization: 'denied',
     });
-    expect(calls.indexOf('setConsent')).toBeLessThan(calls.indexOf('getAnalytics'));
+    expect(calls.indexOf('setConsent')).toBeLessThan(calls.indexOf('initializeAnalytics'));
     expect(calls).toContain('logEvent:page_view');
+  });
+
+  it('turns OFF gtag\'s own automatic page_view, or every first load is counted twice', async () => {
+    // Measured in a real browser against production before this was fixed: the
+    // landing reported TWO page_views and `/sample` reported one. gtag fires a
+    // page_view when it initializes and the route effect fires another; two correct
+    // mechanisms, one metric, doubled — and doubled on exactly the number this
+    // feature exists to produce.
+    //
+    // Ours is the one that survives: gtag's only fires on a real browser navigation,
+    // and in a client-routed app that means the landing and nothing a visitor does
+    // after it.
+    let initOpts: { config?: Record<string, unknown> } | undefined;
+    vi.doMock('../src/config', () => ({
+      config: { firebase: { measurementId: 'G-TEST', apiKey: 'k', authDomain: 'a', projectId: 'p', storageBucket: 's', messagingSenderId: 'm', appId: 'x' } },
+    }));
+    vi.doMock('firebase/app', () => ({ initializeApp: () => ({}) }));
+    vi.doMock('firebase/analytics', () => ({
+      isSupported: async () => true,
+      setConsent: () => {},
+      initializeAnalytics: (_app: unknown, opts: { config?: Record<string, unknown> }) => { initOpts = opts; return {}; },
+      logEvent: () => {},
+    }));
+    const { trackPageView } = await import('../src/analytics');
+    trackPageView('/');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(initOpts?.config?.send_page_view).toBe(false);
   });
 
   it('never identifies anybody — setUserId and setUserProperties are never called', async () => {
@@ -120,7 +148,7 @@ describe('anonymous means cookieless, and that is set BEFORE the SDK starts', ()
     vi.doMock('firebase/analytics', () => ({
       isSupported: async () => true,
       setConsent: () => {},
-      getAnalytics: () => ({}),
+      initializeAnalytics: () => ({}),
       logEvent: () => { touched.push('logEvent'); },
       setUserId: () => { touched.push('setUserId'); },
       setUserProperties: () => { touched.push('setUserProperties'); },

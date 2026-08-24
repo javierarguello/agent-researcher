@@ -68,7 +68,7 @@ export const analyticsEnabled = (): boolean => !!config.firebase?.measurementId;
 
 async function start(): Promise<void> {
   if (!analyticsEnabled() || typeof window === 'undefined') return;
-  const [{ initializeApp }, { getAnalytics, logEvent, isSupported, setConsent }] = await Promise.all([
+  const [{ initializeApp }, { initializeAnalytics, logEvent, isSupported, setConsent }] = await Promise.all([
     import('firebase/app'),
     import('firebase/analytics'),
   ]);
@@ -83,7 +83,20 @@ async function start(): Promise<void> {
     ad_user_data: 'denied',
     ad_personalization: 'denied',
   });
-  const analytics = getAnalytics(initializeApp(config.firebase!));
+  // `initializeAnalytics` with `send_page_view: false`, NOT `getAnalytics`.
+  //
+  // gtag fires a `page_view` of its own the moment it initializes. This app fires
+  // one too, from the route effect — so every first load was counted TWICE, which
+  // was measured in a real browser (`/` reported twice, `/sample` once) and is
+  // invisible from the code: two correct mechanisms, one metric, doubled. It
+  // inflates precisely the number this whole feature exists to produce.
+  //
+  // Ours is the one that survives, because gtag's only fires on a real browser
+  // navigation and this is a client-routed app — keeping gtag's would report the
+  // landing and nothing a visitor did afterwards.
+  const analytics = initializeAnalytics(initializeApp(config.firebase!), {
+    config: { send_page_view: false },
+  });
   log = (name, params) => logEvent(analytics, name as 'page_view', params as never);
 }
 
