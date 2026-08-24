@@ -97,8 +97,10 @@ F-1…F-10 in `deep-review.md` — the enricher guard (every report prod produce
 render fixes (every report and every PDF, including ones already delivered), and the
 Hosting cache headers that were making every deploy take an hour to arrive.
 
-**Selling still needs two things from a console, and one of them may already be
-done.** The four blockers below were re-measured on 2026-08-24; two moved.
+**All four launch blockers are now closed** — two by Javier in the consoles, one by
+DNS that had already propagated, and the last two proven together by a real
+registration on prod. The four are kept below with what closed each, because the
+reasoning is what a later reader needs.
 
 **Up and verified**
 
@@ -140,19 +142,26 @@ done.** The four blockers below were re-measured on 2026-08-24; two moved.
    renders. An origin missing from the client's list makes GIS refuse at init and the
    button never appears. Strong evidence, not proof: the definitive test is one real
    sign-in.
-2. **Turnstile — hostnames registered, sitekey confirmed, UNRESOLVED.** Javier added
-   both prod hostnames plus dev's, and the widget's Site Key is
-   `0x4AAAAAAD_OEtqrL5B2NN6f` — the same key all three bundles carry. A headless probe
-   still logs `[Cloudflare Turnstile] Error: 600010` on dev AND prod, and **that probe
-   proves nothing**: `600xxx` is the challenge-EXECUTION family (not `110200`, "domain
-   not allowed"), and headless Chrome with `--no-sandbox` is the bot signature
-   Turnstile exists to refuse. It was reported here as "Turnstile is broken, nobody can
-   register" before that was noticed — a measurement whose instrument was the thing
-   being measured. Open it in a real browser; that is the only check that answers it.
-3. **Postmark — still open.** `dig` today: no SPF TXT at the apex, nothing at
-   `pm._domainkey`. The bounce CNAME (`pm-bounces` → `pm.mtasv.net`) exists. A verified
-   single sender signature would still send, so this is "unverified domain OR
-   address-only verification", and the honest test is one real `/auth/register`.
+2. **Turnstile — CLOSED.** Javier added both prod hostnames plus dev's; the widget's
+   Site Key is `0x4AAAAAAD_OEtqrL5B2NN6f`, the same key all three bundles carry.
+3. **Postmark — CLOSED.**
+
+   Both were proven by the same fact, and it is the only kind of proof that counts
+   here: **a real account was registered and verified on prod on 2026-08-24** —
+   `user-credentials/fbizlab__miltonjaviera@yahoo.com.ar`, created 15:27:58 with
+   `emailVerified: true`. Registering requires passing the enforced Turnstile check;
+   verifying requires having received the Postmark mail. The DNS picture has not
+   changed (no SPF at the apex, nothing at `pm._domainkey`), so Postmark is sending on
+   a verified SENDER SIGNATURE rather than a verified domain — it works, and
+   deliverability to strict inboxes is the thing still worth fixing, not signup.
+
+   **A method note, because this file said the opposite for a day.** A headless probe
+   logged `[Cloudflare Turnstile] Error: 600010` on dev AND prod and it was reported
+   here as "Turnstile is broken, nobody can register". It proved nothing: `600xxx` is
+   the challenge-EXECUTION family (not `110200`, "domain not allowed"), and headless
+   Chrome with `--no-sandbox` is precisely the bot signature Turnstile exists to
+   refuse. The instrument was the thing being measured. A bot-detection widget cannot
+   be tested by a bot; the browser, or a real registration, is the only check.
 4. **`www` — CLOSED.** `www.floridabizlabs.com` is a CNAME to the Hosting site and
    answers **301 over valid TLS**. The full-page certificate warning is gone.
 
