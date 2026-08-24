@@ -441,6 +441,13 @@ Split in two because round 10 found the previous single heading covering both ki
   on to spend turns. Free-call floor stays ≥6. The zero-turn plan-loops that motivated
   M-B2 do not appear in any August run — first production evidence that they are gone.
 - **The two GCS hardening items and the mail records** — see § Security, 1-3.
+- **P-10 and P-11** (`product-backlog.md`), both asked for on 2026-08-24 and both
+  gated on the same thing: **P-10** — the job screen never says the buyer can close it
+  and be emailed (the completion mail already exists, `worker/src/index.ts:35`), plus
+  a start email; **P-11** — a credit purchase leaves no receipt (the webhook grants and
+  sends nothing, `api/src/index.ts:2063`). Each names an open product decision inside
+  it, and both are worth less than the DNS records in § Security 1: more mail that
+  fails DMARC is more mail nobody receives.
 - E3's unblock script (needs credentials for the dry run), M-A2 (FENCE_RE
   near-misses, gated on frontier-tier evidence).
 
