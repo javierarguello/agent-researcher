@@ -103,6 +103,22 @@ jobs:
           # Public site key, per environment — no fallback on purpose: a build with no
           # key ships a site nobody can sign in to, and `vite.config.ts` refuses it.
           VITE_TURNSTILE_SITE_KEY: ${{ vars.FBIZLAB_PROD_TURNSTILE_SITE_KEY }}
+          # Anonymous traffic counting (Firebase Analytics in cookieless consent
+          # mode). PROD ONLY, and that is enforced HERE and nowhere else: the dev
+          # workflow passes none of these, so a dev bundle has no measurement id and
+          # `analytics.ts` initializes nothing. There is no flag to get wrong.
+          #
+          # Every value is public — Firebase web config ships in the bundle by design
+          # and is not a secret; the Firestore and Storage rules are what protect
+          # data. They are repo VARIABLES for that reason, like the Turnstile site
+          # key and the OAuth client id above.
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.FBIZLAB_PROD_FIREBASE_MEASUREMENT_ID }}
+          VITE_FIREBASE_API_KEY: ${{ vars.FBIZLAB_PROD_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.FBIZLAB_PROD_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.FBIZLAB_PROD_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.FBIZLAB_PROD_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_SENDER_ID: ${{ vars.FBIZLAB_PROD_FIREBASE_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.FBIZLAB_PROD_FIREBASE_APP_ID }}
         run: npm run build -w @agent-researcher/fbizlab
 
       - name: Authenticate to Google Cloud (prod service-account key)

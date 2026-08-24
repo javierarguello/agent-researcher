@@ -14,6 +14,7 @@ import { SampleReport } from './pages/SampleReport';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { ResetPassword } from './pages/ResetPassword';
 import { Privacy, Terms, Support } from './pages/Legal';
+import { trackPageView } from './analytics';
 import { ApiAccess, ContactInfo } from './pages/ApiAccess';
 
 const TITLES: Record<string, string> = {
@@ -34,6 +35,19 @@ export function App() {
     if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'robots'); document.head.appendChild(m); }
     m.setAttribute('content', priv ? 'noindex, nofollow' : 'index, follow');
   }, [pathname]);
+
+  // One screen view per route change.
+  //
+  // A client-routed app fires exactly ONE browser navigation — the first load — so
+  // without this the whole product reports as a single page view and every step a
+  // visitor takes after arriving is invisible. That is the half of "add analytics"
+  // that gets forgotten, because the tag looks like it is working.
+  //
+  // `pathname` only, never `search`: `/verify` and `/reset` carry single-purpose auth
+  // tokens in the query and `/report/:jobId` carries the share token that authorizes
+  // it. `trackPageView` re-sanitizes anyway — the guard belongs next to the value,
+  // not next to the caller — but nothing here even offers it the query string.
+  useEffect(() => { trackPageView(pathname); }, [pathname]);
 
   return (
     <Routes>
