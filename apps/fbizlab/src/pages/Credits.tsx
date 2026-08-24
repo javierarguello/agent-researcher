@@ -19,7 +19,7 @@ export const T = {
     q2: 'How many credits does a dossier cost?',
     a2: 'An essential dossier costs {e} credits; a comprehensive one costs {c}. You always see the exact cost before you confirm.',
     a2f: 'Each dossier shows its exact credit cost before you confirm — a comprehensive one costs more than an essential one.',
-    q3: 'When is my dossier ready?', a3: 'Dossiers are generated in about 2–8 minutes and appear in your dashboard — open one to read it in full.',
+    q3: 'When is my dossier ready?', a3: 'A comprehensive dossier usually takes about 20 minutes; an essential one drops the heaviest sections and finishes sooner. You don’t have to wait on the screen — we email you the moment it’s ready, with a link straight to it.',
   },
   es: {
     eyebrow: 'Créditos', title: 'Recarga tu saldo',
@@ -33,7 +33,7 @@ export const T = {
     q2: '¿Cuántos créditos cuesta un dossier?',
     a2: 'Un dossier essential cuesta {e} créditos; uno comprehensive cuesta {c}. Siempre ves el costo exacto antes de confirmar.',
     a2f: 'Cada dossier muestra su costo exacto en créditos antes de confirmar — uno comprehensive cuesta más que uno essential.',
-    q3: '¿Cuándo está listo mi dossier?', a3: 'Los dossiers se generan en unos 2–8 minutos y aparecen en tu panel — ábrelo para leerlo completo.',
+    q3: '¿Cuándo está listo mi dossier?', a3: 'Un dossier Completo suele tardar unos 20 minutos; uno Esencial deja fuera las secciones más pesadas y termina antes. No hace falta que esperes en pantalla: te escribimos apenas esté listo, con un enlace directo.',
   },
   fr: {
     eyebrow: 'Crédits', title: 'Rechargez votre solde',
@@ -47,7 +47,7 @@ export const T = {
     q2: 'Combien de crédits coûte un dossier ?',
     a2: 'Un dossier essential coûte {e} crédits ; un comprehensive coûte {c}. Vous voyez toujours le coût exact avant de confirmer.',
     a2f: 'Chaque dossier affiche son coût exact en crédits avant confirmation — un comprehensive coûte plus qu’un essential.',
-    q3: 'Quand mon dossier est-il prêt ?', a3: 'Les dossiers sont générés en 2–8 minutes environ et apparaissent dans votre tableau de bord — ouvrez-en un pour le lire en entier.',
+    q3: 'Quand mon dossier est-il prêt ?', a3: 'Un dossier Complet prend généralement environ 20 minutes ; un dossier Essentiel laisse de côté les sections les plus lourdes et se termine plus vite. Vous n’avez pas à attendre devant l’écran : nous vous écrivons dès qu’il est prêt, avec un lien direct.',
   },
   pt: {
     eyebrow: 'Créditos', title: 'Recarregue seu saldo',
@@ -61,7 +61,7 @@ export const T = {
     q2: 'Quantos créditos custa um dossiê?',
     a2: 'Um dossiê essential custa {e} créditos; um comprehensive custa {c}. Você sempre vê o custo exato antes de confirmar.',
     a2f: 'Cada dossiê mostra seu custo exato em créditos antes de confirmar — um comprehensive custa mais que um essential.',
-    q3: 'Quando meu dossiê fica pronto?', a3: 'Os dossiês são gerados em cerca de 2–8 minutos e aparecem no seu painel — abra um para lê-lo completo.',
+    q3: 'Quando meu dossiê fica pronto?', a3: 'Um dossiê Completo costuma levar cerca de 20 minutos; um Essencial deixa de fora as seções mais pesadas e termina antes. Você não precisa esperar na tela: escrevemos assim que estiver pronto, com um link direto.',
   },
 };
 
