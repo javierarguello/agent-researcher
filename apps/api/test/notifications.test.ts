@@ -182,6 +182,24 @@ describe('the dossier start email, and the screen’s permission to close the ta
 });
 
 describe('the credit purchase receipt', () => {
+  it('survives a failing stats write — the grant already applied, so the retry will never come back', async () => {
+    // Round 11, api/receipt-stats-1. `recordPurchaseStats` used to be awaited bare
+    // one line above the receipt. A throw there 500'd an ALREADY-APPLIED purchase,
+    // and Stripe's retry hit `applied: false` and skipped the block — so the buyer
+    // paid, got credits, and never got a receipt, permanently. The idempotency that
+    // stops a double receipt is exactly what makes the loss unrecoverable.
+    await seedMailApp();
+    const core = await import('@agent-researcher/core');
+    const spy = vi.spyOn(core, 'recordPurchaseStats').mockRejectedValueOnce(new Error('firestore unavailable'));
+    const r = await webhook(purchaseEvent('pi_1'));
+    expect(spy).toHaveBeenCalled();
+    expect(r.statusCode).toBe(200); // not a 500 Stripe retries for days
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(15);
+    expect(sent, 'the receipt still went out').toHaveLength(1);
+    spy.mockRestore();
+  });
+
+
   it('sends one receipt naming the credits, the balance and the pack', async () => {
     await seedMailApp();
     const r = await webhook(purchaseEvent('pi_1', { planName: 'Investor', lang: 'es' }));

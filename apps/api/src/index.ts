@@ -2201,8 +2201,32 @@ app.post(
           currency: s.currency ?? 'usd',
         });
         // Only fold into analytics the first time (webhook is at-least-once).
+        //
+        // Everything in here runs AFTER the grant landed, and that is what decides
+        // how it must fail. `recordPurchase` is idempotent by `paymentId`: a retry
+        // of this event returns `applied: false` and skips this block entirely. So
+        // a throw from anything below does not just lose itself — it loses itself
+        // FOREVER, while returning a 500 that Stripe retries for days and that can
+        // get the endpoint disabled, taking every other customer's credits with it.
+        //
+        // The specific bug this replaced: `recordPurchaseStats` was awaited bare,
+        // one line above the receipt. A transient Firestore error there 500'd an
+        // already-applied purchase, and the retry — `applied: false` — sent no
+        // receipt and recorded no revenue, permanently. The receipt's own doc said
+        // it could not throw; the line above it could.
+        //
+        // Caught INDIVIDUALLY, not as one block, so a failing stats write cannot
+        // also cost the buyer their receipt. Both log loudly: the money already
+        // moved, so silence here is an undercounted dashboard nobody knows about.
         if (res.applied) {
-          await recordPurchaseStats({ appId: m.appId, userId: m.userId, amountUsd, credits });
+          await recordPurchaseStats({ appId: m.appId, userId: m.userId, amountUsd, credits }).catch((err) =>
+            logEvent(
+              { jobId: s.id, appId: m.appId!, userId: m.userId! },
+              'ERROR',
+              'credits.purchase_stats_failed',
+              { message: (err as Error).message, amountUsd, credits, note: 'the grant APPLIED; these figures are lost for good — the retry skips this block' },
+            ),
+          );
           await sendPurchaseReceipt({ meta: m, credits, amountUsd, currency: s.currency ?? 'usd', balance: res.balance, sessionId: s.id });
         }
         logEvent(

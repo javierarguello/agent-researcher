@@ -101,8 +101,20 @@ export function JobView() {
               cost of that error falls on the buyer, who closes the tab and waits for
               a mail nobody sends. `lang`, not `reportLang`: this is chrome, the
               reader is being addressed right now, and it follows the switcher like
-              the badge and the buttons above it. */}
-          {job.notify && <p className="soft" style={{ fontSize: 13, margin: '10px 0 0' }}>{t.closeOk}</p>}
+              the badge and the buttons above it.
+
+              NOT for `held`, and the first version of this got that backwards with
+              a test to match ("a held job still gets it — it is live, and the wait
+              is longer, not shorter"). `held` is an admin deciding, and the two
+              decisions available are approve and REJECT. A rejected hold calls
+              `rejectHold` and writes `closedNotice` into the job — an in-app note
+              on this very page — and sends no mail at all; only an APPROVED hold
+              ever reaches the completion mail. So `held` is the one live state
+              where the outcome is more likely than not to arrive nowhere but here,
+              which makes it the worst possible state in which to tell someone to
+              close the page. Being live is not the test; having a mail waiting at
+              the end of it is. */}
+          {job.notify && job.status !== 'held' && <p className="soft" style={{ fontSize: 13, margin: '10px 0 0' }}>{t.closeOk}</p>}
         </div>
       )}
 

@@ -301,11 +301,32 @@ const STARTED_CTA: Copy = {
   en: 'Follow the progress', es: 'Seguir el progreso',
   fr: 'Suivre la progression', pt: 'Acompanhar o progresso',
 };
+/**
+ * What this footer must NOT say, and did for one release.
+ *
+ * It read "if something goes wrong we return your credits, and you'll hear about
+ * it here" — and BOTH halves were false. The only job mail in the system fires on
+ * completion (`worker/src/index.ts`, guarded by `result.status === 'completed'`);
+ * a `failed` or `held` job sends nothing, and an admin resolving a hold writes an
+ * in-app note, not an email. And refunds are not automatic by design —
+ * `run-job.ts`: "a job that could not be assembled does NOT fail and does NOT
+ * refund", `credits/store.ts`: "every refund in this system is a decision a person
+ * made".
+ *
+ * So a buyer whose job held or failed did exactly what this mail told them —
+ * closed everything — and then waited for a message that was never coming, about
+ * credits that were never automatically returned. The mail whose entire purpose is
+ * to make walking away safe was the thing that made it unsafe.
+ *
+ * The rule this leaves behind: **this footer may only describe mail that a code
+ * path actually sends.** It now promises the ready mail, and points at the page
+ * for everything else — which is where the outcome of a hold really is written.
+ */
 const STARTED_FOOTER: Copy = {
-  en: 'You don’t need to keep any page open. If something goes wrong we return your credits, and you’ll hear about it here.',
-  es: 'No necesitas dejar ninguna página abierta. Si algo sale mal te devolvemos los créditos, y te enteras por aquí.',
-  fr: 'Vous n’avez besoin de laisser aucune page ouverte. En cas de problème, vos crédits vous sont rendus et vous en serez informé ici.',
-  pt: 'Você não precisa deixar nenhuma página aberta. Se algo der errado, devolvemos seus créditos e você fica sabendo por aqui.',
+  en: 'You don’t need to keep any page open — we write when the dossier is ready. Anything else that happens to it is explained on its own page, and the link above is how you get back there.',
+  es: 'No necesitas dejar ninguna página abierta: te escribimos cuando el dossier esté listo. Cualquier otra cosa que le pase queda explicada en su propia página, y el enlace de arriba es cómo volver.',
+  fr: 'Vous n’avez besoin de laisser aucune page ouverte — nous écrivons quand le dossier est prêt. Tout autre événement le concernant est expliqué sur sa propre page, et le lien ci-dessus vous y ramène.',
+  pt: 'Você não precisa deixar nenhuma página aberta — escrevemos quando o dossiê estiver pronto. Qualquer outra coisa que aconteça com ele fica explicada na página dele, e o link acima é como voltar lá.',
 };
 const STARTED_TEXT: Copy = {
   en: 'We’re building your {app} dossier\n\nOur research agents are at work. You can close everything — we’ll email you the moment it’s ready.\n\nFollow the progress: {url}',

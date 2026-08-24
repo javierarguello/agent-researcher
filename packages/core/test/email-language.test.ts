@@ -126,6 +126,47 @@ describe('the dossier start mail', () => {
     }
   });
 
+  it('promises no refund and no failure notice — it may only describe mail we actually send', () => {
+    // Round 11, mail/start-mail-promise-1. The footer shipped saying "if something
+    // goes wrong we return your credits, and you'll hear about it here", in four
+    // languages, to production. Both halves were false:
+    //
+    //   - the ONLY job mail fires on completion (`worker/src/index.ts`, guarded by
+    //     `result.status === 'completed'`). A failed job mails nothing; an admin
+    //     rejecting a hold writes an in-app note (`closedNotice`) and mails nothing.
+    //   - refunds are a human decision on purpose — `run-job.ts`: "does NOT fail and
+    //     does NOT refund"; `credits/store.ts`: "every refund in this system is a
+    //     decision a person made".
+    //
+    // The mail whose whole purpose is to make walking away safe was the one thing
+    // making it unsafe. This is the rule left behind, as an assertion.
+    for (const l of LANGS) {
+      const m = reportStartedTemplate('Florida Biz Labs', 'https://x/y', l);
+      const all = `${m.subject}\n${m.html}\n${m.text}`;
+      expect(all, `${l} promises a refund`).not.toMatch(/refund|reembols|devolvemos|rendus|devolvemos|crédits vous sont|créditos/i);
+      expect(all, `${l} promises news of a failure`).not.toMatch(/goes wrong|sale mal|problème|der errado/i);
+    }
+  });
+
+  it('…and the footer still SAYS something — the control, so the fix is not "delete the footer"', () => {
+    // Anchored on a phrase that exists ONLY in the footer. The first version of this
+    // control matched /ready/ against the whole mail and measured **0 red** when the
+    // footer was emptied: STARTED_BODY and STARTED_TEXT both say "ready" too, so the
+    // control passed on a mail whose footer was gone. A control that cannot see the
+    // thing it controls is not a control — round 9's trap, met head-on while fixing
+    // round 11's finding.
+    const footerOnly: Record<string, RegExp> = {
+      en: /keep any page open/i,
+      es: /ninguna página abierta/i,
+      fr: /aucune page ouverte/i,
+      pt: /nenhuma página aberta/i,
+    };
+    for (const [l, re] of Object.entries(footerOnly)) {
+      const m = reportStartedTemplate('Florida Biz Labs', 'https://x/y', l);
+      expect(m.html, l).toMatch(re);
+    }
+  });
+
   it('carries the link back to the job in the body AND the text part', () => {
     // The link is what makes closing the tab free. A plain-text client that gets
     // the HTML stripped must still be able to get back.

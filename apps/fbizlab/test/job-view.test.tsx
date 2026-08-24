@@ -191,10 +191,32 @@ describe('telling the buyer they can close the page', () => {
     expect(screen.queryByText(/close this page/i)).toBeNull();
   });
 
-  it('and a held job still gets it — it is live, and the wait is longer, not shorter', () => {
-    // `held` is a live state: an admin is deciding, and the buyer can do nothing
-    // to hurry it. It is the state where sitting on the screen is most wasteful.
+  it('and a HELD job does not get it — the state whose likeliest end sends no mail at all', () => {
+    // This test asserted the OPPOSITE for one release, with reasoning that sounded
+    // right and was not: "`held` is a live state, the buyer can do nothing to hurry
+    // it, it is where sitting on the screen is most wasteful." All true, and beside
+    // the point. Being live is not the test — having a mail waiting at the end of it
+    // is.
+    //
+    // A hold is an admin deciding, and one of the two decisions is REJECT.
+    // `rejectHold` writes `closedNotice` into the job — an in-app note, on this very
+    // page — and sends nothing. Only an APPROVED hold ever reaches the completion
+    // mail. So this is the one live state where the outcome most likely arrives
+    // nowhere but here, which makes it the worst state in which to send someone
+    // away. Round 11 found it (spa/close-page-2, mail/start-mail-promise-1); it
+    // shipped to production, in four languages, pinned green by this very test.
     show({ status: 'held', progress: null, summary: null, notify: true }, 'en');
-    expect(screen.getByText(/close this page/i)).toBeTruthy();
+    expect(screen.queryByText(/close this page/i)).toBeNull();
+  });
+
+  it('…but a queued or running job still does — the control, so the fix is not "delete the line"', () => {
+    // Without this, `job.notify && false` passes the test above and the feature is
+    // silently gone. Round 9's trap, stated: a fix can remove the only detection the
+    // thing it fixed had.
+    for (const status of ['queued', 'running', 'incomplete'] as const) {
+      const { unmount } = show({ status, progress: null, summary: null, notify: true }, 'en');
+      expect(screen.getByText(/close this page/i), status).toBeTruthy();
+      unmount();
+    }
   });
 });

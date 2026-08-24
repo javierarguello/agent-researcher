@@ -57,7 +57,20 @@ vi.mock('stripe', () => ({
         calls.push('products.update');
         const p = store.products.get(id)!;
         if (patch.name) p.name = patch.name as string;
-        if (patch.metadata) p.metadata = patch.metadata as Record<string, string>;
+        // Stripe MERGES product metadata per key; a key is removed only by posting
+        // an empty string for it. This line used to be `p.metadata = patch.metadata`
+        // — REPLACE, the exact opposite — and that seam is what made a whole class
+        // of defect untestable: an admin deleting a translation saved successfully,
+        // the old `sub_es` survived on the real product, and all 18 tests here
+        // stayed green because the mock threw the stale key away for us.
+        // Round 11, money/money-1. A fake that is kinder than the real thing does
+        // not make tests pass — it makes them meaningless.
+        if (patch.metadata) {
+          for (const [k, v] of Object.entries(patch.metadata as Record<string, string>)) {
+            if (v === '') delete p.metadata[k];
+            else p.metadata[k] = v;
+          }
+        }
         if (patch.active === false) p.active = false;
         if (patch.default_price) {
           const pid = patch.default_price as string;
@@ -311,6 +324,38 @@ describe('the copy an EDITOR is given', () => {
     // …and the RESOLVED field is still there for anything that renders rather than
     // edits: French gets English, which is the fallback doing its job.
     expect(pack.sub).toBe('Curious buyers');
+  });
+
+  it('and copy the admin DELETES really goes away — Stripe merges metadata, it does not replace it', async () => {
+    // Round 11, money/money-1. `products.update` MERGES product metadata per key; a
+    // key is removed only by posting an empty string for it. Nothing did, so a
+    // withdrawn translation survived on the product: the admin UI strips emptied
+    // locales before sending (`CreditPacks.tsx`), `marketingMetadata` omits what it
+    // is not given, the save returned 200 — and every Spanish buyer kept reading
+    // marketing copy the business had taken down, which reappeared in the editor on
+    // the next open.
+    //
+    // The whole class was invisible because the MOCK in this file replaced metadata
+    // instead of merging it, the opposite of Stripe. That is fixed above; this is
+    // the behaviour it now makes visible.
+    await put('scout', { ...base, sub: { en: 'Curious buyers', es: 'Compradores curiosos' }, features: { en: ['A'], fr: ['Un'] } });
+    await put('scout', { ...base, sub: { en: 'Curious buyers' }, features: { en: ['A'] } }); // es + fr withdrawn
+    const r = await app.inject({ method: 'GET', url: `/admin/plans?appId=fbizlab&templateId=${MODEL}`, headers: auth(await adminToken()) });
+    const pack = r.json().plans[0];
+    expect(pack.copy.sub, 'the deleted Spanish subtitle survived').toEqual({ en: 'Curious buyers' });
+    expect(pack.copy.features, 'the deleted French features survived').toEqual({ en: ['A'] });
+  });
+
+  it('…and clearing one locale leaves the KEPT ones alone — the control', async () => {
+    // Without this, "post '' for every marketing key on every write" passes the test
+    // above and silently wipes the translations the admin did not touch. The fix has
+    // to distinguish withdrawn from kept, so the control asserts the kept half.
+    await put('scout', { ...base, sub: { en: 'EN', es: 'ES', fr: 'FR' }, features: { en: ['A'], es: ['Aes'] } });
+    await put('scout', { ...base, sub: { en: 'EN', fr: 'FR' }, features: { en: ['A'], es: ['Aes'] } }); // only `sub.es` withdrawn
+    const r = await app.inject({ method: 'GET', url: `/admin/plans?appId=fbizlab&templateId=${MODEL}`, headers: auth(await adminToken()) });
+    const pack = r.json().plans[0];
+    expect(pack.copy.sub, 'a kept translation was wiped along with the withdrawn one').toEqual({ en: 'EN', fr: 'FR' });
+    expect(pack.copy.features, 'the untouched features were wiped').toEqual({ en: ['A'], es: ['Aes'] });
   });
 });
 

@@ -273,7 +273,26 @@ export async function upsertStripePlan(
     }
   }
 
-  await stripe().products.update(existing.id, { name: input.name, metadata });
+  // Stripe MERGES product metadata per key — a key is deleted only by posting an
+  // empty string for it. So the localized marketing keys this write no longer
+  // carries have to be cleared BY NAME, or they survive on the product forever.
+  //
+  // The case, measured: an admin deletes the Spanish subtitle (say it still
+  // promises "≈4 reports" after a reprice halved the credits). The admin UI strips
+  // emptied locales before sending, `marketingMetadata` omits what it is not given,
+  // the save returns 200 — and `sub_es` is still on the product, still rendering to
+  // every Spanish buyer, and back in the editor on the next open. Withdrawn
+  // marketing copy that cannot be withdrawn.
+  //
+  // Only OUR keys, matched by the shape this file writes. A key a person added by
+  // hand in the Stripe dashboard is not ours to delete, and the system keys
+  // (`appId`, `credits`, …) are in `metadata` on every write anyway.
+  const OURS = /^(sub|features)(_[a-z]{2})?$/;
+  const cleared: Record<string, string> = {};
+  for (const k of Object.keys(existing.metadata ?? {})) {
+    if (OURS.test(k) && !(k in metadata)) cleared[k] = '';
+  }
+  await stripe().products.update(existing.id, { name: input.name, metadata: { ...metadata, ...cleared } });
   const price = priceChanged || !current
     ? await stripe().prices.create({ product: existing.id, currency: 'usd', unit_amount: unitAmount })
     : current;
