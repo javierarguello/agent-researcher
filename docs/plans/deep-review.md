@@ -2729,6 +2729,29 @@ Two things left open by that check, neither a door standing open:
   the raw objects — kept alive as an export. A future caller reaching for the obvious
   helper reintroduces exactly what the proxy was built to end.
 
+**F-10 · A time-dependent test took the gate down, and the obvious repair removed its
+teeth — fixed.** `payments.test.ts` asserted `retryAfterSeconds` with
+`toBe(secondsToNextHour())`: the API computes that figure while it answers and the
+test computed it again while it asserted, and it drops by one every second, so a run
+that crossed a second boundary failed with `expected 3234 to be 3233` — both figures
+right, the comparison wrong. It reddened `Verify` on 2026-08-24 for a commit that
+touched only hosting headers.
+
+The repair that suggests itself — bracket the answer between two calls to
+`secondsToNextHour()` — is worse than the flake, and the mutation caught it: set that
+function to the flat `3600` this test exists to forbid and BOTH sides move together,
+so the bracket holds and the test passes green against the bug. The expectation is
+now computed in the test file from `new Date()`, bracketed across the request, and
+verified against two mutations (flat 3600; minutes dropped, so an hour becomes a
+minute). Stable over repeated runs.
+
+Worth knowing about the gate while this was diagnosed: each deploy workflow runs
+`verify.yml` as a reusable workflow of its own, so the standalone `Verify` run and
+the three deploys each executed the suite SEPARATELY. The flake hit one of the four.
+Nothing shipped past a red gate — but "Verify: failure" beside three green deploys
+of the same sha is exactly what that looks like, and it is worth a second's pause
+before concluding the gate leaks.
+
 Three things worth carrying into round 11:
 - **A measurement test that reads `out/` is skipped in CI** (a fresh checkout has no
   `out/`), so it only ever runs on a developer's machine — and any new local run can

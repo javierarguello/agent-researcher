@@ -273,13 +273,42 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     // seconds from the reset was told to come back after lunch.
     const heavy = await token('fbizlab', 'clockwatcher@x.com');
     let blocked;
+    // BRACKETED against the test's OWN clock, twice — not against a second call to
+    // the function under test.
+    //
+    // Two defects meet here. The original asserted `toBe(secondsToNextHour())`: the
+    // API computes the figure while it answers and the test computed it again while
+    // it asserted, and the value drops by one every second, so a run that crossed a
+    // second boundary failed with `expected 3234 to be 3233` — both figures right,
+    // the comparison wrong. It took the deploy gate down on 2026-08-24 for a commit
+    // that touched only hosting headers.
+    //
+    // The obvious repair — bracket it between two calls to `secondsToNextHour()` —
+    // is worse than the flake: mutate that function to the flat `3600` this test
+    // exists to forbid and BOTH sides move together, so the bracket holds and the
+    // test passes green against the bug. The expectation has to be computed here,
+    // from the clock, by a formula this file owns.
+    const secondsLeft = () => { const d = new Date(); return 3600 - (d.getUTCMinutes() * 60 + d.getUTCSeconds()); };
+    const before = secondsLeft();
     for (let i = 0; i < 62 && !blocked; i++) {
       const r = await app.inject({ method: 'GET', url: '/credits/plans', headers: auth(heavy) });
       if (r.statusCode === 429) blocked = r;
     }
+    const after = secondsLeft();
     expect(blocked, 'the cap was never reached').toBeTruthy();
     const wait = blocked!.json().retryAfterSeconds as number;
-    expect(wait, 'the client reads this and got undefined').toBe(secondsToNextHour());
+    expect(wait, 'the client reads this and got undefined').toBeTypeOf('number');
+    // The answer was computed between those two samples, so it lies between them —
+    // exactly, with no invented tolerance. `after > before` only when the calendar
+    // hour rolled over mid-test, and then the bracket says nothing.
+    if (after <= before) {
+      expect(wait, 'the figure is not the seconds this run had left').toBeLessThanOrEqual(before);
+      expect(wait, 'the figure is not the seconds this run had left').toBeGreaterThanOrEqual(after);
+    }
+    // …and it is the seconds to the top of the CALENDAR hour, never a flat 3600 —
+    // the defect this test was written for. Skipped in the one second where 3600 is
+    // the honest answer.
+    if (before < 3600) expect(wait, 'a flat hour is the bug, not the fix').toBeLessThan(3600);
     expect(String(wait), 'the header and the body must not disagree').toBe(blocked!.headers['retry-after']);
 
     // …and the same on the button that takes their money.
