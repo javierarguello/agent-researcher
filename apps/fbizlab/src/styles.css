@@ -149,6 +149,60 @@ p { margin: 0; }
 .langsel:focus { outline: none; border-color: var(--accent); }
 
 /* --- hero --- */
+/* --- hero photograph, under the copy ---------------------------------------
+ *
+ * A Florida main street behind the headline. The copy is NOT recoloured for it:
+ * the veil below is strong enough that `--ink` on the h1 and `--muted` on the
+ * 11px mono tagline keep the contrast they have on plain `--bg`. That was the
+ * choice (Javier, 2026-08-24) — veil the photo rather than invert the text —
+ * because inverting means touching every colour in the band, and the small muted
+ * type is where a photographic background quietly stops being readable.
+ *
+ * The veil is `--bg` (#fbfaf8) at varying alpha, never white: this palette is warm
+ * sand, and a white scrim over it puts a cold rectangle in the middle of a warm
+ * page.
+ *
+ * It is LEFT-HEAVY on purpose. The text column is the left ~52% of the grid and
+ * needs the most cover; the right column is the SampleCard, an opaque white card
+ * that needs none — so the photo is allowed to come through around it, which is
+ * the only place it is really visible as a photograph.
+ */
+.hero-shot {
+  background-image:
+    linear-gradient(
+      100deg,
+      rgba(251, 250, 248, 0.955) 0%,
+      rgba(251, 250, 248, 0.94) 38%,
+      rgba(251, 250, 248, 0.80) 62%,
+      rgba(251, 250, 248, 0.58) 100%
+    ),
+    url('/images/landing-banner.jpeg');
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
+  /* `center bottom`: the street and storefronts are the lower two thirds; anchoring
+     to the centre crops to sky, which is the one part of this photo that says
+     nothing about the product. */
+  background-position: center, center bottom;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+@media (max-width: 1024px) {
+  /* One column below this width — the copy sits over the whole band, so the
+     left-heavy gradient has nothing to be heavy about. Flat, and higher, because
+     `.fineprint` and the mono tagline are the first things a busy photograph
+     takes away. */
+  .hero-shot {
+    background-image:
+      linear-gradient(rgba(251, 250, 248, 0.90), rgba(251, 250, 248, 0.90)),
+      url('/images/landing-banner.jpeg');
+    /* A 2:1 photograph behind a tall single column crops to a meaningless slice at
+       `center` — all sky and palm fronds. Anchored to the bottom-left, where the
+       storefronts and the street are, so the little that shows is the part that says
+       "Florida main street" rather than "green blur". */
+    background-position: center, left bottom;
+  }
+}
+
 .hero { display: grid; grid-template-columns: 1.05fr .95fr; gap: 56px; align-items: start; padding-top: 84px; padding-bottom: 96px; }
 .avatars { display: flex; }
 .avatars span { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--bg); margin-left: -8px; }
@@ -390,6 +444,21 @@ p { margin: 0; }
   .dash-stats > div { border-left: 0; border-top: 1px solid var(--line); }
   .dash-stats > div:first-child { border-top: 0; }
   .dash-balance { flex-direction: column; align-items: flex-start; gap: 14px; }
+  /* `.between` is `space-between` with no wrap, so a row of "text that can shrink"
+     + "button that cannot" had nowhere to put the button once the text hit its
+     minimum: it went PAST the viewport and was sliced off by the container, with no
+     scrollbar to reach it. On the dashboard that cost the primary action — "+ New
+     dossier" sat 56px off the right edge of a 375px phone, half a button visible.
+     `.dash-balance` above already had this treatment; the generic row did not.
+
+     Wrap rather than `flex-direction: column`, so a pair that still FITS (a heading
+     and a small count) keeps sharing its line and only the pairs that cannot stack. */
+  .between { flex-wrap: wrap; }
+  /* An action that wrapped to its own line has no partner to sit opposite, and
+     `space-between` on a one-item line pushes it right. Left, under the text it
+     belongs to — and `.dash-row__actions` is the same shape one level down. */
+  .between > .row, .dash-row__actions { flex: none; }
+  .dash-row { flex-wrap: wrap; }
 }
 
 /* ── Top up (credits) ────────────────────────────────────── */

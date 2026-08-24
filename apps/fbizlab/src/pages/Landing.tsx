@@ -95,7 +95,21 @@ export function Landing() {
       </header>
 
       {/* hero */}
-      <section className="container" id="top">
+      {/*
+        The photograph sits BEHIND this whole band and the copy reads on top of it.
+        The extra wrapper is the only structural change: `.container` is what gives
+        the content its max-width and gutters, so the background has to live on
+        something wider than it or the image would stop at 1440px and read as a
+        pasted rectangle. Nothing inside moved — same container, same grid, same
+        copy.
+
+        Full-bleed by wrapper rather than by a `100vw` pseudo-element on the
+        container itself: `100vw` includes the scrollbar on platforms that reserve
+        space for one, which buys a horizontal scrollbar on the landing page in
+        exchange for saving one div.
+      */}
+      <section className="hero-shot" id="top">
+        <div className="container">
         <div className="hero">
           <div className="stack rise" style={{ gap: 20 }}>
             <div className="eyebrow">{c.hero.kicker}</div>
@@ -113,6 +127,7 @@ export function Landing() {
             <div className="mono muted" style={{ fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', lineHeight: 1.8 }}>{c.hero.tagline}</div>
           </div>
           <div className="rise rise-1"><SampleCard c={c.sample} onCta={go} /></div>
+        </div>
         </div>
       </section>
 
