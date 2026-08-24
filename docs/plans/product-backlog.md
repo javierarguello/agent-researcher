@@ -438,7 +438,7 @@ which is the honest state for a page whose content a crawler may not see.
 
 ---
 
-## P-10 · A dossier makes the buyer watch a screen, and nothing says they don't have to — `open`
+## P-10 · A dossier makes the buyer watch a screen, and nothing says they don't have to — `done (both halves)`
 
 **Asked for by Javier, 2026-08-24**, looking at `/app/jobs/:id` on a running
 comprehensive job.
@@ -480,11 +480,53 @@ transactional mail is being quarantined by policy. Adding two more emails before
 two DNS records exist multiplies the "it never arrived" surface rather than removing
 the wait.
 
-**Not started.**
+---
+
+### Built, 2026-08-24 — both halves, on Javier's call
+
+He took (2) as well rather than waiting to see whether (1) was enough: the thread in
+the inbox is the point, and it has to exist from the beginning to be a thread.
+
+**Both open questions were answered by building them, not by assuming:**
+
+- **"Do not promise mail we do not send"** is now a fact carried on the JOB.
+  `POST /research` reads the app record ONCE at creation and stores
+  `ResearchJob.notify` from **the sender's own condition** — `emailFrom` AND
+  `webUrl`, both, which is exactly what `notifyReportReady` returns early on. The
+  API publishes it as `notify` on `GET /research/:jobId` and `JobView` gates the
+  sentence on it. `job.notify === true`, so every job in prod that predates the field
+  reads FALSE and the screen simply says nothing — silence costs a buyer a wait, a
+  wrong promise costs them a dossier they believe is being mailed to them.
+  Not computed per poll: that screen polls for twenty minutes, and this is a fact
+  about the job, decided when the buyer pressed the button.
+- **The sentence itself**, in four languages (`JobView.T.closeOk`, so
+  `copy-parity.test.tsx` covers it for free). Javier's wording: *"you can relax and
+  close this page"* — "Puedes cerrar esta página con tranquilidad: te avisamos por
+  correo apenas tu dossier esté listo."
+- **The start mail** is `reportStartedTemplate`, sent from the API once the job is
+  QUEUED — so it never announces a dossier that failed to enqueue and was refunded
+  three lines earlier. It carries **the link back to the job**, in the HTML and in the
+  text part, which is what makes closing the tab free.
+  In the **report's** language (`paramsLang(validated.params)`), not the UI's, so the
+  two mails about one dossier do not arrive in two languages.
+  It names **no duration**: the three measured comprehensive runs were 18/20/17
+  minutes, `essential` is a different job, and no template declares an estimate — a
+  test asserts no figure appears in any language.
+  It is best-effort and cannot take the 202 down; a dead Postmark costs the mail and
+  not the job, with the credits still spent on a job that is really queued.
+
+Tests: `apps/api/test/notifications.test.ts` (13), `packages/core/test/email-language.test.ts`
+(the two new mails folded into the existing per-language loops, plus their own block),
+`apps/fbizlab/test/job-view.test.tsx` (+5). **Thirteen mutations revert-verified, all
+red** — including one that measured **0 red** on the first attempt and was rewritten:
+see P-11's note, the same test.
+
+**Still owed, and it is not code:** the DMARC records. See `handoff.md` § Security 1.
+Everything above is a mail into a `p=quarantine` domain with no SPF and no DKIM.
 
 ---
 
-## P-11 · Buying credits leaves no receipt — `open`
+## P-11 · Buying credits leaves no receipt — `done (ours, not Stripe's)`
 
 **Asked for by Javier, 2026-08-24.** The Stripe webhook grants the credits and sends
 nothing: `checkout.session.completed` / `async_payment_succeeded` land at
@@ -512,6 +554,108 @@ ride the same key, not a second one.
 
 Same DMARC dependency as P-10: a receipt that lands in spam is worse than no receipt,
 because this one a buyer goes looking for.
+
+---
+
+### Built, 2026-08-24 — OURS, decided by Javier
+
+Stripe's own receipt names the charge; ours names the CREDITS, which is the thing the
+buyer opens the app to check. `creditsPurchasedTemplate`, four languages: the pack, the
+credits added, what was paid, the **new balance**, and a button into `/app/credits`.
+Stripe's Customer-emails receipt stays OFF — sending both was the one option that was
+clearly wrong.
+
+**Where the care went, and both halves were the ones flagged in advance:**
+
+- **It rides `res.applied`.** `recordPurchase` is idempotent by `paymentId`; Stripe
+  delivers at least once and retries for days. The mail sits INSIDE the same
+  `if (res.applied)` that guards the analytics fold, so a redelivery grants nothing and
+  mails nothing. A buyer holding two receipts for one purchase reasonably concludes
+  they were charged twice. `balance` comes out of the grant's own transaction, so it is
+  the balance this purchase produced — not a re-read a concurrent job may have spent
+  against.
+- **It cannot throw.** `sendPurchaseReceipt` catches everything and logs
+  `credits.receipt_failed`. A throw here is a 500 that Stripe retries for days and can
+  disable the endpoint — which would stop EVERY other customer's credits from landing
+  over one mail outage. Postmark being down costs one receipt.
+- **The webhook has no request to read a language from** — it is Stripe calling us,
+  possibly hours later for a delayed payment method. So `POST /credits/checkout` now
+  writes `lang` (from `errorLang(req)`, which is the buyer's switcher: the SPA sets
+  `accept-language` from it on every call) and `planName` into the SESSION metadata.
+  Without those the receipt is English and names no pack.
+- **The pack name is escaped.** It is typed by a person into the admin's Pricing form,
+  travels through Stripe metadata, and lands in HTML built by string concatenation.
+  `shell()` grew a `rows` block that takes PLAIN TEXT and escapes both halves itself,
+  rather than trusting callers.
+
+Tests in `apps/api/test/notifications.test.ts` and `packages/core/test/email-language.test.ts`.
+
+**One test failed its own revert-verify and was rewritten**, which is the rule working:
+"drops the amount line rather than printing $0.00" only passed `amount: undefined`,
+while the guard it existed for is `> 0` — mutating `amount != null && amount > 0` down
+to `amount != null` measured **0 red**. Zero is not hypothetical: `/credits/checkout`
+sets `allow_promotion_codes: true`, so a 100%-off coupon produces a real paid session
+with `amount_total: 0`. The test now covers missing AND zero, plus a control that the
+row does appear when there is a total. Both mutations now measure 1 red.
+
+**Still owed, and it is not code:** the DMARC records — `handoff.md` § Security 1. This
+is the mail a buyer goes looking for, so it is the worst one to leave in a spam folder.
+
+---
+
+## P-12 · The progress card shows ONE step and never says how far along you are — `open`
+
+**Asked for by Javier, 2026-08-24**, looking at `/app/jobs/:id` mid-run: the card
+names the agent currently working (`Deep dive refiner`, its objective, and one live
+line — "Reading a source in full.") and nothing else. There is no sense of *seven of
+eleven*, no list of what is done, no list of what is left. Wanted: the steps done and
+the steps remaining, or at least the remaining ones.
+
+**What already exists, verified by reading:**
+
+- The manifest publishes the **ordered step list** — `buildSteps`
+  (`packages/core/src/templates/registry.ts:66`): `planning`, then every agent in
+  `planWaves(t).flat()` order, then `assembling` / `done`, then the non-linear ones.
+  `JobView.tsx:47` already fetches it and builds `stepsById`.
+- `job.progress.phase` says which step is live, and `clientProgress` gives the kind of
+  work (and a search's query) in the reader's language.
+
+So the *list* is already on the client. What is missing is the ability to say where in
+it we are — and that is not a display problem.
+
+**Why it is not just a UI change — three real obstacles:**
+
+1. **The step list is FLATTENED, so it is not a line.** `buildSteps` calls
+   `planWaves(t).flat()`: agents that run **in parallel** are emitted one after
+   another and the wave boundaries are thrown away. "Step 5 of 11" over a flat list
+   reads as sequential progress for work that is concurrent — three agents in one wave
+   would all be "the current step", and the number would jump by three at once. Either
+   the manifest keeps the waves (`steps` grows a `wave` index, or becomes
+   `StepInfo[][]`) or the count is a lie in exactly the runs that take longest.
+2. **`LIFECYCLE_OTHER` is in the same array and is not part of the sequence** —
+   `incomplete`, `failed`, `held` are appended for label LOOKUP
+   (`templates/phases.ts:20`, and the comment there says so). Any naive
+   `indexOf(currentPhase) / steps.length` counts three phases that never run.
+3. **Nothing records that a step FINISHED.** `job.progress` is a single current
+   phase, not a history. Marking earlier steps done by their position in the flat
+   list is (1) again; doing it honestly means the engine writing a completed-step
+   record — which is the "todos los modelos informan el progreso con más detalle"
+   half of the ask, and it is per-template work, not one patch.
+
+**What to settle before building:**
+
+- **Done+remaining, or remaining only?** Remaining-only needs no history — it is
+  derivable from the wave the current phase sits in — so it is dramatically cheaper
+  and may be all the reassurance the wait needs. Done+remaining needs obstacle 3.
+- **Is a step count what the buyer wants, or is it TIME?** "4 of 11" over waves of
+  unequal length does not mean 36%; the deep-dive refiner alone is a large share of a
+  comprehensive run. A step list that implies a fraction it does not have is worse
+  than the single line there now.
+- **How much does it matter once P-10 lands?** P-10's whole point is that the buyer
+  does not have to watch. If they close the tab, this card is not being read.
+
+**Depends on P-10** for exactly that reason: build the "you can close this" line
+first, then measure whether anyone still sits on this screen.
 
 **Not started.**
 

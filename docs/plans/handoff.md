@@ -30,7 +30,7 @@ and it is the only place that is current by construction.
 
 ```bash
 npm ci                       # a fresh worktree has no node_modules and no vitest
-npm test                     # 1375 passed, 0 failed — READ THE EXIT CODE, not this line
+npm test                     # 1400 passed, 0 failed — READ THE EXIT CODE, not this line
 npm run typecheck            # must be clean; it catches what the suites cannot
 npx tsx docs/plans/m-red-team-reports/k-census-2026-08-19/run.ts   # the §K census
 ```
@@ -49,14 +49,21 @@ only tier you may use.
 
 ## State, 2026-08-24
 
-**`main` is `9fc91fc`. `deploy-prod` is `7a638c7`.** Prod is two commits behind and
-both are safe to be behind: a docs commit, and the Turnstile site-key change (whose
-two repo variables are already set, so the next prod release picks it up with nothing
-to do first).
+**`main` is `3fa2278`. `deploy-prod` is `7a638c7`.** Prod is five commits behind and
+all five are safe to be behind: four docs commits and the Turnstile site-key change
+(whose two repo variables are already set, so the next prod release picks it up with
+nothing to do first).
 
-**Suite, MEASURED at `9fc91fc` by EXIT CODE:** `npm test` → 0, `npm run typecheck` → 0,
-**1375 passed** (856 core + 242 api + 24 worker + 228 fbizlab + 25 admin). Read the
-exit code, not the `Tests N passed` line.
+**Suite, MEASURED by EXIT CODE with P-10/P-11 in the tree:** `npm test` → 0,
+`npm run typecheck` → 0, **1400 passed** (863 core + 255 api + 24 worker + 233 fbizlab
++ 25 admin). Read the exit code, not the `Tests N passed` line.
+
+**P-10 and P-11 are in (`6f272b5`)** — the start mail, the "you can relax and close
+this page" line, and the credit-purchase receipt. See
+`product-backlog.md` for both, including the one test that measured **0 red** on its
+first revert-verify and was rewritten. Thirteen mutations, all red. **This is new
+buyer-facing mail and a new write inside the Stripe webhook, so it belongs in round
+11's scope, not below it.**
 
 **PROD IS LIVE AND SELLABLE.** Released 2026-08-24 by `git push origin main:deploy-prod`,
 which fires BOTH prod workflows (SPA and API+worker) behind `verify.yml`. Verified on
@@ -204,12 +211,15 @@ the four languages comes back empty. Then verify
 essential, and run the end-to-end: register → verification email → real purchase →
 job → PDF.
 
-**One config gap this release did not close:** the Turnstile SITE key is a hardcoded
-literal in `apps/fbizlab/src/config.ts:10` and the `|| '0x4AAA…'` fallback of both
-deploy workflows, and neither `FBIZLAB_DEV_TURNSTILE_SITE_KEY` nor
-`FBIZLAB_PROD_TURNSTILE_SITE_KEY` exists. The SECRET half is per-environment. It works
-today only because the literal happens to be the right key; rotate the widget and both
-environments keep shipping the old one with nothing to say so.
+**A config gap this release did not close, and `9fc91fc` did** — this paragraph said
+the opposite for a day, which is the defect it describes happening to itself. The
+Turnstile SITE key WAS a hardcoded literal in `apps/fbizlab/src/config.ts` and in the
+`|| '0x4AAA…'` fallback of both deploy workflows, with neither repo variable defined,
+so every environment shipped the same widget and a rotation would have broken both
+silently. It now comes from `VITE_TURNSTILE_SITE_KEY`, both workflows pass
+`FBIZLAB_{DEV,PROD}_TURNSTILE_SITE_KEY`, and the build REFUSES to produce a
+captcha-less bundle. `deploy-prod` is behind that commit, so PROD still ships the
+literal until the next release — which is safe, because the literal is the right key.
 
 **A trap this cost us a rebuild to learn:** the public landing does NOT read the API.
 Its pricing comes from `plans.json`, baked at build time by
@@ -441,13 +451,14 @@ Split in two because round 10 found the previous single heading covering both ki
   on to spend turns. Free-call floor stays ≥6. The zero-turn plan-loops that motivated
   M-B2 do not appear in any August run — first production evidence that they are gone.
 - **The two GCS hardening items and the mail records** — see § Security, 1-3.
-- **P-10 and P-11** (`product-backlog.md`), both asked for on 2026-08-24 and both
-  gated on the same thing: **P-10** — the job screen never says the buyer can close it
-  and be emailed (the completion mail already exists, `worker/src/index.ts:35`), plus
-  a start email; **P-11** — a credit purchase leaves no receipt (the webhook grants and
-  sends nothing, `api/src/index.ts:2063`). Each names an open product decision inside
-  it, and both are worth less than the DNS records in § Security 1: more mail that
-  fails DMARC is more mail nobody receives.
+- **P-12** — the progress card shows ONE step and never says how far along the run is
+  (`product-backlog.md`, asked for 2026-08-24). The ordered step list is already on the
+  client; what is missing is honest position, and that is not a display problem:
+  `buildSteps` calls `planWaves(t).flat()`, so agents that run in PARALLEL are emitted
+  one after another and "step 5 of 11" would read as sequential progress for
+  concurrent work. Nothing records that a step finished either. Gated on P-10 landing
+  first — if the buyer takes the permission to close the tab, nobody is reading this
+  card.
 - E3's unblock script (needs credentials for the dry run), M-A2 (FENCE_RE
   near-misses, gated on frontier-tier evidence).
 
