@@ -329,6 +329,32 @@ bash infra/deploy-admin.sh`) once the prod API + site exist.
 (the API's public URL) and `VITE_ADMIN_GOOGLE_CLIENT_ID` (the admin app's Google
 OAuth client id). See `apps/admin/.env.example`.
 
+### Cache headers — both SPAs
+
+A Hosting header rule matches the **request path**, never the file a rewrite lands
+on. With `cleanUrls` plus the SPA's `"source": "**"` rewrite, nothing a visitor asks
+for ends in `.html` — so `"**/*.html"` (fbizlab) and `"/index.html"` (admin) matched
+nothing a browser ever requested, and every clean URL fell through to Hosting's
+default `max-age=3600`. Measured on dev 2026-08-24: `/`, `/es`, `/sample`, `/login`
+and the admin's `/pricing` all came back `max-age=3600`, so a returning visitor
+stayed **up to an hour behind every deploy**, with no revalidation — which is what
+"I pushed and still see the old page" looks like from the outside.
+
+Both `firebase.json` files now declare, in this order:
+
+| source | Cache-Control | why |
+|---|---|---|
+| `**` | `no-cache` | the shell and any unfingerprinted asset (e.g. `sample-dossier.json`) revalidate on every load; the ETag makes that a 304 |
+| `/assets/**` | `public, max-age=31536000, immutable` | Vite fingerprints these; the name changes when the bytes do |
+| `/icons/**` | `public, max-age=86400` | changes on a rebrand, not on a deploy |
+
+The broad rule is FIRST and the narrow ones after it. Verify after any change to
+this block by asking the deployed site, not by reading the config:
+
+```bash
+for p in / /es /sample /assets/index-*.js; do curl -sI "$SITE$p" | grep -i ^cache-control; done
+```
+
 **One-time setup** (owner account, miltonjaviera@gmail.com):
 
 ```bash
