@@ -81,10 +81,24 @@ only tier you may use.
 
 ## Going to prod — what is actually needed
 
-**PROD IS ONE DEPLOY AWAY FROM SELLING, and that deploy is deliberately not run**
-(state of 2026-08-22, every line measured, nothing assumed). The whole backend and the
-whole money path are up and verified; the buyer-facing SPA is held back on purpose
-until four things only Javier can do in third-party consoles are confirmed.
+**PROD IS RELEASED.** `main` was pushed to `deploy-prod` on 2026-08-24 (`297269a`),
+which fires BOTH prod workflows; `Deploy fbizlab SPA (prod)` and `Deploy` (API +
+worker) both went green behind `verify.yml`. Measured on the live site and API right
+after, not read off the workflow: `floridabizlabs.com/` and `/sample` 200 with
+`no-cache`, `/sample-dossier.json` 43,317 bytes (the preview — 18,034 before, which
+was `index.html` coming back from the rewrite because the file did not exist), the
+prod bundle references it, `/health` 200, a CORS preflight from
+`https://floridabizlabs.com` 204 with the matching allow-origin while an unlisted
+origin gets no header, and `GET /plans?appId=fbizlab` returns the three live packs
+(20/80/160 credits).
+
+What is released is the 14 commits below `d6ceb3d`, which include the field findings
+F-1…F-10 in `deep-review.md` — the enricher guard (every report prod produces), both
+render fixes (every report and every PDF, including ones already delivered), and the
+Hosting cache headers that were making every deploy take an hour to arrive.
+
+**Selling still needs two things from a console, and one of them may already be
+done.** The four blockers below were re-measured on 2026-08-24; two moved.
 
 **Up and verified**
 
@@ -102,7 +116,7 @@ until four things only Javier can do in third-party consoles are confirmed.
 | derived credit floor | `creditFloorUsd = 0.80625` written by `syncCreditFloor` on its own, matching the code default. Ceilings: essential (8 cr) earns $6.45 → spends at most **$3.87**; comprehensive (18 cr) earns $14.51 → **$8.71**; the $20 global clamp sits above both |
 | **the LIVE webhook, signature and all** | ten deliveries at 14:54-14:55 UTC on 2026-08-22, all **200**, zero 400 in 24h. A placeholder or mismatched secret returns 400 on every one — so `STRIPE_WEBHOOK_SECRET_PROD` is real. This was the last open unknown |
 
-**Not done, and every one of them is in a console this repo cannot reach**
+**The four, as of 2026-08-24 (re-measured, not carried over)**
 
 1. **Authorized JavaScript origins.** Client `…-gm5p0a9a…` needs
    `https://floridabizlabs.com` + `https://agent-researcher-prod-fbizlab.web.app`;
@@ -119,17 +133,54 @@ until four things only Javier can do in third-party consoles are confirmed.
    its own — a full-page TLS warning. Either add it in Hosting with a redirect, or
    delete the CNAME so it simply does not resolve.
 
-**The one command that finishes the launch**, once 1-3 are confirmed:
+**Status of each, measured 2026-08-24:**
+
+1. **Google origins — looks CLOSED.** On the live `floridabizlabs.com/login`, GIS
+   initializes (`window.google.accounts.id` present) and the Google button iframe
+   renders. An origin missing from the client's list makes GIS refuse at init and the
+   button never appears. Strong evidence, not proof: the definitive test is one real
+   sign-in.
+2. **Turnstile — hostnames registered, sitekey confirmed, UNRESOLVED.** Javier added
+   both prod hostnames plus dev's, and the widget's Site Key is
+   `0x4AAAAAAD_OEtqrL5B2NN6f` — the same key all three bundles carry. A headless probe
+   still logs `[Cloudflare Turnstile] Error: 600010` on dev AND prod, and **that probe
+   proves nothing**: `600xxx` is the challenge-EXECUTION family (not `110200`, "domain
+   not allowed"), and headless Chrome with `--no-sandbox` is the bot signature
+   Turnstile exists to refuse. It was reported here as "Turnstile is broken, nobody can
+   register" before that was noticed — a measurement whose instrument was the thing
+   being measured. Open it in a real browser; that is the only check that answers it.
+3. **Postmark — still open.** `dig` today: no SPF TXT at the apex, nothing at
+   `pm._domainkey`. The bounce CNAME (`pm-bounces` → `pm.mtasv.net`) exists. A verified
+   single sender signature would still send, so this is "unverified domain OR
+   address-only verification", and the honest test is one real `/auth/register`.
+4. **`www` — CLOSED.** `www.floridabizlabs.com` is a CNAME to the Hosting site and
+   answers **301 over valid TLS**. The full-page certificate warning is gone.
+
+**A defect in this section's own instructions**, found while running it: the command
+below builds the DEFAULT branch, not the released one.
 
 ```bash
-gh workflow run "Deploy fbizlab SPA (prod)"    # builds from deploy-prod, not main
+git push origin main:deploy-prod          # the release. Fires the SPA *and* the API.
+gh workflow run "Deploy fbizlab SPA (prod)" --ref deploy-prod   # a re-bake, explicitly
 ```
 
-It bakes the catalog into `dist/plans.json` at build time and **fails on purpose** if
-any of the four languages comes back empty. Then verify
+`deploy-fbizlab-prod.yml` only forces `deploy-prod` when `github.event_name ==
+schedule`; a `workflow_dispatch` without `--ref` runs on the default branch and
+publishes whatever `main` happens to be. The comment beside the old command claimed
+the opposite.
+
+The build bakes the catalog into `dist/plans.json` and **fails on purpose** if any of
+the four languages comes back empty. Then verify
 `https://floridabizlabs.com/plans.json` carries 20/80/160 credits and 2/10/20
 essential, and run the end-to-end: register → verification email → real purchase →
 job → PDF.
+
+**One config gap this release did not close:** the Turnstile SITE key is a hardcoded
+literal in `apps/fbizlab/src/config.ts:10` and the `|| '0x4AAA…'` fallback of both
+deploy workflows, and neither `FBIZLAB_DEV_TURNSTILE_SITE_KEY` nor
+`FBIZLAB_PROD_TURNSTILE_SITE_KEY` exists. The SECRET half is per-environment. It works
+today only because the literal happens to be the right key; rotate the widget and both
+environments keep shipping the old one with nothing to say so.
 
 **A trap this cost us a rebuild to learn:** the public landing does NOT read the API.
 Its pricing comes from `plans.json`, baked at build time by
