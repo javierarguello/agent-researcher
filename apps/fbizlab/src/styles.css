@@ -151,55 +151,91 @@ p { margin: 0; }
 /* --- hero --- */
 /* --- hero photograph, under the copy ---------------------------------------
  *
- * A Florida main street behind the headline. The copy is NOT recoloured for it:
- * the veil below is strong enough that `--ink` on the h1 and `--muted` on the
- * 11px mono tagline keep the contrast they have on plain `--bg`. That was the
- * choice (Javier, 2026-08-24) — veil the photo rather than invert the text —
- * because inverting means touching every colour in the band, and the small muted
- * type is where a photographic background quietly stops being readable.
+ * A Florida main street behind the headline.
  *
- * The veil is `--bg` (#fbfaf8) at varying alpha, never white: this palette is warm
- * sand, and a white scrim over it puts a cold rectangle in the middle of a warm
- * page.
+ * **The first version veiled the photo in `--bg` and kept the dark text.** It was
+ * legible and the photograph was barely there — at the 0.94 alpha the small muted
+ * type needed, a street scene reads as a faint texture. Javier looked at it and
+ * asked for the picture, explicitly allowing the text to be recoloured, so the band
+ * is now dark: a warm-black scrim at 0.52-0.66 with light type over it. Same
+ * trade, opposite side — a dark scrim can be far thinner than a light one for the
+ * same contrast, because the type carries the contrast instead of the background.
  *
- * It is LEFT-HEAVY on purpose. The text column is the left ~52% of the grid and
- * needs the most cover; the right column is the SampleCard, an opaque white card
- * that needs none — so the photo is allowed to come through around it, which is
- * the only place it is really visible as a photograph.
+ * The scrim is `--black` (#23201b, warm) and the type is `--on-dark` (#f5f0e8), not
+ * pure #000/#fff: this palette is warm sand and warm ink, and a neutral black
+ * rectangle at the top of it reads as a different website.
+ *
+ * It is still LEFT-HEAVY. The copy is the left column; the right column is the
+ * opaque `SampleCard`, which needs no cover at all — so the photograph comes
+ * through cleanest exactly where the card floats over it.
+ *
+ * Everything recoloured below is scoped to `.hero-shot`. `.h-xl`, `.lead`,
+ * `.fineprint` and `.btn` are used across the whole site, and this band is the only
+ * dark thing on the landing.
  */
 .hero-shot {
   background-image:
+    /* A second scrim across the BOTTOM, because the two smallest things in the band
+       — the disclaimer and the tagline — sit there, run the full column width, and
+       therefore reach into the thin end of the directional gradient below. Measured:
+       the tagline came out at 3.84:1 against the lightest pavement it crosses, under
+       the 4.5 that 11px type needs. It is bottom-anchored and fades out by a third
+       of the way up, so it costs the photograph nothing where the photograph is
+       actually being looked at. */
+    linear-gradient(to top, rgba(35, 32, 27, 0.34) 0%, rgba(35, 32, 27, 0) 34%),
     linear-gradient(
       100deg,
-      rgba(251, 250, 248, 0.955) 0%,
-      rgba(251, 250, 248, 0.94) 38%,
-      rgba(251, 250, 248, 0.80) 62%,
-      rgba(251, 250, 248, 0.58) 100%
+      rgba(35, 32, 27, 0.76) 0%,
+      rgba(35, 32, 27, 0.70) 40%,
+      rgba(35, 32, 27, 0.52) 68%,
+      rgba(35, 32, 27, 0.42) 100%
     ),
     url('/images/landing-banner.jpeg');
-  background-repeat: no-repeat, no-repeat;
-  background-size: cover, cover;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-size: cover, cover, cover;
   /* `center bottom`: the street and storefronts are the lower two thirds; anchoring
      to the centre crops to sky, which is the one part of this photo that says
      nothing about the product. */
-  background-position: center, center bottom;
-  border-bottom: 1px solid var(--line-soft);
+  background-position: center, center, center bottom;
 }
+
+/* The copy, inverted for the band it now sits on. */
+.hero-shot .h-xl { color: var(--on-dark); }
+.hero-shot .lead { color: rgba(245, 240, 232, 0.94); }
+/* `--muted` is a mid grey chosen against sand; on a photograph it disappears. These
+   two are the smallest type in the band and the first to go. */
+.hero-shot .fineprint,
+.hero-shot .muted { color: rgba(245, 240, 232, 0.90); }
+/* The eyebrow does NOT keep `--accent`, and that was a guess this file made and the
+   pixels refused: measured against the rendered backdrop, #e65100 scored **1.71:1**
+   on the mean and **1.15:1** on the lightest patch of foliage it crosses. Coral is a
+   DARK colour — it reads on sand precisely because it is dark, which is what makes it
+   vanish here. Every lighter tint of it was tried and the best (#ffa46b) still only
+   reached 3.32:1. Light type, then, and the brand colour stays where it works. */
+.hero-shot .eyebrow { color: rgba(245, 240, 232, 0.92); }
+
+/* `.btn--black` is a dark button, which is invisible here. The primary action takes
+   the accent; the secondary becomes an outline in the light ink it sits on. */
+.hero-shot .btn--black { background: var(--accent); border-color: var(--accent); color: #fff; }
+.hero-shot .btn--black:hover { background: #ff6a1a; border-color: #ff6a1a; }
+.hero-shot .btn--outline { color: var(--on-dark); border-color: rgba(245, 240, 232, 0.55); }
+.hero-shot .btn--outline:hover { background: var(--on-dark); color: var(--black); border-color: var(--on-dark); }
 
 @media (max-width: 1024px) {
   /* One column below this width — the copy sits over the whole band, so the
-     left-heavy gradient has nothing to be heavy about. Flat, and higher, because
-     `.fineprint` and the mono tagline are the first things a busy photograph
-     takes away. */
+     left-heavy gradient has nothing to be heavy about. Flat, and a little denser,
+     because the crop is tighter and the type runs the full width. */
   .hero-shot {
     background-image:
-      linear-gradient(rgba(251, 250, 248, 0.90), rgba(251, 250, 248, 0.90)),
+      linear-gradient(rgba(35, 32, 27, 0.70), rgba(35, 32, 27, 0.70)),
       url('/images/landing-banner.jpeg');
-    /* A 2:1 photograph behind a tall single column crops to a meaningless slice at
-       `center` — all sky and palm fronds. Anchored to the bottom-left, where the
-       storefronts and the street are, so the little that shows is the part that says
-       "Florida main street" rather than "green blur". */
-    background-position: center, left bottom;
+    /* A 2:1 photograph behind a tall single column shows about 15% of its width, so
+       the anchor decides the whole picture. `left bottom` was a guess about where
+       the subject is and it was wrong for THIS photograph — the left edge is the
+       glass office front, not the shops. The palms and the awninged storefronts sit
+       in the middle, so centre it and pin the bottom (the sky says nothing about
+       the product). Checked by looking, not by reasoning about it a second time. */
+    background-position: center, center, center bottom;
   }
 }
 
