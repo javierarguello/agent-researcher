@@ -20,6 +20,16 @@ import { LangProvider } from '../src/i18n';
 const verifyEmail = vi.fn();
 vi.mock('../src/api/client', () => ({ verifyEmail: (...a: unknown[]) => verifyEmail(...a) }));
 
+// The page signs the person in once the password verifies, so it now needs the auth
+// context and the captcha `/auth/session` asks for. Both are stubbed: what this file
+// is about is what the page SENDS and when.
+const loginWithPassword = vi.fn();
+vi.mock('../src/auth/AuthContext', () => ({ useAuth: () => ({ loginWithPassword }) }));
+vi.mock('../src/components/Turnstile', () => ({
+  Turnstile: () => null,
+  TurnstileHandle: {},
+}));
+
 import { VerifyEmail } from '../src/pages/VerifyEmail';
 
 const at = (search: string) =>
@@ -30,6 +40,7 @@ const at = (search: string) =>
         <Routes>
           <Route path="/verify" element={<VerifyEmail />} />
           <Route path="/login" element={<div>login page</div>} />
+          <Route path="/app" element={<div>the app</div>} />
         </Routes>
       </LangProvider>
     </MemoryRouter>,
@@ -38,6 +49,8 @@ const at = (search: string) =>
 beforeEach(() => {
   verifyEmail.mockReset();
   verifyEmail.mockResolvedValue({ status: 'verified', email: 'a@x.com' });
+  loginWithPassword.mockReset();
+  loginWithPassword.mockResolvedValue(undefined);
 });
 
 describe('verifying an email', () => {
@@ -166,5 +179,32 @@ describe('a page the API would not even look at is not a dead link either (N9)',
     await submit({ status: 400 });
     await waitFor(() => expect(screen.getByText(/invalid or has expired/i)).toBeTruthy());
     expect(screen.queryByText(/still valid/i)).toBeNull();
+  });
+});
+
+describe('after the password verifies', () => {
+  it('signs the person in instead of sending them to type it again', async () => {
+    // Clicking the link proves you read the mail; this form proves you are the
+    // person who registered. That is strictly more than the sign-in page asks for,
+    // so asking for the same password on the next screen is a step with nothing
+    // behind it. The API still returns no session of its own — this signs in.
+    at('?token=abc');
+    await userEvent.type(screen.getByLabelText(/password|contraseña/i), 'sup3rsecret');
+    await userEvent.click(screen.getByRole('button'));
+
+    await waitFor(() => expect(loginWithPassword).toHaveBeenCalledWith('a@x.com', 'sup3rsecret', undefined));
+    await waitFor(() => expect(screen.getByText('the app')).toBeTruthy());
+  });
+
+  it('still says it worked when the sign-in cannot go through', async () => {
+    // The address is stamped and the link is spent either way. A captcha that never
+    // solved or a rate limit must not read as a failed verification.
+    loginWithPassword.mockRejectedValue(new Error('429'));
+    at('?token=abc');
+    await userEvent.type(screen.getByLabelText(/password|contraseña/i), 'sup3rsecret');
+    await userEvent.click(screen.getByRole('button'));
+
+    await waitFor(() => expect(screen.getByText(/sign in to continue/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('login page')).toBeTruthy(), { timeout: 3000 });
   });
 });

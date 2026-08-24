@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { pick, useLang } from '../i18n';
+import { Turnstile, type TurnstileHandle } from '../components/Turnstile';
+import { useAuth } from '../auth/AuthContext';
 import { verifyEmail } from '../api/client';
 
 const MARK = '/icons/favicon.svg';
@@ -10,6 +12,7 @@ export const T = {
     title: 'Confirm your password to finish signing up',
     sub: 'Enter the password you chose when you created the account.',
     pw: 'Password', submit: 'Verify my email', working: 'Verifying…',
+    signingIn: 'Email verified — signing you in…',
     ok: 'Email verified — sign in to continue.',
     wrong: 'That password does not match the one chosen when this account was created.',
     fail: 'This verification link is invalid or has expired.',
@@ -22,6 +25,7 @@ export const T = {
     title: 'Confirma tu contraseña para terminar el registro',
     sub: 'Ingresa la contraseña que elegiste al crear la cuenta.',
     pw: 'Contraseña', submit: 'Verificar mi email', working: 'Verificando…',
+    signingIn: 'Email verificado — te estamos ingresando…',
     ok: 'Email verificado — ingresa para continuar.',
     wrong: 'Esa contraseña no coincide con la que se eligió al crear esta cuenta.',
     fail: 'Este enlace de verificación es inválido o expiró.',
@@ -34,6 +38,7 @@ export const T = {
     title: 'Confirmez votre mot de passe pour terminer l’inscription',
     sub: 'Saisissez le mot de passe choisi lors de la création du compte.',
     pw: 'Mot de passe', submit: 'Vérifier mon email', working: 'Vérification…',
+    signingIn: 'E-mail vérifié — connexion en cours…',
     ok: 'Email vérifié — connectez-vous pour continuer.',
     wrong: 'Ce mot de passe ne correspond pas à celui choisi à la création du compte.',
     fail: 'Ce lien de vérification est invalide ou a expiré.',
@@ -46,6 +51,7 @@ export const T = {
     title: 'Confirme sua senha para concluir o cadastro',
     sub: 'Digite a senha escolhida ao criar a conta.',
     pw: 'Senha', submit: 'Verificar meu email', working: 'Verificando…',
+    signingIn: 'E-mail verificado — entrando…',
     ok: 'Email verificado — entre para continuar.',
     wrong: 'Essa senha não corresponde à escolhida quando esta conta foi criada.',
     fail: 'Este link de verificação é inválido ou expirou.',
@@ -71,16 +77,39 @@ export function VerifyEmail() {
   const t = pick(T, lang);
   const nav = useNavigate();
   const [password, setPassword] = useState('');
-  const [state, setState] = useState<'idle' | 'working' | 'ok' | 'wrong' | 'busy' | 'retry' | 'fail'>('idle');
+  const [state, setState] = useState<'idle' | 'working' | 'signingIn' | 'ok' | 'wrong' | 'busy' | 'retry' | 'fail'>('idle');
+  // The captcha `/auth/session` requires for a password sign-in. Usually invisible.
+  const captcha = useRef<TurnstileHandle>(null);
+  const { loginWithPassword } = useAuth();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!password || state === 'working') return;
     setState('working');
     try {
-      await verifyEmail(token, password);
-      setState('ok');
-      setTimeout(() => nav('/login', { replace: true }), 1200);
+      const { email } = await verifyEmail(token, password);
+      // Straight in, rather than back to a form asking for the password that was
+      // just typed and just verified. Clicking the link proves you read the mail;
+      // this form proves you are the person who registered — which is strictly more
+      // than the sign-in page asks for, so it is signed in HERE, through the same
+      // `/auth/session` password path with the same captcha and the same limits.
+      // The API deliberately returns no session of its own ("verification is about
+      // the address, and signing in is where a session comes from") and this does
+      // not change that: it signs in.
+      setState('signingIn');
+      try {
+        await loginWithPassword(email, password, await captcha.current?.getToken());
+        nav('/app', { replace: true });
+        return;
+      } catch {
+        // Verified either way — the address is stamped and the link is spent. A
+        // sign-in that fails here (a captcha that never solved, a rate limit) must
+        // not read as a failed verification, so it falls back to what this screen
+        // did before: say it worked, and offer the sign-in page.
+        setState('ok');
+        setTimeout(() => nav('/login', { replace: true }), 1200);
+        return;
+      }
     } catch (err) {
       // A wrong password leaves the link usable — one typo must not cost a
       // legitimate user their registration.
@@ -117,7 +146,7 @@ export function VerifyEmail() {
 
   return (
     <div className="auth-mini">
-      <div className="card auth-mini__card">
+      <div className="card auth-mini__card" style={{ textAlign: 'left', maxWidth: 400 }}>
         <img className="brand-mark" src={MARK} alt="" width="30" height="30" style={{ marginBottom: 16 }} />
 
         {!token && (
@@ -141,17 +170,23 @@ export function VerifyEmail() {
           </div>
         )}
 
-        {token && (state === 'idle' || state === 'working' || state === 'wrong' || state === 'busy' || state === 'retry') && (
-          <form className="stack" style={{ gap: 14 }} onSubmit={submit}>
+        {token && (state === 'idle' || state === 'working' || state === 'signingIn' || state === 'wrong' || state === 'busy' || state === 'retry') && (
+          <form className="stack" style={{ gap: 14, textAlign: 'left' }} onSubmit={submit}>
             <h1 style={{ fontSize: 19, margin: 0 }}>{t.title}</h1>
             <p className="soft" style={{ fontSize: 14, margin: 0 }}>{t.sub}</p>
-            <label className="stack" style={{ gap: 6 }}>
-              <span className="rv__k">{t.pw}</span>
+            {/* `auth-field` + `.input`, like `ResetPassword` on this same shell. The
+                input carried no class at all, so it fell through to the browser's
+                default box — squat, hairline-bordered, and nothing like the rest of
+                the app — under a label whose class (`rv__k`) is not in the
+                stylesheet, centred by the card. */}
+            <div className="auth-field">
+              <label htmlFor="verify-pw">{t.pw}</label>
               <input
+                id="verify-pw" className="input"
                 type="password" autoComplete="current-password" value={password}
                 onChange={(e) => setPassword(e.target.value)} required
               />
-            </label>
+            </div>
             {state === 'wrong' && <p className="soft" style={{ fontSize: 14, color: 'var(--danger, #b4453c)' }}>{t.wrong}</p>}
             {state === 'busy' && <p className="soft" style={{ fontSize: 14 }}>{t.busy}</p>}
             {/* The form stays up, and the reload is offered rather than described:
@@ -163,9 +198,12 @@ export function VerifyEmail() {
                 <button type="button" className="link-accent" onClick={() => window.location.reload()}>{t.reload}</button>
               </>
             )}
-            <button className="btn btn--black btn--sm" type="submit" disabled={state === 'working' || !password}>
-              {state === 'working' ? t.working : t.submit}
+            <button className="btn btn--black btn--block" type="submit" disabled={state === 'working' || state === 'signingIn' || !password}>
+              {state === 'signingIn' ? t.signingIn : state === 'working' ? t.working : t.submit}
             </button>
+            {/* Last in the form, like the sign-in page: invisible until a challenge
+                is needed, and then it appears below the button rather than moving it. */}
+            <Turnstile ref={captcha} />
           </form>
         )}
       </div>
