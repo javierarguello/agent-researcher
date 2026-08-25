@@ -145,6 +145,57 @@ seven widths.
 deploy, unlike an HTML tag a build would remove). The sitemap reads **Correcto**, 10
 pages discovered.
 
+### The DKIM that was there all along, and the check that missed it
+
+**Mail DNS is complete as of 2026-08-25.** Measured against the authoritative
+`ns45.domaincontrol.com` and confirmed identical on 8.8.8.8, 1.1.1.1 and 9.9.9.9:
+
+| record | name | value | since |
+|---|---|---|---|
+| SPF | `@` | `v=spf1 include:spf.mtasv.net ~all` | 2026-08-25 |
+| DKIM | `20260717155235pm._domainkey` | `k=rsa;p=MIGf…6wIDAQAB` | **2026-07-17** |
+| Return-Path | `pm-bounces` | CNAME `pm.mtasv.net` | earlier |
+| DMARC | `_dmarc` | `p=quarantine; adkim=r; aspf=r` | earlier |
+
+The DKIM key is sound, not merely present: `p=` is **216 characters** (under GoDaddy's
+255-char field limit, so it is not truncated — the usual way this record fails) and
+`openssl rsa -pubin` parses it as a valid **1024-bit** RSA public key. `spf.mtasv.net`
+resolves to four IPv4 ranges with `-all`.
+
+**This file said DKIM was absent for weeks, and it was wrong.** Both this section's
+predecessor and the § Open item were written from the same measurement:
+`dig TXT pm._domainkey.floridabizlabs.com` → empty, therefore no DKIM. Postmark's
+modern selector is a creation timestamp, and a 45-name sweep of plausible selectors
+found nothing — the value is unguessable by construction.
+
+**The signal was in the responses the whole time.** `pm._domainkey` returned
+**NXDOMAIN** while `_domainkey` returned **NOERROR** with no answer. That pair is an
+*empty non-terminal*: the parent node exists only because something is published
+BELOW it. NOERROR-empty on `_domainkey` is positive evidence that a DKIM record
+exists under some selector; NXDOMAIN on the selector you guessed is evidence about
+your guess.
+
+```bash
+# the wrong check — proves a name, and reads as proving a class
+dig +short TXT pm._domainkey.example.com
+
+# the right one — asks whether ANY selector is published
+dig _domainkey.example.com TXT +noall +comment | grep -o 'status: [A-Z]*'
+#   NXDOMAIN → no DKIM anywhere.  NOERROR → a record exists; go read the provider for the selector.
+```
+
+This is **"a corpus proves a shape, never a class"** (round 10) in its DNS form: 45
+selector names is a corpus, and absence across it is not absence. The general rule it
+sharpens — **when a lookup is keyed by a name you had to guess, a negative result
+measures the guess, not the world.** Ask the question that does not require the name.
+
+**Still owed, and it is what actually settles this:** DNS records being correct is not
+the same as mail being signed and aligned. Trigger a password reset for the prod
+account `miltonjaviera@yahoo.com.ar` and read `Authentication-Results` on the raw
+mail — `spf=pass`, `dkim=pass`, `dmarc=pass`, and `s=`/`d=` on the `DKIM-Signature`
+confirming the selector above is the one Postmark actually signs with. Same principle
+the Turnstile note below records: the running system is the instrument, not the DNS.
+
 
 ### What shipped 2026-08-22/24, and what it is owed
 
@@ -237,7 +288,8 @@ reasoning is what a later reader needs.
    `fbizlab`, and a widget only works on hostnames registered in Cloudflare. Both
    prod hostnames have to be added or register/login/reset/contact all fail.
 3. **Postmark.** `pm-bounces.floridabizlabs.com → pm.mtasv.net` exists, but no SPF at
-   the apex and no DKIM at the usual selectors. If the sender is not verified,
+   the apex and no DKIM *at the usual selectors* — the qualifier that turned out to
+   matter; see § "The DKIM that was there all along". If the sender is not verified,
    `/auth/register` answers 500 with nothing in the response explaining why.
 4. **`www`.** A CNAME to the apex today, so it reaches Firebase with no certificate of
    its own — a full-page TLS warning. Either add it in Hosting with a redirect, or
@@ -258,10 +310,11 @@ reasoning is what a later reader needs.
    here: **a real account was registered and verified on prod on 2026-08-24** —
    `user-credentials/fbizlab__miltonjaviera@yahoo.com.ar`, created 15:27:58 with
    `emailVerified: true`. Registering requires passing the enforced Turnstile check;
-   verifying requires having received the Postmark mail. The DNS picture has not
-   changed (no SPF at the apex, nothing at `pm._domainkey`), so Postmark is sending on
-   a verified SENDER SIGNATURE rather than a verified domain — it works, and
-   deliverability to strict inboxes is the thing still worth fixing, not signup.
+   verifying requires having received the Postmark mail. The DNS picture as read that day looked
+   unchanged (no SPF at the apex, nothing at `pm._domainkey`), and the conclusion drawn
+   from it — that Postmark was sending on a SENDER SIGNATURE rather than a verified
+   domain — **was wrong**. DKIM was already published under a different selector; only
+   SPF was actually missing. Corrected 2026-08-25, § below.
 
    **A method note, because this file said the opposite for a day.** A headless probe
    logged `[Cloudflare Turnstile] Error: 600010` on dev AND prod and it was reported
@@ -421,14 +474,11 @@ of mine previewed before the value under test was ever set).
 Every item below was measured again today rather than carried over. Ordered by what
 bites first.
 
-1. **The domain's mail fails DMARC, and it is OUR mail being quarantined.** Measured
-   with `dig` on `floridabizlabs.com`: `DMARC v=DMARC1; p=quarantine` **exists**, and
-   **SPF and DKIM are both absent** (`pm._domainkey` empty, no apex TXT). DMARC passes
-   on SPF *or* DKIM alignment; with neither, Postmark's mail fails it and a receiver
-   honouring the policy quarantines it. The verification mail does arrive — a prod
-   account was verified — but the mail a signup DEPENDS on is landing in spam by
-   policy. Closes with two DNS records: Postmark's DKIM TXT and an SPF including
-   `spf.mtasv.net`. **Javier — DNS.**
+1. **~~The domain's mail fails DMARC~~ — CLOSED in DNS 2026-08-25.** SPF, DKIM,
+   Return-Path and DMARC are all present, aligned and propagated. See § "The DKIM
+   that was there all along" below for what closed it and for the measurement error
+   that kept this item open for weeks. What is NOT yet measured is the only thing
+   that settles it: `Authentication-Results` on a mail the product actually sent.
 2. **`publicAccessPrevention` is `inherited`, not `enforced`, on both buckets.**
    Nothing is public today and that was verified against the live project (uniform
    bucket-level access on, no `allUsers`/`allAuthenticatedUsers`, only the worker
@@ -473,16 +523,18 @@ that no agent can do and that are worth more than anything in the other two.
 
 ### ON JAVIER — nobody can do these, and the first one costs money every day
 
-1. **SPF and DKIM in DNS.** Re-measured 2026-08-25: `DMARC p=quarantine` is live,
-   **SPF and DKIM are both still absent** (`dig TXT floridabizlabs.com` → no `v=spf1`;
-   `pm._domainkey` → empty). DMARC passes on SPF *or* DKIM alignment; with neither,
-   every mail the product sends fails it and a receiver honouring the policy
-   quarantines it. **This is the oldest open item and the only one with a direct
-   revenue effect** — it now applies to five mails, not one: verification, password
-   reset, contact, dossier-started and the **purchase receipt**. The receipt is the
-   worst of the five to lose, because it is the one a buyer goes looking for. Two TXT
-   records: Postmark's DKIM (Sender Signatures → DKIM) and `v=spf1
-   include:spf.mtasv.net ~all` at the apex.
+1. **~~SPF and DKIM in DNS~~ — CLOSED in DNS 2026-08-25**, the oldest item on this
+   list. All four records are now present and propagated (verified against the
+   authoritative `ns45.domaincontrol.com` and 8.8.8.8 / 1.1.1.1 / 9.9.9.9):
+   `v=spf1 include:spf.mtasv.net ~all` at the apex (added today), DKIM at
+   **`20260717155235pm._domainkey`** (there since 2026-07-17 — see below),
+   `pm-bounces` → `pm.mtasv.net`, and `DMARC p=quarantine; adkim=r; aspf=r`.
+   Postmark's Return-Path is a SUBDOMAIN of the `From` domain and `aspf=r` is relaxed
+   alignment, so SPF alone should now carry DMARC. **One thing is still owed and it
+   is the only one that proves this**: read `Authentication-Results` on a real
+   product mail (trigger a password reset for the prod account
+   `miltonjaviera@yahoo.com.ar`) and confirm `spf=pass`, `dkim=pass`, `dmarc=pass`.
+   DNS records being correct is not the same as mail being signed.
 2. **Google Search Console — read Páginas → Indexación.** The sitemap is submitted and
    reads *Correcto*, 10 pages discovered (2026-08-25). **Discovered is not indexed.**
    That screen answers the question the SEO audit opened — whether the dead canonical
