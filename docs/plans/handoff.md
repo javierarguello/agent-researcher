@@ -509,6 +509,22 @@ Split in two because round 10 found the previous single heading covering both ki
   on to spend turns. Free-call floor stays ≥6. The zero-turn plan-loops that motivated
   M-B2 do not appear in any August run — first production evidence that they are gone.
 - **The two GCS hardening items and the mail records** — see § Security, 1-3.
+- **P-14 — the SEO audit, and the defect it found is the largest single thing this
+  repo has shipped past.** Every canonical, hreflang, `og:url`, `og:image` and sitemap
+  entry on the live site named `https://fbizlab.web.app` — **a host that returns 404**.
+  A canonical is an instruction to prefer another URL, and the URL being preferred did
+  not exist; `floridabizlabs` appeared ZERO times in the app's own source. On top of
+  that, seven public URLs served byte-identical homepage HTML
+  (`md5(/) == md5(/sample) == md5(/privacy)`), so the crawlable surface of the site was
+  one page. Fixed in `55c4c97` and `10527e7`, live and verified on
+  `floridabizlabs.com`: ten sitemap URLs all 200, per-route canonicals, language
+  anchors in the served HTML, `X-Robots-Tag` on the token-bearing routes, dev
+  `Disallow: /`.
+  **The next step is not code: check Google Search Console.** Nobody has, and it is the
+  only way to know whether this kept the site out of the index entirely — and therefore
+  whether the remaining items (baking `/sample`'s body, `Product` JSON-LD) are urgent
+  or premature. Full findings, including what was measured as SOUND and what is
+  deliberately not being done, in `product-backlog.md` § P-14.
 - **P-13 — anonymous traffic counting is IN** (prod only, `f8772aa`), and the part
   that is still open is the part that was asked about. GA4 in **cookieless consent
   mode** (`setConsent` with `analytics_storage: 'denied'`, before `getAnalytics`):

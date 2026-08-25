@@ -13,7 +13,7 @@
         { "source": "/report/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
         { "source": "/verify", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
         { "source": "/reset", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
-        { "source": "/app/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
+        { "source": "/app{,/**}", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
         { "source": "/login", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] }
       ]
     },
@@ -30,7 +30,7 @@
         { "source": "/report/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
         { "source": "/verify", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
         { "source": "/reset", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
-        { "source": "/app/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
+        { "source": "/app{,/**}", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
         { "source": "/login", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] }
       ]
     }

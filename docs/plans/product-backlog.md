@@ -484,7 +484,7 @@ unauthenticated, so anything added there is public.
 
 ---
 
-## P-9 · The public sample dossier is client-rendered, so a crawler may see nothing — `open`
+## P-9 · The public sample dossier is client-rendered, so a crawler may see nothing — `confirmed 2026-08-24; head fixed, body still open`
 
 **Raised while building it, 2026-08-23.** `/sample` renders a real dossier from
 `public/sample-dossier.json` (`apps/fbizlab/src/pages/SampleReport.tsx`), and `App`
@@ -509,6 +509,34 @@ link (head only, leave it out of `sitemap.xml`). It is currently NOT in the site
 which is the honest state for a page whose content a crawler may not see.
 
 **Not started.**
+
+---
+
+### Confirmed, and half fixed — 2026-08-24
+
+An SEO audit measured it rather than suspecting it. Raw `curl` of `/sample` was
+**byte-identical** to the landing; rendered in Chrome it was **34,536 characters**
+of copy against the landing's 5,529, under an `<h1>Florida Businesses for Sale —
+Buy-Side Research</h1>`. Six times the landing's content, and the only page on the
+site with enough substance to rank for anything but the brand name.
+
+It was invisible twice over. A crawler that does not run JS saw the homepage. A
+crawler that DOES run JS saw the content — under the homepage's `<title>` and a
+canonical pointing at `https://fbizlab.web.app/`, a host that 404s.
+
+**Fixed (`55c4c97`, `10527e7`):** `/sample` is prerendered with its own canonical,
+title, description and og/twitter tags, and it is in the sitemap. Google executes JS,
+so the page is now indexable under the right identity — which is most of the value.
+
+**Still open, and it is a real project rather than a patch:** the 34.5 kB of body copy
+is still absent from the served bytes. The landing has `landing-static.mjs` to bake
+its content; the dossier has no equivalent, and writing one means a static renderer
+for the whole report shape — sections, tables, charts, citations — which is
+`ReportViewer` in another language. The data is not the obstacle
+(`public/sample-dossier.json`, 43 kB, already static); the renderer is.
+
+Worth doing only if `/sample` shows crawl activity once the canonical fix takes
+effect. Check Search Console first — measuring before building is the whole point.
 
 ---
 
@@ -868,6 +896,70 @@ Three ways forward, in the order they were put to Javier:
 **One thing the code cannot enforce, written here instead: Google Signals must stay
 OFF on the GA4 property.** Consent mode denies its inputs, but the switch is a
 console setting outside the repo.
+
+---
+
+## P-14 · SEO — what the audit found, what shipped, and what is left — `partly done`
+
+An SEO audit of the live site, 2026-08-24. Its three P0 findings were one story: **the
+site's crawlable surface was a single page, and that page instructed Google to prefer
+a URL that does not exist.**
+
+### Shipped (`55c4c97`, `10527e7`)
+
+| | what it was | evidence |
+|---|---|---|
+| Canonical / hreflang / og / sitemap | all named `https://fbizlab.web.app` | that host returns **404**; the string `floridabizlabs` appeared **zero times** in `src`, `public`, `index.html`, `scripts` or `package.json` |
+| Seven public URLs | byte-identical to the homepage | `md5(/) == md5(/sample) == md5(/privacy) == md5(/any-garbage-path)` |
+| `/sample` | the site's only long-form page, unindexable | see § P-9 |
+| `/es` `/fr` `/pt` | orphans — nothing linked to them | switcher was `<button>`, static header had no switcher, sitemap and hreflang named the dead host |
+| `/report/*` `/verify` `/reset` | served `index, follow` | their `noindex` is applied by React after mount and never reaches the bytes |
+| Hero photograph | undiscoverable until hydration | `landing-static.mjs` emitted `section.container`, `Landing.tsx` emits `section.hero-shot`; the photo is a CSS background on the class that was missing. Fetch at 2780 ms, paint at 5218 ms on throttled mobile |
+| dev | fully crawlable duplicate of the marketing site | same robots.txt, and it canonicalized to the dead host too |
+
+The origin is now `SITE_URL` with **no fallback** — a wrong default is exactly what let
+this survive a launch and two releases, because it looked like a working value — and
+the build asserts on its own output (no `__SITE__` token left, no trace of the dead
+host in the twelve emitted files).
+
+### Open, in the order worth doing
+
+1. **Check Google Search Console.** Nobody has. It is the only way to know whether the
+   dead canonical kept `floridabizlabs.com` out of the index entirely, and it is the
+   measurement that says whether any of the rest is urgent. Needs Javier's access.
+2. **Bake `/sample`'s body** for crawlers that do not execute JS — § P-9. Gate it on
+   (1): if the page is being crawled and indexed now, this buys a lot; if the site is
+   not in the index at all, it buys nothing yet.
+3. **`Product`/`Offer` JSON-LD for the three credit packs**, and it has a prerequisite
+   that is the actual work: the prices are fetched client-side from `/plans.json` and
+   are **not in the served HTML** (`grep -c '\$29\|CREDITS'` → 0). Marking up prices a
+   crawler cannot see in the page is precisely the kind of structured data not to add.
+   Prerender the pricing block first. `Organization` JSON-LD is honest today and is one
+   block in `index.html`.
+4. **Per-route title/description for the private app** is NOT needed — those routes are
+   disallowed, so their titles have no SEO value.
+5. **Re-encode the hero photograph** to WebP/AVIF: 299,337 B baseline JPEG at 1457×720,
+   no `srcset`. One command, ~100 kB saved on the LCP element.
+
+### Deliberately NOT doing
+
+- **Soft 404s.** Garbage paths return 200 with the landing (`App.tsx`'s `path="*"`
+  redirect). The audit recommended no action and that is right: no user-generated URL
+  space, no external links to broken paths, and a correct canonical consolidates them
+  onto `/` anyway.
+- **`<img>` instead of a CSS background for the hero**, to reach Google Images. It is a
+  generic Florida street scene, not product imagery anyone searches for.
+- **`Review` / `AggregateRating` / `BreadcrumbList`** — the site has no reviews and no
+  breadcrumb hierarchy. Markup for content that does not exist is a penalty waiting.
+
+### Measured and sound — do not re-check without new evidence
+
+Redirects (http→https, www→apex, `/index.html`→`/`, `/es.html`→`/es`, all 301);
+Brotli on HTML; TTFB 112 ms throttled; immutable caching on `/assets/**`; one `<h1>`
+per page; copy is real indexable text, not images; `alt` attributes correct; CLS
+0.042; the hreflang SET is complete and reciprocal with `x-default` (only the host was
+wrong); `FAQPage` JSON-LD is legitimate — its visible text really is in the served
+HTML.
 
 ---
 
