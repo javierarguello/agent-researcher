@@ -322,18 +322,7 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
           // would throw away whatever it has finished since.
           if (!(await stillOurs())) {
             log.warn('checkpoint.skipped', { reason: 'another dispatch owns this job' });
-
-
-    // The guard removed our own prompt from a write. Booked as an INCIDENT and
-    // never as a strike: the buyer's own text is refused and struck by the
-    // moderation path before a job exists, so a leak reaching a model here came from
-    // a page, and they are the person it happened to. Best-effort — a stats blip
-    // must not fail a report the buyer paid for.
-    for (const echo of output.promptEchoes ?? []) {
-      await recordPromptEcho({ appId: input.appId, userId: input.userId, agentId: echo.agentId, fields: echo.fields })
-        .catch((err) => log.warn('stats.prompt_echo_failed', { message: (err as Error).message }));
-      log.warn('report.prompt_echo', { agentId: echo.agentId, fields: echo.fields });
-    }            return;
+            return;
           }
           await uploadJson(CHECKPOINT, cp);
           checkpointsSaved += 1;
@@ -391,6 +380,34 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
         }
       },
     });
+
+    // The guard removed our own prompt from a write. Booked as an INCIDENT and
+    // never as a strike: the buyer's own text is refused and struck by the
+    // moderation path before a job exists, so a leak reaching a model here came from
+    // a page, and they are the person it happened to. Best-effort — a stats blip
+    // must not fail a report the buyer paid for.
+    //
+    // HERE, and the position is the whole fix (round 11, `echo-book-1`). `5fa80a7`
+    // pasted this loop inside `onCheckpoint`'s stale-dispatch branch, where two
+    // things were true: on any job that keeps ownership the branch never runs, so
+    // the counter read zero forever; and if it HAD run, `output` is the const being
+    // assigned from the very `runResearch` call that invokes the callback, so the
+    // line throws ReferenceError from its temporal dead zone and the surrounding
+    // catch mislabels it `checkpoint.save_failed`.
+    //
+    // It sits BEFORE the ownership guard and before all four early returns on
+    // purpose. An echo is not the job's outcome — it is what THIS dispatch's
+    // research observed, and a dispatch that ends `superseded`, `incomplete` or
+    // `held` observed it just as much as a delivering one. That placement is also
+    // what makes carrying `promptEchoes` on the Checkpoint unnecessary: every
+    // dispatch books exactly its own, so nothing is lost across a resume — and
+    // carrying them the way `warnings` are carried would book dispatch 1's echo
+    // again on dispatch 2, turning one attack into three.
+    for (const echo of output.promptEchoes ?? []) {
+      await recordPromptEcho({ appId: input.appId, userId: input.userId, agentId: echo.agentId, fields: echo.fields })
+        .catch((err) => log.warn('stats.prompt_echo_failed', { message: (err as Error).message }));
+      log.warn('report.prompt_echo', { agentId: echo.agentId, fields: echo.fields });
+    }
 
     // Everything from here writes the job's OUTCOME, and a dispatch that no longer
     // owns the job has no business writing one. The delivery path was guarded and
