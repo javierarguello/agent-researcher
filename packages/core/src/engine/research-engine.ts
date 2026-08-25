@@ -810,7 +810,31 @@ export async function runResearch(input: RunResearchInput): Promise<ResearchOutp
               const itemKeys = effTemplate.sections.find((x) => x.key === key)?.itemKeys;
               if (itemKeys?.length && report[key] !== undefined) {
                 for (const [label, before, after] of arrayPairs(key, report[key], merged[key])) {
-                  const { kept, dropped } = keepKnownItems(itemKeys, before, after);
+                  const { kept, dropped, keptUnmatched } = keepKnownItems(itemKeys, before, after);
+                  // Kept, and said out loud. There is no surplus slot here — the set
+                  // did not grow — so the item stays, and until round 11 that meant
+                  // nothing was recorded anywhere: a swap (drop one of the
+                  // producer's, add one of your own) delivered an invention AND lost
+                  // a paid-for profile in total silence, because the shrink note one
+                  // block down only fires when the rewrite comes back SHORTER.
+                  //
+                  // Deliberately not phrased as an accusation. An honest
+                  // retitle-and-re-source looks exactly like this from here (it has
+                  // happened on a real run), and a warning that calls it an invention
+                  // is one an admin learns to skip. It says what is known: this
+                  // matched nothing the producer listed, and it was kept.
+                  if (keptUnmatched.length) {
+                    const named = keptUnmatched.slice(0, 3).map((d) => `"${d.slice(0, 80)}"`).join(', ');
+                    const rest = keptUnmatched.length > 3 ? ` +${keptUnmatched.length - 3} more` : '';
+                    const line =
+                      `rewrite of "${label}" came back ${after.length} where the producer listed ${before.length}, and ` +
+                      `${keptUnmatched.length} item(s) in it matches nothing it listed (${named}${rest}). Kept — the set did ` +
+                      `not grow, so this is either a rewrite the producer's identities no longer match or a swap for ` +
+                      `something the rest of the report never saw, and they are the same shape from here. Both versions ` +
+                      `are in the analyst's trace output.`;
+                    at.notes.push(`${new Date().toISOString()} ${line}`);
+                    warnings.push(`${new Date().toISOString()} Agent "${agent.id}" ${line}`);
+                  }
                   if (!dropped.length) continue;
                   setArrayField(merged, key, label, kept);
                   const named = dropped.slice(0, 3).map((d) => `"${d.slice(0, 80)}"`).join(', ');
@@ -1544,18 +1568,46 @@ function identities(item: unknown, itemKeys: string[]): string[] {
  *
  * An item with no readable identity is kept regardless: not being able to tell is not
  * the same as knowing it was invented.
+ *
+ * `keptUnmatched` is the rest of that sentence, and it was missing (round 11,
+ * `enricher-swap-1`). The paragraph above claims "the case this guard exists for
+ * still cannot survive", and that is only true when the set GROWS. A SWAP — drop one
+ * of the producer's, add one of your own, same count — has no surplus slot, so the
+ * early return handed back everything and computed nothing; the shrink note fires on
+ * `after < before` and 3-for-3 is not shorter, so an invention was delivered AND a
+ * paid-for profile was lost with no note, no warning and no trace entry anywhere.
+ * Both halves of the defect this guard exists for, in one event, silently.
+ *
+ * So the arithmetic is UNCHANGED — the item is still kept, because losing a real
+ * profile is still worse than carrying an extra one — and what comes back with it is
+ * the fact that it matched nothing. The caller warns.
+ *
+ * That warning cannot be precise, and it must not pretend to be: a swap and an
+ * honest retitle-and-re-source are the same shape from here (a real run produced the
+ * second, `out/local-52835003`), and this function has nothing left to tell them
+ * apart with. It reports what it knows — this item matched nothing, and it was kept.
  */
-function keepKnownItems(itemKeys: string[], before: unknown[], after: unknown[]): { kept: unknown[]; dropped: string[] } {
-  const surplus = after.length - before.length;
-  if (surplus <= 0) return { kept: after, dropped: [] };
+function keepKnownItems(
+  itemKeys: string[],
+  before: unknown[],
+  after: unknown[],
+): { kept: unknown[]; dropped: string[]; keptUnmatched: string[] } {
   const known = new Set(before.flatMap((item) => identities(item, itemKeys)));
   const unmatched = after
     .map((item, i) => ({ i, ids: identities(item, itemKeys) }))
     .filter(({ ids }) => ids.length > 0 && !ids.some((id) => known.has(id)));
-  const cut = new Map(unmatched.slice(-surplus).map(({ i, ids }) => [i, ids[0]!] as const));
+  // `surplus > 0` is a guard, not a tidiness check: `-0 === 0`, so `slice(-surplus)`
+  // at zero surplus is `slice(0)` — the WHOLE array — and every unmatched item would
+  // be dropped, which is this guard's first version and the defect it cost a real
+  // buyer's page to learn about.
+  const surplus = after.length - before.length;
+  const cut = new Map(
+    surplus > 0 ? unmatched.slice(-surplus).map(({ i, ids }) => [i, ids[0]!] as const) : [],
+  );
   return {
     kept: after.filter((_, i) => !cut.has(i)),
     dropped: [...cut.values()],
+    keptUnmatched: unmatched.filter(({ i }) => !cut.has(i)).map(({ ids }) => ids[0]!),
   };
 }
 

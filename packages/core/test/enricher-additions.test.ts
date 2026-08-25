@@ -129,7 +129,68 @@ describe('a section whose set belongs to its producer', () => {
 
     expect(listingsOf(out).length).toBe(3);
     expect(listingsOf(out)[0]!.business).toBe('Sunshine Coin Laundry — Miami Springs (absentee)');
-    expect(out.trace.warnings ?? []).toEqual([]);
+
+    // It is KEPT — that is this test's subject and it has not changed.
+    //
+    // What changed is the line below it. This test used to assert
+    // `warnings).toEqual([])`, and that assertion was pinning a silence rather than
+    // a behaviour: from the engine's side this run and a SWAP are byte-identically
+    // shaped (same count, one item matching neither identity), so a rule that keeps
+    // this one quiet keeps that one quiet too — which is how an invented listing
+    // reached a buyer while a paid-for profile vanished, with nothing written
+    // anywhere (round 11, `enricher-swap-1`).
+    //
+    // So the warning fires here too, and that is a true positive about what the
+    // engine can actually see: something came back matching nothing the producer
+    // listed. Whether it was honest is a question only the trace can answer, and the
+    // warning says so instead of guessing. Admin-only, and NOT a degraded section —
+    // the buyer's report is whole either way.
+    const warning = (out.trace.warnings ?? []).find((w) => w.includes('matches nothing it listed'));
+    expect(warning, 'a same-count rewrite left no trace').toBeTruthy();
+    expect(warning).toContain('sunshine coin laundry — miami springs (absentee)');
+    expect(warning).toMatch(/Kept — the set did not grow/);
+    expect(out.meta.sections ?? []).toEqual([]);
+  });
+
+  it('says so when the set did NOT grow and something still matches nothing — the swap', async () => {
+    // Round 11, `enricher-swap-1`, and the row the corpus above did not have.
+    //
+    // Every case here so far either grows the set (surplus > 0, the invention is
+    // droppable) or leaves an identity intact (a retitle keeps `sourceUrl`, so it
+    // matches). A SWAP does neither: the refiner drops a real listing and adds one
+    // of its own, three back from three. `surplus <= 0` returned early, so nothing
+    // was even computed, let alone said — and the shrink note below only fires on
+    // `after < before`, so 3-for-3 was invisible on every surface the product has.
+    //
+    // Measured on a real run (`out/local-4ed81938`): the buyer's dossier carried a
+    // full page about a business named in no shortlist row, no projection, no chart
+    // and no recommendation, AND silently lost the page for one that IS shortlisted.
+    // Both halves of the defect F-1 was rewritten to prevent, in one event.
+    //
+    // The item is still KEPT — that policy is deliberate and expensive to have
+    // learned (see `keepKnownItems`, and the test below this one). What changes is
+    // that it is no longer SILENT.
+    const swapped = [THREE[0], THREE[1], INVENTED];
+    const out = await run(model, swapped, 'enricher-swap-1');
+
+    // Kept: the engine does not delete on a same-count rewrite, and must not start.
+    expect(listingsOf(out).map((l) => l.business)).toEqual(['Sunshine Coin Laundry', 'Bayside Wash Center', 'Hialeah Express Wash']);
+
+    // …and an admin is told, by name.
+    const warning = (out.trace.warnings ?? []).find((w) => w.includes('matches nothing it listed'));
+    expect(warning, 'a swap left no trace on any surface').toBeTruthy();
+    expect(warning).toContain('hialeah express wash');
+    expect(warning).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z Agent "refiner"/);
+    // Named as what it IS. The engine cannot tell a swap from an honest
+    // retitle-and-re-source, and a warning that claims it can is a warning an admin
+    // will learn to ignore.
+    expect(warning).toMatch(/kept/i);
+
+    // Still not a degraded section: the buyer's report is whole, this is news about
+    // an agent.
+    expect(out.meta.sections ?? []).toEqual([]);
+    // The producer's lost listing is recoverable from the trace.
+    expect(JSON.stringify(out.trace.agents.find((a) => a.id === 'scout')!.output)).toContain('Palmetto Laundry Express');
   });
 
   it('when a rewrite and an invention are both unmatched, the surplus slot takes the invention', async () => {
