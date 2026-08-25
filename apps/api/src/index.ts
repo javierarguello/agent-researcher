@@ -1332,9 +1332,21 @@ app.post(
       // The start mail — sent only once the job is QUEUED, so it never announces a
       // dossier that failed to enqueue and was refunded a few lines up.
       //
-      // Best-effort and awaited-with-catch: the buyer's 202 must not wait on
-      // Postmark, and must not turn into a 500 because Postmark is down. A job that
-      // is running is the outcome; the mail is a courtesy on top of it.
+      // Best-effort and awaited-with-catch: this must not turn into a 500 because
+      // Postmark is down. A job that is running is the outcome; the mail is a
+      // courtesy on top of it.
+      //
+      // The sentence that used to be here — "the buyer's 202 must not wait on
+      // Postmark" — described the catch and not the await, and the await is the
+      // half that decides how long the buyer sits there (round 11,
+      // `postmark-await-1`). It DOES wait. `fetch` carries no timeout of its own,
+      // so before `config.email.sendTimeoutMs` a Postmark incident could hold this
+      // 202 for undici's five-minute header limit, over a job already queued and
+      // running.
+      //
+      // The wait is BOUNDED rather than dropped, on purpose: Cloud Run throttles
+      // CPU outside a request, so a promise floated after the response is one that
+      // may never finish sending the mail.
       //
       // It carries no title — `headline` writes that inside the engine, which has
       // not run yet — and no duration. The three measured comprehensive runs were

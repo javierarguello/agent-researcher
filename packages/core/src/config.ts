@@ -119,6 +119,21 @@ export const config = {
     /** Internal inbox that contact-form / API-access requests are delivered to.
      *  Never exposed to the frontend. Shared across all apps. */
     contactInbox: str('CONTACT_INBOX', 'management@specialtyperks.com'),
+    /**
+     * How long one Postmark call may take before it is abandoned.
+     *
+     * `fetch` has no default request timeout — undici gives up on HEADERS after
+     * five minutes and never on a stalled body — and `sendAppEmail` is AWAITED on
+     * the buyer's 202 (`POST /research`) and inside the Stripe webhook. Without a
+     * bound, a Postmark incident holds a buyer on a spinner for minutes over a job
+     * that is already queued and running, and makes the webhook slow enough for
+     * Stripe to retry a delivery that is still in flight (round 11,
+     * `postmark-await-1` / `email-hang-1`).
+     *
+     * Ten seconds is far above the API's normal sub-second reply and far below
+     * anything a person waits through.
+     */
+    sendTimeoutMs: int('POSTMARK_TIMEOUT_MS', 10_000),
   },
   moderation: {
     /** Run the LLM classifier on research params (in addition to the free

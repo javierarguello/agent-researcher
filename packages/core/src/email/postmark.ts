@@ -48,7 +48,13 @@ export async function sendAppEmail(input: SendEmailInput): Promise<void> {
     }
   }
 
+  // Bounded, because `fetch` is not. undici abandons HEADERS after five minutes and
+  // a stalled body never at all, and this call is AWAITED on the buyer's 202 and in
+  // the Stripe webhook — so an unbounded one is a Postmark incident turning into a
+  // buyer watching a spinner over a job that is already running, and into webhook
+  // deliveries slow enough for Stripe to retry them while they are still in flight.
   const res = await fetch(POSTMARK_URL, {
+    signal: AbortSignal.timeout(config.email.sendTimeoutMs),
     method: 'POST',
     headers: {
       Accept: 'application/json',
