@@ -1,9 +1,14 @@
 # Handoff — the entry point
 
-Last updated 2026-08-24. For whoever picks this up without the conversation that
-produced it. (No sha here on purpose: the previous one named `ec66323`, a commit
+Last updated 2026-08-25. For whoever picks this up without the conversation that
+produced it. (No sha here on purpose: an earlier version named `ec66323`, a commit
 that never touched this file, two edits before the one that left it — round 10,
 R10-33. `git log -1 -- docs/plans/handoff.md` is the honest version of that line.)
+
+**Read § State, then § Open. In that order.** § State is what is true right now and it
+was re-measured, not carried forward. § Open leads with four things only Javier can do,
+because this session ended with the oldest of them — two DNS records — still open while
+the product grew from one transactional mail to five.
 
 **This file is deliberately short and points elsewhere.** Its previous version was a
 three-week-old snapshot of rounds 1-3 that still called itself "where this work
@@ -26,14 +31,31 @@ pointers.
 Read the "How to continue" section first. It is rewritten at the end of every round
 and it is the only place that is current by construction.
 
-## Starting cold — the four commands
+## Starting cold — the commands, and two checks no test can do
 
 ```bash
 npm ci                       # a fresh worktree has no node_modules and no vitest
-npm test                     # 1400 passed, 0 failed — READ THE EXIT CODE, not this line
+npm test                     # 1444 passed, 0 failed — READ THE EXIT CODE, not this line
 npm run typecheck            # must be clean; it catches what the suites cannot
 npx tsx docs/plans/m-red-team-reports/k-census-2026-08-19/run.ts   # the §K census
 ```
+
+**Two checks the suite cannot do, because jsdom has no layout engine and no pixels.**
+Both need a running site and a real browser, and both found defects nothing else could
+see:
+
+```bash
+npm run dev -w @agent-researcher/fbizlab              # in one shell, then:
+node apps/fbizlab/scripts/check-hero-contrast.mjs     # or pass a live URL
+```
+
+`check-hero-contrast.mjs` measures the rendered pixels behind every hero text element
+and composites the text's own alpha over them. It exits non-zero under WCAG AA. Run it
+against production after any change to the hero, the photograph or the palette.
+
+And **read the served bytes, not the rendered page**, whenever SEO is in question:
+`curl -s https://floridabizlabs.com/sample | grep -c '<div id="root"></div>'` is the
+difference between what a crawler sees and what you see.
 
 `npm test` chains the five workspaces with `&&`. A red core suite means the other
 four never run, so **count the RED, never the passed** — and when you measure a
@@ -47,59 +69,82 @@ only tier you may use.
 
 ---
 
-## State, 2026-08-24
+## State, 2026-08-25
 
-**`deploy-prod` is `035b026`. `main` has moved past it** — the round-11 fix batch
-(`018dde1`) and the docs commits around it. (A release ref that drifts forward for
-prose is a release ref that no longer says what is running, so it stays put until
-someone releases deliberately.)
+**`main` and `deploy-prod` are both `9a81480`.** Working tree clean. Everything below
+is released and was verified ON THE RUNNING SYSTEM, not read off a workflow.
 
-> **PROD IS RUNNING A PROMISE WE KNOW IS FALSE.** `035b026` includes the start mail
-> whose footer says "if something goes wrong we return your credits, and you'll hear
-> about it here" — in four languages — and the job screen telling a HELD buyer to
-> close the page. Both are wrong and both are fixed in `018dde1`, which is **not
-> released**. Every dossier started on prod right now sends that mail. This is the
-> first thing to deploy, ahead of anything new.
+**Suite, MEASURED by EXIT CODE:** `npm test` → 0, `npm run typecheck` → 0,
+**1444 passed** (870 core + 258 api + 24 worker + 267 fbizlab + 25 admin), 23 skipped.
+Read the exit code, not the `Tests N passed` line.
 
-Released 2026-08-24, seven commits
-including the Turnstile site-key change (`9fc91fc` — so PROD now builds the widget key
-from `FBIZLAB_PROD_TURNSTILE_SITE_KEY`, and the build refuses a captcha-less bundle;
-the variable is set, which is why the run went green rather than failing loudly) and
-P-10/P-11 (`6f272b5`).
+**Prod is live and sellable**, and 2026-08-24/25 was the largest day of change since
+the launch: 20 commits, four of which fixed things that were actively wrong in front
+of paying customers. What follows is grouped by what it cost, not by when it happened.
 
-**Verified on the running system, not on the workflow.** Cloud Run created and routed
-100% of traffic to new revisions — `agent-researcher-prod-api-00005-vw2` and
-`agent-researcher-prod-worker-00006-mwk`. `/health` 200; a CORS preflight from
-`https://floridabizlabs.com` answers 204 with the matching allow-origin while an
-unlisted origin gets no header; `GET /plans?appId=fbizlab` still returns 20/80/160
-credits; `floridabizlabs.com/{,sample,verify}` 200 and `www` 301. The prod bundle
-`/assets/index-BLS43sIi.js` really carries the new sentence, in English and Spanish —
-which is what proves the SPA half shipped rather than that a workflow said so.
+### Two promises prod was making and not keeping — both fixed and RELEASED
 
-**NOT verified on prod, and worth knowing:** neither new mail has been exercised
-against the live system. Doing so costs money — a real job for the start mail, a real
-purchase for the receipt — so both are pinned by the suite (13 mutations, all red) and
-by nothing on prod. The first real buyer is the first real test. That is also the
-moment the DMARC problem below stops being theoretical.
+Round 11 found them; they had been live since the 2026-08-24 morning release.
 
-**Suite, MEASURED by EXIT CODE with P-10/P-11 in the tree:** `npm test` → 0,
-`npm run typecheck` → 0, **1400 passed** (863 core + 255 api + 24 worker + 233 fbizlab
-+ 25 admin). Read the exit code, not the `Tests N passed` line.
+1. **The dossier start mail promised refunds and failure notices.** Its footer said
+   "if something goes wrong we return your credits, and you'll hear about it here", in
+   four languages. Neither half was true: the only job mail fires on completion
+   (`worker/src/index.ts`, guarded by `result.status === 'completed'`), and refunds are
+   a human decision by design (`run-job.ts`, `credits/store.ts` both say so in
+   comments). A buyer whose job held or failed did exactly what the mail said — closed
+   everything — and then waited for a message that was never coming.
+2. **The job screen told a HELD buyer to close the page**, and a test OF OURS pinned it
+   there. A hold is an admin deciding, and one of the two decisions is REJECT, which
+   sends nothing. `held` is the one live state whose likeliest end arrives nowhere but
+   that page. The test asserting it read "a held job still gets it — it is live, and
+   the wait is longer, not shorter": every clause true, and beside the point. Being
+   live is not the test; having a mail waiting at the end of it is.
 
-**P-10 and P-11 are in (`6f272b5`)** — the start mail, the "you can relax and close
-this page" line, and the credit-purchase receipt. See
-`product-backlog.md` for both, including the one test that measured **0 red** on its
-first revert-verify and was rewritten. Thirteen mutations, all red. **This is new
-buyer-facing mail and a new write inside the Stripe webhook, so it belongs in round
-11's scope, not below it.**
+Fixed in `018dde1` with three more round-11 findings (see § Round 11 below).
 
-**PROD IS LIVE AND SELLABLE.** Released 2026-08-24 by `git push origin main:deploy-prod`,
-which fires BOTH prod workflows (SPA and API+worker) behind `verify.yml`. Verified on
-the running system, not on the workflow: `/health` 200, CORS 204 for
-`https://floridabizlabs.com` and no header for an unlisted origin, `GET /plans` with
-the three live packs, `floridabizlabs.com/{,sample,verify}` 200. **A real buyer account
-was registered and verified on prod that day**, which is what proves Turnstile and the
-Postmark mail actually work — see § Security for what that leaves open about email.
+### The SEO defect, which is the largest thing this repo has shipped past
+
+An audit of the live site found that **every canonical, hreflang, `og:url`, `og:image`
+and sitemap entry named `https://fbizlab.web.app` — a host that returns 404.** The
+string `floridabizlabs` appeared ZERO times in the app's own source. A canonical is an
+instruction to prefer another URL, and the URL being preferred did not exist.
+
+On top of that, **seven public URLs served byte-identical homepage HTML**
+(`md5(/) == md5(/sample) == md5(/privacy) == md5(/any-garbage-path)`), so the site's
+entire crawlable surface was one page — and `/sample`, 34.5 kB of long-form copy and
+the only page with enough substance to rank for anything but the brand name,
+contributed nothing.
+
+All of it fixed and live (`55c4c97`, `10527e7`, `a51e966`, `9a81480`). Full findings,
+including what was measured as SOUND and what is deliberately NOT being done, in
+`product-backlog.md` § P-14. The origin is now `SITE_URL` with **no fallback**, and the
+build asserts on its own output — a wrong default is exactly what let this survive a
+launch and two releases, because it looked like a working value.
+
+### Everything else that shipped
+
+| | what | where |
+|---|---|---|
+| P-10 | the job screen says the buyer may close it, and a start mail goes out with a link back | `6f272b5` |
+| P-11 | a credit purchase leaves a receipt — ours, naming the CREDITS and the new balance, riding the grant's own idempotency | `6f272b5` |
+| P-6 | the packs give **1.5× the credits** — Scout 20→30, Investor 80→120, Syndicate 160→240, prices unchanged. $/dossier fell $16.12 → $9.92 | dev AND prod catalogs, `ca85f6f` |
+| P-13 | **anonymous** traffic counting, prod only — GA4 in cookieless consent mode | `f8772aa`, `1becfa0` |
+| — | the hero photograph, the dashboard's cut-off primary action, and the credits FAQ that claimed 2–8 minutes against measured 17–20 | `37af52b`, `1346b31`, `b4d2664` |
+
+### Verified live, 2026-08-25
+
+`/health` 200 · CORS 204 for `floridabizlabs.com` and no header for an unlisted origin
+· `/plans` returns 30/120/240 credits · `/`, `/es`, `/sample`, `/sitemap.xml`,
+`/robots.txt` all 200 · canonicals on `floridabizlabs.com` · the ten sitemap URLs all
+200 · `$29/$69/$129` and three `.card plan` in the SERVED HTML · `Organization` and
+`Product`/`Offer` JSON-LD present, every marked price confirmed visible on the page ·
+zero cookies and `gcs=G100` on every analytics ping · hero contrast clears WCAG AA at
+seven widths.
+
+**Google Search Console is connected**, verified by DNS TXT (durable — survives every
+deploy, unlike an HTML tag a build would remove). The sitemap reads **Correcto**, 10
+pages discovered.
+
 
 ### What shipped 2026-08-22/24, and what it is owed
 
@@ -119,11 +164,13 @@ figures. In short:
 | — | verifying an email now signs the person in instead of sending them to retype the password they just proved | `VerifyEmail.tsx` |
 | — | the Turnstile site key is per-environment and the build REFUSES to produce a captcha-less bundle | `vite.config.ts`, both deploy workflows |
 
-**None of it has been adversarially reviewed**, and neither has the 2026-08-20/21 batch
-below it. Two of these are new public surface (`/sample`) or auth behaviour (verify
+**Round 11 has now reviewed all of it** (2026-08-24) — and reviewed it THINLY, which is
+not the same as cleared. Eight reviewers over 141 files by subsystem, 47 findings, 5
+fixed; 25 of the survivors were never reproduced. See § Open → round 11 for what that
+count is worth and what is still owed. Two of these are new public surface (`/sample`) or auth behaviour (verify
 signs in), which is the class this repo's record says to weigh heaviest.
 
-### The batch before it, also unreviewed (2026-08-20/21, `2a01ada..7a638c7`)
+### The batch before it, reviewed by round 11 in the same thin pass (2026-08-20/21, `2a01ada..7a638c7`)
 
 Rounds 1-10 are run and CLOSED (findings and stamps in `deep-review.md`). What came
 after them is new behaviour, most of it touching money or prompts: the dispatch
@@ -136,16 +183,22 @@ prompt-echo redaction (`4950c8e`, `5fa80a7`), and link defusing + the catalog en
 
 ## Going to prod — what is actually needed
 
-**PROD IS RELEASED.** `main` was pushed to `deploy-prod` on 2026-08-24 (`297269a`),
-which fires BOTH prod workflows; `Deploy fbizlab SPA (prod)` and `Deploy` (API +
-worker) both went green behind `verify.yml`. Measured on the live site and API right
-after, not read off the workflow: `floridabizlabs.com/` and `/sample` 200 with
-`no-cache`, `/sample-dossier.json` 43,317 bytes (the preview — 18,034 before, which
-was `index.html` coming back from the rewrite because the file did not exist), the
-prod bundle references it, `/health` 200, a CORS preflight from
-`https://floridabizlabs.com` 204 with the matching allow-origin while an unlisted
-origin gets no header, and `GET /plans?appId=fbizlab` returns the three live packs
-(20/80/160 credits).
+**PROD IS RELEASED and has been re-released many times since.** Current state is in
+§ State above, which is the section to trust; this one is the RUNBOOK for standing a
+new environment up, kept because the next one repeats these steps in this order and
+several of them cannot be brought forward.
+
+**The release command, and the `--ref` that is load-bearing:**
+
+```bash
+git push origin main:deploy-prod                                 # fires BOTH prod workflows
+gh workflow run "Deploy fbizlab SPA (prod)" --ref deploy-prod    # a re-bake, explicitly
+```
+
+A `workflow_dispatch` WITHOUT `--ref` runs on the default branch and publishes whatever
+`main` happens to be — `deploy-fbizlab-prod.yml` only forces `deploy-prod` when the
+event is `schedule`. A re-bake is needed whenever the Stripe catalog changes, because
+the landing's prices come from `plans.json`, baked at BUILD time.
 
 What is released is the 14 commits below `d6ceb3d`, which include the field findings
 F-1…F-10 in `deep-review.md` — the enricher guard (every report prod produces), both
@@ -235,9 +288,16 @@ the opposite.
 
 The build bakes the catalog into `dist/plans.json` and **fails on purpose** if any of
 the four languages comes back empty. Then verify
-`https://floridabizlabs.com/plans.json` carries 20/80/160 credits and 2/10/20
-essential, and run the end-to-end: register → verification email → real purchase →
-job → PDF.
+`https://floridabizlabs.com/plans.json` agrees with the LIVE Stripe catalog — which is
+the authority, not this file: `curl "…/plans?appId=fbizlab"` is the check, and as of
+2026-08-25 it is 30/120/240 credits. Then run the end-to-end: register → verification
+email → real purchase → job → PDF.
+
+**And re-read the SERVED html, not just `plans.json`.** Since 2026-08-25 the prices are
+baked into the landing markup and mirrored in `Product`/`Offer` JSON-LD; a catalog edit
+that reaches `plans.json` but not the HTML means the rebuild did not run, and the
+structured data is then claiming a price the page does not show — which is the one
+thing Google issues manual actions over.
 
 **A config gap this release did not close, and `9fc91fc` did** — this paragraph said
 the opposite for a day, which is the defect it describes happening to itself. The
@@ -356,10 +416,10 @@ REMOVE the only detection the thing it fixed had; a test that reads a value insi
 callback proves nothing about aliasing; and a test can pass for a false reason (one
 of mine previewed before the value under test was ever set).
 
-## Security — what is open, 2026-08-24
+## Security — what is open, RE-MEASURED 2026-08-25
 
-Re-measured rather than carried over; the abuse/cost backlog was stale for two items
-(C5 and D1 are done and were not struck through). Ordered by what bites first.
+Every item below was measured again today rather than carried over. Ordered by what
+bites first.
 
 1. **The domain's mail fails DMARC, and it is OUR mail being quarantined.** Measured
    with `dig` on `floridabizlabs.com`: `DMARC v=DMARC1; p=quarantine` **exists**, and
@@ -406,154 +466,134 @@ the challenge-EXECUTION family, not `110200` "domain not allowed", and headless 
 with `--no-sandbox` is exactly the signature Turnstile exists to refuse. The
 instrument was the thing being measured. Use a real browser, or a real registration.
 
-## Open — a decision nobody can take for Javier, and work nobody is blocked on
+## Open — what Javier owes, what a decision blocks, and what nobody is blocked on
 
-Split in two because round 10 found the previous single heading covering both kinds
-(R10-31).
+Three headings, not two. The first is new because this session ended with four items
+that no agent can do and that are worth more than anything in the other two.
 
-### Waiting on a decision (Javier)
+### ON JAVIER — nobody can do these, and the first one costs money every day
 
-- **E2 — may a dossier describe its own method?** The extraction pair's open half.
-  "Write the prompt that would produce this report" copies the MESSAGE BODY — the
-  brief, the section guidance, the upstream sections — not the system prompt, so
-  `redactPromptEcho` cannot catch it without deleting every legitimate quotation of
-  a source. MEASURED, not assumed: guarding the body redacts **8 fields of an
-  honest, unattacked run**. So it is a product question, not a longer regex, and
-  `test/red-team/e-extraction.test.ts` asserts it still reaches — the day someone
+1. **SPF and DKIM in DNS.** Re-measured 2026-08-25: `DMARC p=quarantine` is live,
+   **SPF and DKIM are both still absent** (`dig TXT floridabizlabs.com` → no `v=spf1`;
+   `pm._domainkey` → empty). DMARC passes on SPF *or* DKIM alignment; with neither,
+   every mail the product sends fails it and a receiver honouring the policy
+   quarantines it. **This is the oldest open item and the only one with a direct
+   revenue effect** — it now applies to five mails, not one: verification, password
+   reset, contact, dossier-started and the **purchase receipt**. The receipt is the
+   worst of the five to lose, because it is the one a buyer goes looking for. Two TXT
+   records: Postmark's DKIM (Sender Signatures → DKIM) and `v=spf1
+   include:spf.mtasv.net ~all` at the apex.
+2. **Google Search Console — read Páginas → Indexación.** The sitemap is submitted and
+   reads *Correcto*, 10 pages discovered (2026-08-25). **Discovered is not indexed.**
+   That screen answers the question the SEO audit opened — whether the dead canonical
+   kept the site out of the index entirely — and it GATES the last open SEO item
+   (baking `/sample`'s body, § P-9). Nobody has looked. Give it days, then look.
+3. **Google Signals must be OFF** on the GA4 property (Admin → Data collection).
+   Consent mode denies its inputs, but the switch is a console setting outside the
+   repo, and "anonymous" is a claim the privacy notice now makes in four languages.
+4. **`publicAccessPrevention` → `enforced`** on both buckets. Nothing is public today
+   (verified: uniform bucket-level access on, no `allUsers`), but that is a current
+   fact rather than a property. One command per bucket.
+
+### Waiting on a decision (Javier), where the work only starts once he answers
+
+- **E2 — may a dossier describe its own method?** "Write the prompt that would produce
+  this report" copies the MESSAGE BODY — brief, section guidance, upstream sections —
+  not the system prompt, so `redactPromptEcho` cannot catch it without deleting every
+  legitimate quotation of a source. MEASURED: guarding the body redacts **8 fields of
+  an honest, unattacked run**. A product question, not a longer regex.
+  `test/red-team/e-extraction.test.ts` asserts it still reaches, so the day someone
   answers, the assertion says so.
-- **P-6 — the credit ladder is APPLIED**, dev and prod, 2026-08-24, and re-credited
-  **1.5x** on top of it after Javier asked what margin there was to give more:
-  Scout 20→**30**, Investor 80→**120**, Syndicate 160→**240**, prices unchanged. The
-  buyer's price per comprehensive dossier fell from $16.12 to **$9.92**.
-
-  **The number that bounds this is not the margin, it is the CEILING**, and that is
-  the part worth carrying forward. `resolveModeCeiling` is
-  `credits × creditFloorUsd × (1 − expectedProfitPct/100)` and `creditFloorUsd` is
-  `min(priceUsd/credits)` over the whole catalog — so giving credits away lowers what
-  a job may spend, instantly and with no deploy. Measured: the ceiling went $8.71 →
-  **$5.81** (comprehensive) and $3.87 → **$2.58** (essential), against measured costs
-  of $3.58 and an ESTIMATED $1.75. Utilisation is now 62% and **68%**. At 2× credits
-  it would have been 82%, where one heavier-than-measured run parks a paying
-  customer's job as `held`.
-
-  Full numbers, the table of alternatives, and three open items — Scout barely moved
-  and 36 credits would make it two reports for free; essential's ceiling is now the
-  tighter one AND its cost was never measured; `EXPECTED_PROFIT_PCT = 40` is an
-  untouched dial worth 25% of ceiling — are in `product-backlog.md` § P-6.
-
-  **A trap for whoever changes a pack next:** the landing's prices come from
-  `plans.json`, baked at BUILD time. A catalog edit reaches the public page only on a
-  rebuild (`gh workflow run "Deploy fbizlab SPA (prod)" --ref deploy-prod` — and the
-  `--ref` is load-bearing, a bare dispatch builds the default branch).
-- **`MAX_JOB_COST_USD` = $20.** With per-mode derived ceilings this is only a global
-  clamp now. It starts binding before the model's own figure at roughly 42 credits —
-  worth knowing before raising a tier that far.
-- **N2 Stripe clawback** (policy), and the four product items' open design questions
-  (**P-1**, **P-2**, **P-4**, **P-5** in `product-backlog.md`).
+- **E3's unblock script has still not been run**, and its approval no longer covers the
+  case: approved 2026-07-31 *"because there is no production data yet"*. There is now.
+  Anyone who accumulated four pre-screen rejections is blocked, including from buying
+  credits, and nothing identifies them. Dry run (`npm run unblock:moderation`), read
+  it, then `-- --confirm`.
+- **N2 Stripe clawback** (policy), and the open design questions inside **P-1**,
+  **P-2**, **P-4**, **P-5**, **P-12** in `product-backlog.md`.
+- **`MAX_JOB_COST_USD` = $20** is now only a global clamp; it starts binding before the
+  per-mode ceiling at roughly 42 credits.
+- **Scout still buys ONE comprehensive dossier for $29.** 1.5× moved it 20→30 credits
+  and its headline only went from "2 essential" to "3 essential". At **36** it buys
+  **two**, and at $0.8056/cr it stays far above the new $0.5375 floor — so it would
+  cost nothing in ceiling. Raised, unanswered.
 
 ### Open work, nobody blocked
 
-- **ROUND 11 RAN, and it is not closed** — a first pass, 2026-08-24, all of it in
-  `deep-review.md` § "Round 11". Eight subsystem reviewers over `20f361b..HEAD` (68
-  commits, 141 non-docs files, nothing uncovered), each followed by one adversary told
-  to refute by default. **47 findings: 40 survived, 7 killed, 5 fixed in `018dde1`.**
+- **ROUND 11 IS NOT CLOSED, and this is the biggest item on the list.** It ran
+  2026-08-24 (`deep-review.md` § "Round 11"): eight subsystem reviewers over
+  `20f361b..HEAD`, 141 non-docs files, each followed by one adversary. **47 findings,
+  40 survived, 7 killed, 5 fixed in `018dde1`.**
 
-  **Read the survivor count with a discount, and this is the whole point of the entry.**
-  A 15% kill rate is LOW for a round instructed to default to refuted; the adversaries
-  judged a slice at a time and a batch verdict is a lenient one. **15 survivors are
-  reproduced, 25 are only reasoned** — the reasoned ones are leads, not facts, and each
-  still owes the reproduction its finder never did. Do not fix from one.
+  **Read that 40 with the discount the section leads with.** A 15% kill rate is LOW for
+  a round instructed to default to refuted, and **only 15 of the survivors are
+  reproduced — 25 are reasoned**. Those 25 are leads, not facts. Do not fix from one.
 
-  **What is still owed.** Four reproduced P1 remain open: `echo-book-1` (the prompt-echo
-  incident counter is dead code, so the guard `018dde1` just fixed runs with its own
-  reporting off), `enricher-swap-1` (a SWAP past the F-1 guard delivers an invented
-  listing and loses a paid-for one — the exact pair F-1 was rewritten to prevent),
-  `seed-1` (seeds DEV while printing that it seeds prod), `confirm-sentence-1` (R10-6's
-  fix is dead code for the only shipped mode). Then reproduce-or-kill the 25 reasoned
-  ones. Then **re-run `prompt` and `spa` properly**: both are large slices that came back
-  thin, and `prompt` covers `redactPromptEcho` and the moderation stack — 26 files, three
-  findings, which is a thin pass and not a clean bill.
+  What is owed, in order: the **four remaining reproduced P1** (`echo-book-1` — the
+  prompt-echo incident counter is dead code, so the guard `018dde1` just fixed runs
+  with its own reporting off; `enricher-swap-1` — a SWAP past the F-1 guard delivers an
+  invented listing AND loses a paid-for one, the exact pair F-1 was rewritten to
+  prevent; `seed-1` — seeds DEV while printing that it seeds prod;
+  `confirm-sentence-1` — R10-6's fix is dead code for the only shipped mode); then
+  reproduce-or-kill the 25 reasoned ones; then **re-run `prompt` and `spa`**, which are
+  large slices that came back thin — `prompt` covers `redactPromptEcho` and the whole
+  moderation stack in 26 files and returned three findings.
 
-  **The method correction this round paid for, for whoever runs the next one:** one
-  adversary per SLICE is too weak. By the tenth finding it has already agreed nine times,
-  and agreeing is cheaper than reproducing. Spend the budget on **one refuter per
-  finding**, even at the cost of fewer finders. The other three rules stand and were
-  given to every agent: count red from a runner that does not stop at the first failing
-  workspace, **a corpus proves a shape never a class**, and **read the EXIT CODE, not the
-  summary line**.
-- **M-E2** — see the decision above; the work only starts once it is answered.
-- **Alerting on the moderation fail-open.** `b4ee573` made it VISIBLE on the admin
-  dashboard; nobody is PAGED. Needs a log-based metric and an alert policy in
-  `sinuous-canto-497518-h7` — Javier's credentials.
-- **`recordPromptEcho` has a counter and no surface.** A page that tries to extract
-  the prompt is counted per app and per day and nothing renders it. The admin health
-  strip is the obvious home.
-- **The 15-word echo threshold is a bet, and it says so.** The only real report
-  available to measure the legitimate side against ran in SPANISH against English
-  prompts, so its "zero shared runs" proves almost nothing. Re-measure the first time
-  a real English job exists.
-- **C5's soft deadline is unmeasured against a REAL slow job.** 1500s is derived from
-  two real runs at 1241s and 1309s; nothing has yet been observed hitting it.
-- **F-3 — a query cap must clear ≥512 characters**, not the 300 the test used to
-  assume. The longest honest query over five real runs is 256, and it is the
-  deal-scout's `site:` chain over the eight marketplaces the TEMPLATE declares — so
-  the honest maximum moves whenever a site is added. Nothing caps query length today.
-- **F-5 — the deep-dive refiner rewrites a listing's `sourceUrl`**, and not always to
-  a listing: in `out/local-52835003` it replaced four of six, two with a different
-  host and one with a SEARCH page. The template tells the SCOUT to cite the listing's
-  own detail page and says nothing to the refiner, whose URLs are the ones that ship.
-  A buyer gets a "source ↗" beside figures that does not open the listing they came
-  from.
-- **F-6 — the consecutive-plan breaker floor moved from 3 to 4.** The July pair said
-  no honest agent ever emitted 3 plans in a row; the August runs do, in agents that go
-  on to spend turns. Free-call floor stays ≥6. The zero-turn plan-loops that motivated
-  M-B2 do not appear in any August run — first production evidence that they are gone.
-- **The two GCS hardening items and the mail records** — see § Security, 1-3.
-- **P-14 — the SEO audit, and the defect it found is the largest single thing this
-  repo has shipped past.** Every canonical, hreflang, `og:url`, `og:image` and sitemap
-  entry on the live site named `https://fbizlab.web.app` — **a host that returns 404**.
-  A canonical is an instruction to prefer another URL, and the URL being preferred did
-  not exist; `floridabizlabs` appeared ZERO times in the app's own source. On top of
-  that, seven public URLs served byte-identical homepage HTML
-  (`md5(/) == md5(/sample) == md5(/privacy)`), so the crawlable surface of the site was
-  one page. Fixed in `55c4c97` and `10527e7`, live and verified on
-  `floridabizlabs.com`: ten sitemap URLs all 200, per-route canonicals, language
-  anchors in the served HTML, `X-Robots-Tag` on the token-bearing routes, dev
-  `Disallow: /`.
-  **The next step is not code: check Google Search Console.** Nobody has, and it is the
-  only way to know whether this kept the site out of the index entirely — and therefore
-  whether the remaining items (baking `/sample`'s body, `Product` JSON-LD) are urgent
-  or premature. Full findings, including what was measured as SOUND and what is
-  deliberately not being done, in `product-backlog.md` § P-14.
-- **P-13 — anonymous traffic counting is IN** (prod only, `f8772aa`), and the part
-  that is still open is the part that was asked about. GA4 in **cookieless consent
-  mode** (`setConsent` with `analytics_storage: 'denied'`, before `getAnalytics`):
-  page views, referrer, geo and device all work; **distinct users do not** — GA4 only
-  models them and needs traffic thresholds this site is nowhere near. Javier was told
-  and kept it.
-  Because it is cookieless the privacy notice's "we don't track you across the web"
-  stayed TRUE and a disclosure was ADDED in four languages instead of a promise being
-  deleted — and no consent banner is needed. `legal-parity.test.tsx` is new: the legal
-  pages had no language-parity guard at all, which is how a four-language disclosure
-  could have shipped in one.
-  **If distinct users are ever wanted**, the cheap path is counting distinct IPs from
-  Hosting logs (no device, no consent, no copy change); the expensive one is granting
-  `analytics_storage`, which costs a cookie, a rewritten privacy paragraph and a real
-  consent banner for fr/pt. Both in `product-backlog.md` § P-13.
-  **Google Signals must stay OFF on the GA4 property** — consent mode denies its
-  inputs but the switch is in the console, not in this repo.
-- **P-12** — the progress card shows ONE step and never says how far along the run is
-  (`product-backlog.md`, asked for 2026-08-24). The ordered step list is already on the
-  client; what is missing is honest position, and that is not a display problem:
-  `buildSteps` calls `planWaves(t).flat()`, so agents that run in PARALLEL are emitted
-  one after another and "step 5 of 11" would read as sequential progress for
-  concurrent work. Nothing records that a step finished either. Gated on P-10 landing
-  first — if the buyer takes the permission to close the tab, nobody is reading this
-  card.
-- E3's unblock script (needs credentials for the dry run), M-A2 (FENCE_RE
-  near-misses, gated on frontier-tier evidence).
+  **The method correction this round paid for:** one adversary per SLICE is too weak.
+  By the tenth finding it has already agreed nine times, and agreeing is cheaper than
+  reproducing. Spend the budget on **one refuter per finding**, even at the cost of
+  fewer finders.
+
+- **Bake `/sample`'s body** — `product-backlog.md` § P-9, confirmed and half fixed. Its
+  HEAD is correct now (own canonical, own title), so a JS-executing crawler indexes it
+  properly; the 34.5 kB of body copy is still absent from the served bytes. Doing it
+  means a static renderer for the whole report shape, which is `ReportViewer` in
+  another language. **Gated on ON-JAVIER item 2** — if the site is not in the index at
+  all, this buys nothing yet.
+- **Re-encode the hero photograph** to WebP/AVIF: 299,337 B baseline JPEG at 1457×720,
+  no `srcset`, and it is the LCP element on desktop. One command, ~100 kB.
+- **P-12** — the progress card shows ONE step and never says how far along a run is.
+  The obstacle is not display: `buildSteps` calls `planWaves(t).flat()`, so agents that
+  run in PARALLEL are emitted one after another and "step 5 of 11" would read as
+  sequential progress for concurrent work. Nothing records that a step FINISHED either.
+- **Alerting on the moderation fail-open.** `b4ee573` made it visible on the admin
+  dashboard; nobody is PAGED. Needs a log-based metric and an alert policy.
+- **`recordPromptEcho` has a counter and no surface.** The admin health strip is the
+  obvious home.
+- **F-5** — the deep-dive refiner rewrites a listing's `sourceUrl`, and not always to a
+  listing: in `out/local-52835003` it replaced four of six, two with a different host
+  and one with a SEARCH page. A buyer gets "source ↗" beside figures that does not open
+  the listing they came from.
+- **F-3** — a query cap must clear ≥512 characters, not the 300 the test assumed.
+  **F-6** — the consecutive-plan breaker floor moved from 3 to 4.
+- **The 15-word echo threshold is a bet**, and the only real report available to
+  measure the legitimate side against ran in SPANISH against English prompts.
+  Re-measure the first time a real English job exists.
+- **C5's soft deadline is unmeasured against a REAL slow job.** 1500s derived from runs
+  at 1241s and 1309s; nothing has been observed hitting it.
+- **`signRead` / `signJobFiles` are exported from core and called by nobody** — the
+  mechanism the authenticated proxy replaced. Deleting them is a small commit.
+- **Never set in any environment:** `SEARCH_COST_PER_CALL_USD_*`,
+  `BRAVE_COST_PER_CALL_USD_*`, `MAX_JOB_COST_USD_*` (repo *variables*). They fall back
+  to code defaults, and the **Brave default is $0** — a paid Brave key without
+  `BRAVE_COST_PER_CALL_USD_PROD` books every search at zero.
+- **M-A2** (FENCE_RE near-misses, gated on frontier-tier evidence).
 
 ### Closed since the last handoff
+
+**2026-08-24/25 — twenty commits.** Everything in § State above, plus the five round-11
+fixes. Four of them were things actively wrong in front of paying customers, and
+**none of the four was found by review**: two by round 11, one by screenshotting a
+page at 375px, and one by loading production in a real browser. That is the pattern
+worth carrying: this repo's reviews are strong, and the defects that reached customers
+were still found by USING the thing.
+
+The four:
+- the start mail promising refunds nothing sends (round 11)
+- the `held` job screen sending a buyer away (round 11, and a test of ours pinned it)
+- the dashboard's primary action sliced 56px off a 375px phone (screenshot)
+- every landing page view counted TWICE, because gtag fires its own `page_view`
+  alongside the route effect (real browser, against production)
 
 **The 2026-08-21/22 launch batch** — five defects found by DOING the release rather
 than by reviewing it, which is worth noting on a repo that reviews everything:
