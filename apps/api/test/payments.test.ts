@@ -116,6 +116,36 @@ describe('payments — credits load exactly, idempotently, and safely', () => {
     expect(await getBalance('fbizlab', 'u@x.com')).toBe(15);
   });
 
+  it('answers 200 on a paid session whose credits metadata is unusable, instead of 500ing forever', async () => {
+    // Round 11, `webhook-500-loop-1`. `const credits = Number(m.credits)` went to
+    // `recordPurchase` unchecked, and `applyEntry` throws on anything that is not a
+    // positive integer — with no catch, so the endpoint answered 500.
+    //
+    // The throw happens BEFORE the ledger entry is written, so the event never
+    // becomes an idempotent skip: every Stripe redelivery 500s again, for days. The
+    // comment fifteen lines below the defect warns about exactly this outcome ("a
+    // 500 that Stripe retries for days and that can get the endpoint disabled,
+    // taking every other customer's credits with it") — it just guarded the block
+    // AFTER the grant, and this fails before it.
+    //
+    // Reachable the same way N11's unattributed session is, and the guard there
+    // names the route: a Payment Link or product created in the Stripe dashboard,
+    // with hand-typed metadata.
+    // `'0'` is already falsy, so it reached the unattributed branch before this fix
+    // and is here to keep it there. The other three are the reachable ones.
+    for (const [i, bad] of ['12.5', 'ten', '-5', '0'].entries()) {
+      const r = await webhook(purchaseEvent(`pi_bad_${i}`, bad as never));
+      expect(r.statusCode, bad).toBe(200);
+    }
+    // Nothing was credited — this is not a silent grant of NaN credits either.
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(0);
+
+    // …and an honest session still works, so the guard is not just refusing
+    // everything.
+    expect((await webhook(purchaseEvent('pi_ok', 15))).statusCode).toBe(200);
+    expect(await getBalance('fbizlab', 'u@x.com')).toBe(15);
+  });
+
   it('does NOT double-credit on webhook retries (idempotent by paymentId)', async () => {
     await webhook(purchaseEvent('pi_1', 15));
     await webhook(purchaseEvent('pi_1', 15)); // Stripe retries the same event

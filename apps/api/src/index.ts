@@ -2200,9 +2200,25 @@ app.post(
         );
         return reply.code(200).send({ received: true });
       }
-      if (m.appId && m.userId && m.credits) {
+      // A positive INTEGER, not merely a truthy string. `applyEntry` refuses
+      // anything else and throws, and this call had no catch, so a paid session
+      // carrying `credits: '12.5'` or `'ten'` answered 500 (round 11,
+      // `webhook-500-loop-1`).
+      //
+      // The throw lands BEFORE the ledger entry is written, so the event never
+      // becomes an idempotent skip and every Stripe redelivery 500s again — for
+      // days. Which is the outcome the long comment below is written to prevent; it
+      // just guards the block AFTER the grant, and this failed before reaching it.
+      //
+      // Reachable exactly the way the unattributed branch is (N11), and that branch
+      // names the route: a Payment Link or product created in the Stripe dashboard,
+      // carrying hand-typed metadata. So a malformed value goes THERE — logged as
+      // an ERROR a person has to look at, answered 200, because retrying produces
+      // the same unusable session forever.
+      const credits = Number(m.credits);
+      const creditsUsable = Number.isInteger(credits) && credits > 0;
+      if (m.appId && m.userId && creditsUsable) {
         const amountUsd = (s.amount_total ?? 0) / 100;
-        const credits = Number(m.credits);
         const res = await recordPurchase({
           appId: m.appId,
           userId: m.userId,
@@ -2267,7 +2283,9 @@ app.post(
             amountUsd: (s.amount_total ?? 0) / 100,
             plan: m.planId,
             credits: m.credits,
-            message: 'a paid session carried no appId/userId/credits metadata; nothing was credited',
+            message: m.appId && m.userId && m.credits
+              ? `a paid session carried an unusable credits value (${JSON.stringify(m.credits)}); nothing was credited`
+              : 'a paid session carried no appId/userId/credits metadata; nothing was credited',
           },
         );
       }
