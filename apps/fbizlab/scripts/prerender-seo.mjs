@@ -244,7 +244,9 @@ function staticRoute(base, route, SITE) {
   html = rep(html, metaRe('property', 'og:description'), `<meta property="og:description" content="${route.description}" />`);
   html = rep(html, metaRe('name', 'twitter:title'), `<meta name="twitter:title" content="${route.title}" />`);
   html = rep(html, metaRe('name', 'twitter:description'), `<meta name="twitter:description" content="${route.description}" />`);
-  // The landing's FAQ + WebApplication JSON-LD describe the landing, not these pages.
+  // The landing's FAQ describes the landing, not these pages — stripped. The
+  // Organization block is NOT stripped: it identifies who publishes the site, which
+  // is true on every page and is the thing that ties all four hosts to one entity.
   html = rep(html, ldRe('ld-faq'), '$1$2');
   return html;
 }

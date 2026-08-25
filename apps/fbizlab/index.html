@@ -47,6 +47,31 @@
     <meta name="twitter:image" content="__SITE__/icons/og.png" />
 
     <!-- Structured data: the product -->
+    <!-- Organization: the entity behind the site, tied to the canonical domain.
+         Not decoration — it is what lets Google treat floridabizlabs.com, its www
+         redirect and the two Firebase hosts that canonicalize into it as ONE entity
+         rather than several. `@id` is the stable identifier the other blocks and any
+         future Product/Offer markup point at. Deliberately minimal: name, url, logo
+         and the same description the site actually shows. No `sameAs` — there are no
+         social profiles to claim — and no `address`, `telephone` or `founder`, which
+         would be markup for facts this page does not state. -->
+    <script type="application/ld+json" id="ld-org">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "__SITE__/#organization",
+      "name": "Florida Biz Labs",
+      "url": "__SITE__/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "__SITE__/icons/icon-512.png",
+        "width": 512,
+        "height": 512
+      },
+      "description": "AI-assisted research on Florida businesses for sale — organizing available listing information, comparing key details and highlighting questions worth investigating."
+    }
+    </script>
+
     <script type="application/ld+json" id="ld-app">
     {
       "@context": "https://schema.org",
@@ -56,6 +81,7 @@
       "operatingSystem": "Web",
       "description": "A specialized research digest that helps you explore Florida businesses for sale at scale — organizing available listing information, comparing key details and highlighting questions worth investigating. Not investment advice.",
       "url": "__SITE__/",
+      "publisher": { "@id": "__SITE__/#organization" },
       "inLanguage": ["en", "es", "fr", "pt"]
     }
     </script>

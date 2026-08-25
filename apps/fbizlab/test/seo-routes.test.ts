@@ -10,6 +10,7 @@
  * `https://fbizlab.web.app`, a host that 404s, for a launch and two releases,
  * because nothing compared what was emitted against anything true.
  */
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { STATIC_ROUTES } from '../scripts/prerender-seo.mjs';
 import { CONTENT } from '../src/pages/Legal';
@@ -61,5 +62,51 @@ describe('the prerendered public routes', () => {
       expect(r.path, r.path).not.toMatch(/[?#]|\/$/);
       expect(r.file, r.file).toBe(`${r.path.slice(1)}.html`);
     }
+  });
+});
+
+/**
+ * The structured data the build emits must be valid JSON and must name the canonical
+ * origin — not a placeholder, and not the dead host that made this whole audit
+ * necessary. `index.html` is the source; the prerender substitutes `__SITE__`.
+ */
+describe('the JSON-LD in the source head', () => {
+  // `npm test` runs vitest with `--root apps/fbizlab` from the REPO root, so the
+  // process cwd is the repo root; running vitest inside the workspace makes it the
+  // workspace. Resolve for both rather than depend on how it was invoked.
+  const html = readFileSync(existsSync('index.html') ? 'index.html' : 'apps/fbizlab/index.html', 'utf8');
+  const blocks = [...html.matchAll(/<script type="application\/ld\+json" id="(ld-[a-z]+)">([\s\S]*?)<\/script>/g)];
+
+  it('parses as JSON once the origin token is substituted', () => {
+    expect(blocks.length, 'no JSON-LD found at all').toBeGreaterThanOrEqual(2);
+    for (const [, id, body] of blocks) {
+      const filled = body.split('__SITE__').join('https://example.test');
+      expect(() => JSON.parse(filled), `${id} is not valid JSON`).not.toThrow();
+    }
+  });
+
+  it('every absolute URL in it is the token, never a literal host', () => {
+    // The defect: five hardcoded `https://fbizlab.web.app` URLs, one of them inside
+    // the JSON-LD, all pointing at a host that 404s. Nothing may name a host here.
+    for (const [, id, body] of blocks) {
+      // `@context` is `https://schema.org` by specification — it names the vocabulary,
+      // not this site, and must stay literal. Everything else that is a URL is OUR
+      // URL and must come from the token.
+      const literals = [...body.matchAll(/"https?:\/\/[^"]*"/g)]
+        .map((m) => m[0])
+        .filter((u) => !u.includes('schema.org'));
+      expect(literals, `${id} hardcodes an absolute URL instead of using __SITE__`).toEqual([]);
+    }
+  });
+
+  it('declares an Organization that the WebApplication points at', () => {
+    // One entity across four hosts (the apex, www, and the two Firebase domains that
+    // canonicalize into it). A publisher reference that names nothing is decoration.
+    const ids = blocks.map(([, id]) => id);
+    expect(ids).toContain('ld-org');
+    const org = JSON.parse(blocks.find(([, id]) => id === 'ld-org')![2]!.split('__SITE__').join('https://example.test'));
+    const app = JSON.parse(blocks.find(([, id]) => id === 'ld-app')![2]!.split('__SITE__').join('https://example.test'));
+    expect(org['@type']).toBe('Organization');
+    expect(app.publisher?.['@id'], 'the WebApplication does not name the Organization').toBe(org['@id']);
   });
 });
