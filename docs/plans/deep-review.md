@@ -2926,6 +2926,8 @@ moved rewrite) have occurred on real runs.
 
 ##### render-1 · linkLabel shows a host taken from the model's LABEL text, not from the href — a mismatched citation renders as a clean trusted-host anchor pointing somewhere else
 
+**CLOSED `594e5ff`** (2026-08-25). The shown host now comes from the HREF; `ownHost` stays only as the fallback for an href naming no host. Both twins changed identically (diffed) and both pinned — core through `buildReportHtml`, fbizlab through `ReportViewer`. The common case (36 of 165 prose links label a url with itself) is unchanged and now has a test saying so. 1 red per workspace.
+
 `packages/core/src/pdf/report-html.ts:462` — **reproduced**, slice `render`
 
 **Claim.** `linkLabel(text, href)` does `const ownHost = hostOf(text); if (ownHost)
@@ -3126,6 +3128,8 @@ dead code for the only shipped model, on the last screen before credits are spen
 #### P2 (29)
 
 ##### money-2 · planId is interpolated unescaped into Stripe's search DSL on the write and archive paths
+
+**CLOSED `d5df321`** (2026-08-25). `isValidPlanId` (same shape as `APP_ID_RE`), enforced twice: `pattern` on both admin route schemas answers 400 before Stripe, and `findProduct` throws at the interpolation itself — THROWS rather than returning undefined, because undefined means "no such pack" and would send `upsertStripePlan` on to create the duplicate. One narrowing the adversary did not test and it holds: `/credits/checkout` goes through `resolveStripePlan`, which lists then `.find()`s in JS — no interpolation on the buyer path. `/credits/checkout`'s planId deliberately left unpatterned. 1 red, twice.
 
 `apps/api/src/stripe.ts:196` — **reasoned**, slice `money`
 
@@ -3372,6 +3376,8 @@ displayed ceilings. Real last-write-wins race, display-only: P2.
 
 ##### webhook-500-loop-1 · Paid session with malformed credits metadata makes the Stripe webhook 500 on every redelivery
 
+**CLOSED `907ee95`** (2026-08-25). A positive INTEGER, not a truthy string; a malformed value routes to the unattributed branch (ERROR naming the value, 200), because retrying produces the same unusable session forever. `'1e3'` deliberately NOT treated as malformed — it parses to 1000, and the guard is the ledger's rule rather than a syntax preference. 1 red.
+
 `apps/api/src/index.ts:2193` — **reproduced**, slice `mail`
 
 **Claim.** `const credits = Number(m.credits);` feeds `recordPurchase` unchecked;
@@ -3412,6 +3418,8 @@ does not cover. The file's own N11 comment establishes dashboard-made Payment Li
 reachable source. P2 stands.
 
 ##### postmark-await-1 · Comment says the 202 'must not wait on Postmark', but the start mail is awaited and the Postmark fetch has no timeout
+
+**CLOSED `ac0e479`** (2026-08-25), together with `email-hang-1` — two findings, one defect. `AbortSignal.timeout(config.email.sendTimeoutMs)`, default 10s. BOUNDED rather than un-awaited on purpose: Cloud Run throttles CPU outside a request, so a promise floated after the response may never finish sending the mail. The comment claiming the 202 does not wait was describing the CATCH; corrected. 2 red.
 
 `apps/api/src/index.ts:1335` — **reasoned**, slice `mail`
 
@@ -3564,6 +3572,8 @@ obfuscation class plus a shipped comment ('Measured cost of the exemption: none'
 records a census measurement as a class-wide zero.
 
 ##### ceiling-profit-invert-3 · expectedProfitPct from env/config is unclamped; >=100 drives the derived ceiling to 0, which is treated as UNCAPPED rather than 'spend nothing'
+
+**CLOSED `96a751c`** (2026-08-25). The `0` sentinel is NOT the bug and is untouched: `maxCostUsd: 0` on a template is a deliberate statement. What was wrong is that a DERIVED zero was read as the same statement. `maxCostForMode` now separates declared from derived, and a derivation that does not come out above zero falls back to the deployment ceiling — `!(own > 0)` so NaN lands there too. Also clamped at the source: `EXPECTED_PROFIT_PCT` goes through the same 0..100 range as the stored override. Two paths and one guard is what let it through. 2 red.
 
 `packages/core/src/mode.ts:128` — **reproduced**, slice `prompt`
 
@@ -3836,6 +3846,8 @@ register/login/reset client hits in production (captcha on) has an unpinned mess
 regression to English there ships green.
 
 ##### email-hang-1 · The start email and the webhook receipt await a Postmark fetch with no timeout; the comment beside the 202 claims the opposite
+
+**CLOSED `ac0e479`** (2026-08-25) — same defect as `postmark-await-1`, see there.
 
 `apps/api/src/index.ts:1346` — **reasoned**, slice `api`
 
@@ -4400,7 +4412,33 @@ Nothing below step 1 has been done.
    pair F-1 was rewritten to prevent), `seed-1` (a script that seeds DEV while
    printing that it seeds prod), `confirm-sentence-1` (R10-6's fix is dead code for
    the only shipped mode). Reproduced means the work is verification, not discovery.
-2. **Reproduce or kill the 25 reasoned findings.** Do not fix from them. Round 9's
+2. **Reproduce or kill the reasoned findings.** Do not fix from them.
+
+   **Six more closed 2026-08-25** on top of the four P1, in this order and for this
+   reason — money first, then the two that reach the artifact a buyer keeps:
+   `d5df321` money-2 · `ac0e479` postmark-await-1 + email-hang-1 (two findings, one
+   defect) · `594e5ff` render-1 · `96a751c` ceiling-profit-invert-3 · `907ee95`
+   webhook-500-loop-1. Suite exit 0, **1463 passed**; typecheck exit 0.
+
+   **What that batch adds to the round's own method notes:**
+
+   - **Three of the six were narrowed or corrected by checking, not by trusting.**
+     money-2's P1 story dies on the buyer path (`resolveStripePlan` lists and
+     `.find()`s in JS — no interpolation), which the adversary never tested;
+     ceiling-profit-invert-3's obvious fix — changing the `0`-means-uncapped
+     sentinel — would have broken a deliberate template opt-out, and the real fix is
+     that a DERIVED zero is not a declared one; webhook-500-loop-1's `'1e3'` is not
+     malformed at all.
+   - **A comment can guard the wrong side of the defect it describes.** The webhook's
+     long note about "a 500 Stripe retries for days" sits fifteen lines BELOW the
+     line that produced exactly that, and `linkLabel`'s doc justified taking the host
+     from a field the author does choose. Read what the code does before believing
+     what the comment beside it says it does.
+   - **`timeout` is not a command on macOS.** Two "the mutation hangs the suite"
+     readings were that error swallowed by a grep. Check the exit code of the
+     measuring command too, not only of the thing measured.
+
+ Round 9's
    whole lesson is that a true measurement written as a universal is the shape that
    survives review; a finding that was never measured at all is one step weaker than
    that.
