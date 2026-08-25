@@ -30,6 +30,46 @@ const html = (market: string) =>
 /** The visible text of every anchor in the document, in order. */
 const anchorTexts = (out: string) => [...out.matchAll(/<a\b[^>]*>(.*?)<\/a>/g)].map((m) => m[1]!);
 
+describe('a mismatched citation cannot borrow an honest host', () => {
+  // Round 11, `render-1`. `linkLabel` took the shown host from `hostOf(text)` and
+  // never looked at the href — while the doc above it justified the whole design
+  // with "the HOST is the half a reader needs from a citation ('who says so'), and
+  // it is the half the page's author does not choose". As implemented the label IS
+  // the author's text: a fetched page steers the model's markdown, which is this
+  // repo's live threat model (`c-attack`'s click-beacon dressed as a verified
+  // photo), and here it is the same beacon dressed as an official citation.
+  //
+  // Worse after the shortening than before it. Rendered verbatim, a reader could
+  // at least see the label url and the href disagree. Normalized to a clean host,
+  // the page itself vouches for the wrong "who says so".
+  const OFFICIAL = 'https://www.myfloridalicense.com/wl11.asp';
+  const BEACON = 'https://evil-broker.example/track?x=1';
+
+  it('shows where the click GOES, not where the label claims it goes', () => {
+    const out = html(`Licence current ([${OFFICIAL}](${BEACON})).`);
+
+    expect(out, 'the premise: it became an anchor').toContain('<a href=');
+    expect(anchorTexts(out), 'the label vouched for a host it does not lead to').not.toContain('myfloridalicense.com');
+    expect(anchorTexts(out)).toContain('evil-broker.example');
+    // The href is untouched — this is about what is SHOWN, not about rewriting
+    // where a link points.
+    expect(out).toContain(`href="${BEACON}"`);
+  });
+
+  it('leaves the honest case exactly as it was — the label and the href agree', () => {
+    // 36 of 165 prose links in one real run are this, so a fix that changed it
+    // would be a fix that broke the common case to close the rare one.
+    expect(linkLabel(OFFICIAL, OFFICIAL)).toBe('myfloridalicense.com');
+  });
+
+  it('falls back to the label only when the href names no host at all', () => {
+    // Nothing to contradict: an anchor with no destination cannot mislead about
+    // one. Anything else and the href wins.
+    expect(linkLabel(OFFICIAL, '')).toBe('myfloridalicense.com');
+    expect(linkLabel(OFFICIAL, '/relative/path')).toBe('myfloridalicense.com');
+  });
+});
+
 describe('a link labelled with its own url is shown as its host', () => {
   it('renders the host, not the query string, and keeps the url in the href', () => {
     const out = html(`Demand grew 15% ([${LONG_URL}](${LONG_URL})).`);

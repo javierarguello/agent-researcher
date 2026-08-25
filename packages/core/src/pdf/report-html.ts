@@ -437,9 +437,13 @@ function hostOf(url: string): string {
  * verbatim it is a 120-character unbreakable token mid-sentence: it runs off the
  * column in the PDF and pushes the page sideways in the viewer.
  *
- * The HOST is the half a reader needs from a citation ("who says so"), and it is
- * the half the page's author does not choose. The full url is not lost: it stays
- * in the `href` and in the Sources list, which is where someone goes to check it.
+ * The HOST is the half a reader needs from a citation ("who says so"). It is taken
+ * from the HREF — from where the click actually goes — and not from the label,
+ * which is the model's own text and therefore steerable by a fetched page. The
+ * sentence that used to be here said the host "is the half the page's author does
+ * not choose", and that was false as implemented (round 11, `render-1`). The full
+ * url is not lost: it stays in the `href` and in the Sources list, which is where
+ * someone goes to check it.
  *
  * A label that IS a url is shown as its host; so is one of the engine's own
  * evidence tags (`[S2](https://…)`), which is our vocabulary rather than a name for
@@ -460,7 +464,20 @@ export function linkLabel(text: string, href = ''): string {
     return c.length > SOURCE_LABEL_MAX ? `${c.slice(0, SOURCE_LABEL_MAX - 1).join('')}…` : host;
   };
   const ownHost = hostOf(text);
-  if (ownHost) return clip(ownHost);
+  // From the HREF, not from the label — the label is the model's text, and a
+  // fetched page steers that (round 11, `render-1`). Taking the shown host from
+  // `text` let `[https://www.myfloridalicense.com/wl11.asp](https://evil-broker.example/track?x=1)`
+  // render as a clean anchor reading `myfloridalicense.com` that goes somewhere
+  // else — the page vouching for the wrong "who says so", in the PDF the buyer
+  // keeps. Shortening made it worse rather than better: rendered verbatim a reader
+  // could at least see the two disagree.
+  //
+  // The common case is unchanged, and it is common: 36 of the 165 prose links in
+  // the statewide run label a url with itself, so the two hosts are the same
+  // string and this returns exactly what it always did. `ownHost` is kept as the
+  // fallback for an href that names no host — a link with no destination cannot
+  // mislead about one.
+  if (ownHost) return clip(hostOf(href) || ownHost);
   // `[S2](https://…)`: our tag over their url. The href is the honest label.
   if (EVIDENCE_TAG.test(text.trim())) {
     const linked = hostOf(href);

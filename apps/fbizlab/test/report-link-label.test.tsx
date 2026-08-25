@@ -42,6 +42,31 @@ describe('a link labelled with its own url is shown as its host', () => {
   });
 });
 
+describe('a mismatched citation cannot borrow an honest host — the viewer half', () => {
+  // Round 11, `render-1`. Twin of the core case, and it matters that BOTH are
+  // pinned: the buyer reads this one on screen and keeps the other as a PDF, and
+  // the split between the two renderers is where this codebase keeps finding
+  // defects. A fetched page steering the model's markdown is the live threat model
+  // here (`c-attack`), and a label that is a url used to decide the shown host all
+  // by itself.
+  const OFFICIAL = 'https://www.myfloridalicense.com/wl11.asp';
+  const BEACON = 'https://evil-broker.example/track?x=1';
+
+  it('shows where the click GOES, not where the label claims it goes', () => {
+    show(`Licence current ([${OFFICIAL}](${BEACON})).`);
+
+    expect(screen.queryByRole('link', { name: 'myfloridalicense.com' }), 'the label vouched for a host it does not lead to').toBeNull();
+    const a = screen.getByRole('link', { name: 'evil-broker.example' });
+    // The href is untouched: this is about what the reader is SHOWN.
+    expect(a.getAttribute('href')).toBe(BEACON);
+  });
+
+  it('leaves the honest case exactly as it was', () => {
+    show(`Licence current ([${OFFICIAL}](${OFFICIAL})).`);
+    expect(screen.getByRole('link', { name: 'myfloridalicense.com' }).getAttribute('href')).toBe(OFFICIAL);
+  });
+});
+
 describe('the engine’s own evidence tags never reach the reader', () => {
   it('shows the source’s host where the model labelled a link with our tag', () => {
     show(`The market grew 15% ([S2](${URL})).`);
