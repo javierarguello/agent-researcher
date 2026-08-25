@@ -2817,6 +2817,8 @@ That is not a clean bill; it is a thin pass. **This section does not close round
 
 ##### echo-book-1 · Prompt-echo incident booking is dead code: the loop landed inside onCheckpoint's stale-dispatch branch
 
+**CLOSED `d14e752`** (2026-08-25). Moved to straight after `runResearch`, before the ownership guard and all four early returns. The finding's third sub-claim was settled the OTHER way: carrying `promptEchoes` on the Checkpoint would DOUBLE-book, since every dispatch is its own `runJob` and booking ahead of the early returns means each books exactly its own. Test drives `runJob` and reads `getAppStats`, not a spy. 1 red revert-verified.
+
 `packages/core/src/engine/run-job.ts:332` — **reproduced**, slice `engine`
 
 **Claim.** The block `for (const echo of output.promptEchoes ?? []) { await
@@ -2869,6 +2871,8 @@ is awaited, and the surrounding try/catch would book the ReferenceError as
 checkpoint.save_failed.
 
 ##### enricher-swap-1 · A swap (drop one real listing, add one invented) delivers the invention, loses the paid-for profile, and warns nobody
+
+**CLOSED `019c8ae`** (2026-08-25). The arithmetic is unchanged — the item is still KEPT — and `keepKnownItems` now also returns `keptUnmatched` so the caller warns. The warning does not accuse: an honest retitle-and-re-source is the same shape from the engine's side, so it reports what is known rather than guessing. Note for anyone touching this function: `slice(-0)` is `slice(0)`, i.e. the WHOLE array — removing the early return without guarding `surplus > 0` drops every unmatched item, which is this guard's first version. 2 red revert-verified.
 
 `packages/core/src/engine/research-engine.ts:1549` — **reproduced**, slice `engine`
 
@@ -3018,6 +3022,8 @@ before, prices changed only via deploy, which restarts every instance.
 
 ##### seed-1 · seed-prod.sh silently seeds the DEV Firestore when a standard .env exists, while printing the prod database name
 
+**CLOSED `30c56eb`** (2026-08-25). `FIRESTORE_DATABASE` is exported, and — the part that matters — the printed database is no longer COMPUTED in bash but MEASURED by running the same loader the CLI runs, with a refusal if it is not `agent-researcher-prod`. Measured three ways by running the script without `--confirm`. No suite coverage: nothing in the five workspaces executes a bash script, same gap `deploy.sh` had.
+
 `infra/seed-prod.sh:60` — **reproduced**, slice `infra`
 
 **Claim.** The script exports only ENV (`export ENV=prod`, line 60) and comments "ENV on
@@ -3062,6 +3068,8 @@ with prod admin whitelist and webUrl, with an actively false printout and a fina
 `apps_cli list` that shows dev's identically-named apps as confirmation.
 
 ##### confirm-sentence-1 · R10-6's 'ticking a basic narrows the sentence' fix is dead code for the only shipped model — the confirm sentence still claims state-wide while the request carries the city
+
+**CLOSED `23f78fc`** (2026-08-25). The server renders the narrowed sentence (`proposedSummary`) — `describePlan` is pure, so it costs no model and no allowance — and the client shows it instead of patching strings it cannot match. `runPreflight` had NO test of any kind before this; the first version of the fix rendered from `proposedParams`, which omits opt-in basics, and was dead code in exactly the way the defect was. R10-6's test was updated, not deleted: its subject still holds. KNOWN LIMIT → `product-backlog.md` § P-15.
 
 `apps/fbizlab/src/pages/NewReport.tsx:882` — **reproduced**, slice `spa`
 
@@ -4362,9 +4370,30 @@ permanently, the prompt-echo exemption that let the system prompt out through
 unwithdrawable. Twelve mutations revert-verified; **four measured 0 red first and
 the tests were rebuilt**, which is the part worth copying.
 
+**The four remaining reproduced P1 are now CLOSED** (2026-08-25) — `d14e752`,
+`019c8ae`, `30c56eb`, `23f78fc`, one commit each, stamped on the findings above.
+`npm test` exit 0, **1449 passed** (baseline 1444, +5 tests); typecheck exit 0.
+Nothing below step 1 has been done.
+
+**Three things that batch is worth carrying**, because none is about the findings:
+
+  - **Two of the four findings were partly WRONG in their remedy, and reproduced in
+    their claim.** `echo-book-1` asked for `promptEchoes` on the Checkpoint, which
+    would double-book; `confirm-sentence-1`'s obvious fix (`proposedSummary` from
+    `proposedParams`) reproduces the defect one layer down because basics are opt-in.
+    A reproduced finding proves the DEFECT, never the repair. Verify the fix as
+    adversarially as the round verified the claim.
+  - **A test of ours pinned the defect, again.** The retitle-and-re-source test
+    asserted `warnings).toEqual([])` and R10-6's test echoed a raw default into its
+    fixture. Both were over-assertions around a valid subject. This is the third
+    round to find one; check what a test asserts INCIDENTALLY before trusting it.
+  - **`runPreflight` had no test at all**, which is how a shipped client came to
+    depend on a narrowing that never happened. Before fixing a client-side patch of
+    a server value, ask whether anything tests the server producing it.
+
 **The order the rest is worth taking, and why:**
 
-1. **The four remaining reproduced P1**, before anything reasoned. `echo-book-1`
+1. ~~**The four remaining reproduced P1**~~ — DONE, see above. `echo-book-1`
    (the prompt-echo incident counter is dead code — so the guard fixed in `018dde1`
    is running with its own reporting switched off), `enricher-swap-1` (a swap past
    the F-1 guard delivers an invented listing AND loses a paid-for one — the exact

@@ -581,15 +581,24 @@ that no agent can do and that are worth more than anything in the other two.
   a round instructed to default to refuted, and **only 15 of the survivors are
   reproduced — 25 are reasoned**. Those 25 are leads, not facts. Do not fix from one.
 
-  What is owed, in order: the **four remaining reproduced P1** (`echo-book-1` — the
-  prompt-echo incident counter is dead code, so the guard `018dde1` just fixed runs
-  with its own reporting off; `enricher-swap-1` — a SWAP past the F-1 guard delivers an
-  invented listing AND loses a paid-for one, the exact pair F-1 was rewritten to
-  prevent; `seed-1` — seeds DEV while printing that it seeds prod;
-  `confirm-sentence-1` — R10-6's fix is dead code for the only shipped mode); then
-  reproduce-or-kill the 25 reasoned ones; then **re-run `prompt` and `spa`**, which are
-  large slices that came back thin — `prompt` covers `redactPromptEcho` and the whole
-  moderation stack in 26 files and returned three findings.
+  **The four reproduced P1 are CLOSED** (2026-08-25), one commit each: `d14e752`
+  echo-book-1, `019c8ae` enricher-swap-1, `30c56eb` seed-1, `23f78fc`
+  confirm-sentence-1. `npm test` exit 0, **1449 passed** (baseline 1444, +5 tests),
+  typecheck exit 0. Stamps and reasoning on the findings in `deep-review.md`.
+
+  **Two of the four were reproduced in their CLAIM and wrong in their REMEDY**, which
+  is the thing to carry into the rest of the round. `echo-book-1` asked for
+  `promptEchoes` on the Checkpoint — that would double-book, since every dispatch is
+  its own `runJob`. `confirm-sentence-1`'s obvious fix reproduces the defect one layer
+  down, because `proposedParams` omits opt-in basics. **A reproduced finding proves
+  the defect, never the repair.** Two tests of ours also turned out to be pinning the
+  defect (`warnings).toEqual([])` on the retitle case; R10-6's fixture echoing a raw
+  default) — the third round running to find one.
+
+  What is owed, in order: **reproduce-or-kill the 25 reasoned findings**; then
+  **re-run `prompt` and `spa`**, which are large slices that came back thin —
+  `prompt` covers `redactPromptEcho` and the whole moderation stack in 26 files and
+  returned three findings.
 
   **The method correction this round paid for:** one adversary per SLICE is too weak.
   By the tenth finding it has already agreed nine times, and agreeing is cheaper than

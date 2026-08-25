@@ -963,6 +963,39 @@ HTML.
 
 ---
 
+## P-15 · The confirm sentence for a PARTIAL set of accepted basics — `open, not yet reachable`
+
+Opened by round 11's `confirm-sentence-1` fix (`23f78fc`), which closed the shipped
+defect and left one shape it cannot express.
+
+The buyer's app is a static SPA with no copy of `describePlan`, so it cannot render
+the plan sentence. Since `23f78fc` the server sends `proposedSummary` — the sentence
+with **every** proposed basic applied — and the client shows it once the buyer has
+ticked them all. `fillable` is `location` alone on `florida-business-for-sale`, so
+"all of them" is "the one", and today the sentence on screen is exact.
+
+**The day a model declares a second fillable basic**, a buyer who ticks one and not
+the other falls back to `summary`: the un-narrowed sentence, which is the defect
+that reached production. It will not announce itself — the same silence that let the
+first one survive R10-6, a review round and a launch.
+
+What it needs is the thing the current design deliberately avoids paying for: a
+re-render of the plan for the **exact** params on screen. That is cheap in principle
+— `describePlan` is a pure function, no model, no assisted attempt, no allowance —
+so it is a free endpoint, not a second preflight. The open questions are Javier's,
+because they are about public surface rather than code: does a model-free
+`POST /research/describe` get its own rate limit or ride `preflight`'s; does it
+require auth (it reveals nothing a buyer did not type, but it is a new unauthenticated
+compute path if it does not); and is it worth standing up before a second fillable
+basic exists at all, or is the honest answer to add it WITH that model and let this
+entry be the reminder.
+
+The narrower alternative, if a new route is unwanted: have the preflight return the
+rendered phrase each basic occupies in the sentence, so the client's substitution
+becomes exact instead of a guess at the manifest default. Cheaper in surface, more
+expensive in the template contract — `describePlan` returns a string and would have
+to report spans.
+
 ## P-3 · Two ways to say what you want: the box, or the fields — not both at once — `done (16e7014 → 2bf0b97 → c0805a7 → 3397da8)`
 
 **Asked for by Javier, 2026-08-19, looking at the deployed form.** Sections 04
