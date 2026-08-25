@@ -866,23 +866,48 @@ export function NewReport() {
    * already gave us: a correction's own `from`/`to`, and the field default the
    * manifest declares.
    *
-   * What it does NOT do: invent a sentence. If the default is not in the summary,
-   * nothing is replaced — the sentence is then silent about that field rather than
-   * wrong about it, and the accepted value is on screen in its own row below.
+   * The basics are NOT patched by string replacement, and the comment that used to
+   * stand here — "if the default is not in the summary, nothing is replaced, so the
+   * sentence is silent about that field rather than wrong about it" — was false
+   * twice over (round 11, `confirm-sentence-1`).
+   *
+   * It was false about the mechanism: replacing the manifest DEFAULT only works if
+   * the sentence contains it verbatim, and no shipped model's does.
+   * `florida-business-for-sale` defaults location to 'State of Florida, USA' while
+   * `describePlan` renders a statewide location as 'the State of Florida' / 'todo el
+   * estado de Florida' / 'l’État de Floride' / 'todo o estado da Flórida'. Nothing
+   * matched, in any of the four. `industry`, the only other correctable field, has
+   * no default at all. The branch was dead for every model that ships.
+   *
+   * And it was false about the consequence. An un-narrowed sentence is not silent:
+   * it affirmatively reads "currently for sale in the State of Florida" while
+   * `createJob` carries Hialeah. The buyer confirms, on the last screen before their
+   * credits are spent, against a description of a different request.
+   *
+   * So the server sends the sentence instead. `renderPlan` is a pure function of the
+   * params — no model, no assisted attempt, no allowance — so `proposedSummary` is
+   * rendered from `proposedParams` at no cost, and the client shows a string the
+   * server actually produced rather than one it assembled by guessing.
+   *
+   * KNOWN LIMIT, and it is exact rather than approximate today: `proposedSummary`
+   * is the sentence with EVERY proposed basic applied, so it is the right one only
+   * when the buyer has accepted all of them. `fillable` is `location` alone on the
+   * shipped model, so "all" is "the one" and there is no partial case to be wrong
+   * about. The day a model declares a second fillable basic, a partial tick falls
+   * back to `summary` — the un-narrowed sentence, which is the defect above. What
+   * that needs is a free, model-free endpoint that re-renders the plan for the exact
+   * params on screen; it is written up in the backlog rather than guessed at here.
    */
   const summaryShown = useMemo(() => {
-    let out = pf?.summary ?? '';
+    const basics = Object.entries(pf?.proposals?.basics ?? {}).filter(([, v]) => typeof v === 'string');
+    const allAccepted = basics.length > 0 && basics.every(([f]) => accepted[`basic:${f}`]);
+    let out = (allAccepted ? pf?.proposedSummary ?? pf?.summary : pf?.summary) ?? '';
     if (!out) return out;
     if (!applyFixes) {
       for (const c of pf?.corrections ?? []) if (c.from && c.to) out = out.split(c.to).join(c.from);
     }
-    for (const [field, value] of Object.entries(pf?.proposals?.basics ?? {})) {
-      if (!accepted[`basic:${field}`] || typeof value !== 'string') continue;
-      const dflt = (props[field] as { default?: unknown } | undefined)?.default;
-      if (typeof dflt === 'string' && dflt && out.includes(dflt)) out = out.split(dflt).join(value);
-    }
     return out;
-  }, [pf, applyFixes, accepted, props]);
+  }, [pf, applyFixes, accepted]);
 
   async function submit(review: typeof pf | null = pf) {
     setError(null);

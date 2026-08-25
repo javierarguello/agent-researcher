@@ -41,6 +41,26 @@ export interface PreflightOutcome {
   /** `correctedParams` (or the params) with the proposals applied too. */
   proposedParams?: Record<string, unknown>;
   /**
+   * `summary`, re-rendered from `proposedParams` — the sentence the buyer would be
+   * confirming if they accepted every proposal. NOT what to show by default: that
+   * is `summary`, the request as they typed it, and R7-9/R7-25 are about why.
+   *
+   * It exists because the client cannot compute it. The buyer's app patches the
+   * sentence locally when a proposal is ticked, rather than buying a second
+   * assisted review per checkbox, and it did that by replacing the field's DEFAULT
+   * with the accepted value. That only works when the summary contains the default
+   * verbatim, and no shipped model's does: `florida-business-for-sale` defaults
+   * location to 'State of Florida, USA' and `describePlan` renders it as the
+   * localized phrase 'the State of Florida'. So the substitution never fired, and a
+   * buyer who ticked 'Hialeah, FL' read 'in the State of Florida' on the last
+   * screen before their credits were spent (round 11, `confirm-sentence-1`).
+   *
+   * Rendering it here is free — `renderPlan` is a pure function of the params, no
+   * model and no allowance — so the exact sentence costs one string and removes the
+   * guess entirely.
+   */
+  proposedSummary?: string;
+  /**
    * The preferences this request carries, as label/value pairs in the buyer's
    * language — the manifest's own labels, never a word the model wrote.
    *
@@ -130,6 +150,21 @@ export async function runPreflight(input: {
     ...(correctedParams ? { correctedParams } : {}),
     ...(proposals ? { proposals } : {}),
     ...(proposedParams ? { proposedParams } : {}),
+    // Free: a pure re-render of the same sentence from the params the proposals
+    // would produce. The client shows it instead of patching strings it cannot
+    // match — see `proposedSummary` on the interface.
+    //
+    // NOT from `proposedParams`, and that distinction is the whole value of this
+    // line. A basic is opt-in per field, so `applyProposals` leaves basics out
+    // unless asked and `proposedParams` still carries the schema default — a
+    // sentence rendered from it is byte-identical to `summary`, which would have
+    // made this fix the same dead code it replaces, one layer down. `proposedParams`
+    // itself must not change: a client that predates the basics row submits it
+    // wholesale, and folding an unticked location into it would research a city the
+    // buyer never accepted.
+    ...(proposals
+      ? { proposedSummary: renderPlan(template, applyProposals(correctedParams ?? params, proposals, template.directives?.key ?? 'directives', { basics: true }), { lang, modeLabel }) }
+      : {}),
     assist: { state: 'on' },
     ...(usage ? { usage } : {}),
   };

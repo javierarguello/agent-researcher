@@ -645,15 +645,25 @@ describe('a rate-limited preview does not become an order', () => {
 
   it('…and ticking a basic narrows it, from the default the manifest declares (round 10, R10-6)', async () => {
     // The other half: a basic fills a field the buyer left empty, so the sentence
-    // was rendered while it still held the schema default. `parcelUse` defaults to
-    // `Somewhere` in this fixture, which is why the client can substitute without
-    // knowing anything about the model — the default is in the manifest it renders
-    // the form from.
-    // Mutation that reds this: drop the basics branch from `summaryShown`.
+    // was rendered while it still held the schema default.
+    //
+    // R10-6 made the client narrow it by swapping the manifest default for the
+    // accepted value, and this test passed because the fixture put the raw default
+    // (`Somewhere`) into the summary. Round 11 (`confirm-sentence-1`) showed no
+    // shipped model does that — they render a localized phrase — so the substitution
+    // was dead code and this row proved a shape rather than the class. The sibling
+    // below is the shape that actually ships.
+    //
+    // The BEHAVIOUR asserted here has not changed and still holds: ticking a basic
+    // narrows the sentence. What changed is where the narrowed sentence comes from —
+    // the server renders it from `proposedParams` (a pure function, no model, no
+    // assisted attempt) and sends it as `proposedSummary`.
+    // Mutation that reds this: drop the `allAccepted` branch from `summaryShown`.
     hooks.preflight.mockResolvedValueOnce({
       ok: true, quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
       summary: 'We will research parcels in Somewhere.',
       proposals: { directives: {}, keywords: [], basics: { parcelUse: 'Hialeah' }, quotes: { parcelUse: 'in Hialeah' } },
+      proposedSummary: 'We will research parcels in Hialeah.',
     } as never);
     renderForm();
     await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
@@ -664,6 +674,52 @@ describe('a rate-limited preview does not become an order', () => {
 
     await userEvent.click(screen.getByTestId('accept-basic-parcelUse'));
     expect(screen.getByTestId('confirm-summary').textContent, 'the sentence narrows with the request').toContain('Hialeah');
+  });
+
+  it('…and narrows it when the sentence never contained the raw default — the shipped shape', async () => {
+    // Round 11, `confirm-sentence-1`. The test above passes because its fixture
+    // echoes the raw default `Somewhere` into the summary, so a client-side
+    // `out.split(dflt).join(value)` finds something to replace. No shipped model
+    // does that.
+    //
+    // `florida-business-for-sale` defaults location to 'State of Florida, USA' and
+    // `describePlan` renders a statewide location as the localized phrase 'the State
+    // of Florida' / 'todo el estado de Florida' / 'l’État de Floride' / 'todo o
+    // estado da Flórida'. `summary.includes('State of Florida, USA')` is false in all
+    // four, and `industry` — the only other correctable field — has no default at
+    // all, so the branch could never fire in production. R10-6's fix was dead code
+    // for the only model that ships, and the corpus above proved a shape rather than
+    // the class.
+    //
+    // The damage is on the last screen before credits are spent: a buyer who left
+    // location blank, typed "una lavandería en Hialeah" and ticked the proposal read
+    // "currently for sale in the State of Florida" while `createJob` carried Hialeah.
+    //
+    // The fix is not a better substitution. The server already renders the sentence
+    // from `proposedParams` — a pure function, no model, no second assisted attempt
+    // — so it now returns it, and the client shows the exact string instead of
+    // guessing at one.
+    hooks.preflight.mockResolvedValueOnce({
+      ok: true, quality: 'ok', issues: [], corrections: [], assist: { state: 'on' },
+      // Note what is NOT here: the raw default. This is what a real template does.
+      summary: 'We will research parcels across the whole of the region.',
+      proposals: { directives: {}, keywords: [], basics: { parcelUse: 'Hialeah' }, quotes: { parcelUse: 'in Hialeah' } },
+      proposedSummary: 'We will research parcels in Hialeah.',
+    } as never);
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText('e.g. ERCOT West'), 'ERCOT West');
+    await userEvent.click(screen.getAllByRole('button', { name: /generate dossier/i })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: /validate & continue/i }));
+    await screen.findByTestId('proposals');
+    // Untouched, the sentence is the request as the buyer typed it.
+    expect(screen.getByTestId('confirm-summary').textContent).toContain('across the whole of the region');
+
+    await userEvent.click(screen.getByTestId('accept-basic-parcelUse'));
+    const shown = screen.getByTestId('confirm-summary').textContent ?? '';
+    expect(shown, 'the sentence did not follow the accepted basic').toContain('Hialeah');
+    // The half that actually reached a buyer: not merely missing the new value, but
+    // still asserting the old one above the Generate button.
+    expect(shown, 'the sentence still claims the un-narrowed scope').not.toContain('across the whole of the region');
   });
 
   it('…with the PREVIOUS review applied only where it still fits (R8-12)', async () => {

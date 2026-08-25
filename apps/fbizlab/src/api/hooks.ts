@@ -92,6 +92,18 @@ export interface PreflightResult {
   };
   /** `correctedParams` (or the params) with the proposals applied too. */
   proposedParams?: Record<string, unknown>;
+  /**
+   * `summary` re-rendered from `proposedParams` — server-side, by the same pure
+   * function, at no cost in models or assisted attempts.
+   *
+   * Shown only once every proposed basic is ticked. This client used to narrow the
+   * sentence itself by swapping the manifest default for the accepted value, which
+   * silently did nothing on every shipped model: their summaries render a localized
+   * phrase ('the State of Florida'), never the raw default ('State of Florida,
+   * USA'). The buyer confirmed against a sentence describing a request they had
+   * already changed (round 11, `confirm-sentence-1`).
+   */
+  proposedSummary?: string;
   /** Whether the assisted (AI) layer ran, and why not when it didn't. */
   assist: { state: 'on' | 'off_disabled' | 'off_no_credits' | 'off_cooldown' | 'off_attempts'; message?: string };
 }
