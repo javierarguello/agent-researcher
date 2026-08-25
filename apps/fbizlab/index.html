@@ -13,6 +13,12 @@
     <!-- `__SITE__` is replaced at build time with this deployment's own origin — see
          scripts/prerender-seo.mjs. A token rather than a real-looking URL on purpose;
          the reason is written there, and it is worth reading before changing this. -->
+    <!-- The hero photograph is the LCP element on desktop and it is a CSS background,
+         so nothing in the markup points at it — the preload scanner cannot find it and
+         the fetch waits for the stylesheet. Now that the static hero carries the same
+         `.hero-shot` class React renders, this preload is what makes the difference
+         real. Measured before: discovered at 2780 ms on throttled mobile. -->
+    <link rel="preload" as="image" href="/images/landing-banner.jpeg" fetchpriority="high" />
     <link rel="canonical" href="__SITE__/" />
     <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />

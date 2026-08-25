@@ -21,7 +21,10 @@ function langInPath(pathname: string): Lang | null {
   return isLang(seg) ? seg : null;
 }
 /** Landing routes (where the language belongs in the URL). */
-function isLandingPath(pathname: string): boolean {
+/** The crawlable URL a language's landing lives at. English is the root (x-default). */
+export const landingPath = (l: Lang): string => (l === 'en' ? '/' : `/${l}`);
+
+export function isLandingPath(pathname: string): boolean {
   return pathname === '/' || langInPath(pathname) !== null;
 }
 

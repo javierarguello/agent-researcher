@@ -7,6 +7,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { renderLandingStatic } from './landing-static.mjs';
 
 /**
@@ -26,23 +27,17 @@ import { renderLandingStatic } from './landing-static.mjs';
  * The build fails instead — the same rule `vite.config.ts` applies to the Turnstile
  * key, and for the same reason.
  */
-const SITE = (process.env.SITE_URL ?? '').replace(/\/+$/, '');
-if (!SITE) {
-  throw new Error(
-    'SITE_URL is required: every canonical, hreflang, og:url and sitemap entry is written against it. ' +
-      'Prod is https://floridabizlabs.com; a dev build should pass its own Hosting URL. ' +
-      'There is no default on purpose — the default used to be a domain that 404s.',
-  );
+function resolveSite() {
+  const site = (process.env.SITE_URL ?? '').replace(/\/+$/, '');
+  if (!site) {
+    throw new Error(
+      'SITE_URL is required: every canonical, hreflang, og:url and sitemap entry is written against it. ' +
+        'Prod is https://floridabizlabs.com; a dev build should pass its own Hosting URL. ' +
+        'There is no default on purpose — the default used to be a domain that 404s.',
+    );
+  }
+  return site;
 }
-/**
- * May search engines index THIS deployment?
- *
- * Dev serves a byte-identical copy of the marketing site on a public URL, with the
- * same robots.txt, and until now the same canonical. A staging copy competing with
- * production for the same queries is a real cost, and the fix belongs at the origin
- * that knows which one it is.
- */
-const INDEXABLE = process.env.SEO_INDEXABLE === 'true';
 const DIST = join(process.cwd(), 'dist');
 
 // English lives at "/" (x-default); the rest at "/<lang>". Copy tracks the
@@ -107,13 +102,14 @@ const LOCALES = {
   },
 };
 
-const HREFLANG = [
-  `<link rel="alternate" hreflang="en" href="${SITE}/" />`,
-  `<link rel="alternate" hreflang="es" href="${SITE}/es" />`,
-  `<link rel="alternate" hreflang="fr" href="${SITE}/fr" />`,
-  `<link rel="alternate" hreflang="pt" href="${SITE}/pt" />`,
-  `<link rel="alternate" hreflang="x-default" href="${SITE}/" />`,
-].join('\n    ');
+const hreflangFor = (SITE) =>
+  [
+    `<link rel="alternate" hreflang="en" href="${SITE}/" />`,
+    `<link rel="alternate" hreflang="es" href="${SITE}/es" />`,
+    `<link rel="alternate" hreflang="fr" href="${SITE}/fr" />`,
+    `<link rel="alternate" hreflang="pt" href="${SITE}/pt" />`,
+    `<link rel="alternate" hreflang="x-default" href="${SITE}/" />`,
+  ].join('\n    ');
 
 const rep = (html, re, value) => html.replace(re, value);
 const metaRe = (attr, name) => new RegExp(`<meta ${attr}="${name}" content="[^"]*"\\s*/?>`);
@@ -139,12 +135,12 @@ function appLd(description, url) {
   });
 }
 
-function withHreflang(html) {
+function withHreflang(html, SITE) {
   if (html.includes('hreflang="x-default"')) return html;
-  return html.replace(/(<link rel="canonical"[^>]*>)/, `$1\n    ${HREFLANG}`);
+  return html.replace(/(<link rel="canonical"[^>]*>)/, `$1\n    ${hreflangFor(SITE)}`);
 }
 
-function localize(base, loc) {
+function localize(base, loc, SITE) {
   let html = base;
   const url = `${SITE}${loc.path}`;
   html = rep(html, /<html lang="[^"]*"/, `<html lang="${loc.path.slice(1)}"`);
@@ -166,44 +162,154 @@ function localize(base, loc) {
 // sections / FAQ without running JS. React (createRoot) replaces it on mount.
 const injectStatic = (html, lang) => html.replace('<div id="root"></div>', `<div id="root">${renderLandingStatic(lang)}</div>`);
 
-const indexPath = join(DIST, 'index.html');
 /**
- * Every `__SITE__` in the source head becomes this deployment's origin — canonical,
- * og:url, og:image, twitter:image and the JSON-LD `url`, in one pass rather than five
- * hand-maintained replacements. `localize()` overwrites some of them again per
- * language; this is what covers the ROOT and, more importantly, the tags nobody
- * remembered were absolute (the two IMAGES).
+ * The public routes that are NOT the landing.
+ *
+ * Every one of them was served `index.html` byte-for-byte by the SPA rewrite —
+ * measured: `md5(/sample) === md5(/privacy) === md5(/) === md5(/any-garbage-path)`.
+ * So seven public URLs presented themselves to a non-JS crawler as exact duplicates
+ * of the homepage, each carrying the homepage's canonical and title. Duplicates get
+ * dropped, which is how a site with `/sample` — 34.5 kB of keyword-rich long-form
+ * copy, six times the landing — ends up with a crawlable surface of one page.
+ *
+ * The titles and descriptions are NOT invented here: each is the page's own heading
+ * and its own opening sentence. `test/seo-routes.test.ts` asserts they still match
+ * the components, because copy in two files is copy that drifts.
+ *
+ * English only, and deliberately: unlike the landing these routes have no per-language
+ * URL (`/es/privacy` does not exist), so they get no hreflang at all. A hreflang set
+ * pointing at landing variants would be worse than none — it would claim `/privacy`
+ * has a Spanish version at `/es`, which is the homepage.
  */
-const base = withHreflang(readFileSync(indexPath, 'utf8').split('__SITE__').join(SITE));
-writeFileSync(indexPath, injectStatic(base, 'en')); // en / x-default
-for (const [lang, loc] of Object.entries(LOCALES)) {
-  writeFileSync(join(DIST, `${lang}.html`), injectStatic(localize(base, loc), lang));
-  console.log(`✓ dist/${lang}.html — ${loc.path}`);
+export const STATIC_ROUTES = [
+  {
+    file: 'sample.html',
+    path: '/sample',
+    // From public/sample-dossier.json `title` — the real dossier's own headline.
+    title: 'Florida Businesses for Sale — Buy-Side Research | Florida Biz Labs',
+    description:
+      'A complete example dossier from a real run: shortlisted Florida businesses for sale, valuation and ROI signals, comparables, risk flags and the questions worth investigating before you buy.',
+  },
+  {
+    file: 'privacy.html',
+    path: '/privacy',
+    title: 'Privacy Notice | Florida Biz Labs',
+    description:
+      'Florida Biz Labs is an AI research tool. We keep data to the minimum needed to run your account, we count visits without cookies, and we never sell your data.',
+  },
+  {
+    file: 'legal.html',
+    path: '/legal',
+    title: 'Terms & Disclaimer | Florida Biz Labs',
+    description:
+      'Terms of use for Florida Biz Labs. AI-generated research for informational purposes — not investment advice, not due diligence, and not a brokerage.',
+  },
+  {
+    file: 'support.html',
+    path: '/support',
+    title: 'Support | Florida Biz Labs',
+    description: 'Questions about a dossier, your credits or your account — how to reach Florida Biz Labs.',
+  },
+  {
+    file: 'api-access.html',
+    path: '/api-access',
+    title: 'API & MCP access | Florida Biz Labs',
+    description:
+      'Run Florida Biz Labs research from your own tools: an HTTP API and an MCP server for generating buy-side dossiers on Florida businesses for sale.',
+  },
+  {
+    file: 'contact.html',
+    path: '/contact',
+    title: 'Request information | Florida Biz Labs',
+    description:
+      'Have a question about researching Florida businesses for sale, or want more information about Florida Biz Labs? Send us a message and we’ll get back to you.',
+  },
+];
+
+/** Same head rewrite as `localize`, minus the language-specific parts, plus hreflang REMOVAL. */
+function staticRoute(base, route, SITE) {
+  const url = `${SITE}${route.path}`;
+  // `API & MCP access` is a real title and a bare `&` is invalid in markup. Escaped
+  // here rather than pre-escaped in the table, so the table stays readable copy.
+  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  route = { ...route, title: esc(route.title), description: esc(route.description) };
+  let html = base;
+  // These pages have no language variants; the landing's alternates do not apply.
+  html = html.replace(/\s*<link rel="alternate" hreflang="[^"]*" href="[^"]*"\s*\/>/g, '');
+  html = rep(html, /<title>[\s\S]*?<\/title>/, `<title>${route.title}</title>`);
+  html = rep(html, metaRe('name', 'description'), `<meta name="description" content="${route.description}" />`);
+  html = rep(html, /<link rel="canonical" href="[^"]*"\s*\/?>/, `<link rel="canonical" href="${url}" />`);
+  html = rep(html, metaRe('property', 'og:url'), `<meta property="og:url" content="${url}" />`);
+  html = rep(html, metaRe('property', 'og:title'), `<meta property="og:title" content="${route.title}" />`);
+  html = rep(html, metaRe('property', 'og:description'), `<meta property="og:description" content="${route.description}" />`);
+  html = rep(html, metaRe('name', 'twitter:title'), `<meta name="twitter:title" content="${route.title}" />`);
+  html = rep(html, metaRe('name', 'twitter:description'), `<meta name="twitter:description" content="${route.description}" />`);
+  // The landing's FAQ + WebApplication JSON-LD describe the landing, not these pages.
+  html = rep(html, ldRe('ld-faq'), '$1$2');
+  return html;
 }
-console.log('✓ SEO prerender done (en + es/fr/pt, static content baked)');
 
 /**
- * `robots.txt` and `sitemap.xml` are GENERATED here rather than shipped from
- * `public/`, because both of them name the origin — and a checked-in file naming an
- * origin is a file that is wrong in every environment but one. They used to be static
- * and they named the dead host in three places.
+ * Everything with a side effect lives in here.
  *
- * The private routes deserve a word. `/app` and `/login` were already disallowed;
- * `/verify`, `/reset` and `/report` were not, and all three carry single-purpose
- * tokens in their query strings. The `noindex` on them is applied by React AFTER the
- * page loads, so a crawler that does not run JS never sees it. They are disallowed
- * here, where the answer does not depend on executing anything.
- *
- * The sitemap lists the four LANDING URLs and nothing else on purpose. `/sample`,
- * `/privacy` and the rest are served `index.html` verbatim by the SPA rewrite, so
- * they inherit the ROOT canonical — they currently tell Google they ARE the
- * homepage. Listing a page in a sitemap while its own canonical points elsewhere is
- * a contradiction, and the sitemap loses. They go in when they are prerendered with
- * canonicals of their own; see `product-backlog.md` § P-9.
+ * The module used to run on import — resolve `SITE_URL`, throw without it, and write
+ * a dozen files. That made it impossible to `import { STATIC_ROUTES }` from a test,
+ * which is exactly what `test/seo-routes.test.ts` needs in order to check the emitted
+ * metadata against the app's own copy. A build script that cannot be inspected
+ * without running it is a build script nothing will ever check.
  */
-const PUBLIC_LANDINGS = ['/', '/es', '/fr', '/pt'];
+export function main() {
+  const SITE = resolveSite();
+  const INDEXABLE = process.env.SEO_INDEXABLE === 'true';
+  const indexPath = join(DIST, 'index.html');
+  /**
+   * Every `__SITE__` in the source head becomes this deployment's origin — canonical,
+   * og:url, og:image, twitter:image and the JSON-LD `url`, in one pass rather than five
+   * hand-maintained replacements. `localize()` overwrites some of them again per
+   * language; this is what covers the ROOT and, more importantly, the tags nobody
+   * remembered were absolute (the two IMAGES).
+   */
+  const base = withHreflang(readFileSync(indexPath, 'utf8').split('__SITE__').join(SITE), SITE);
+  writeFileSync(indexPath, injectStatic(base, 'en')); // en / x-default
+  for (const [lang, loc] of Object.entries(LOCALES)) {
+  writeFileSync(join(DIST, `${lang}.html`), injectStatic(localize(base, loc, SITE), lang));
+  console.log(`✓ dist/${lang}.html — ${loc.path}`);
+  }
 
-writeFileSync(
+  // The non-landing public routes. `cleanUrls` serves `sample.html` at `/sample`.
+  // No static body is baked into these: unlike the landing there is no server-side
+  // renderer for them, so what this fixes is the HEAD — each one stops claiming to be
+  // the homepage. A JS-executing crawler (Google is one) then indexes the real content
+  // under the right canonical and title. Baking `/sample`'s body for crawlers that do
+  // NOT run JS is the remaining half; see `product-backlog.md` § P-9.
+  for (const route of STATIC_ROUTES) {
+  writeFileSync(join(DIST, route.file), staticRoute(base, route, SITE));
+  console.log(`✓ dist/${route.file} — ${route.path}`);
+  }
+  console.log('✓ SEO prerender done (en + es/fr/pt, static content baked)');
+
+  /**
+   * `robots.txt` and `sitemap.xml` are GENERATED here rather than shipped from
+   * `public/`, because both of them name the origin — and a checked-in file naming an
+   * origin is a file that is wrong in every environment but one. They used to be static
+   * and they named the dead host in three places.
+   *
+   * The private routes deserve a word. `/app` and `/login` were already disallowed;
+   * `/verify`, `/reset` and `/report` were not, and all three carry single-purpose
+   * tokens in their query strings. The `noindex` on them is applied by React AFTER the
+   * page loads, so a crawler that does not run JS never sees it. They are disallowed
+   * here, where the answer does not depend on executing anything.
+   *
+   * The sitemap lists the four landings AND the static public routes. It briefly
+   * listed only the landings, correctly: until `STATIC_ROUTES` existed, `/sample` and
+   * the rest inherited the ROOT canonical and claimed to BE the homepage, and listing
+   * a page whose own canonical points elsewhere is a contradiction the sitemap loses.
+   * They have canonicals of their own now, so they belong here. `/sample` is weighted
+   * above the legal pages because it is the only long-form content on the site.
+   */
+  const PUBLIC_LANDINGS = ['/', '/es', '/fr', '/pt'];
+
+  writeFileSync(
   join(DIST, 'robots.txt'),
   INDEXABLE
     ? [
@@ -218,37 +324,44 @@ writeFileSync(
         '',
       ].join('\n')
     : ['# Non-production deployment — a duplicate of the live site.', 'User-agent: *', 'Disallow: /', ''].join('\n'),
-);
+  );
 
-writeFileSync(
+  writeFileSync(
   join(DIST, 'sitemap.xml'),
   INDEXABLE
     ? `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
-${PUBLIC_LANDINGS.map(
+  <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  ${PUBLIC_LANDINGS.map(
   (path) => `  <url>
     <loc>${SITE}${path === '/' ? '/' : path}</loc>
-${PUBLIC_LANDINGS.map((alt) => `    <xhtml:link rel="alternate" hreflang="${alt === '/' ? 'en' : alt.slice(1)}" href="${SITE}${alt}" />`).join('\n')}
+  ${PUBLIC_LANDINGS.map((alt) => `    <xhtml:link rel="alternate" hreflang="${alt === '/' ? 'en' : alt.slice(1)}" href="${SITE}${alt}" />`).join('\n')}
     <xhtml:link rel="alternate" hreflang="x-default" href="${SITE}/" />
     <changefreq>weekly</changefreq>
     <priority>${path === '/' ? '1.0' : '0.9'}</priority>
   </url>`,
-).join('\n')}
-</urlset>
-`
+  ).join('\n')}
+  ${STATIC_ROUTES.map(
+  (r) => `  <url>
+    <loc>${SITE}${r.path}</loc>
+    <changefreq>${r.path === '/sample' ? 'monthly' : 'yearly'}</changefreq>
+    <priority>${r.path === '/sample' ? '0.8' : '0.3'}</priority>
+  </url>`,
+  ).join('\n')}
+  </urlset>
+  `
     : `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n`,
-);
+  );
 
-console.log(`prerender-seo: SITE=${SITE} indexable=${INDEXABLE}`);
+  console.log(`prerender-seo: SITE=${SITE} indexable=${INDEXABLE}`);
 
-/**
- * The guard that makes this class of defect impossible to reintroduce.
- *
- * A canonical pointing at a dead host is invisible: the page renders, the build is
- * green, and only a crawler ever reads the tag. So the build ASSERTS on its own
- * output — no unreplaced token, and no trace of the origin that caused this.
- */
-for (const file of ['index.html', 'es.html', 'fr.html', 'pt.html', 'robots.txt', 'sitemap.xml']) {
+  /**
+   * The guard that makes this class of defect impossible to reintroduce.
+   *
+   * A canonical pointing at a dead host is invisible: the page renders, the build is
+   * green, and only a crawler ever reads the tag. So the build ASSERTS on its own
+   * output — no unreplaced token, and no trace of the origin that caused this.
+   */
+  for (const file of ['index.html', 'es.html', 'fr.html', 'pt.html', 'robots.txt', 'sitemap.xml', ...STATIC_ROUTES.map((r) => r.file)]) {
   const out = readFileSync(join(DIST, file), 'utf8');
   if (out.includes('__SITE__')) throw new Error(`${file} still contains the __SITE__ placeholder — prerender did not replace it.`);
   // The ORIGIN, scheme and all — not the bare hostname. `fbizlab.web.app` is a
@@ -257,5 +370,10 @@ for (const file of ['index.html', 'es.html', 'fr.html', 'pt.html', 'robots.txt',
   if (out.includes('https://fbizlab.web.app')) {
     throw new Error(`${file} names https://fbizlab.web.app — a host that 404s, and the literal this guard exists for.`);
   }
+  }
+  console.log(`prerender-seo: origin guard passed on ${6 + STATIC_ROUTES.length} files`);
+
 }
-console.log('prerender-seo: origin guard passed on 6 files');
+
+// Only when invoked directly — importing this module must do nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

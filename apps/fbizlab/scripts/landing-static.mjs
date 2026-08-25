@@ -16,10 +16,25 @@ const logo = '<img class="brand-mark" src="/icons/favicon.svg" alt="" width="26"
 export function renderLandingStatic(lang) {
   const c = LANDING_COPY[lang] ?? LANDING_COPY.en;
 
+  /**
+   * The language switcher, as real anchors, in the SERVED html.
+   *
+   * `/es`, `/fr` and `/pt` are fully prerendered pages with their own localized
+   * title, description and FAQ JSON-LD — and nothing linked to them. The React
+   * switcher was `<button>`, this static header had no switcher at all, the sitemap
+   * named a dead host and so did every hreflang. Three orphan translations: no
+   * crawlable path in, from anywhere. React replaces this markup on mount, so these
+   * anchors exist for exactly one audience, which is the one that matters here.
+   */
+  const langLinks = (cur) =>
+    `<div class="langseg" role="group" aria-label="Language">${['en', 'es', 'fr', 'pt']
+      .map((l) => `<a href="${l === 'en' ? '/' : `/${l}`}"${l === cur ? ' class="on" aria-current="true"' : ''}>${l.toUpperCase()}</a>`)
+      .join('')}</div>`;
+
   const header = `<header class="hdr"><div class="container">
     <div class="brand">${logo}${esc(BRAND)}</div>
     <nav class="nav"><a href="/login">${esc(c.nav.search)}</a><a href="#benefits">${esc(c.nav.insights)}</a><a href="#pricing">${esc(c.nav.pricing)}</a></nav>
-    <div class="row" style="gap:12px"><a class="btn btn--black btn--sm" href="/login">${esc(c.nav.login)}</a></div>
+    <div class="row" style="gap:12px">${langLinks(lang)}<a class="btn btn--black btn--sm" href="/login">${esc(c.nav.login)}</a></div>
   </div></header>`;
 
   const sampleRows = c.sample.rows.map(([k, v]) => `<div class="sample__row"><span class="mono">${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
@@ -32,7 +47,17 @@ export function renderLandingStatic(lang) {
     <div class="sample__block"><div class="mono sample__blabel">${esc(c.sample.questionsL)}</div>${sampleQ}</div>
   </div>`;
 
-  const hero = `<section class="container" id="top"><div class="hero">
+  // `hero-shot > container > hero`, matching `Landing.tsx` exactly.
+  //
+  // It used to be `section.container` here and `section.hero-shot > div.container`
+  // there, and the drift had a measurable cost: the hero photograph is a CSS
+  // background on `.hero-shot`, so with that class absent from the served HTML the
+  // browser could not discover the image AT ANY PRICE until React mounted. Measured
+  // on throttled mobile: fetch starts at 2780 ms, paints at 5218 ms, and no
+  // `<link rel=preload>` could have helped because the selector that needs it did
+  // not exist yet. Two files describing the same markup will drift; this one is the
+  // one nobody looks at.
+  const hero = `<section class="hero-shot" id="top"><div class="container"><div class="hero">
     <div class="stack" style="gap:20px">
       <div class="eyebrow">${esc(c.hero.kicker)}</div>
       <h1 class="h-xl">${esc(c.hero.title)}</h1>
@@ -42,7 +67,7 @@ export function renderLandingStatic(lang) {
       <div class="mono muted" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;line-height:1.8">${esc(c.hero.tagline)}</div>
     </div>
     <div>${sample}</div>
-  </div></section>`;
+  </div></div></section>`;
 
   const wwd = `<section class="section section--alt"><div class="container split">
     <div class="stack" style="gap:14px"><span class="eyebrow">${esc(c.wwd.kicker)}</span><h2 class="h-lg" style="max-width:420px">${esc(c.wwd.title)}</h2></div>
