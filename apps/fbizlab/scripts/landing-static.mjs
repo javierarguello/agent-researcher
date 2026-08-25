@@ -4,7 +4,56 @@
  * real H1, section copy and FAQ in the initial HTML. React (createRoot) replaces
  * this on mount — the dynamic bits (Stripe plan cards, auth state) render then.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { LANDING_COPY } from '../src/content/landing-copy.mjs';
+
+/**
+ * The credit packs, per language, read off the catalog this build already baked.
+ *
+ * `fetch-plans.mjs` writes `dist/plans.json` from the API before the prerender runs
+ * (see the `build` script's order), so the real prices are on disk here — no network,
+ * no second source of truth.
+ *
+ * Returns `[]` if the file is missing rather than throwing: the prices are a section
+ * of the page, not the page. A landing that renders without its pricing block is a
+ * bad landing; a build that dies because one file moved is a worse outcome. The
+ * FETCH is where an empty catalog is fatal, and `fetch-plans.mjs` already exits 1
+ * on one, in each of the four languages.
+ */
+export function plansFor(lang) {
+  try {
+    const all = JSON.parse(readFileSync(join(process.cwd(), 'dist', 'plans.json'), 'utf8'));
+    const forLang = all[lang] ?? all.en ?? [];
+    return Array.isArray(forLang) ? forLang : (forLang.plans ?? []);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * One pricing card, in the SAME markup `PlanCard.tsx` renders.
+ *
+ * Identical classes on purpose, and it is not cosmetic: this morning
+ * `landing-static.mjs` emitted `section.container` where `Landing.tsx` emits
+ * `section.hero-shot`, and because the hero photograph is a CSS background on the
+ * missing class the browser could not discover the image until React mounted. Two
+ * files describing the same markup drift, and the one nobody looks at is this one.
+ */
+function planCard(p, lang, c) {
+  const price = Number(p.priceUsd).toLocaleString(lang);
+  const features = (p.features ?? []).map((f) => `<div class="bullet">${esc(f)}</div>`).join('');
+  return `<div class="card plan ${p.popular ? 'dark' : ''}">
+      <div class="between">
+        <div><div style="font-weight:700;font-size:17px">${esc(p.name)}</div>${p.sub ? `<div class="mono muted" style="font-size:11px">${esc(p.sub)}</div>` : ''}</div>
+        ${p.popular ? `<span class="tag-popular">${esc(c.pricing.popular)}</span>` : ''}
+      </div>
+      <div class="price">$${esc(price)}</div>
+      ${p.credits > 0 ? `<div class="metric" style="margin-top:14px"><div class="num">${p.credits}</div><div class="lbl">${esc(c.pricing.creditsWord)}</div></div>` : ''}
+      ${features ? `<hr class="divider" style="margin:18px 0" /><div class="stack" style="gap:9px;flex:1">${features}</div>` : ''}
+      <button class="btn btn--block ${p.popular ? 'btn--accent' : 'btn--black'}" style="margin-top:22px">${esc(c.pricing.choose)}</button>
+    </div>`;
+}
 
 const BRAND = 'Florida Biz Labs';
 const pad = (i) => String(i + 1).padStart(2, '0');
@@ -13,7 +62,12 @@ const esc = (s) =>
 
 const logo = '<img class="brand-mark" src="/icons/favicon.svg" alt="" width="26" height="26" />';
 
-export function renderLandingStatic(lang) {
+/**
+ * `plans` is injectable so this can be tested without a build. It defaults to the
+ * baked catalog, which is what the real prerender uses — the parameter exists for
+ * the test, and the default is what production takes.
+ */
+export function renderLandingStatic(lang, plans = plansFor(lang)) {
   const c = LANDING_COPY[lang] ?? LANDING_COPY.en;
 
   /**
@@ -89,8 +143,19 @@ export function renderLandingStatic(lang) {
     <div class="sumlist">${c.insum.items.map((it, i) => `<div class="sumitem"><span class="mono">${pad(i)}</span>${esc(it)}</div>`).join('')}</div>
   </div></section>`;
 
+  // The prices themselves, in the served HTML.
+  //
+  // They used to be fetched by the client from `/plans.json`, so `grep '$29'` on what
+  // the server sends returned ZERO — the pricing section existed as a heading with
+  // nothing under it. That cost two things: a crawler that does not run JS saw a
+  // pricing page with no prices, and `Product`/`Offer` structured data could not
+  // honestly be added, because Google requires marked-up data to be visible on the
+  // page and marking up invisible prices is what earns a manual action.
   const pricing = `<section id="pricing" class="section"><div class="container">
     <div class="split" style="margin-bottom:44px;align-items:end"><div class="stack" style="gap:14px"><span class="eyebrow">${esc(c.pricing.kicker)}</span><h2 class="h-lg" style="max-width:420px">${esc(c.pricing.title)}</h2></div><p class="lead">${esc(c.pricing.lead)}</p></div>
+    ${plans.length === 0
+      ? `<p class="soft mono" style="font-size:13px">${esc(c.pricing.noPlans)}</p>`
+      : `<div class="plans">${plans.map((p) => planCard(p, lang, c)).join('')}</div>`}
   </div></section>`;
 
   const usage = `<section class="section section--dark"><div class="container split">

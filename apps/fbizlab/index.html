@@ -87,6 +87,17 @@
     </script>
 
     <!-- Structured data: FAQ (localized per language at build time) -->
+    <!-- The credit packs. EMPTY here and filled per language by prerender-seo.mjs
+         from the same dist/plans.json the visible pricing cards are rendered from —
+         one source, so the markup cannot claim a price the page does not show.
+         That equivalence is the whole reason this block was blocked until now:
+         Google requires structured data to match visible content, and until the
+         prices were baked into the served HTML they were visible to a person and
+         invisible to a crawler. -->
+    <script type="application/ld+json" id="ld-offers">
+    {}
+    </script>
+
     <script type="application/ld+json" id="ld-faq">
     {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What does Florida Biz Labs do?","acceptedAnswer":{"@type":"Answer","text":"It is a specialized digest that helps you search Florida business opportunities at scale and intelligently, based on your own criteria. It organizes available listing information into a structured summary and highlights details worth investigating."}},{"@type":"Question","name":"Does Florida Biz Labs replace business listing portals?","acceptedAnswer":{"@type":"Answer","text":"No. It complements them, it does not replace them. Florida Biz Labs organizes information available across listings and always references the original sources, so you can go back to them for complete, up-to-date details."}},{"@type":"Question","name":"Does Florida Biz Labs recommend which business I should buy?","acceptedAnswer":{"@type":"Answer","text":"No. It does not tell you whether to buy. It organizes information and raises questions to support your own evaluation."}},{"@type":"Question","name":"Is the information verified?","acceptedAnswer":{"@type":"Answer","text":"No. Figures come from listings and third-party sources and are not independently verified. Always confirm them yourself."}},{"@type":"Question","name":"Are summaries reviewed by professionals?","acceptedAnswer":{"@type":"Answer","text":"No. Summaries are generated automatically and are not routinely reviewed by industry specialists."}},{"@type":"Question","name":"Is this a due diligence report?","acceptedAnswer":{"@type":"Answer","text":"No. It is an early-stage research aid, not due diligence. Consult qualified professionals before any decision."}},{"@type":"Question","name":"Is Florida Biz Labs a business broker?","acceptedAnswer":{"@type":"Answer","text":"No. Florida Biz Labs is not a broker and is not involved in any transaction."}}]}
     </script>

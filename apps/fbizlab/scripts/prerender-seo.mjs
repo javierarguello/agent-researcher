@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { renderLandingStatic } from './landing-static.mjs';
+import { renderLandingStatic, plansFor } from './landing-static.mjs';
 
 /**
  * The origin every canonical, hreflang, og:url and sitemap entry is written against.
@@ -135,6 +135,45 @@ function appLd(description, url) {
   });
 }
 
+/**
+ * `Product` + `Offer` for the credit packs — one `ItemList`, in the page's language.
+ *
+ * Honest only because the prices are now in the served HTML (`landing-static.mjs`
+ * bakes the cards from this same `dist/plans.json`). Structured data that names a
+ * price a crawler cannot find on the page is what Google issues manual actions for,
+ * which is why this block did not exist until the baking did.
+ *
+ * `priceValidUntil` is deliberately absent: we do not know when a price expires and
+ * inventing a date is inventing a fact. `availability` is `InStock`, which is true —
+ * credits are generated, not stocked.
+ */
+export function offersLd(plans, SITE, lang) {
+  if (!plans.length) return null;
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Florida Biz Labs credit packs',
+    itemListElement: plans.map((p, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      item: {
+        '@type': 'Product',
+        name: p.name,
+        description: p.sub || undefined,
+        brand: { '@id': `${SITE}/#organization` },
+        offers: {
+          '@type': 'Offer',
+          price: Number(p.priceUsd).toFixed(2),
+          priceCurrency: 'USD',
+          availability: 'https://schema.org/InStock',
+          url: `${SITE}${lang === 'en' ? '/' : `/${lang}`}#pricing`,
+          seller: { '@id': `${SITE}/#organization` },
+        },
+      },
+    })),
+  });
+}
+
 function withHreflang(html, SITE) {
   if (html.includes('hreflang="x-default"')) return html;
   return html.replace(/(<link rel="canonical"[^>]*>)/, `$1\n    ${hreflangFor(SITE)}`);
@@ -142,6 +181,8 @@ function withHreflang(html, SITE) {
 
 function localize(base, loc, SITE) {
   let html = base;
+  const offers = offersLd(plansFor(loc.path.slice(1)), SITE, loc.path.slice(1));
+  if (offers) html = rep(html, ldRe('ld-offers'), `$1\n    ${offers}\n    $2`);
   const url = `${SITE}${loc.path}`;
   html = rep(html, /<html lang="[^"]*"/, `<html lang="${loc.path.slice(1)}"`);
   html = rep(html, /<title>[\s\S]*?<\/title>/, `<title>${loc.title}</title>`);
@@ -248,6 +289,8 @@ function staticRoute(base, route, SITE) {
   // Organization block is NOT stripped: it identifies who publishes the site, which
   // is true on every page and is the thing that ties all four hosts to one entity.
   html = rep(html, ldRe('ld-faq'), '$1$2');
+  // No prices on these pages, so no Offer markup. Same rule as the FAQ.
+  html = rep(html, ldRe('ld-offers'), '$1$2');
   return html;
 }
 
@@ -272,7 +315,12 @@ export function main() {
    * remembered were absolute (the two IMAGES).
    */
   const base = withHreflang(readFileSync(indexPath, 'utf8').split('__SITE__').join(SITE), SITE);
-  writeFileSync(indexPath, injectStatic(base, 'en')); // en / x-default
+  // The ROOT is English and never passes through `localize`, so its Offer markup is
+  // filled here. Forgetting this is how the homepage — the page that actually ranks —
+  // ends up the only landing without it.
+  const enOffers = offersLd(plansFor('en'), SITE, 'en');
+  const enBase = enOffers ? rep(base, ldRe('ld-offers'), `$1\n    ${enOffers}\n    $2`) : base;
+  writeFileSync(indexPath, injectStatic(enBase, 'en')); // en / x-default
   for (const [lang, loc] of Object.entries(LOCALES)) {
   writeFileSync(join(DIST, `${lang}.html`), injectStatic(localize(base, loc, SITE), lang));
   console.log(`✓ dist/${lang}.html — ${loc.path}`);
