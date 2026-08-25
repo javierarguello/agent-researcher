@@ -55,10 +55,34 @@ note() { echo ">> $*"; }
 
 [[ -n "$ADMIN_EMAILS" ]] || die "--admin-emails is required: without it nobody can log into the admin."
 
-# ENV on the command line beats anything in .env (verified: node's --env-file does
-# not override the process environment), so this really does target prod.
+# ENV on the command line beats anything in .env -- node's --env-file does not
+# override the process environment. That measurement is true, and the sentence that
+# used to follow it here ("so this really does target prod") was a universal built
+# on it, which is the shape round 9 named and round 11 caught again (`seed-1`).
+#
+# ENV is not the only var that picks the target. `npm run apps` is
+# `node --env-file-if-exists=.env ...`, and FIRESTORE_DATABASE was NOT exported, so
+# a .env copied from `.env.example` -- which ships `FIRESTORE_DATABASE=agent-
+# researcher-dev` uncommented, under "Copy to .env for local dev" -- loaded into the
+# CLI and every write landed in DEV. Meanwhile line "Target database" below was
+# computed from the INVOKING SHELL, which has no such var, so it printed
+# `agent-researcher-prod` and the operator saw "Seeded." and walked away: prod
+# Firestore still empty (register answers 500, nobody can verify an email) and dev's
+# `admin`/`fbizlab` docs silently overwritten with the prod admin whitelist and the
+# prod webUrl -- so dev's verification mails would now link at prod.
+#
+# So: export it, which puts it in the process environment where .env cannot reach.
 export ENV=prod
-DB="${FIRESTORE_DATABASE:-agent-researcher-prod}"
+export FIRESTORE_DATABASE="${FIRESTORE_DATABASE:-agent-researcher-prod}"
+
+# ...and then do not TRUST the export -- ask the loader. This runs the exact flags
+# `npm run apps` runs, from the same directory, with the same process environment,
+# so what it prints is what the CLI will target, not what this script believes.
+# Computing the printed line separately from the thing it describes is what made
+# the failure silent; the line and the target now come from one measurement.
+DB="$(node --env-file-if-exists=.env -e 'process.stdout.write(process.env.FIRESTORE_DATABASE ?? "agent-researcher-" + (process.env.ENV ?? "dev"))')"
+[[ "$DB" == "agent-researcher-prod" ]] || die \
+  "refusing to seed: the CLI would target '${DB}', not agent-researcher-prod. Something in .env is redirecting it."
 
 if [[ "$CONFIRM" -ne 1 ]]; then
   echo "This writes app docs to the PROD Firestore database '${DB}'."
