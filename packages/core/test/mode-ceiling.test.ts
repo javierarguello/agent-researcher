@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { ceilingFromCredits, creditsForMode, maxCostForMode, modesOf, resolveMode } from '../src/mode.js';
 import { resolveModeCredits, resolveModeCeiling, creditFloorFrom, type ModelPricing } from '../src/credits/pricing.js';
 import { config } from '../src/config.js';
+import { writableConfig } from './writable-config.js';
 import { floridaBusinessForSale as tpl } from '../src/templates/florida-business-for-sale.js';
 
 /** The modes the FLAGSHIP declares, not a global constant — see `modesOf`. */
@@ -80,6 +81,50 @@ describe('the ceiling is derived from what the report sells for', () => {
     // A per-model number must not be able to ignore `MAX_JOB_COST_USD`. An operator
     // who lowers it expects it to bite everywhere.
     expect(resolveModeCeiling(null, modeOf('comprehensive').config, 'comprehensive', 1)).toBe(1);
+  });
+
+  it('refuses a DEPLOYMENT profit of 100 the same way it refuses a stored one', () => {
+    // Round 11, `ceiling-profit-invert-3`. The row below guards the FIRESTORE
+    // override — `inRange` (>= 0 && < 100) filters it, and it is tested right
+    // there. The env/config fallback had no such guard: `EXPECTED_PROFIT_PCT` is
+    // `float(..., 40)` and range-checked nowhere.
+    //
+    // And the failure inverts. `ceilingFromCredits` does `Math.max(keep, 0)`, so
+    // 100 becomes a derived ceiling of 0 — and 0 is the documented sentinel for
+    // "no ceiling" at every level below (`maxCostForMode`'s opt-out, then
+    // `createCostSink`'s `maxUsd > 0 ? … : null`). An operator setting 100 to mean
+    // "spend nothing" UNCAPPED every job of every model without a per-model
+    // override, and `MAX_JOB_COST_USD` was bypassed too because the opt-out
+    // returns before the Math.min with the deployment figure.
+    //
+    // A derived zero is not an opt-out. Only a template SAYING `maxCostUsd: 0` is.
+    const real = writableConfig.pricing.expectedProfitPct;
+    try {
+      for (const pct of [100, 120, 1000]) {
+        writableConfig.pricing.expectedProfitPct = pct;
+        const ceiling = ceilingOf('comprehensive');
+        expect(ceiling, `pct=${pct} uncapped the job`).toBeGreaterThan(0);
+        // Falls back to the deployment ceiling — the bad value is IGNORED, which is
+        // what `inRange` does with the stored one. It is not honoured as "spend
+        // nothing" either: that would hold every job on a typo.
+        expect(ceiling, `pct=${pct}`).toBe(config.workflow.maxJobCostUsd);
+      }
+    } finally {
+      writableConfig.pricing.expectedProfitPct = real;
+    }
+  });
+
+  it('does not let a derived zero pose as a template opting out', () => {
+    // The same thing one layer down, at the function the whole chain runs through.
+    // `mode.maxCostUsd = 0` IS an opt-out and must stay one; a derivation that
+    // arrives at 0 must not be read as the same statement.
+    const mode = modeOf('comprehensive').config;
+    expect(
+      maxCostForMode(mode, 25, { credits: 18, creditFloorUsd: 0.806, expectedProfitPct: 100 }),
+      'a derived zero was read as "no ceiling"',
+    ).toBe(25);
+    // …and the deliberate opt-out is untouched.
+    expect(maxCostForMode({ ...mode, maxCostUsd: 0 }, 25)).toBe(0);
   });
 
   it('refuses a stored zero rather than holding every job', () => {

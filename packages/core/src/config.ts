@@ -23,6 +23,24 @@ function float(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * A percentage that must stay under 100, or the fallback.
+ *
+ * The same range `inRange` enforces on the Firestore override in
+ * `credits/pricing.ts`, applied to the env value it falls back to — which had no
+ * guard at all (round 11, `ceiling-profit-invert-3`). At 100 the derived ceiling
+ * `credits × floor × (1 − pct/100)` is 0, and 0 is the sentinel for "no ceiling",
+ * so setting it to mean "spend nothing" removed the cost ceiling instead. The
+ * derivation refuses a zero on its own now; this refuses the input that produces
+ * one, so the bad value cannot reach a future caller either.
+ *
+ * Ignored rather than honoured, like the stored one: a typo must not hold every job.
+ */
+function pct(name: string, fallback: number): number {
+  const n = float(name, fallback);
+  return n >= 0 && n < 100 ? n : fallback;
+}
+
 /** Comma-separated integers, e.g. "1,6,24,72". Falls back on any malformed entry. */
 function ints(name: string, fallback: number[]): number[] {
   const raw = process.env[name]?.trim();
@@ -416,7 +434,7 @@ export const config = {
      * override it in `/admin/pricing`; this is what one that never has falls back
      * to.
      */
-    expectedProfitPct: float('EXPECTED_PROFIT_PCT', 40),
+    expectedProfitPct: pct('EXPECTED_PROFIT_PCT', 40),
   },
   search: {
     braveApiKey: str('BRAVE_API_KEY'),

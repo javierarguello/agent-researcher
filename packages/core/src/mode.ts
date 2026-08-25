@@ -146,6 +146,21 @@ export function ceilingFromCredits(
  * wins: a template that says "no ceiling" is making a deliberate statement about
  * its own cost profile, which is the case the field exists for. A deployment that
  * sets no ceiling leaves the model's as the only one.
+ *
+ * That sentinel is only safe for a DECLARED figure, and it used not to be checked
+ * (round 11, `ceiling-profit-invert-3`). `ceilingFromCredits` clamps with
+ * `Math.max(keep, 0)`, so `expectedProfitPct >= 100` derives 0 — and 0 read as the
+ * opt-out uncapped the job, returning before the `Math.min` so `MAX_JOB_COST_USD`
+ * was bypassed as well. `inRange` guards the Firestore override against exactly
+ * that value; `EXPECTED_PROFIT_PCT` from env had no guard at all, so an operator
+ * setting 100 to mean "spend nothing" removed the cost ceiling from every model
+ * without a per-model override — the precise inversion the derived ceiling (D1)
+ * exists to prevent.
+ *
+ * A derivation that arrives at 0 is arithmetic falling through, never a statement.
+ * It falls back to the deployment ceiling: the bad input is IGNORED, which is what
+ * `inRange` does with the stored one. Not honoured as "spend nothing" either —
+ * that would hold every job on a typo.
  */
 export function maxCostForMode(
   mode: ModeConfig,
@@ -153,14 +168,22 @@ export function maxCostForMode(
   derived?: { credits: number; creditFloorUsd: number; expectedProfitPct: number },
 ): number {
   // A template's explicit figure still wins over the derivation — that is what the
-  // field is for, and `0`/negative is a deliberate opt-out. Everything else is
-  // derived from what the report sells for, and only falls back to the
-  // deployment-wide number when the caller does not know the price.
-  const own = mode.maxCostUsd ?? (derived ? ceilingFromCredits(derived.credits, derived) : undefined);
-  if (own == null) return fallbackUsd;      // no price in hand → the deployment's
-  if (own <= 0) return own;                 // the model opts out, deliberately
-  if (fallbackUsd <= 0) return own;         // the deployment does not cap → ours
-  return Math.min(own, fallbackUsd);        // both real → whichever binds first
+  // field is for, and `0`/negative is a deliberate opt-out.
+  const declared = mode.maxCostUsd;
+  if (declared != null) {
+    if (declared <= 0) return declared;             // the model opts out, deliberately
+    if (fallbackUsd <= 0) return declared;          // the deployment does not cap → ours
+    return Math.min(declared, fallbackUsd);         // both real → whichever binds first
+  }
+  // Everything else is derived from what the report sells for, and only falls back
+  // to the deployment-wide number when the caller does not know the price.
+  if (!derived) return fallbackUsd;                 // no price in hand → the deployment's
+  const own = ceilingFromCredits(derived.credits, derived);
+  // `> 0` rather than `!(<= 0)`, so NaN lands here too. A derived non-figure is not
+  // the opt-out sentinel — see the note above.
+  if (!(own > 0)) return fallbackUsd;
+  if (fallbackUsd <= 0) return own;
+  return Math.min(own, fallbackUsd);
 }
 
 /** The modes a template offers, in declaration order — its own, or the defaults. */
