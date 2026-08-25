@@ -124,6 +124,34 @@ describe('creating a pack', () => {
     expect(r.json().plan).toMatchObject({ planId: 'scout', templateId: MODEL, credits: 20, priceUsd: 29 });
   });
 
+  it('refuses a planId that could break out of Stripe’s query literal, before touching Stripe', async () => {
+    // Round 11, `money-2`. `findProduct` interpolates appId AND planId into one
+    // search string; only appId was shape-checked, and the comment explaining why
+    // sits eleven lines above the unguarded one.
+    //
+    // Behind requireAdmin, so this is not privilege — an admin may already write
+    // any app's catalog. It is a live billing catalog broken by accident, and the
+    // balanced-quote case is the bad one: nothing errors, the search matches
+    // nothing, so the existence check says "new" and a SECOND live buyer-visible
+    // product is created whose planId that same query can never find again.
+    for (const bad of ["bob's-pack", "x' OR active:'true", 'Scout', 'a b']) {
+      const r = await put(bad, base);
+      expect(r.statusCode, bad).toBe(400);
+    }
+    expect(store.products.size, 'a refused planId still reached Stripe').toBe(0);
+    expect(calls, 'a refused planId still reached Stripe').toEqual([]);
+
+    // …and the archive path, which shares the same helper.
+    const a = await app.inject({
+      method: 'POST', url: `/admin/plans/${encodeURIComponent("bob's-pack")}/archive`,
+      headers: auth(await adminToken()), payload: { appId: 'fbizlab' },
+    });
+    expect(a.statusCode).toBe(400);
+
+    // The ids the storefront actually sells are unaffected.
+    expect((await put('scout', base)).statusCode).toBe(200);
+  });
+
   it('refuses a model that does not exist, before touching Stripe', async () => {
     const r = await put('scout', { ...base, templateId: 'a-model-we-never-shipped' });
     expect(r.statusCode).toBe(404);

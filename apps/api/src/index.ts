@@ -3225,7 +3225,12 @@ app.put(
         'what Stripe currently charges — the confirmation is enforced here, not in the UI.',
       tags: ['admin'],
       security: sec,
-      params: { type: 'object', required: ['planId'], properties: { planId: { type: 'string', maxLength: 128 } } },
+      // `pattern`, not just a length: `planId` is interpolated into Stripe's search
+      // DSL beside `appId`, which has been shape-checked since a stray quote broke
+      // out of the literal. This is the same guard on the same query string, so a
+      // pack called `bob's-pack` is a 400 here rather than a 500 (or, worse, a
+      // silent duplicate live product) at Stripe. Round 11, `money-2`.
+      params: { type: 'object', required: ['planId'], properties: { planId: { type: 'string', maxLength: 128, pattern: '^[a-z0-9][a-z0-9-_]{0,63}$' } } },
       body: {
         type: 'object',
         additionalProperties: false,
@@ -3288,7 +3293,12 @@ app.post(
       summary: 'Retire a credit pack (Stripe `active: false`, never a delete)',
       tags: ['admin'],
       security: sec,
-      params: { type: 'object', required: ['planId'], properties: { planId: { type: 'string', maxLength: 128 } } },
+      // `pattern`, not just a length: `planId` is interpolated into Stripe's search
+      // DSL beside `appId`, which has been shape-checked since a stray quote broke
+      // out of the literal. This is the same guard on the same query string, so a
+      // pack called `bob's-pack` is a 400 here rather than a 500 (or, worse, a
+      // silent duplicate live product) at Stripe. Round 11, `money-2`.
+      params: { type: 'object', required: ['planId'], properties: { planId: { type: 'string', maxLength: 128, pattern: '^[a-z0-9][a-z0-9-_]{0,63}$' } } },
       body: { type: 'object', required: ['appId'], additionalProperties: false, properties: { appId: { type: 'string', maxLength: 128 } } },
     },
   },

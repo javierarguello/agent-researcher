@@ -129,6 +129,29 @@ export function isValidAppId(appId: string): boolean {
   return APP_ID_RE.test(appId);
 }
 
+/**
+ * Plan ids are slugs, for exactly the reason above and on exactly the same line:
+ * `findProduct` builds ONE query out of BOTH ids, and only the first was guarded
+ * (round 11, `money-2`). The route schemas capped `planId` at 128 characters and
+ * checked nothing else, and the New-pack modal accepts any characters at all.
+ *
+ * The likelier failure is not an attack — this is behind `requireAdmin`, and an
+ * admin may already write any app's catalog, so a crafted id grants no new
+ * capability. It is a pack called `bob's-pack`:
+ *
+ *   - an UNBALANCED quote malforms the search, so save and archive 500;
+ *   - a BALANCED one is worse, because nothing errors. The search matches nothing,
+ *     the existence check therefore says "new", and a second live buyer-visible
+ *     product is created whose stored planId that same query can never find again
+ *     — uneditable and unarchivable through the API, dashboard-only to recover.
+ *
+ * Same shape as APP_ID_RE, which every id the storefront actually sells already
+ * satisfies (`scout`, `investor`, `syndicate`, and `legacy` from before them).
+ */
+export function isValidPlanId(planId: string): boolean {
+  return APP_ID_RE.test(planId);
+}
+
 export async function listStripePlans(
   appId: string,
   lang = 'en',
@@ -192,6 +215,14 @@ export interface PlanWrite {
 
 /** The product for an app's plan, or undefined. Searched the same way listing does. */
 async function findProduct(appId: string, planId: string): Promise<Stripe.Product | undefined> {
+  // Refused at the interpolation itself, not only at the route schema. The schemas
+  // are the first line and answer 400 before Stripe is reached; this is the one
+  // that cannot be bypassed by a future caller that forgets, and it throws rather
+  // than returning undefined because undefined here MEANS "no such pack" and would
+  // send `upsertStripePlan` on to create a duplicate.
+  if (!isValidAppId(appId) || !isValidPlanId(planId)) {
+    throw new Error(`Refusing to search Stripe with an unsafe id (appId=${JSON.stringify(appId)}, planId=${JSON.stringify(planId)}).`);
+  }
   const res = await stripe().products.search({
     query: `active:'true' AND metadata['appId']:'${appId}' AND metadata['planId']:'${planId}'`,
     expand: ['data.default_price'],
