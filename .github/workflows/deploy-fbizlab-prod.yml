@@ -119,6 +119,13 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.FBIZLAB_PROD_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_SENDER_ID: ${{ vars.FBIZLAB_PROD_FIREBASE_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ vars.FBIZLAB_PROD_FIREBASE_APP_ID }}
+          # The origin every canonical, hreflang, og:url and sitemap entry is written
+          # against. `prerender-seo.mjs` REFUSES to build without it — it used to
+          # default to a host that 404s, and a wrong default is exactly what let that
+          # survive a launch. `SEO_INDEXABLE` is what makes this the one deployment
+          # search engines are allowed to index.
+          SITE_URL: ${{ vars.FBIZLAB_PROD_SITE_URL }}
+          SEO_INDEXABLE: 'true'
         run: npm run build -w @agent-researcher/fbizlab
 
       - name: Authenticate to Google Cloud (prod service-account key)

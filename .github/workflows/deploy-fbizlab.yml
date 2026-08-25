@@ -79,6 +79,13 @@ jobs:
           # Public site key, per environment — no fallback on purpose: a build with no
           # key ships a site nobody can sign in to, and `vite.config.ts` refuses it.
           VITE_TURNSTILE_SITE_KEY: ${{ vars.FBIZLAB_DEV_TURNSTILE_SITE_KEY }}
+          # Dev serves a byte-identical copy of the marketing site on a public URL.
+          # `SEO_INDEXABLE` false makes the generated robots.txt `Disallow: /` and the
+          # sitemap empty, so a staging copy stops competing with production for the
+          # same queries. `SITE_URL` is dev's OWN origin — never prod's, or dev would
+          # canonicalize itself onto the live site.
+          SITE_URL: ${{ vars.FBIZLAB_DEV_SITE_URL }}
+          SEO_INDEXABLE: 'false'
         run: npm run build -w @agent-researcher/fbizlab
 
       - name: Authenticate to Google Cloud (service-account key)

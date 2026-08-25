@@ -9,7 +9,40 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderLandingStatic } from './landing-static.mjs';
 
-const SITE = 'https://fbizlab.web.app';
+/**
+ * The origin every canonical, hreflang, og:url and sitemap entry is written against.
+ *
+ * It was the literal `https://fbizlab.web.app` — a host that **404s**. Nothing in the
+ * project has ever been served there; the Hosting sites are
+ * `agent-researcher-{dev,prod}-fbizlab.web.app` and the product lives at
+ * `floridabizlabs.com`. So every prerendered page told Google "the real version of
+ * this page is at <a URL that does not exist>", every hreflang alternate pointed at a
+ * dead domain, and `robots.txt` sent crawlers to a sitemap that listed four more of
+ * them. A canonical is not a hint — it is an instruction to prefer another URL, and
+ * the one being preferred was gone.
+ *
+ * From the environment now, with **no fallback**: a wrong default is what made this
+ * survive a launch and a release, precisely because it looked like a working value.
+ * The build fails instead — the same rule `vite.config.ts` applies to the Turnstile
+ * key, and for the same reason.
+ */
+const SITE = (process.env.SITE_URL ?? '').replace(/\/+$/, '');
+if (!SITE) {
+  throw new Error(
+    'SITE_URL is required: every canonical, hreflang, og:url and sitemap entry is written against it. ' +
+      'Prod is https://floridabizlabs.com; a dev build should pass its own Hosting URL. ' +
+      'There is no default on purpose — the default used to be a domain that 404s.',
+  );
+}
+/**
+ * May search engines index THIS deployment?
+ *
+ * Dev serves a byte-identical copy of the marketing site on a public URL, with the
+ * same robots.txt, and until now the same canonical. A staging copy competing with
+ * production for the same queries is a real cost, and the fix belongs at the origin
+ * that knows which one it is.
+ */
+const INDEXABLE = process.env.SEO_INDEXABLE === 'true';
 const DIST = join(process.cwd(), 'dist');
 
 // English lives at "/" (x-default); the rest at "/<lang>". Copy tracks the
@@ -134,10 +167,95 @@ function localize(base, loc) {
 const injectStatic = (html, lang) => html.replace('<div id="root"></div>', `<div id="root">${renderLandingStatic(lang)}</div>`);
 
 const indexPath = join(DIST, 'index.html');
-const base = withHreflang(readFileSync(indexPath, 'utf8'));
+/**
+ * Every `__SITE__` in the source head becomes this deployment's origin — canonical,
+ * og:url, og:image, twitter:image and the JSON-LD `url`, in one pass rather than five
+ * hand-maintained replacements. `localize()` overwrites some of them again per
+ * language; this is what covers the ROOT and, more importantly, the tags nobody
+ * remembered were absolute (the two IMAGES).
+ */
+const base = withHreflang(readFileSync(indexPath, 'utf8').split('__SITE__').join(SITE));
 writeFileSync(indexPath, injectStatic(base, 'en')); // en / x-default
 for (const [lang, loc] of Object.entries(LOCALES)) {
   writeFileSync(join(DIST, `${lang}.html`), injectStatic(localize(base, loc), lang));
   console.log(`✓ dist/${lang}.html — ${loc.path}`);
 }
 console.log('✓ SEO prerender done (en + es/fr/pt, static content baked)');
+
+/**
+ * `robots.txt` and `sitemap.xml` are GENERATED here rather than shipped from
+ * `public/`, because both of them name the origin — and a checked-in file naming an
+ * origin is a file that is wrong in every environment but one. They used to be static
+ * and they named the dead host in three places.
+ *
+ * The private routes deserve a word. `/app` and `/login` were already disallowed;
+ * `/verify`, `/reset` and `/report` were not, and all three carry single-purpose
+ * tokens in their query strings. The `noindex` on them is applied by React AFTER the
+ * page loads, so a crawler that does not run JS never sees it. They are disallowed
+ * here, where the answer does not depend on executing anything.
+ *
+ * The sitemap lists the four LANDING URLs and nothing else on purpose. `/sample`,
+ * `/privacy` and the rest are served `index.html` verbatim by the SPA rewrite, so
+ * they inherit the ROOT canonical — they currently tell Google they ARE the
+ * homepage. Listing a page in a sitemap while its own canonical points elsewhere is
+ * a contradiction, and the sitemap loses. They go in when they are prerendered with
+ * canonicals of their own; see `product-backlog.md` § P-9.
+ */
+const PUBLIC_LANDINGS = ['/', '/es', '/fr', '/pt'];
+
+writeFileSync(
+  join(DIST, 'robots.txt'),
+  INDEXABLE
+    ? [
+        'User-agent: *',
+        'Disallow: /app',
+        'Disallow: /login',
+        'Disallow: /verify',   // carries a single-purpose auth token in ?token=
+        'Disallow: /reset',    // same
+        'Disallow: /report',   // ?rt= IS the authorization for the shared dossier
+        '',
+        `Sitemap: ${SITE}/sitemap.xml`,
+        '',
+      ].join('\n')
+    : ['# Non-production deployment — a duplicate of the live site.', 'User-agent: *', 'Disallow: /', ''].join('\n'),
+);
+
+writeFileSync(
+  join(DIST, 'sitemap.xml'),
+  INDEXABLE
+    ? `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+${PUBLIC_LANDINGS.map(
+  (path) => `  <url>
+    <loc>${SITE}${path === '/' ? '/' : path}</loc>
+${PUBLIC_LANDINGS.map((alt) => `    <xhtml:link rel="alternate" hreflang="${alt === '/' ? 'en' : alt.slice(1)}" href="${SITE}${alt}" />`).join('\n')}
+    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE}/" />
+    <changefreq>weekly</changefreq>
+    <priority>${path === '/' ? '1.0' : '0.9'}</priority>
+  </url>`,
+).join('\n')}
+</urlset>
+`
+    : `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n`,
+);
+
+console.log(`prerender-seo: SITE=${SITE} indexable=${INDEXABLE}`);
+
+/**
+ * The guard that makes this class of defect impossible to reintroduce.
+ *
+ * A canonical pointing at a dead host is invisible: the page renders, the build is
+ * green, and only a crawler ever reads the tag. So the build ASSERTS on its own
+ * output — no unreplaced token, and no trace of the origin that caused this.
+ */
+for (const file of ['index.html', 'es.html', 'fr.html', 'pt.html', 'robots.txt', 'sitemap.xml']) {
+  const out = readFileSync(join(DIST, file), 'utf8');
+  if (out.includes('__SITE__')) throw new Error(`${file} still contains the __SITE__ placeholder — prerender did not replace it.`);
+  // The ORIGIN, scheme and all — not the bare hostname. `fbizlab.web.app` is a
+  // substring of `agent-researcher-dev-fbizlab.web.app`, which is a real and correct
+  // origin, so the loose check failed every dev build. Caught by running it.
+  if (out.includes('https://fbizlab.web.app')) {
+    throw new Error(`${file} names https://fbizlab.web.app — a host that 404s, and the literal this guard exists for.`);
+  }
+}
+console.log('prerender-seo: origin guard passed on 6 files');

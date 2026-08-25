@@ -1,5 +1,0 @@
-User-agent: *
-Disallow: /app
-Disallow: /login
-
-Sitemap: https://fbizlab.web.app/sitemap.xml
