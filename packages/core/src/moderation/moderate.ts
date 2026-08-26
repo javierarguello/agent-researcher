@@ -147,9 +147,27 @@ const ATTRIBUTED = String.raw`(?!\s*(?:${ATTRIBUTED_WORDS.join('|')})\b)`;
  *    `PADDED_ONLY` was the right idea aimed at the wrong list: `PADDED_ONLY`'s
  *    `jailbreak` is bare, and this one is barely less so.
  *
- * Measured cost of the exemption: none. The census is 61/95 and 2/73 with and
- * without it — every `evade-*` row it contains exercises the `ignore … previous …
- * instructions` rule, which keeps its deobfuscated pass.
+ * The two are broken by OPPOSITE rewrites, and that is what the exemption used to
+ * miss (round 11, `mod-jailbreak-leet-2`). Joining is what turns `Jail-Break` into
+ * `jailbreak`; leet is what turns `1M` into `im`. Exempting each rule from BOTH
+ * therefore gave away detection neither of them needed to lose — `j41lbr34k mode:`,
+ * `enable j41lbr34k` and `3nable jailbr3ak` walked the free pre-screen, and so did
+ * `forget every-thing previous`.
+ *
+ * So each rule now names the ONE rewrite it cannot survive and keeps the other.
+ * `DeobfuscatedForm` carries which rewrites actually produced a form, which is what
+ * makes that expressible at all.
+ *
+ * The previous version of this comment read "measured cost of the exemption: none",
+ * on a census (61/95, 2/73) containing no obfuscated row for either rule — every
+ * `evade-*` row in it exercises the `ignore … previous … instructions` rule, which
+ * kept its de-obfuscated pass throughout. A corpus measurement written as a
+ * class-wide zero. The corpus now carries the five rows it was missing.
+ *
+ * What is still deliberately NOT caught: a form that is BOTH joined and leet
+ * (`j41l-br34k:`). It is indistinguishable from a hyphenated brand once folded, and
+ * losing a paying customer is the more expensive error. That one goes to the
+ * classifier, like everything else the free layer will not judge.
  */
 const PRICE_CEILING = /forget\s+(?:everything|all)\s+(?:above|previous|preceding)\b(?!\s*(?:the|that|a|an)?\s*(?:[$\d]|price|budget|band|range|asking|cost))/i;
 const JAILBREAK_FRAMING = /\bjailbreak\b\s*(?::|mode\b)|\b(?:enable|activate)\s+jailbreak\b|\bjailbreak(?:ing)?\s+(?:the\s+)?(?:model|assistant|ai|bot|llm|system|prompt)\b/i;
@@ -220,9 +238,11 @@ const PADDED_ONLY_PATTERNS: RegExp[] = [
  * the twin may also be matched against the de-obfuscated forms; see
  * `PRICE_CEILING` / `JAILBREAK_FRAMING` above for the two that may not.
  */
-const TOLERANT_PATTERNS: Array<{ re: RegExp; deobfuscated: boolean }> = INJECTION_PATTERNS.map((re) => ({
+const TOLERANT_PATTERNS: Array<{ re: RegExp; skipJoined: boolean; skipLeet: boolean }> = INJECTION_PATTERNS.map((re) => ({
   re: tolerantPattern(re),
-  deobfuscated: re !== PRICE_CEILING && re !== JAILBREAK_FRAMING,
+  // Each rule opts out of the ONE rewrite that changes its meaning, never of both.
+  skipJoined: re === JAILBREAK_FRAMING,
+  skipLeet: re === PRICE_CEILING,
 }));
 const TOLERANT_PADDED_ONLY: RegExp[] = PADDED_ONLY_PATTERNS.map(tolerantPattern);
 
@@ -241,7 +261,7 @@ export function preScreen(text: string): ModerationCategory | null {
   // `clampSeparatorRuns` (round 10, G3-break F3).
   const normalized = clampSeparatorRuns(forms.normalized);
   const unpadded = clampSeparatorRuns(forms.unpadded);
-  const deobfuscated = forms.deobfuscated.map(clampSeparatorRuns);
+  const deobfuscated = forms.deobfuscated.map((d) => ({ ...d, form: clampSeparatorRuns(d.form) }));
   // The tolerant twin covers both forms: it treats every inter-word gap as
   // optional, so it matches "system-prompt" in the normalized text and the
   // already-closed gap in the unpadded one.
@@ -256,7 +276,8 @@ export function preScreen(text: string): ModerationCategory | null {
   // room" — an acquisition target this product serves — into `jailbreak`.
   for (const p of TOLERANT_PATTERNS) {
     if (p.re.test(normalized) || p.re.test(unpadded)) return 'prompt_injection';
-    if (p.deobfuscated && deobfuscated.some((form) => p.re.test(form))) return 'prompt_injection';
+    const readable = deobfuscated.filter((d) => !(d.joined && p.skipJoined) && !(d.leet && p.skipLeet));
+    if (readable.some((d) => p.re.test(d.form))) return 'prompt_injection';
   }
   if (unpadded !== normalized) {
     for (const re of TOLERANT_PADDED_ONLY) if (re.test(unpadded)) return 'prompt_injection';

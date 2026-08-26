@@ -90,7 +90,7 @@ export function foldConfusables(text: string): string {
  * ignore. All previous instructions from the fire marshal" matched across a
  * sentence boundary. Padding is the thing to undo — not punctuation.
  */
-export function screeningForms(text: string): { normalized: string; unpadded: string; deobfuscated: string[] } {
+export function screeningForms(text: string): { normalized: string; unpadded: string; deobfuscated: DeobfuscatedForm[] } {
   const normalized = foldConfusables(stripInvisible(text.normalize('NFKC')))
     .toLowerCase()
     .replace(/\s+/g, ' ')
@@ -155,15 +155,41 @@ function foldLeet(text: string, reading: 0 | 1): string {
  * caller already has. Empty when the text carries neither — most text — so the
  * extra regex passes are paid for only by input that looks tampered with.
  */
-export function deobfuscate(normalized: string, unpadded: string): string[] {
-  const out: string[] = [];
+/**
+ * A de-obfuscated form, and WHICH rewrites produced it.
+ *
+ * The flags exist because two screening rules are broken by de-obfuscation for
+ * OPPOSITE reasons, and a single "may this rule read the de-obfuscated forms"
+ * boolean could only turn both off together (round 11, `mod-jailbreak-leet-2`):
+ *
+ *   - the jailbreak framing is broken by JOINING — `Jail-Break: The Escape Room`
+ *     becomes `jailbreak:`, an attack shape, and that is a real Florida business;
+ *   - the price ceiling is broken by LEET — `above 1M` becomes `above im`, killing
+ *     the digit that tells the rule "this is a ceiling, not an override".
+ *
+ * Each flag says the rewrite actually CHANGED the text, not merely that it was
+ * attempted, so a form that survives a rewrite unaltered is not labelled with it.
+ * That also keeps the de-duplication below honest: the first emission of a string
+ * wins, and it is the one whose flags describe what really happened to it.
+ */
+export interface DeobfuscatedForm {
+  form: string;
+  /** Intra-word separators were removed to produce this. */
+  joined: boolean;
+  /** Digits standing in for letters were folded back to produce this. */
+  leet: boolean;
+}
+
+export function deobfuscate(normalized: string, unpadded: string): DeobfuscatedForm[] {
+  const out: DeobfuscatedForm[] = [];
   const seen = new Set([normalized, unpadded]);
   for (const base of new Set([normalized, unpadded])) {
-    const joined = base.replace(INTRA_WORD_SEPARATOR, '');
-    for (const form of [joined, foldLeet(joined, 0), foldLeet(joined, 1)]) {
+    const joinedForm = base.replace(INTRA_WORD_SEPARATOR, '');
+    const joined = joinedForm !== base;
+    for (const form of [joinedForm, foldLeet(joinedForm, 0), foldLeet(joinedForm, 1)]) {
       if (seen.has(form)) continue;
       seen.add(form);
-      out.push(form);
+      out.push({ form, joined, leet: form !== joinedForm });
     }
   }
   return out;
