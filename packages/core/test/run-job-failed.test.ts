@@ -5,9 +5,7 @@ vi.mock('../src/storage/gcs.js', () => ({
   uploadObject: async ({ name }: { name: string }) => ({ name, path: `researchs/j/${name}`, contentType: 'application/json', size: 10 }),
   downloadObject: async () => undefined,
   deleteObject: async () => {},
-  signJobFiles: async (f: unknown) => f,
   listJobFiles: async () => [],
-  signRead: async () => '',
 }));
 
 // Force a hard job failure by mocking the engine to return a failed trace.

@@ -54,8 +54,7 @@ export { generateHeadline } from './jobs/headline.js';
 export type { Headline } from './jobs/headline.js';
 
 // Storage
-export { uploadObject, downloadObject, downloadObjectBytes, listJobFiles, signRead, signJobFiles } from './storage/gcs.js';
-export type { SignedFile } from './storage/gcs.js';
+export { uploadObject, downloadObject, downloadObjectBytes, listJobFiles } from './storage/gcs.js';
 
 // PDF report generation (shared HTML/layout + per-app theme; rendered by the worker)
 export { pdfFooterNote, buildReportHtml } from './pdf/report-html.js';

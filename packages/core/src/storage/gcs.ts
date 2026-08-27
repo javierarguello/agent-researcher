@@ -89,25 +89,18 @@ export async function listJobFiles(jobId: string): Promise<JobFile[]> {
   }));
 }
 
-export interface SignedFile extends JobFile {
-  url: string;
-  expiresAt: string;
-}
-
-/** Mints a read-only V4 signed URL for one object path. */
-export async function signRead(path: string, ttlMinutes = config.storage.signedUrlTtlMinutes): Promise<string> {
-  const expires = Date.now() + ttlMinutes * 60_000;
-  const [url] = await client()
-    .bucket(config.storage.bucket)
-    .file(path)
-    .getSignedUrl({ version: 'v4', action: 'read', expires });
-  return url;
-}
-
-/** Signs read URLs for every file of a job (used when a job is polled as done). */
-export async function signJobFiles(files: JobFile[], ttlMinutes = config.storage.signedUrlTtlMinutes): Promise<SignedFile[]> {
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
-  return Promise.all(
-    files.map(async (f) => ({ ...f, url: await signRead(f.path, ttlMinutes), expiresAt })),
-  );
-}
+/*
+ * `SignedFile`, `signRead` and `signJobFiles` used to live here: V4 signed URLs
+ * straight to the raw objects, minted when a job was polled as done.
+ *
+ * They were replaced by the authenticated proxy — `/research/:jobId/report` and
+ * `/research/:jobId/files/:name`, which check the caller, redact `report.json` for
+ * a non-admin and 404 the admin-only files — and then stayed exported and called by
+ * nobody, a loaded helper sitting where someone reaching for the obvious answer
+ * would find it. A signed URL is a bearer token for a raw object: it bypasses every
+ * one of those checks for as long as it lives, and it survives being forwarded.
+ *
+ * Deleted 2026-08-25. If read-without-a-session is ever wanted again, the mechanism
+ * that exists for it is `signReadToken` (`auth/tokens.ts`) — a scoped token the
+ * proxy verifies — not a URL that answers to whoever holds it.
+ */

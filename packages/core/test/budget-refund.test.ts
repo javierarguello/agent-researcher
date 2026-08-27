@@ -32,9 +32,7 @@ vi.mock('../src/storage/gcs.js', () => ({
   },
   downloadObject: async (jobId: string, name: string) => OBJECTS.get(`${jobId}/${name}`),
   deleteObject: async (jobId: string, name: string) => void OBJECTS.delete(`${jobId}/${name}`),
-  signJobFiles: async (f: unknown) => f,
   listJobFiles: async () => [],
-  signRead: async () => '',
 }));
 
 import { config } from '../src/config.js';
