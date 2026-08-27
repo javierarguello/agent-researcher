@@ -485,11 +485,28 @@ bites first.
    `objectAdmin` and the API `objectViewer`). But that is a current fact, not a
    property: one wrong binding reopens it. One command per bucket. **Javier — prod
    infra.**
-3. **`signRead` / `signJobFiles` are still exported from core and called by nobody**
-   (`packages/core/src/index.ts`; the only other references are test mocks). They are
-   the mechanism the authenticated proxy replaced — URLs straight to the raw objects —
-   left loaded for whoever reaches for the obvious helper. Deleting them is a small
-   commit and nothing calls them.
+3. **~~`signRead` / `signJobFiles`~~ — DELETED `f72496f`** (2026-08-25), along with
+   `SignedFile` and the four test-mock stubs that were the only thing referencing
+   them. `signReadToken` (`auth/tokens.ts`) is a different thing, is used in
+   production, and is untouched. The comment left in `storage/gcs.ts` says where to
+   go instead, because the next person to want read-without-a-session will want a
+   scoped token the proxy verifies rather than a URL that answers to whoever holds
+   it.
+
+   **New, same family (`ccb8c6e`): the API now REFUSES TO START** on three
+   configurations that used to be caught by a default and a log line —
+   `APP_ENV=local` on a deployed service (`K_SERVICE` set, so auth, `requireAdmin`,
+   the captcha, the credit checks and the rate limits would all be off in front of
+   the public); `APP_ENV=local` with a `sk_live_` Stripe key (a laptop that can write
+   the real catalog); and `TURNSTILE_FLOWS` declaring a captcha with no
+   `TURNSTILE_SECRET`, which silently unguards every flow it names.
+
+   **Know this before an incident:** the third one means that if
+   `TURNSTILE_SECRET_PROD` is ever cleared or rotated to empty, the API will not come
+   up rather than serve without a captcha. That is the intended trade — an empty
+   `TURNSTILE_FLOWS` is the supported way to say a deployment runs without one — but
+   it turns a silent degradation into an outage, which is a choice somebody should
+   have made knowingly. `apps/api/src/startup-guards.ts`.
 4. **E3's unblock script is still not run, and its approval no longer covers the
    case.** `abuse-and-cost.md` § E3: approved 2026-07-31 *"because there is no
    production data yet"*. There is now. Anyone who accumulated four pre-screen
