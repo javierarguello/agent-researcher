@@ -106,6 +106,38 @@ if [[ "${ENV}" == "prod" ]]; then
   fi
 fi
 
+# --- The bucket cannot be made public, and every deploy re-asserts it ----------
+#
+# `publicAccessPrevention` was `inherited` on both buckets: nothing was public, no
+# `allUsers` binding anywhere, uniform bucket-level access on. All true, and all of
+# it a CURRENT FACT rather than a PROPERTY — one wrong binding, by a person or by a
+# script, and reports a buyer paid for are on the open web. `enforced` is the
+# difference between "nobody has done it" and "it cannot be done".
+#
+# Here rather than in `setup-gcp.sh` because setup runs once, by hand, when an
+# environment is born; this runs on every release of both environments, so the
+# property is re-asserted rather than remembered. It is also cheap: the describe
+# short-circuits and no write happens once it is already enforced.
+#
+# FATAL, not a warning. A warning is what the previous version of this was — a line
+# in a handoff saying it should be done — and it survived a launch that way.
+echo ">> [${ENV}] Bucket gs://${BUCKET}: public access prevention..."
+PAP="$(gcloud storage buckets describe "gs://${BUCKET}" --format="value(public_access_prevention)" 2>/dev/null || true)"
+if [[ "${PAP}" == "enforced" ]]; then
+  echo "   already enforced."
+else
+  if ! gcloud storage buckets update "gs://${BUCKET}" --public-access-prevention >/dev/null 2>&1; then
+    echo "!! [${ENV}] refusing to deploy: gs://${BUCKET} has publicAccessPrevention='${PAP:-unknown}'," >&2
+    echo "!! and this deploy could not set it. The deploy service account needs storage.buckets.update" >&2
+    echo "!! (roles/storage.admin on the bucket is enough):" >&2
+    echo "!!   gcloud storage buckets add-iam-policy-binding gs://${BUCKET} \\" >&2
+    echo "!!     --member=serviceAccount:<the GCP_SA_KEY identity> --role=roles/storage.admin" >&2
+    echo "!! Or set it once by hand: gcloud storage buckets update gs://${BUCKET} --public-access-prevention" >&2
+    exit 1
+  fi
+  echo "   set to enforced."
+fi
+
 echo ">> [${ENV}] Building worker image..."
 gcloud builds submit --config infra/cloudbuild.worker.yaml \
   --substitutions "_IMAGE=${WORKER_IMAGE}" .

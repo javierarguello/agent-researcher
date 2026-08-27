@@ -93,8 +93,12 @@ gcloud firestore fields ttls update expireAt --database="${DATABASE}" \
   --collection-group=daily --enable-ttl 2>/dev/null || echo "   (ttl already enabled / creating)"
 
 echo ">> Cloud Storage bucket gs://${BUCKET} ..."
+# `--public-access-prevention` at BIRTH, so a new environment is never briefly
+# public-able while waiting for its first deploy. `deploy.sh` re-asserts it on every
+# release, which is what keeps it true afterwards — this line only decides what is
+# true in the window between creating the bucket and deploying into it.
 gcloud storage buckets create "gs://${BUCKET}" \
-  --location="${REGION}" --uniform-bucket-level-access 2>/dev/null || echo "   (exists)"
+  --location="${REGION}" --uniform-bucket-level-access --public-access-prevention 2>/dev/null || echo "   (exists)"
 
 QUEUE="${PREFIX}-jobs"
 JOB_MAX_CONCURRENCY="${JOB_MAX_CONCURRENCY:-4}"
