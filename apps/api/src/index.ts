@@ -128,6 +128,7 @@ import {
   modeShapes,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
+import { deploymentSafetyError } from './startup-guards.js';
 import { forgetCachedCredential, jwtAuth, requireAdmin } from './auth.js';
 import { stripe, stripeConfigured, listStripePlans, resolveStripePlan, isValidAppId, upsertStripePlan, archiveStripePlan } from './stripe.js';
 import { cached, bustPublicCache, PUBLIC_TTL_MS, PUBLIC_EMPTY_TTL_MS, PUBLIC_BROWSER_MAX_AGE, PUBLIC_BROWSER_SWR } from './cache.js';
@@ -3353,6 +3354,24 @@ export { app };
 
 const start = async () => {
   try {
+    // Before anything is served. These are refusals, not warnings, and the line
+    // they replace is why: `APP_ENV=local` used to log "auth is DISABLED" and then
+    // come up anyway, so the service ran wide open with one line scrolling away in
+    // Cloud Logging. See `startup-guards.ts` for what each one costs.
+    const unsafe = deploymentSafetyError({
+      appEnv: config.server.appEnv,
+      // Set by Cloud Run on every instance and by nothing on a laptop, so "am I in
+      // front of the public" needs no variable anybody has to remember to set —
+      // which is the class of mistake being guarded.
+      deployed: !!process.env.K_SERVICE,
+      captchaSecret: config.captcha.secret,
+      captchaFlows: config.captcha.flows,
+      stripeKey: config.stripe.secretKey,
+    });
+    if (unsafe) {
+      app.log.fatal(unsafe);
+      process.exit(1);
+    }
     if (config.server.appEnv === 'local') {
       app.log.warn('APP_ENV=local — auth is DISABLED (identity from x-app-id/x-user-id/x-role).');
     }
