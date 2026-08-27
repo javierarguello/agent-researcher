@@ -4420,6 +4420,82 @@ Nothing below step 1 has been done.
    the only shipped mode). Reproduced means the work is verification, not discovery.
 2. **Reproduce or kill the reasoned findings.** Do not fix from them.
 
+   ### WHERE THIS STANDS — 2026-08-25, counted from the findings themselves
+
+   **11 closed, 24 open (5 reproduced + 19 reasoned).** Counted by parsing this
+   section for `**CLOSED`, not from memory — an earlier hand-count in the same
+   session said "15 reasoned + 6 reproduced" and was wrong, which is the reason the
+   count is now written as a command you can re-run:
+
+   ```
+   # from the repo root; prints CLOSED / open-reproduced / open-reasoned
+   python3 - <<'EOF'
+   import io, re
+   s = io.open('docs/plans/deep-review.md', encoding='utf-8').read()
+   body = s[s.index('## Round 11 — 2026-08-24'):s.index('### Killed by refutation (7)')]
+   for b in re.split(r'\n##### ', body)[1:]:
+       name, head = b.split(' ')[0].strip('~'), b[:1400]
+       print(('CLOSED  ' if '**CLOSED' in head else
+              'repro   ' if '**reproduced**' in head else 'reason  ') + name)
+   EOF
+   ```
+
+   **Closed (11), one commit each:** `d14e752` echo-book-1 · `019c8ae`
+   enricher-swap-1 · `30c56eb` seed-1 · `23f78fc` confirm-sentence-1 · `d5df321`
+   money-2 · `ac0e479` postmark-await-1 + email-hang-1 · `594e5ff` render-1 ·
+   `96a751c` ceiling-profit-invert-3 · `907ee95` webhook-500-loop-1 · `000e20a`
+   mod-jailbreak-leet-2. Suite exit 0, **1468 passed**, typecheck exit 0, §K census
+   re-run and unchanged (61/95, 2/73).
+
+   **Still open — reproduced (5), take these first:** `money-5` and
+   `ceiling-unpinned-1` (the worker's ceiling wiring is pinned by nothing — discard
+   the live pricing doc and 51 tests stay green; they are the same family and are
+   probably one commit), `vite-guard-env-1` and `vite-1`, `burst-429-lang-1`.
+
+   **Still open — reasoned (19):** stale-price-1, money-3, money-4, money-6,
+   money-8, money-9, money-10, receipt-currency-1, florida-comment-1,
+   midjob-reprice-1, render-2, render-3, credits-guard-1, packs-2, packs-3,
+   confirm-sentence-3, copy-parity-4, sample-price-5, stats-doc-6.
+
+   ### THE RULE THIS BATCH EARNED, and it is the one to carry
+
+   **A reproduced finding proves the DEFECT, never the REPAIR.** Five of the eleven
+   had a remedy that was wrong, incomplete, or unnecessary, and every one was caught
+   by measuring rather than reading:
+
+   - `echo-book-1` asked for `promptEchoes` on the Checkpoint — that would
+     DOUBLE-book, since every dispatch is its own `runJob`.
+   - `confirm-sentence-1`'s obvious fix (render from `proposedParams`) reproduces the
+     defect one layer down, because basics are opt-in and absent from it.
+   - `ceiling-profit-invert-3`'s obvious fix — changing the `0`-means-uncapped
+     sentinel — would have broken a deliberate template opt-out.
+   - `webhook-500-loop-1`'s `'1e3'` is not malformed at all.
+   - `mod-jailbreak-leet-2`'s "the two cannot be separated by this coarse flag" was
+     accepted by BOTH the finder and its adversary, and is false: the two exemptions
+     are broken by OPPOSITE rewrites.
+
+   Corollaries worth the same weight:
+
+   - **A comment can guard the wrong side of the defect it describes.** The webhook's
+     note about "a 500 Stripe retries for days" sits fifteen lines BELOW the line
+     that produced exactly that; `linkLabel`'s doc justified taking the shown host
+     from a field the page's author does choose.
+   - **Check the finding's own claims, not just its conclusion.**
+     `mod-jailbreak-leet-2` says the attempts stopped earning a strike; a pre-screen
+     hit never earned one (`index.ts:1016`, deliberate).
+   - **Two tests of ours were pinning defects** (`warnings).toEqual([])` on the
+     retitle case, R10-6's fixture echoing a raw default). Third round running.
+   - **`timeout` is not a command on macOS.** Two "the mutation hangs the suite"
+     readings were that error swallowed by a grep. Check the exit code of the
+     MEASURING command, not only of the thing measured.
+   - **The Ollama tier is available and worth using** (`TEST_LLM=ollama`,
+     qwen2.5:3b, server already up). It is what showed that "the classifier catches
+     it" — the reason `mod-jailbreak-leet-2` was downgraded to P2 — is not always
+     true. Any finding whose severity rests on "the LLM would catch it" is an
+     unmeasured claim until you run it.
+
+
+
    **Six more closed 2026-08-25** on top of the four P1, in this order and for this
    reason — money first, then the two that reach the artifact a buyer keeps:
    `d5df321` money-2 · `ac0e479` postmark-await-1 + email-hang-1 (two findings, one

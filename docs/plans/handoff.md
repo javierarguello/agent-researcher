@@ -581,10 +581,33 @@ that no agent can do and that are worth more than anything in the other two.
   a round instructed to default to refuted, and **only 15 of the survivors are
   reproduced — 25 are reasoned**. Those 25 are leads, not facts. Do not fix from one.
 
-  **The four reproduced P1 are CLOSED** (2026-08-25), one commit each: `d14e752`
-  echo-book-1, `019c8ae` enricher-swap-1, `30c56eb` seed-1, `23f78fc`
-  confirm-sentence-1. `npm test` exit 0, **1449 passed** (baseline 1444, +5 tests),
-  typecheck exit 0. Stamps and reasoning on the findings in `deep-review.md`.
+  **11 of the 35 are CLOSED** (2026-08-25), one commit each — the four reproduced P1
+  first, then six more taken money-first: `d14e752` echo-book-1 · `019c8ae`
+  enricher-swap-1 · `30c56eb` seed-1 · `23f78fc` confirm-sentence-1 · `d5df321`
+  money-2 · `ac0e479` postmark-await-1 + email-hang-1 · `594e5ff` render-1 ·
+  `96a751c` ceiling-profit-invert-3 · `907ee95` webhook-500-loop-1 · `000e20a`
+  mod-jailbreak-leet-2. `npm test` exit 0, **1468 passed** (baseline 1444), typecheck
+  exit 0, §K census re-run and unchanged.
+
+  **24 open: 5 reproduced, 19 reasoned.** Take the five reproduced first —
+  `money-5` + `ceiling-unpinned-1` are the same family (the worker's ceiling wiring
+  is pinned by nothing: discard the live pricing doc and 51 tests stay green), then
+  `vite-guard-env-1`, `vite-1`, `burst-429-lang-1`. **Do not trust a hand-count of
+  what is left**; `deep-review.md` § "WHERE THIS STANDS" carries a command that
+  counts them from the findings themselves, because a hand-count in this same
+  session was wrong.
+
+  **The rule this batch earned, and it is the one to carry: a reproduced finding
+  proves the DEFECT, never the REPAIR.** Five of the eleven had a remedy that was
+  wrong, incomplete or unnecessary — including one ("these two cannot be separated")
+  that BOTH the finder and its adversary accepted and that measuring disproved in
+  ten minutes. Full list, with the corollaries, in `deep-review.md`.
+
+  Two more worth carrying up here: **`timeout` is not a command on macOS** (two
+  "the mutation hangs the suite" readings were that error swallowed by a grep — check
+  the measuring command's exit code too), and **the Ollama tier is up and worth
+  using** (`TEST_LLM=ollama`): any finding whose severity rests on "the classifier
+  would catch it" is an unmeasured claim, and the one time it was run, it was wrong.
 
   **Two of the four were reproduced in their CLAIM and wrong in their REMEDY**, which
   is the thing to carry into the rest of the round. `echo-book-1` asked for
