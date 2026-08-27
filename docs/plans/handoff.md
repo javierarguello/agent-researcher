@@ -71,8 +71,24 @@ only tier you may use.
 
 ## State, 2026-08-25
 
-**`main` and `deploy-prod` are both `9a81480`.** Working tree clean. Everything below
+**`main` and `deploy-prod` are both `2755410`.** Working tree clean. Everything below
 is released and was verified ON THE RUNNING SYSTEM, not read off a workflow.
+
+**Released to prod 2026-08-25: 19 commits** (`9a81480..2755410`) — eleven of round 11's
+findings, the three startup guards, and the `signRead` deletion. Both prod workflows
+green, and then MEASURED against the live system rather than the run log:
+
+`/health` **200** in 0.22s — which is the check that mattered this release, because
+`ccb8c6e` gives the API three reasons to REFUSE to start and this proves none of them
+fired in prod · `/plans` returns scout 30 / investor 120 / syndicate 240 at $29/$69/$129
+· CORS 204 with a matching `allow-origin` for `floridabizlabs.com` and **no header at
+all** for an unlisted origin · `/`, `/es`, `/sample`, `/privacy`, `/sitemap.xml`,
+`/robots.txt` all 200 · `$29/$69/$129` present in the SERVED landing HTML, not only in
+`plans.json` · `/sample` canonical still its own.
+
+The preconditions for the new guards were checked BEFORE promoting, not after:
+`TURNSTILE_SECRET_PROD` exists, `deploy.sh` sets `APP_ENV=production` explicitly, and
+dev had already come up on Cloud Run with the identical code.
 
 **Suite, MEASURED by EXIT CODE:** `npm test` → 0, `npm run typecheck` → 0,
 **1444 passed** (870 core + 258 api + 24 worker + 267 fbizlab + 25 admin), 23 skipped.
