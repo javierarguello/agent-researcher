@@ -495,12 +495,60 @@ bites first.
    that was there all along" below for what closed it and for the measurement error
    that kept this item open for weeks. What is NOT yet measured is the only thing
    that settles it: `Authentication-Results` on a mail the product actually sent.
-2. **`publicAccessPrevention` is `inherited`, not `enforced`, on both buckets.**
+1b. **THE DEPLOY SERVICE ACCOUNTS ARE PROJECT OWNERS, with keys that never expire.**
+   Measured 2026-08-25 against the live project:
+
+   ```
+   gh-deploy-dev @sinuous-canto-497518-h7  →  roles/owner
+   gh-deploy-prod@sinuous-canto-497518-h7  →  roles/owner
+   ```
+
+   Each has a USER_MANAGED key with `validBeforeTime: 9999-12-31` — the JSON in the
+   GitHub secrets `GCP_SA_KEY_DEV` / `GCP_SA_KEY_PROD`. **This is now the highest-value
+   credential in the system**, above the Stripe live key and above `AUTH_JWT_SECRET`,
+   because Owner reaches both of those and everything else: every Firestore document
+   (every account, job, credit ledger entry), every report object in both buckets,
+   deletion of any of it, and the power to grant itself more.
+
+   **There is no dev/prod isolation to fall back on.** Both environments live in ONE
+   GCP project and BOTH deploy accounts are Owner, so `GCP_SA_KEY_DEV` is exactly as
+   dangerous as the prod one. Any separation the two environments appear to have does
+   not exist at the IAM layer.
+
+   Read this next to `deploy.yml`'s own history: it authenticates with a KEY rather
+   than Workload Identity Federation because the WIF pool never existed in this
+   project (`40c2432`). So the mitigation that would remove the long-lived secret
+   entirely was skipped for a reason that was true then and is worth revisiting.
+
+   **Not fixed, deliberately — scoping this wrong breaks every deploy.** The direction,
+   in order of value per unit of risk:
+
+   1. Scope both accounts to what `deploy.sh` actually uses: `roles/run.admin`,
+      `roles/cloudbuild.builds.editor`, `roles/artifactregistry.writer`,
+      `roles/iam.serviceAccountUser` on the runtime SAs, and `roles/storage.admin`
+      **on the bucket only**. That list is a starting point to VERIFY against a dev
+      deploy, not a checked fact — nobody has run a deploy without Owner.
+   2. Replace the key with WIF, which removes the long-lived secret rather than
+      shrinking what it can do.
+   3. At minimum: rotate both keys and give them an expiry.
+
+   Dev is the canary for all three, the same way it was for the bucket assertion.
+   **Javier — raised 2026-08-25, deferred by him for a later session.**
+
+2. **~~`publicAccessPrevention` is `inherited`~~ — AUTOMATED `f7074d9`, dev DONE.**
+   Was `inherited` on both buckets.
    Nothing is public today and that was verified against the live project (uniform
    bucket-level access on, no `allUsers`/`allAuthenticatedUsers`, only the worker
    `objectAdmin` and the API `objectViewer`). But that is a current fact, not a
-   property: one wrong binding reopens it. One command per bucket. **Javier — prod
-   infra.**
+   property: one wrong binding reopens it.
+
+   `deploy.sh` now asserts `enforced` on every release of both environments, and
+   `setup-gcp.sh` creates new buckets with it, so it is a property rather than
+   something to remember. Verified end to end: `agent-researcher-dev-reports` went
+   `inherited` → **`enforced`** by the dev deploy itself, no manual command.
+   `agent-researcher-prod-reports` follows on the next promotion — check it with
+   `gcloud storage buckets describe gs://agent-researcher-prod-reports
+   --format='value(public_access_prevention)'`.
 3. **~~`signRead` / `signJobFiles`~~ — DELETED `f72496f`** (2026-08-25), along with
    `SignedFile` and the four test-mock stubs that were the only thing referencing
    them. `signReadToken` (`auth/tokens.ts`) is a different thing, is used in
