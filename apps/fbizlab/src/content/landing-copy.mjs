@@ -8,7 +8,7 @@ export const LANDING_COPY = {
     nav: { search: 'Search', insights: 'Insights', pricing: 'Pricing', login: 'Log In', app: 'App' },
     hero: {
       kicker: 'AI-assisted research for Florida business opportunities',
-      title: 'Explore Florida business opportunities with greater clarity.',
+      title: 'Research businesses for sale in Florida before you call the broker.',
       lead: `${BRAND} is a specialized research digest for exploring Florida business opportunities at scale and intelligently, based on your own criteria — it organizes available listing information, compares key details and highlights questions worth investigating.`,
       cta1: 'Explore opportunities', cta2: 'See a sample summary',
       disclaimer: 'AI-generated research for informational purposes. Always refer to the original listings for complete, up-to-date details.',
@@ -23,11 +23,11 @@ export const LANDING_COPY = {
       cta: 'See a sample summary',
     },
     wwd: {
-      kicker: 'What we do', title: 'A simpler starting point for your business search',
+      kicker: 'What we do', title: 'A starting point for buying a business in Florida',
       body: `Business listings often come scattered, incomplete or difficult to compare. ${BRAND} brings available details into a structured summary, helping you understand each opportunity and prepare for the next step in your own research.`,
     },
     benefits: {
-      kicker: 'Benefits', title: 'Bring scattered information into one place',
+      kicker: 'Benefits', title: 'Compare Florida businesses for sale side by side',
       items: [
         ['Review information faster', 'See important listing details in a more organized and consistent format.'],
         ['Compare opportunities', 'Review multiple businesses using similar categories and search criteria.'],
@@ -37,7 +37,7 @@ export const LANDING_COPY = {
       ],
     },
     hiw: {
-      kicker: 'How it works', title: 'From scattered information to a clearer overview',
+      kicker: 'How it works', title: 'How the research works, from listing to dossier',
       steps: [
         ['Set your preferences', 'Select your preferred location, industry, investment range and other search criteria.'],
         ['Explore available opportunities', 'Review businesses that appear related to the criteria you selected.'],
@@ -47,7 +47,7 @@ export const LANDING_COPY = {
     },
     insum: {
       cta: 'Open the full sample dossier →',
-      kicker: 'Inside a summary', title: 'See the information that matters at a glance',
+      kicker: 'Inside a summary', title: 'What a dossier covers: price, revenue, lease, and the gaps',
       body: 'Depending on the information available, each AI-generated summary may organize details such as:',
       disclaimer: `${BRAND} does not independently verify the information provided by sellers, brokers, listings or third-party sources.`,
       items: ['Asking price', 'Reported revenue or owner earnings', 'Location and industry', 'Seller or broker listing details', 'Operational information', 'Information that appears to be missing', 'General questions for further investigation', 'Sources and data limitations'],
@@ -63,7 +63,7 @@ export const LANDING_COPY = {
       creditsWord: 'credits', popular: 'Most popular', choose: 'Choose pack', noPlans: 'Packs are being set up.',
     },
     faq: {
-      kicker: 'FAQ', title: 'Common questions',
+      kicker: 'FAQ', title: 'Questions about researching a business for sale',
       items: [
         ['What does Florida Biz Labs do?', 'It is a specialized digest that helps you search Florida business opportunities at scale and intelligently, based on your own criteria. It organizes available listing information into a structured summary and highlights details worth investigating.'],
         ['Does Florida Biz Labs replace business listing portals?', 'No. It complements them — it does not replace them. Florida Biz Labs organizes information available across listings and always references the original sources, so you can go back to them for complete, up-to-date details.'],
@@ -75,7 +75,7 @@ export const LANDING_COPY = {
       ],
     },
     cta: {
-      kicker: 'Get started', title: 'Find the opportunities you want to investigate further',
+      kicker: 'Get started', title: 'Start researching businesses for sale in Florida',
       body: `Start with your preferred location, industry and investment range. ${BRAND} will help you organize available information and narrow your research more efficiently.`,
       btn: 'Start my search',
       disclaimer: 'No investment recommendation is provided. Always verify information independently and consult qualified professionals before making financial or acquisition decisions.',
@@ -91,7 +91,7 @@ export const LANDING_COPY = {
     nav: { search: 'Buscar', insights: 'Insights', pricing: 'Precios', login: 'Ingresar', app: 'App' },
     hero: {
       kicker: 'Investigación asistida por IA para oportunidades de negocio en Florida',
-      title: 'Explora oportunidades de negocio en Florida con mayor claridad.',
+      title: 'Investiga negocios en venta en Florida antes de llamar al bróker.',
       lead: `${BRAND} es un digest de investigación especializado para explorar oportunidades de negocio en Florida de forma masiva e inteligente, según tus propios criterios — organiza la información disponible de los avisos, compara detalles clave y resalta preguntas que vale la pena investigar.`,
       cta1: 'Explorar oportunidades', cta2: 'Ver un resumen de ejemplo',
       disclaimer: 'Investigación generada por IA con fines informativos. Consulta siempre los avisos originales para ver los detalles completos y actualizados.',
@@ -106,11 +106,11 @@ export const LANDING_COPY = {
       cta: 'Ver un resumen de ejemplo',
     },
     wwd: {
-      kicker: 'Qué hacemos', title: 'Un punto de partida más simple para tu búsqueda de negocios',
+      kicker: 'Qué hacemos', title: 'Un punto de partida para comprar un negocio en Florida',
       body: `Los avisos de negocios suelen venir con información dispersa, incompleta o difícil de comparar. ${BRAND} reúne los detalles disponibles en un resumen estructurado, ayudándote a entender cada oportunidad y a prepararte para el siguiente paso de tu propia investigación.`,
     },
     benefits: {
-      kicker: 'Beneficios', title: 'Reúne información dispersa en un solo lugar',
+      kicker: 'Beneficios', title: 'Compara negocios en venta en Florida lado a lado',
       items: [
         ['Revisa la información más rápido', 'Ve los detalles importantes del aviso en un formato más organizado y consistente.'],
         ['Compara oportunidades', 'Revisa varios negocios usando categorías y criterios de búsqueda similares.'],
@@ -120,7 +120,7 @@ export const LANDING_COPY = {
       ],
     },
     hiw: {
-      kicker: 'Cómo funciona', title: 'De información dispersa a una visión más clara',
+      kicker: 'Cómo funciona', title: 'Cómo funciona la investigación, del anuncio al dossier',
       steps: [
         ['Define tus preferencias', 'Selecciona tu ubicación, industria, rango de inversión y otros criterios de búsqueda.'],
         ['Explora las oportunidades disponibles', 'Revisa los negocios que parecen relacionados con los criterios que seleccionaste.'],
@@ -130,7 +130,7 @@ export const LANDING_COPY = {
     },
     insum: {
       cta: 'Abrir el dossier de ejemplo completo →',
-      kicker: 'Dentro de un resumen', title: 'Ve la información que importa de un vistazo',
+      kicker: 'Dentro de un resumen', title: 'Qué cubre un dossier: precio, ingresos, alquiler y los vacíos',
       body: 'Según la información disponible, cada resumen generado por IA puede organizar detalles como:',
       disclaimer: `${BRAND} no verifica de forma independiente la información provista por vendedores, brokers, avisos o fuentes de terceros.`,
       items: ['Precio', 'Ingresos reportados o ganancias del dueño', 'Ubicación e industria', 'Detalles del aviso del vendedor o broker', 'Información operativa', 'Información que parece faltar', 'Preguntas generales para investigar', 'Fuentes y limitaciones de los datos'],
@@ -146,7 +146,7 @@ export const LANDING_COPY = {
       creditsWord: 'créditos', popular: 'Más popular', choose: 'Elegir paquete', noPlans: 'Estamos configurando los paquetes.',
     },
     faq: {
-      kicker: 'FAQ', title: 'Preguntas frecuentes',
+      kicker: 'FAQ', title: 'Preguntas sobre investigar un negocio en venta',
       items: [
         ['¿Qué hace Florida Biz Labs?', 'Es un digest especializado que te ayuda a buscar oportunidades de negocio en Florida de forma masiva e inteligente, según tus propios criterios. Organiza la información disponible de los avisos en un resumen estructurado y resalta detalles que vale la pena investigar.'],
         ['¿Florida Biz Labs reemplaza los portales de avisos?', 'No. Los complementa, no los reemplaza. Florida Biz Labs organiza la información disponible en los avisos y siempre hace referencia a las fuentes originales, para que acudas a ellas por los detalles completos y actualizados.'],
@@ -158,7 +158,7 @@ export const LANDING_COPY = {
       ],
     },
     cta: {
-      kicker: 'Empezar', title: 'Encuentra las oportunidades que quieres investigar a fondo',
+      kicker: 'Empezar', title: 'Empieza a investigar negocios en venta en Florida',
       body: `Empieza con tu ubicación, industria y rango de inversión preferidos. ${BRAND} te ayudará a organizar la información disponible y a acotar tu investigación de forma más eficiente.`,
       btn: 'Iniciar mi búsqueda',
       disclaimer: 'No se brinda ninguna recomendación de inversión. Verifica siempre la información de forma independiente y consulta a profesionales calificados antes de tomar decisiones financieras o de adquisición.',
@@ -174,7 +174,7 @@ export const LANDING_COPY = {
     nav: { search: 'Recherche', insights: 'Aperçus', pricing: 'Tarifs', login: 'Connexion', app: 'App' },
     hero: {
       kicker: 'Recherche assistée par IA pour les opportunités d’affaires en Floride',
-      title: 'Explorez les opportunités d’affaires en Floride avec plus de clarté.',
+      title: 'Recherchez des entreprises à vendre en Floride avant d’appeler le courtier.',
       lead: `${BRAND} est un digest de recherche spécialisé pour explorer les opportunités d’affaires en Floride à grande échelle et intelligemment, selon vos propres critères — il organise les informations disponibles des annonces, compare les détails clés et met en évidence les questions à approfondir.`,
       cta1: 'Explorer les opportunités', cta2: 'Voir un exemple de résumé',
       disclaimer: 'Recherche générée par IA à titre informatif. Reportez-vous toujours aux annonces d’origine pour les détails complets et à jour.',
@@ -189,11 +189,11 @@ export const LANDING_COPY = {
       cta: 'Voir un exemple de résumé',
     },
     wwd: {
-      kicker: 'Ce que nous faisons', title: 'Un point de départ plus simple pour votre recherche',
+      kicker: 'Ce que nous faisons', title: 'Un point de départ pour acheter une entreprise en Floride',
       body: `Les annonces d’entreprises arrivent souvent avec des informations dispersées, incomplètes ou difficiles à comparer. ${BRAND} rassemble les détails disponibles dans un résumé structuré, pour vous aider à comprendre chaque opportunité et à préparer la prochaine étape de votre propre recherche.`,
     },
     benefits: {
-      kicker: 'Avantages', title: 'Rassemblez l’information dispersée en un seul endroit',
+      kicker: 'Avantages', title: 'Comparez les entreprises à vendre en Floride côte à côte',
       items: [
         ['Examinez l’information plus vite', 'Voyez les détails importants d’une annonce dans un format plus organisé et cohérent.'],
         ['Comparez les opportunités', 'Examinez plusieurs entreprises avec des catégories et critères de recherche similaires.'],
@@ -203,7 +203,7 @@ export const LANDING_COPY = {
       ],
     },
     hiw: {
-      kicker: 'Comment ça marche', title: 'D’une information dispersée à une vue plus claire',
+      kicker: 'Comment ça marche', title: 'Comment fonctionne la recherche, de l’annonce au dossier',
       steps: [
         ['Définissez vos préférences', 'Sélectionnez votre localisation, votre secteur, votre fourchette d’investissement et d’autres critères.'],
         ['Explorez les opportunités disponibles', 'Examinez les entreprises qui semblent liées aux critères sélectionnés.'],
@@ -213,7 +213,7 @@ export const LANDING_COPY = {
     },
     insum: {
       cta: 'Ouvrir le dossier d’exemple complet →',
-      kicker: 'Dans un résumé', title: 'Voyez l’information qui compte d’un coup d’œil',
+      kicker: 'Dans un résumé', title: 'Ce que couvre un dossier : prix, revenus, bail et les lacunes',
       body: 'Selon l’information disponible, chaque résumé généré par IA peut organiser des détails tels que :',
       disclaimer: `${BRAND} ne vérifie pas de façon indépendante les informations fournies par les vendeurs, courtiers, annonces ou sources tierces.`,
       items: ['Prix', 'Revenu déclaré ou bénéfices du propriétaire', 'Localisation et secteur', 'Détails de l’annonce du vendeur ou du courtier', 'Informations opérationnelles', 'Informations qui semblent manquer', 'Questions générales à approfondir', 'Sources et limites des données'],
@@ -229,7 +229,7 @@ export const LANDING_COPY = {
       creditsWord: 'crédits', popular: 'Le plus populaire', choose: 'Choisir le pack', noPlans: 'Les packs sont en cours de configuration.',
     },
     faq: {
-      kicker: 'FAQ', title: 'Questions fréquentes',
+      kicker: 'FAQ', title: 'Questions sur la recherche d’une entreprise à vendre',
       items: [
         ['Que fait Florida Biz Labs ?', 'C’est un digest spécialisé qui vous aide à rechercher des opportunités d’affaires en Floride à grande échelle et intelligemment, selon vos propres critères. Il organise l’information disponible des annonces dans un résumé structuré et met en évidence les détails à approfondir.'],
         ['Florida Biz Labs remplace-t-il les portails d’annonces ?', 'Non. Il les complète, il ne les remplace pas. Florida Biz Labs organise l’information disponible dans les annonces et renvoie toujours aux sources d’origine, pour que vous y trouviez les détails complets et à jour.'],
@@ -241,7 +241,7 @@ export const LANDING_COPY = {
       ],
     },
     cta: {
-      kicker: 'Commencer', title: 'Trouvez les opportunités que vous voulez approfondir',
+      kicker: 'Commencer', title: 'Commencez à rechercher des entreprises à vendre en Floride',
       body: `Commencez avec votre localisation, votre secteur et votre fourchette d’investissement. ${BRAND} vous aidera à organiser l’information disponible et à affiner votre recherche plus efficacement.`,
       btn: 'Lancer ma recherche',
       disclaimer: 'Aucune recommandation d’investissement n’est fournie. Vérifiez toujours l’information de façon indépendante et consultez des professionnels qualifiés avant toute décision financière ou d’acquisition.',
@@ -257,7 +257,7 @@ export const LANDING_COPY = {
     nav: { search: 'Buscar', insights: 'Insights', pricing: 'Preços', login: 'Entrar', app: 'App' },
     hero: {
       kicker: 'Pesquisa assistida por IA para oportunidades de negócio na Flórida',
-      title: 'Explore oportunidades de negócio na Flórida com mais clareza.',
+      title: 'Pesquise negócios à venda na Flórida antes de ligar para o corretor.',
       lead: `${BRAND} é um digest de pesquisa especializado para explorar oportunidades de negócio na Flórida em escala e de forma inteligente, com base nos seus próprios critérios — organiza as informações disponíveis dos anúncios, compara detalhes-chave e destaca perguntas que valem a pena investigar.`,
       cta1: 'Explorar oportunidades', cta2: 'Ver um resumo de exemplo',
       disclaimer: 'Pesquisa gerada por IA para fins informativos. Consulte sempre os anúncios originais para ver os detalhes completos e atualizados.',
@@ -272,11 +272,11 @@ export const LANDING_COPY = {
       cta: 'Ver um resumo de exemplo',
     },
     wwd: {
-      kicker: 'O que fazemos', title: 'Um ponto de partida mais simples para sua busca de negócios',
+      kicker: 'O que fazemos', title: 'Um ponto de partida para comprar um negócio na Flórida',
       body: `Anúncios de negócios costumam vir com informações dispersas, incompletas ou difíceis de comparar. ${BRAND} reúne os detalhes disponíveis em um resumo estruturado, ajudando você a entender cada oportunidade e a preparar o próximo passo da sua própria pesquisa.`,
     },
     benefits: {
-      kicker: 'Benefícios', title: 'Reúna informações dispersas em um só lugar',
+      kicker: 'Benefícios', title: 'Compare negócios à venda na Flórida lado a lado',
       items: [
         ['Revise as informações mais rápido', 'Veja os detalhes importantes do anúncio em um formato mais organizado e consistente.'],
         ['Compare oportunidades', 'Revise vários negócios usando categorias e critérios de busca semelhantes.'],
@@ -286,7 +286,7 @@ export const LANDING_COPY = {
       ],
     },
     hiw: {
-      kicker: 'Como funciona', title: 'De informações dispersas a uma visão mais clara',
+      kicker: 'Como funciona', title: 'Como funciona a pesquisa, do anúncio ao dossiê',
       steps: [
         ['Defina suas preferências', 'Selecione sua localização, setor, faixa de investimento e outros critérios de busca.'],
         ['Explore as oportunidades disponíveis', 'Revise os negócios que parecem relacionados aos critérios selecionados.'],
@@ -296,7 +296,7 @@ export const LANDING_COPY = {
     },
     insum: {
       cta: 'Abrir o dossiê de exemplo completo →',
-      kicker: 'Dentro de um resumo', title: 'Veja a informação que importa de relance',
+      kicker: 'Dentro de um resumo', title: 'O que um dossiê cobre: preço, receita, aluguel e as lacunas',
       body: 'Dependendo da informação disponível, cada resumo gerado por IA pode organizar detalhes como:',
       disclaimer: `${BRAND} não verifica de forma independente as informações fornecidas por vendedores, corretores, anúncios ou fontes de terceiros.`,
       items: ['Preço', 'Receita reportada ou ganhos do dono', 'Localização e setor', 'Detalhes do anúncio do vendedor ou corretor', 'Informações operacionais', 'Informações que parecem faltar', 'Perguntas gerais para investigar', 'Fontes e limitações dos dados'],
@@ -312,7 +312,7 @@ export const LANDING_COPY = {
       creditsWord: 'créditos', popular: 'Mais popular', choose: 'Escolher pacote', noPlans: 'Os pacotes estão sendo configurados.',
     },
     faq: {
-      kicker: 'FAQ', title: 'Perguntas comuns',
+      kicker: 'FAQ', title: 'Perguntas sobre pesquisar um negócio à venda',
       items: [
         ['O que a Florida Biz Labs faz?', 'É um digest especializado que ajuda você a buscar oportunidades de negócio na Flórida em escala e de forma inteligente, com base nos seus próprios critérios. Organiza as informações disponíveis dos anúncios em um resumo estruturado e destaca detalhes que valem a pena investigar.'],
         ['A Florida Biz Labs substitui os portais de anúncios?', 'Não. Ela os complementa, não os substitui. A Florida Biz Labs organiza as informações disponíveis nos anúncios e sempre faz referência às fontes originais, para você acessá-las e ver os detalhes completos e atualizados.'],
@@ -324,7 +324,7 @@ export const LANDING_COPY = {
       ],
     },
     cta: {
-      kicker: 'Começar', title: 'Encontre as oportunidades que você quer investigar a fundo',
+      kicker: 'Começar', title: 'Comece a pesquisar negócios à venda na Flórida',
       body: `Comece com sua localização, setor e faixa de investimento preferidos. ${BRAND} vai ajudar você a organizar as informações disponíveis e a refinar sua pesquisa de forma mais eficiente.`,
       btn: 'Iniciar minha busca',
       disclaimer: 'Nenhuma recomendação de investimento é fornecida. Verifique sempre a informação de forma independente e consulte profissionais qualificados antes de decisões financeiras ou de aquisição.',
