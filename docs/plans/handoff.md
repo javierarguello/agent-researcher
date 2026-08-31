@@ -71,8 +71,20 @@ only tier you may use.
 
 ## State, 2026-08-25
 
-**`main` and `deploy-prod` are both `2755410`.** Working tree clean. Everything below
+**`main` and `deploy-prod` are both `1c4fbdf`.** Working tree clean. Everything below
 is released and was verified ON THE RUNNING SYSTEM, not read off a workflow.
+
+**Two more releases followed on the same day**, both verified on the running system:
+
+- `c538ffb` — `deploy.sh` now asserts `publicAccessPrevention=enforced` on every
+  release of both environments, and it WORKED as a deployment rather than as a
+  command: `agent-researcher-dev-reports` and `agent-researcher-prod-reports` both
+  went `inherited` → **`enforced`** by their own deploys. The oldest infra item on
+  the security list is closed, and closed as a property rather than a fact.
+- `1c4fbdf` — the landing's headings. Confirmed in the SERVED BYTES of all four
+  languages, which is the only version a crawler reads: `/` "Research businesses for
+  sale in Florida before you call the broker", and its `es`/`fr`/`pt` twins. `/health`
+  200, `/`, `/sample`, `/sitemap.xml` 200, `$29/$69/$129` still in the HTML.
 
 **Released to prod 2026-08-25: 19 commits** (`9a81480..2755410`) — eleven of round 11's
 findings, the three startup guards, and the `signRead` deletion. Both prod workflows
