@@ -30,16 +30,44 @@ if (!API) {
   process.exit(1);
 }
 
+/**
+ * Fetch with room for a cold API. The prod API scales to zero, and its first
+ * request after idle — or after a deploy, which is exactly when this runs on a
+ * release — took 19s, past the old 15s cap: the nightly re-bake went red on
+ * 2026-10-27, -28 and on the first try of the 2026-10-29 release, each time
+ * against an API that answered in 0.3s once warm.
+ *
+ * Only what a retry can fix is retried — a timeout, a network error, a 5xx. A 4xx
+ * is a wrong URL or app id and fails at once, and so does an empty catalog below:
+ * waiting changes neither.
+ */
+const ATTEMPTS = 3;
+const TIMEOUT_MS = Number(process.env.FETCH_PLANS_TIMEOUT_MS ?? 60_000);
+const BACKOFF_MS = Number(process.env.FETCH_PLANS_BACKOFF_MS ?? 5_000);
+
+async function fetchWithRetry(url) {
+  for (let attempt = 1; ; attempt++) {
+    let problem;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+      if (res.status < 500) return res;
+      problem = `returned ${res.status}`;
+    } catch (err) {
+      problem = `failed: ${err.message}`;
+    }
+    if (attempt >= ATTEMPTS) {
+      console.error(`fetch-plans: ${url} ${problem} (attempt ${attempt} of ${ATTEMPTS}, giving up)`);
+      process.exit(1);
+    }
+    console.error(`fetch-plans: ${url} ${problem} (attempt ${attempt} of ${ATTEMPTS}, retrying)`);
+    await new Promise((r) => setTimeout(r, BACKOFF_MS * attempt));
+  }
+}
+
 const catalog = {};
 for (const lang of LANGS) {
   const url = `${API}/plans?appId=${encodeURIComponent(APP_ID)}&lang=${lang}`;
-  let res;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-  } catch (err) {
-    console.error(`fetch-plans: ${url} failed: ${err.message}`);
-    process.exit(1);
-  }
+  const res = await fetchWithRetry(url);
   if (!res.ok) {
     console.error(`fetch-plans: ${url} returned ${res.status}`);
     process.exit(1);
