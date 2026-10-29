@@ -20,6 +20,8 @@ const HOLD_BLURB: Record<JobFailureKind, string> = {
   upload_failed:
     'The report was produced but could not be stored. Continuing re-uploads it; the research is not re-run.',
   run_failed: 'It could not be completed. Continuing retries the steps that failed, from the checkpoint.',
+  spend_cap:
+    'A monthly spend cap was reached (or jobs were paused) as it was about to start, so nothing ran. Raise the cap or unpause in Limits first — continuing while still capped just holds it again.',
 };
 
 const AGENT_COLOR: Record<string, string> = { ok: 'teal', failed: 'red', pending: 'yellow', running: 'blue' };

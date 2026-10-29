@@ -33,6 +33,7 @@ import { resolveMode } from '../mode.js';
 import { getModelPricing, resolveModeCeiling } from '../credits/pricing.js';
 import { recordPromptEcho, recordReportStats } from '../stats/store.js';
 import { jobLogger } from '../obs/log.js';
+import { checkSpendBlock, type SpendBlock } from '../spend/store.js';
 import { runResearch, type Checkpoint, type JobTrace } from './research-engine.js';
 
 const CHECKPOINT = 'checkpoint.json';
@@ -92,6 +93,28 @@ export interface RunJobResult {
   status: 'completed' | 'failed' | 'incomplete' | 'held' | 'superseded';
 }
 
+/**
+ * Park a job that was about to start while a monthly cap (or the admin's pause)
+ * was in force. No dispatch claimed it, so `markHeld` runs without a dispatch id;
+ * it still refuses a job someone already resolved.
+ */
+async function parkSpendCapped(input: RunJobInput, block: SpendBlock, log: ReturnType<typeof jobLogger>): Promise<RunJobResult> {
+  const detail =
+    block.scope === 'paused'
+      ? 'Jobs are paused by an admin (Limits).'
+      : `The ${block.scope === 'global' ? 'global' : `"${input.appId}" app`} monthly spend cap was reached: $${block.spentUsd.toFixed(2)} of $${block.capUsd!.toFixed(2)}.`;
+  // A resumed job may have spent on earlier dispatches; that is the figure the hold reports.
+  const spentUsd = (await getJob(input.jobId).catch(() => undefined))?.cost?.usd ?? 0;
+  const parked = await markHeld(input.jobId, { reason: 'spend_cap', heldAt: new Date().toISOString(), spentUsd, detail });
+  if (!parked) {
+    log.warn('hold.refused', { reason: 'job already resolved', wouldHaveBeen: 'spend_cap' });
+    return { files: [], reportBytes: 0, sourcesFound: 0, status: 'superseded' };
+  }
+  await releaseJobSlot(input.jobId).catch(() => {});
+  log.error('job.held', { reason: 'spend_cap', scope: block.scope, spentUsd: block.spentUsd, capUsd: block.capUsd });
+  return { files: [], reportBytes: 0, sourcesFound: 0, status: 'held' };
+}
+
 export async function runJob(input: RunJobInput): Promise<RunJobResult> {
   const log = jobLogger({ jobId: input.jobId, appId: input.appId, userId: input.userId, template: input.template });
   // Identifies THIS dispatch, so a duplicate delivery cannot overwrite our
@@ -135,12 +158,19 @@ export async function runJob(input: RunJobInput): Promise<RunJobResult> {
   const prologue = await (async () => {
     const template = getTemplate(input.template);
     if (!template) throw new Error(`Unknown template: ${input.template}`);
+    // The monthly spend caps, checked BEFORE the job is claimed: a capped dispatch
+    // spends nothing (no headline, no agent) and uses no attempt, so approving it
+    // later is a clean start rather than one dispatch closer to finalizing.
+    const blocked = await checkSpendBlock(input.appId);
+    if (blocked) return { blocked } as const;
     const existing = await getJob(input.jobId);
     const attempts = (existing?.attempts ?? 0) + 1;
     await markRunning(input.jobId, dispatchId);
     await setJobAttempts(input.jobId, attempts);
     return { template, existing, attempts };
   })().catch(parkAndRethrow);
+
+  if ('blocked' in prologue && prologue.blocked) return parkSpendCapped(input, prologue.blocked, log);
 
   const { template, existing, attempts } = prologue;
   const finalize = attempts >= config.workflow.maxJobAttempts;

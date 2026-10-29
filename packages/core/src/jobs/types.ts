@@ -20,11 +20,15 @@ export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'held';
  *   stored. Nothing is wrong with the work; it needs re-uploading, not re-running.
  * - `run_failed`     — it could not be completed at all (the assembled report
  *   failed validation, or the run threw).
+ * - `spend_cap`      — it was about to START while a monthly spend cap (global or
+ *   the app's) was reached, or jobs were paused by an admin. Nothing ran on this
+ *   dispatch. Approving it re-queues it under its normal per-job ceiling — unlike
+ *   `budget_exceeded`, approval never uncaps it.
  *
  * The same values name a hold and, if the hold is resolved against the buyer, the
  * failure it becomes — so a job's history reads the same before and after.
  */
-export type JobFailureKind = 'budget_exceeded' | 'upload_failed' | 'run_failed';
+export type JobFailureKind = 'budget_exceeded' | 'upload_failed' | 'run_failed' | 'spend_cap';
 
 /**
  * A job parked for an admin decision — the alert state.

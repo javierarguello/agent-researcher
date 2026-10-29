@@ -15,6 +15,10 @@ export interface AppRecord {
   role: AppRole;
   /** Optional cap: max reports (jobs) this app may create per calendar hour. */
   rateLimitPerHour?: number;
+  /** Optional cap: max USD this app's jobs and requests may spend per UTC calendar month. */
+  monthlySpendCapUsd?: number;
+  /** Optional: email the admins once a month when this app's spend passes this (USD). */
+  monthlySpendAlertUsd?: number;
   /** Google OAuth client id of this app's frontend (validates the id_token `aud`). */
   googleClientId?: string;
   /** From address this app sends transactional email as (must be a verified

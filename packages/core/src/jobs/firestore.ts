@@ -2,6 +2,7 @@
  * Firestore-backed job store. One document per research job, keyed by jobId.
  */
 import { FieldValue, Firestore, type Query } from '@google-cloud/firestore';
+import { bookJobCost } from '../spend/store.js';
 import { config } from '../config.js';
 import type { Cost } from '../cost.js';
 import type { JobFailureKind, JobFile, JobHold, JobProgress, JobStatus, JobSummary, ResearchJob } from './types.js';
@@ -178,8 +179,13 @@ export async function setProgress(jobId: string, progress: JobProgress): Promise
 }
 
 /** Store the running total cost on the job doc (updated as agents finish). */
+/**
+ * Persist the job's running cost, and book what it adds to this month's spend
+ * ledger — the figure the monthly caps read (`spend/store.ts`). One writer for
+ * both, so a cost that reaches the job doc always reaches the ledger.
+ */
 export async function setJobCost(jobId: string, cost: Cost): Promise<void> {
-  await patch(jobId, { cost });
+  await bookJobCost(jobId, cost as unknown as { usd: number } & Record<string, unknown>);
 }
 
 /** Store the denormalized summary (metrics + errors) on the job doc. */

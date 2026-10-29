@@ -208,6 +208,22 @@ export function tooManyRequestsNotice(lang: unknown, kind: 'requests' | 'checkou
   return pick(kind === 'checkout' ? TOO_MANY_CHECKOUTS : TOO_MANY_REQUESTS, asLang(lang));
 }
 
+const SPEND_PAUSED: Copy = {
+  en: 'We are not accepting new reports right now. Please try again later — nothing was charged and your credits are safe.',
+  es: 'No estamos aceptando informes nuevos en este momento. Inténtalo más tarde — no se te cobró nada y tus créditos están a salvo.',
+  fr: 'Nous n’acceptons pas de nouveaux rapports pour le moment. Réessayez plus tard — rien ne vous a été facturé et vos crédits sont conservés.',
+  pt: 'Não estamos aceitando novos relatórios no momento. Tente novamente mais tarde — nada foi cobrado e seus créditos estão seguros.',
+};
+
+/**
+ * What a buyer reads when a monthly spend cap (or the admin's pause) refuses a
+ * report. One sentence for every scope: which cap tripped is ours to know, and
+ * what the buyer needs is that no credits moved and that it is not their fault.
+ */
+export function spendPausedNotice(lang: unknown): string {
+  return pick(SPEND_PAUSED, asLang(lang));
+}
+
 const CLOSED_NOTICE: Copy = {
   en: 'This report could not be completed.',
   es: 'Este informe no pudo completarse.',

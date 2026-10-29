@@ -112,6 +112,8 @@ export interface UpdateAppInput {
   name?: string;
   active?: boolean;
   rateLimitPerHour?: number | null; // null clears the limit
+  monthlySpendCapUsd?: number | null; // null clears
+  monthlySpendAlertUsd?: number | null; // null clears
   googleClientId?: string;
   adminEmails?: string[];
   allowedTemplates?: string[];
@@ -128,6 +130,10 @@ export async function updateApp(appId: string, patch: UpdateAppInput): Promise<A
   if (patch.active != null) data.active = patch.active;
   if (patch.rateLimitPerHour === null) data.rateLimitPerHour = FieldValue.delete();
   else if (patch.rateLimitPerHour != null) data.rateLimitPerHour = patch.rateLimitPerHour;
+  for (const k of ['monthlySpendCapUsd', 'monthlySpendAlertUsd'] as const) {
+    if (patch[k] === null) data[k] = FieldValue.delete();
+    else if (patch[k] != null) data[k] = patch[k];
+  }
   if (patch.googleClientId != null) data.googleClientId = patch.googleClientId;
   if (patch.adminEmails != null) data.adminEmails = patch.adminEmails;
   if (patch.allowedTemplates != null) data.allowedTemplates = patch.allowedTemplates;

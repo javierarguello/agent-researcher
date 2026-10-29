@@ -77,3 +77,47 @@ export async function sendAppEmail(input: SendEmailInput): Promise<void> {
     throw new Error(`Postmark send failed (${res.status}): ${body.slice(0, 300)}`);
   }
 }
+
+export interface PostmarkOutboundStats {
+  /** Messages Postmark accepted for delivery in the window — what its plans bill on. */
+  sent: number;
+  bounced: number;
+  spamComplaints: number;
+  /** Percent, as Postmark reports it. */
+  bounceRate: number;
+}
+
+/**
+ * Outbound totals for the shared Postmark server between two UTC dates
+ * (`YYYY-MM-DD`, inclusive). Postmark has no billing API — a plan bills on
+ * messages sent — so this count is what the admin's cost estimate is built from.
+ * Read with the same server token the sends use; no account token needed.
+ */
+export async function getPostmarkOutboundStats(fromDate: string, toDate: string): Promise<PostmarkOutboundStats> {
+  const token = config.email.postmarkToken;
+  if (!token) throw new EmailNotConfiguredError('POSTMARK_SERVER_TOKEN is not configured.');
+  const url = new URL('https://api.postmarkapp.com/stats/outbound');
+  url.searchParams.set('fromdate', fromDate);
+  url.searchParams.set('todate', toDate);
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(config.email.sendTimeoutMs),
+    headers: { Accept: 'application/json', 'X-Postmark-Server-Token': token },
+  });
+  if (!res.ok) throw new Error(`Postmark stats failed (${res.status})`);
+  const d = (await res.json()) as { Sent?: number; Bounced?: number; SpamComplaints?: number; BounceRate?: number };
+  return { sent: d.Sent ?? 0, bounced: d.Bounced ?? 0, spamComplaints: d.SpamComplaints ?? 0, bounceRate: d.BounceRate ?? 0 };
+}
+
+/**
+ * What a month of Postmark costs on a plan: the flat fee, plus overage per 1,000
+ * past the included volume. Pure, so the arithmetic is testable. null when no plan
+ * fee is configured — an estimate from nothing is not a number worth showing.
+ */
+export function estimatePostmarkUsd(
+  sent: number,
+  plan: { planUsd: number | null; includedEmails: number | null; overagePer1000Usd: number | null },
+): number | null {
+  if (plan.planUsd == null) return null;
+  const over = Math.max(0, sent - (plan.includedEmails ?? 0));
+  return plan.planUsd + (Math.ceil(over / 1000) * (plan.overagePer1000Usd ?? 0));
+}

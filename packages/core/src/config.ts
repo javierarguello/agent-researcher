@@ -93,6 +93,10 @@ export const config = {
     /** Doc id holding the general/default settings. */
     generalDoc: 'general',
   },
+  spend: {
+    /** One doc per UTC calendar month (`YYYY-MM`): the running spend the monthly caps read. */
+    collection: str('SPEND_COLLECTION', 'spend'),
+  },
   credits: {
     ledgerCollection: str('CREDITS_LEDGER_COLLECTION', 'credit-ledger'),
     balancesCollection: str('CREDITS_BALANCES_COLLECTION', 'credit-balances'),

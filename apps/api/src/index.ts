@@ -126,6 +126,14 @@ import {
   getCatalog,
   listCatalogs,
   modeShapes,
+  checkSpendBlock,
+  spendPausedNotice,
+  getMonthSpend,
+  monthKey,
+  spendBlockFor,
+  type UpdateSettingsInput,
+  getPostmarkOutboundStats,
+  estimatePostmarkUsd,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { deploymentSafetyError } from './startup-guards.js';
@@ -1177,6 +1185,16 @@ app.post(
         // so an over-limit request doesn't pay for moderation. The authoritative,
         // serializing check runs later — see `checkRateLimits` below.
         if (!rl.allowed && rl.violation) return sendRateLimited(reply, rl.violation, paramsLang(validated.params));
+
+        // Monthly spend caps and the admin's pause — before moderation and before
+        // credits, so a refused request costs nothing and moves nothing. Admins too:
+        // the cap is about money leaving, not about who asked. The worker checks the
+        // same rule as each job starts, which is what stops the queue behind this.
+        const blocked = await checkSpendBlock(appId);
+        if (blocked) {
+          logEvent({ jobId: '-', appId, userId }, 'WARNING', 'spend.refused', { ...blocked });
+          return reply.code(503).send({ error: spendPausedNotice(paramsLang(validated.params)), code: 'spend_paused' });
+        }
       }
 
       const jobId = randomUUID();
@@ -2367,13 +2385,74 @@ app.patch(
         properties: {
           appRateLimitPerHour: { type: ['integer', 'null'], minimum: 1, maximum: 1_000_000 },
           userRateLimitPerHour: { type: ['integer', 'null'], minimum: 1, maximum: 1_000_000 },
+          globalMonthlySpendCapUsd: { type: ['number', 'null'], exclusiveMinimum: 0, maximum: 1_000_000, description: 'USD per UTC month for the whole deployment. null = no cap.' },
+          globalMonthlySpendAlertUsd: { type: ['number', 'null'], exclusiveMinimum: 0, maximum: 1_000_000, description: 'Email the admins once a month past this. null = no alert.' },
+          spendAlertEmails: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 320, pattern: '^[^\\s@,;<>]+@[^\\s@,;<>]+\\.[^\\s@,;<>]+$' } },
+          jobsPaused: { type: 'boolean', description: 'Kill switch: refuse new jobs and hold queued ones as they start.' },
+          postmarkPlanUsd: { type: ['number', 'null'], minimum: 0, maximum: 100_000, description: 'Postmark monthly plan fee (estimate only).' },
+          postmarkIncludedEmails: { type: ['integer', 'null'], minimum: 0, maximum: 100_000_000 },
+          postmarkOveragePer1000Usd: { type: ['number', 'null'], minimum: 0, maximum: 10_000 },
         },
       },
     },
   },
   async (req) => {
-    const body = (req.body ?? {}) as { appRateLimitPerHour?: number | null; userRateLimitPerHour?: number | null };
-    return { settings: await updateSettings(body) };
+    const body = (req.body ?? {}) as UpdateSettingsInput;
+    const settings = await updateSettings(body);
+    logEvent({ jobId: '-', appId: req.auth?.appId, userId: req.auth?.email }, 'WARNING', 'settings.updated', { patch: body });
+    return { settings };
+  },
+);
+
+app.get(
+  '/admin/spend',
+  {
+    preHandler: requireAdmin,
+    schema: {
+      summary: "This month's spend against the caps",
+      description:
+        'Spend booked by the app itself (LLM + search, per job dispatch and per request) for a UTC calendar month, ' +
+        'per app, with the caps in force and whether new jobs are currently refused. Infra (Cloud Run, storage) is not ' +
+        'in it — the GCP budget on the billing account covers that. `month` defaults to the current one (YYYY-MM).',
+      tags: ['admin'],
+      security: sec,
+      querystring: { type: 'object', properties: { month: { type: 'string', pattern: '^\\d{4}-\\d{2}$' } } },
+    },
+  },
+  async (req) => {
+    const { month } = (req.query ?? {}) as { month?: string };
+    const m = month ?? monthKey();
+    // Postmark's own count for the same UTC month. Read live and allowed to fail:
+    // a Postmark outage must not take the spend page down with it.
+    const lastDay = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const postmarkStats = getPostmarkOutboundStats(`${m}-01`, lastDay).then(
+      (stats) => ({ stats }),
+      (err: Error) => ({ error: err.message }),
+    );
+    const [spend, settings, apps, pm] = await Promise.all([getMonthSpend(m), getSettings(), listApps(), postmarkStats]);
+    return {
+      spend,
+      settings,
+      postmark:
+        'stats' in pm
+          ? {
+              ...pm.stats,
+              estimatedUsd: estimatePostmarkUsd(pm.stats.sent, {
+                planUsd: settings.postmarkPlanUsd,
+                includedEmails: settings.postmarkIncludedEmails,
+                overagePer1000Usd: settings.postmarkOveragePer1000Usd,
+              }),
+            }
+          : { error: pm.error },
+      apps: apps.map((a) => ({
+        appId: a.appId,
+        name: a.name,
+        spentUsd: spend.apps[a.appId] ?? 0,
+        monthlySpendCapUsd: a.monthlySpendCapUsd ?? null,
+        monthlySpendAlertUsd: a.monthlySpendAlertUsd ?? null,
+        blocked: spendBlockFor(spend, settings, a),
+      })),
+    };
   },
 );
 
@@ -2457,6 +2536,8 @@ app.patch(
           name: { type: 'string', minLength: 1, maxLength: 200 },
           active: { type: 'boolean' },
           rateLimitPerHour: { type: ['integer', 'null'], minimum: 1, maximum: 1_000_000, description: 'null clears the limit.' },
+          monthlySpendCapUsd: { type: ['number', 'null'], exclusiveMinimum: 0, maximum: 1_000_000, description: 'USD per UTC month for this app. null clears.' },
+          monthlySpendAlertUsd: { type: ['number', 'null'], exclusiveMinimum: 0, maximum: 1_000_000, description: 'Email the admins once a month past this. null clears.' },
           allowedTemplates: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 128 }, description: 'Models this app may run (admin apps exempt).' },
           googleClientId: { type: 'string', maxLength: 256 },
           adminEmails: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 320 } },
@@ -2472,6 +2553,8 @@ app.patch(
       name?: string;
       active?: boolean;
       rateLimitPerHour?: number | null;
+      monthlySpendCapUsd?: number | null;
+      monthlySpendAlertUsd?: number | null;
       allowedTemplates?: string[];
       googleClientId?: string;
       adminEmails?: string[];

@@ -16,6 +16,7 @@ import { FieldValue, Firestore, Timestamp, type DocumentReference, type Query } 
 import { config } from '../config.js';
 import { blockReasonFor, type ModerationCategory } from '../moderation/copy.js';
 import type { JobFailureKind } from '../jobs/types.js';
+import { bookSpend } from '../spend/store.js';
 
 let db: Firestore | undefined;
 function firestore(): Firestore {
@@ -135,6 +136,8 @@ export async function recordRequestLlmCost(input: {
     appStats().doc(input.appId).set({ appId: input.appId, ...inc }, { merge: true }),
     dailyDoc(input.appId, date).set({ appId: input.appId, date, expireAt: expireAt(), ...inc }, { merge: true }),
     appUsers().doc(userKey(input.appId, input.userId)).set({ appId: input.appId, userId: input.userId, ...inc }, { merge: true }),
+    // The monthly caps count request-time LLM spend too, not only jobs.
+    bookSpend(input.appId, input.usd || 0),
   ]);
 }
 

@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Apps } from './pages/Apps';
 import { Users } from './pages/Users';
 import { Pricing } from './pages/Pricing';
+import { Limits } from './pages/Limits';
 import { Jobs } from './pages/Jobs';
 import { JobDetail } from './pages/JobDetail';
 
@@ -20,6 +21,7 @@ export function App() {
           <Route path="jobs/:jobId" element={<JobDetail />} />
           <Route path="users" element={<Users />} />
           <Route path="pricing" element={<Pricing />} />
+          <Route path="limits" element={<Limits />} />
           <Route path="apps" element={<Apps />} />
         </Route>
       </Route>

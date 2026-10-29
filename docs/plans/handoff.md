@@ -69,6 +69,30 @@ only tier you may use.
 
 ---
 
+## Spend limits, 2026-10-29 (on `main`, NOT yet on `deploy-prod`)
+
+Monthly spend caps, editable in the admin app → **Limits** (`apps/admin/src/pages/Limits.tsx`):
+global cap (default **$200**) + alert (default **$100**), per-app cap + alert (app doc
+`monthlySpendCapUsd`/`monthlySpendAlertUsd`), alert recipients (empty = the admin app's
+`adminEmails`), a kill switch (`jobsPaused`), the hourly rate limits, and Postmark's
+monthly sent/bounced counts with a cost estimate from a plan the admin types in
+(Postmark has no billing API).
+
+- **Measured by our own ledger**, `spend/{YYYY-MM}` (`packages/core/src/spend/store.ts`):
+  job cost booked per dispatch as a delta (`setJobCost` → `bookJobCost`), and
+  request-time LLM cost via `recordRequestLlmCost`. Real time and per app — the GCP
+  bill is neither. Infra is NOT in it.
+- **Enforced twice:** `POST /research` answers 503 `spend_paused` before moderation and
+  credits; the worker parks a job that is about to START while capped as hold reason
+  `spend_cap` (no attempt used, nothing spent). Approving a `spend_cap` hold never
+  uncaps the per-job ceiling.
+- **Alerts:** one Postmark mail per threshold per month, claimed in a transaction.
+- **Backstop:** a GCP budget on billing account `0143BC-D19A9D-F85D50`, scoped to this
+  project, $200/month, emails at 50/75/100% + forecast 100% (created 2026-10-29 from
+  the CLI, not in any script). It alerts; it does not stop anything.
+- The ledger starts empty on deploy: spend earlier in the month of the release is
+  not in it.
+
 ## State, 2026-08-25
 
 **`main` and `deploy-prod` are both `1c4fbdf`.** Working tree clean. Everything below

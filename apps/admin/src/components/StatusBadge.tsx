@@ -40,6 +40,10 @@ const FAILURE_LABEL: Record<JobFailureKind, { label: string; help: string }> = {
     label: 'run failed',
     help: 'The job could not be completed. Continue retries from the checkpoint; refund or close it if it is not worth another run.',
   },
+  spend_cap: {
+    label: 'spend cap',
+    help: 'A monthly spend cap was reached (or jobs were paused) when this job was about to start. Nothing ran. Raise the cap in Limits, then continue it.',
+  },
 };
 
 /**

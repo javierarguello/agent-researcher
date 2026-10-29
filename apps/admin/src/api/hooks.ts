@@ -11,6 +11,8 @@ import type {
   CreditPack,
   CreditPackWrite,
   TemplateManifest,
+  GeneralSettings,
+  SpendView,
 } from './types';
 
 // `held` is deliberately absent: it changes only when an admin acts, and that
@@ -191,7 +193,28 @@ export function useUpdateApp() {
   return useMutation({
     mutationFn: ({ appId, patch }: { appId: string; patch: Record<string, unknown> }) =>
       api<{ app: AppPublic }>(`/admin/apps/${encodeURIComponent(appId)}`, { method: 'PATCH', body: patch }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['apps'] });
+      qc.invalidateQueries({ queryKey: ['spend'] });
+    },
+  });
+}
+
+/** This month's spend against the caps. Polled: it moves while jobs run. */
+export function useSpend(month?: string) {
+  return useQuery({
+    queryKey: ['spend', month ?? 'current'],
+    queryFn: () => api<SpendView>(`/admin/spend${month ? `?month=${encodeURIComponent(month)}` : ''}`),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<Omit<GeneralSettings, 'updatedAt'>>) =>
+      api<{ settings: GeneralSettings }>('/admin/settings', { method: 'PATCH', body: patch }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['spend'] }),
   });
 }
 

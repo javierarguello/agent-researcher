@@ -4,7 +4,7 @@
  * Why a job is parked, and why it failed if it ends that way. Admin-only — the
  * buyer's view never carries it.
  */
-export type JobFailureKind = 'budget_exceeded' | 'upload_failed' | 'run_failed';
+export type JobFailureKind = 'budget_exceeded' | 'upload_failed' | 'run_failed' | 'spend_cap';
 
 /**
  * A job parked for an admin decision. Present while `status === 'held'`.
@@ -212,6 +212,8 @@ export interface AppPublic {
   active: boolean;
   role: 'admin' | 'app';
   rateLimitPerHour?: number;
+  monthlySpendCapUsd?: number;
+  monthlySpendAlertUsd?: number;
   allowedTemplates?: string[];
   googleClientId?: string;
   adminEmails?: string[];
@@ -389,4 +391,41 @@ export interface CreditPackWrite {
    * is what stops two admins on two screens from overwriting each other.
    */
   expectedPriceUsd?: number;
+}
+
+/** `settings/general` — rate limits, monthly spend limits, the pause, the Postmark plan. */
+export interface GeneralSettings {
+  appRateLimitPerHour: number | null;
+  userRateLimitPerHour: number | null;
+  globalMonthlySpendCapUsd: number | null;
+  globalMonthlySpendAlertUsd: number | null;
+  spendAlertEmails: string[];
+  jobsPaused: boolean;
+  postmarkPlanUsd: number | null;
+  postmarkIncludedEmails: number | null;
+  postmarkOveragePer1000Usd: number | null;
+  updatedAt: string;
+}
+
+export interface SpendBlock {
+  scope: 'paused' | 'global' | 'app';
+  spentUsd: number;
+  capUsd: number | null;
+}
+
+/** GET /admin/spend — one UTC month of booked spend against the caps. */
+export interface SpendView {
+  spend: { month: string; totalUsd: number; apps: Record<string, number> };
+  settings: GeneralSettings;
+  postmark:
+    | { sent: number; bounced: number; spamComplaints: number; bounceRate: number; estimatedUsd: number | null }
+    | { error: string };
+  apps: Array<{
+    appId: string;
+    name: string;
+    spentUsd: number;
+    monthlySpendCapUsd: number | null;
+    monthlySpendAlertUsd: number | null;
+    blocked: SpendBlock | null;
+  }>;
 }

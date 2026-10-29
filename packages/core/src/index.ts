@@ -47,7 +47,7 @@ export {
 } from './jobs/firestore.js';
 export type { ResearchJob, JobStatus, JobFailureKind, JobHold, JobFile, JobProgress, JobSummary, ProgressKind } from './jobs/types.js';
 export { clientProgress, PROGRESS_DETAIL_MAX } from './jobs/types.js';
-export { sectionsNotice, degradedSectionNote, closedNotice, rateLimitNotice, tooManyRequestsNotice } from './jobs/report-copy.js';
+export { sectionsNotice, degradedSectionNote, closedNotice, rateLimitNotice, tooManyRequestsNotice, spendPausedNotice } from './jobs/report-copy.js';
 export { claimJobSlot, releaseJobSlot, releaseUnclaimedSlot, inFlightSlots, setJobSlotHeld } from './jobs/slots.js';
 export type { SlotClaim } from './jobs/slots.js';
 export { generateHeadline } from './jobs/headline.js';
@@ -87,6 +87,8 @@ export type {
 // Settings (general/default rate limits)
 export { getSettings, updateSettings, ensureDefaultSettings, DEFAULT_SETTINGS } from './settings/store.js';
 export type { GeneralSettings, UpdateSettingsInput } from './settings/store.js';
+export { monthKey, getMonthSpend, spendBlockFor, checkSpendBlock, bookSpend } from './spend/store.js';
+export type { MonthSpend, SpendBlock } from './spend/store.js';
 
 // Engine
 export { runResearch, planWaves } from './engine/research-engine.js';
@@ -190,8 +192,8 @@ export { verifyCaptcha, captchaEnabled, TURNSTILE_TOKEN_FIELD } from './auth/cap
 export type { CaptchaResult } from './auth/captcha.js';
 
 // Transactional email (shared Postmark, per-app From)
-export { sendAppEmail, EmailNotConfiguredError } from './email/postmark.js';
-export type { SendEmailInput } from './email/postmark.js';
+export { sendAppEmail, EmailNotConfiguredError, getPostmarkOutboundStats, estimatePostmarkUsd } from './email/postmark.js';
+export type { SendEmailInput, PostmarkOutboundStats } from './email/postmark.js';
 export { verifyEmailTemplate, resetPasswordTemplate, reportReadyTemplate, reportStartedTemplate, creditsPurchasedTemplate } from './email/templates.js';
 export type { PurchaseReceipt } from './email/templates.js';
 
