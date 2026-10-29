@@ -8,7 +8,7 @@
  *
  * Auth: user session JWT (Authorization: Bearer), issued by POST /auth/session
  * after verifying a Google id_token. appId + userId come from the token. Admin
- * tokens (whitelisted emails on the admin app) unlock /admin/*. Docs: /docs.
+ * tokens (whitelisted emails on the admin app) unlock /admin/*. Docs: /docs (not in prod).
  */
 import { randomUUID } from 'node:crypto';
 import type { FastifyError, FastifyReply } from 'fastify';
@@ -195,7 +195,14 @@ app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, 
 });
 
 // --- OpenAPI / Swagger ------------------------------------------------------
-await app.register(swagger, {
+/**
+ * Published everywhere but prod. In prod it handed any anonymous visitor the
+ * full map of the API, admin routes and their bodies included — nothing a caller
+ * of the product needs, and the first thing anyone probing it would read. Our own
+ * frontends are built against dev, where it stays.
+ */
+const PUBLISH_DOCS = config.env !== 'prod';
+if (PUBLISH_DOCS) await app.register(swagger, {
   openapi: {
     info: {
       title: 'agent-researcher API',
@@ -236,7 +243,7 @@ await app.register(swagger, {
     ],
   },
 });
-await app.register(swaggerUi, { routePrefix: '/docs' });
+if (PUBLISH_DOCS) await app.register(swaggerUi, { routePrefix: '/docs' });
 
 // CORS for the static web frontends.
 await app.register(cors, {
