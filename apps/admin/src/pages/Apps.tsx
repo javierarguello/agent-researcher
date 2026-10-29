@@ -60,6 +60,7 @@ export function Apps() {
     setCreating(false);
   }
   const modalOpen = creating || !!editing;
+  const isAdminForm = (editing?.role ?? form.role) === 'admin';
   function closeModal() {
     setCreating(false);
     setEditing(null);
@@ -74,10 +75,10 @@ export function Apps() {
           patch: {
             name: form.name,
             active: form.active,
-            rateLimitPerHour: rate ?? null,
-            allowedTemplates: form.allowedTemplates,
+            ...(isAdminForm
+              ? { adminEmails: form.adminEmails }
+              : { rateLimitPerHour: rate ?? null, allowedTemplates: form.allowedTemplates }),
             googleClientId: form.googleClientId || undefined,
-            adminEmails: form.adminEmails,
           },
         });
         notifications.show({ message: `Updated ${editing.appId}`, color: 'teal' });
@@ -87,10 +88,10 @@ export function Apps() {
           name: form.name,
           appId: form.appId || undefined,
           role: form.role,
-          rateLimitPerHour: rate,
-          allowedTemplates: form.allowedTemplates.length ? form.allowedTemplates : undefined,
+          ...(isAdminForm
+            ? { adminEmails: form.adminEmails.length ? form.adminEmails : undefined }
+            : { rateLimitPerHour: rate, allowedTemplates: form.allowedTemplates.length ? form.allowedTemplates : undefined }),
           googleClientId: form.googleClientId || undefined,
-          adminEmails: form.adminEmails.length ? form.adminEmails : undefined,
         });
         closeModal();
         setNewApiKey((res.app as unknown as { apiKey: string }).apiKey);
@@ -153,9 +154,11 @@ export function Apps() {
                   <Table.Td>
                     <Badge variant="dot" color={a.active ? 'teal' : 'red'} tt="none">{a.active ? 'active' : 'inactive'}</Badge>
                   </Table.Td>
-                  <Table.Td><Mono size="sm">{a.rateLimitPerHour ?? '∞'}</Mono></Table.Td>
+                  <Table.Td>{a.role === 'admin' ? <Text size="sm" c="dimmed">—</Text> : <Mono size="sm">{a.rateLimitPerHour ?? '∞'}</Mono>}</Table.Td>
                   <Table.Td>
-                    {a.allowedTemplates?.length ? (
+                    {a.role === 'admin' ? (
+                      <Text size="sm" c="dimmed">—</Text>
+                    ) : a.allowedTemplates?.length ? (
                       <Group gap={4}>
                         {a.allowedTemplates.map((t) => <Badge key={t} size="sm" variant="outline" tt="none">{t}</Badge>)}
                       </Group>
@@ -202,18 +205,27 @@ export function Apps() {
               <Select label="Role" data={['app', 'admin']} value={form.role} onChange={(v) => setForm({ ...form, role: (v as 'app' | 'admin') ?? 'app' })} />
             </Group>
           )}
-          <NumberInput label="Rate limit (reports/hour)" placeholder="unlimited" min={1} max={1_000_000} value={form.rateLimitPerHour} onChange={(v) => setForm({ ...form, rateLimitPerHour: typeof v === 'number' ? v : '' })} />
-          <MultiSelect
-            label="Allowed models"
-            description="Empty = any model. Admin apps ignore this."
-            data={templateOptions}
-            value={form.allowedTemplates}
-            onChange={(v) => setForm({ ...form, allowedTemplates: v })}
-            searchable
-            clearable
-          />
+          {/* The backoffice is not a client app: it sells nothing and runs no jobs of
+              its own, so the client-app limits mean nothing on it. Its one setting
+              that matters is who may sign in. Spend caps live on Limits. */}
+          {!isAdminForm && (
+            <>
+              <NumberInput label="Rate limit (reports/hour)" placeholder="unlimited" min={1} max={1_000_000} value={form.rateLimitPerHour} onChange={(v) => setForm({ ...form, rateLimitPerHour: typeof v === 'number' ? v : '' })} />
+              <MultiSelect
+                label="Allowed models"
+                description="Empty = any model."
+                data={templateOptions}
+                value={form.allowedTemplates}
+                onChange={(v) => setForm({ ...form, allowedTemplates: v })}
+                searchable
+                clearable
+              />
+            </>
+          )}
           <TextInput label="Google client id" description="Frontend OAuth client for login." maxLength={256} value={form.googleClientId} onChange={(e) => setForm({ ...form, googleClientId: e.currentTarget.value })} />
-          <TagsInput label="Admin emails" description="For admin apps: who may log in." maxTags={100} value={form.adminEmails} onChange={(v) => setForm({ ...form, adminEmails: v.map((x) => x.slice(0, 320)) })} />
+          {isAdminForm && (
+            <TagsInput label="Admin emails" description="Who may sign in to the backoffice." maxTags={100} value={form.adminEmails} onChange={(v) => setForm({ ...form, adminEmails: v.map((x) => x.slice(0, 320)) })} />
+          )}
           <Group justify="flex-end" mt="sm">
             <Button variant="default" onClick={closeModal}>Cancel</Button>
             <Button onClick={submit} loading={createApp.isPending || updateApp.isPending} disabled={!form.name}>

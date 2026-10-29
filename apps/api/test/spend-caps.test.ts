@@ -108,6 +108,8 @@ describe('admin surface', () => {
     const now = (await app.inject({ method: 'GET', url: '/admin/spend', headers: auth(adminToken) })).json();
     down.mockRestore();
     expect(now.spend.totalUsd).toBe(2.5);
+    // The backoffice (seeded in beforeEach) has no spend to cap and is not listed.
+    expect(now.apps.map((a: { appId: string }) => a.appId)).toEqual([APP]);
     const row = now.apps.find((a: { appId: string }) => a.appId === APP);
     expect(row).toMatchObject({ spentUsd: 2.5, monthlySpendCapUsd: 2, blocked: { scope: 'app', capUsd: 2 } });
     // Postmark failing does not take the page down — it says why instead.

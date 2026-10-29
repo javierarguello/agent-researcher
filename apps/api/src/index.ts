@@ -2451,7 +2451,9 @@ app.get(
               }),
             }
           : { error: pm.error },
-      apps: apps.map((a) => ({
+      // The backoffice sells nothing and runs no jobs of its own, so it has no
+      // spend to cap; listing it would offer a cap that can never bind.
+      apps: apps.filter((a) => a.role !== 'admin').map((a) => ({
         appId: a.appId,
         name: a.name,
         spentUsd: spend.apps[a.appId] ?? 0,
