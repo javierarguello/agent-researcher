@@ -415,15 +415,32 @@ export interface SpendBlock {
 
 /** GET /admin/spend — one UTC month of booked spend against the caps. */
 export interface SpendView {
-  spend: { month: string; totalUsd: number; apps: Record<string, number> };
+  spend: { month: string; totalUsd: number; apps: Record<string, number>; searchUsd: number; searchCalls: number };
   settings: GeneralSettings;
   postmark:
-    | { sent: number; bounced: number; spamComplaints: number; bounceRate: number; estimatedUsd: number | null }
+    | {
+        sent: number; bounced: number; spamComplaints: number; bounceRate: number; estimatedUsd: number | null;
+        includedEmails: number | null; remainingEmails: number | null;
+      }
     | { error: string };
+  search: {
+    provider: 'tavily' | 'brave' | 'duckduckgo';
+    bookedUsd: number;
+    bookedCalls: number;
+    tavily:
+      | null
+      | { error: string }
+      | {
+          key: { usage: number; limit: number | null; searchUsage: number; extractUsage: number };
+          account: { plan: string; planUsage: number; planLimit: number; paygoUsage: number; paygoLimit: number };
+          remainingCredits: number;
+        };
+  };
   apps: Array<{
     appId: string;
     name: string;
     spentUsd: number;
+    searchUsd: number;
     monthlySpendCapUsd: number | null;
     monthlySpendAlertUsd: number | null;
     blocked: SpendBlock | null;

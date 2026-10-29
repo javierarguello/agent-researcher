@@ -1,7 +1,13 @@
 /**
  * Monthly spend ledger and the caps that read it (Firestore `spend/{YYYY-MM}`).
  *
- *   spend/2026-10  { month, totalUsd, apps: { fbizlab: 12.3 }, alerted: { 'global:alert': iso } }
+ *   spend/2026-10  { month, totalUsd, apps: { fbizlab: 12.3 },
+ *                    searchUsd, searchCalls, appsSearchUsd: { fbizlab: 1.2 },
+ *                    alerted: { 'global:alert': iso } }
+ *
+ * `totalUsd` is everything (LLM + search) and is what the caps read; the search
+ * fields are the web-search provider's slice of it, kept so the admin can see what
+ * the provider costs apart from the model.
  *
  * Why our own ledger and not the GCP bill: the bill arrives hours late and has no
  * idea which app a Vertex call belonged to, so it can neither stop a runaway in
@@ -41,6 +47,11 @@ export interface MonthSpend {
   totalUsd: number;
   /** USD per appId. */
   apps: Record<string, number>;
+  /** The web-search provider's share of `totalUsd`, and how many billed calls made it. */
+  searchUsd: number;
+  searchCalls: number;
+  /** Search USD per appId. */
+  appsSearchUsd: Record<string, number>;
 }
 
 export async function getMonthSpend(month = monthKey()): Promise<MonthSpend> {
@@ -50,6 +61,9 @@ export async function getMonthSpend(month = monthKey()): Promise<MonthSpend> {
     month,
     totalUsd: typeof d.totalUsd === 'number' ? d.totalUsd : 0,
     apps: (d.apps as Record<string, number> | undefined) ?? {},
+    searchUsd: typeof d.searchUsd === 'number' ? d.searchUsd : 0,
+    searchCalls: typeof d.searchCalls === 'number' ? d.searchCalls : 0,
+    appsSearchUsd: (d.appsSearchUsd as Record<string, number> | undefined) ?? {},
   };
 }
 
@@ -92,13 +106,26 @@ export async function checkSpendBlock(appId: string): Promise<SpendBlock | null>
  * Add `usd` to this month's ledger, for the whole deployment and for `appId`,
  * then send any alert that this booking crossed. Never throws: a ledger write
  * that fails must not fail the paid work it is counting — it is logged loudly.
+ *
+ * `search` is the part of `usd` (and the calls) that went to the web-search
+ * provider; omitted, the whole amount is model spend.
  */
-export async function bookSpend(appId: string, usd: number): Promise<void> {
-  if (!(usd > 0)) return;
+export async function bookSpend(appId: string, usd: number, search?: { usd: number; calls: number }): Promise<void> {
+  const searchUsd = Math.max(0, search?.usd ?? 0);
+  const searchCalls = Math.max(0, search?.calls ?? 0);
+  if (!(usd > 0) && !(searchCalls > 0)) return;
   const month = monthKey();
   try {
     await spendDoc(month).set(
-      { month, totalUsd: FieldValue.increment(usd), apps: { [appId]: FieldValue.increment(usd) }, updatedAt: new Date().toISOString() },
+      {
+        month,
+        totalUsd: FieldValue.increment(Math.max(0, usd)),
+        apps: { [appId]: FieldValue.increment(Math.max(0, usd)) },
+        ...(searchUsd > 0 || searchCalls > 0
+          ? { searchUsd: FieldValue.increment(searchUsd), searchCalls: FieldValue.increment(searchCalls), appsSearchUsd: { [appId]: FieldValue.increment(searchUsd) } }
+          : {}),
+        updatedAt: new Date().toISOString(),
+      },
       { merge: true },
     );
   } catch (err) {
@@ -113,22 +140,45 @@ export async function bookSpend(appId: string, usd: number): Promise<void> {
 /**
  * Persist a job's running cost and book whatever it adds to the month.
  *
- * The job doc carries `costBookedUsd`, the part of its cost already in the ledger,
- * and the two are written in one transaction — so a dispatch that re-saves the
+ * The job doc carries what it already put in the ledger — `costBookedUsd` (the
+ * total), `costBookedSearchUsd` and `costBookedSearchCalls` (the search slice) —
+ * written in the same transaction as the cost, so a dispatch that re-saves the
  * same total books nothing, and a total that went DOWN (a stale dispatch writing
  * an older view) books nothing either rather than a negative.
+ *
+ * The two search fields arrived a release after `costBookedUsd`. A job already in
+ * flight across that deploy reads them as 0 and books its whole search slice on
+ * its next save: the search figure catches up, and the total — which the caps
+ * read — is unaffected, because it is booked from `costBookedUsd` alone.
  */
-export async function bookJobCost(jobId: string, cost: { usd: number } & Record<string, unknown>): Promise<void> {
+export async function bookJobCost(
+  jobId: string,
+  cost: { usd: number; searchUsd?: number; searchCalls?: number } & Record<string, unknown>,
+): Promise<void> {
   const booked = await firestore().runTransaction(async (tx) => {
     const ref = jobDoc(jobId);
     const snap = await tx.get(ref);
     const d = snap.data() ?? {};
-    const prior = typeof d.costBookedUsd === 'number' ? d.costBookedUsd : 0;
-    const delta = Math.max(0, (cost.usd || 0) - prior);
-    tx.set(ref, { cost, costBookedUsd: prior + delta, updatedAt: new Date().toISOString() }, { merge: true });
-    return { delta, appId: d.appId as string | undefined };
+    const num = (k: string) => (typeof d[k] === 'number' ? (d[k] as number) : 0);
+    const delta = Math.max(0, (cost.usd || 0) - num('costBookedUsd'));
+    const searchUsd = Math.max(0, (cost.searchUsd || 0) - num('costBookedSearchUsd'));
+    const searchCalls = Math.max(0, (cost.searchCalls || 0) - num('costBookedSearchCalls'));
+    tx.set(
+      ref,
+      {
+        cost,
+        costBookedUsd: num('costBookedUsd') + delta,
+        costBookedSearchUsd: num('costBookedSearchUsd') + searchUsd,
+        costBookedSearchCalls: num('costBookedSearchCalls') + searchCalls,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+    return { delta, searchUsd, searchCalls, appId: d.appId as string | undefined };
   });
-  if (booked.delta > 0 && booked.appId) await bookSpend(booked.appId, booked.delta);
+  if ((booked.delta > 0 || booked.searchCalls > 0) && booked.appId) {
+    await bookSpend(booked.appId, booked.delta, { usd: booked.searchUsd, calls: booked.searchCalls });
+  }
 }
 
 /**
@@ -150,7 +200,7 @@ async function notifyCrossings(appId: string, month: string): Promise<void> {
     const ref = spendDoc(month);
     const snap = await tx.get(ref);
     const d = snap.data() ?? {};
-    const spend: MonthSpend = { month, totalUsd: (d.totalUsd as number) ?? 0, apps: (d.apps as Record<string, number>) ?? {} };
+    const spend: MonthSpend = { month, totalUsd: (d.totalUsd as number) ?? 0, apps: (d.apps as Record<string, number>) ?? {}, searchUsd: 0, searchCalls: 0, appsSearchUsd: {} };
     const alerted = (d.alerted as Record<string, string> | undefined) ?? {};
     const now = new Date().toISOString();
     const crossed = checks.filter((c) => c.at != null && c.spent(spend) >= c.at && !alerted[c.key]);

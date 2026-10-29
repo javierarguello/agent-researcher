@@ -33,7 +33,7 @@ import { getTemplate } from '../src/templates/registry.js';
 import { __setProviderForTests } from '../src/llm/models.js';
 import { MockLlmProvider } from './mocks/llm.js';
 
-const spend = (totalUsd: number, apps: Record<string, number> = {}): MonthSpend => ({ month: '2026-10', totalUsd, apps });
+const spend = (totalUsd: number, apps: Record<string, number> = {}): MonthSpend => ({ month: '2026-10', totalUsd, apps, searchUsd: 0, searchCalls: 0, appsSearchUsd: {} });
 const open = { jobsPaused: false, globalMonthlySpendCapUsd: 200 };
 
 beforeEach(() => {
@@ -77,6 +77,32 @@ describe('the ledger', () => {
     // The job doc still shows what was last written — the ledger is what refused to go down.
     expect((await getJob('j'))!.cost?.usd).toBe(1.2);
     expect(m.month).toBe(monthKey());
+  });
+});
+
+describe('the ledger’s search slice', () => {
+  it('books the provider’s USD and calls apart from the model, per app', async () => {
+    await createJob({ jobId: 's', appId: 'fbizlab', userId: 'u@x.com', template: 'florida-business-for-sale', params: {} });
+    await setJobCost('s', { ...emptyCost(), usd: 1.0, llmUsd: 0.84, searchUsd: 0.16, searchCalls: 10 });
+    await setJobCost('s', { ...emptyCost(), usd: 1.5, llmUsd: 1.18, searchUsd: 0.32, searchCalls: 20 });
+    await setJobCost('s', { ...emptyCost(), usd: 1.5, llmUsd: 1.18, searchUsd: 0.32, searchCalls: 20 }); // re-save
+    const m = await getMonthSpend();
+    expect(m.totalUsd).toBeCloseTo(1.5, 10);
+    expect(m.searchUsd).toBeCloseTo(0.32, 10);
+    expect(m.searchCalls).toBe(20);
+    expect(m.appsSearchUsd.fbizlab).toBeCloseTo(0.32, 10);
+  });
+
+  it('a job in flight across the deploy catches its search up without re-booking its total', async () => {
+    await createJob({ jobId: 'old', appId: 'fbizlab', userId: 'u@x.com', template: 'florida-business-for-sale', params: {} });
+    // What the previous release left on the job: the total booked, no search fields.
+    const { Firestore } = await import('@google-cloud/firestore');
+    await new Firestore().collection('jobs').doc('old').set({ costBookedUsd: 2.0 }, { merge: true });
+    await setJobCost('old', { ...emptyCost(), usd: 2.5, searchUsd: 0.4, searchCalls: 25 });
+    const m = await getMonthSpend();
+    expect(m.totalUsd).toBeCloseTo(0.5, 10); // only the new $0.50
+    expect(m.searchUsd).toBeCloseTo(0.4, 10);
+    expect(m.searchCalls).toBe(25);
   });
 });
 

@@ -197,3 +197,43 @@ async function searchDuckDuckGo(query: string): Promise<SearchResult[]> {
   }
   return results;
 }
+
+/** Which backend `searchWeb` uses here — for the admin, which shows the provider's own usage. */
+export function activeSearchProvider(): 'brave' | 'tavily' | 'duckduckgo' {
+  return searchProvider();
+}
+
+export interface TavilyUsage {
+  /** This deployment's key, current billing cycle, in Tavily credits. */
+  key: { usage: number; limit: number | null; searchUsage: number; extractUsage: number };
+  /** The whole Tavily account (every key on it), current billing cycle, in credits. */
+  account: { plan: string; planUsage: number; planLimit: number; paygoUsage: number; paygoLimit: number };
+}
+
+/**
+ * Tavily's own count of what we used, read live (`GET /usage`). Credits, not
+ * dollars — Tavily bills a plan by credits — over its "current billing cycle",
+ * which Tavily does not define as a calendar month. Free to call.
+ */
+export async function getTavilyUsage(): Promise<TavilyUsage> {
+  if (!config.search.tavilyApiKey) throw new Error('TAVILY_API_KEY is not configured.');
+  const res = await fetch('https://api.tavily.com/usage', {
+    signal: AbortSignal.timeout(10_000),
+    headers: { Authorization: `Bearer ${config.search.tavilyApiKey}` },
+  });
+  if (!res.ok) throw new Error(`Tavily usage failed (${res.status})`);
+  const d = (await res.json()) as {
+    key?: { usage?: number; limit?: number | null; search_usage?: number; extract_usage?: number };
+    account?: { current_plan?: string; plan_usage?: number; plan_limit?: number; paygo_usage?: number; paygo_limit?: number };
+  };
+  return {
+    key: { usage: d.key?.usage ?? 0, limit: d.key?.limit ?? null, searchUsage: d.key?.search_usage ?? 0, extractUsage: d.key?.extract_usage ?? 0 },
+    account: {
+      plan: d.account?.current_plan ?? 'unknown',
+      planUsage: d.account?.plan_usage ?? 0,
+      planLimit: d.account?.plan_limit ?? 0,
+      paygoUsage: d.account?.paygo_usage ?? 0,
+      paygoLimit: d.account?.paygo_limit ?? 0,
+    },
+  };
+}

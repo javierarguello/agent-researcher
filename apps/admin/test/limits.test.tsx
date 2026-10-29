@@ -15,7 +15,7 @@ import { MantineProvider } from '@mantine/core';
 
 const { calls, state } = vi.hoisted(() => ({
   calls: [] as Array<{ path: string; init?: { method?: string; body?: unknown } }>,
-  state: { postmark: undefined as unknown },
+  state: { postmark: undefined as unknown, search: undefined as unknown },
 }));
 
 const SETTINGS = {
@@ -37,12 +37,20 @@ vi.mock('../src/api/client', async (orig) => ({
     calls.push({ path, init });
     if (path.startsWith('/admin/spend')) {
       return Promise.resolve({
-        spend: { month: '2026-10', totalUsd: 123.45, apps: { fbizlab: 120 } },
+        spend: { month: '2026-10', totalUsd: 123.45, apps: { fbizlab: 120 }, searchUsd: 3.2, searchCalls: 200 },
+        search: state.search ?? {
+          provider: 'tavily', bookedUsd: 3.2, bookedCalls: 200,
+          tavily: {
+            key: { usage: 400, limit: null, searchUsage: 300, extractUsage: 100 },
+            account: { plan: 'Project', planUsage: 3100, planLimit: 4000, paygoUsage: 0, paygoLimit: 100 },
+            remainingCredits: 900,
+          },
+        },
         settings: SETTINGS,
-        postmark: state.postmark ?? { sent: 412, bounced: 3, spamComplaints: 0, bounceRate: 0.73, estimatedUsd: 15 },
+        postmark: state.postmark ?? { sent: 412, bounced: 3, spamComplaints: 0, bounceRate: 0.73, estimatedUsd: 15, includedEmails: 10000, remainingEmails: 9588 },
         apps: [
-          { appId: 'fbizlab', name: 'Florida Biz Labs', spentUsd: 120, monthlySpendCapUsd: 150, monthlySpendAlertUsd: null, blocked: null },
-          { appId: 'other', name: 'Other', spentUsd: 3.45, monthlySpendCapUsd: 3, monthlySpendAlertUsd: null, blocked: { scope: 'app', spentUsd: 3.45, capUsd: 3 } },
+          { appId: 'fbizlab', name: 'Florida Biz Labs', spentUsd: 120, searchUsd: 3, monthlySpendCapUsd: 150, monthlySpendAlertUsd: null, blocked: null },
+          { appId: 'other', name: 'Other', spentUsd: 3.45, searchUsd: 0.2, monthlySpendCapUsd: 3, monthlySpendAlertUsd: null, blocked: { scope: 'app', spentUsd: 3.45, capUsd: 3 } },
         ],
       });
     }
@@ -68,6 +76,7 @@ const patches = (prefix: string) => calls.filter((c) => c.init?.method === 'PATC
 beforeEach(() => {
   calls.length = 0;
   state.postmark = undefined;
+  state.search = undefined;
 });
 
 describe('Limits', () => {
@@ -78,6 +87,27 @@ describe('Limits', () => {
     expect(screen.getByText('App cap reached — $3.45 of $3.00')).toBeTruthy();
     expect(screen.getByText('412')).toBeTruthy();
     expect(screen.getByText('$15.00')).toBeTruthy();
+  });
+
+  it('splits the month into models and web search', async () => {
+    show();
+    expect((await screen.findByTestId('global-split')).textContent).toBe('$120.25 models · $3.20 web search (200 calls)');
+  });
+
+  it('shows Tavily credits used and left, and Postmark emails left on the plan', async () => {
+    show();
+    expect(await screen.findByText('3,100 / 4,000')).toBeTruthy();
+    expect(screen.getByText('900')).toBeTruthy();
+    expect(screen.getByText('Project')).toBeTruthy();
+    expect(screen.getByTestId('tavily-key').textContent).toContain('400 credits (300 search · 100 extract)');
+    expect(screen.getByText('10,000')).toBeTruthy(); // plan allowance
+    expect(screen.getByText('9,588')).toBeTruthy(); // remaining
+  });
+
+  it('says why when Tavily cannot be read', async () => {
+    state.search = { provider: 'tavily', bookedUsd: 0, bookedCalls: 0, tavily: { error: 'Tavily usage failed (401)' } };
+    show();
+    expect(await screen.findByText('Could not read Tavily: Tavily usage failed (401)')).toBeTruthy();
   });
 
   it('clearing an app cap sends null, not 0 and not nothing', async () => {

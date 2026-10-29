@@ -47,6 +47,7 @@ export function Limits() {
           <GlobalCard data={data} />
           <AppsCard data={data} />
           <RateCard settings={data.settings} />
+          <SearchCard data={data} />
           <PostmarkCard data={data} />
           <Text size="xs" c="dimmed">
             Not here: the per-job cost ceiling (derived from price — see Pricing) and infrastructure cost, which the
@@ -105,6 +106,9 @@ function GlobalCard({ data }: { data: SpendView }) {
         <Text fz={28} fw={700} data-testid="global-spent">{usd(total)}</Text>
         <Text c="dimmed">of {capUsd != null ? usd(capUsd) : 'no cap'} this month</Text>
       </Group>
+      <Text size="sm" c="dimmed" data-testid="global-split">
+        {usd(total - data.spend.searchUsd)} models · {usd(data.spend.searchUsd)} web search ({int(data.spend.searchCalls)} calls)
+      </Text>
       {capUsd != null && <Progress value={pct} color={capped ? 'red' : pct >= ((s.globalMonthlySpendAlertUsd ?? Infinity) / capUsd) * 100 ? 'orange' : 'teal'} mt={6} mb="md" />}
 
       <Group align="flex-end" wrap="wrap">
@@ -173,7 +177,10 @@ function AppRow({ row }: { row: SpendView['apps'][number] }) {
         <Text fw={600}>{row.name}</Text>
         <Mono>{row.appId}</Mono>
       </Table.Td>
-      <Table.Td>{usd(row.spentUsd)}</Table.Td>
+      <Table.Td>
+        {usd(row.spentUsd)}
+        <Text size="xs" c="dimmed">{usd(row.searchUsd)} search</Text>
+      </Table.Td>
       <Table.Td>
         <NumberInput aria-label={`Monthly cap for ${row.appId}`} placeholder="no cap" min={0.01} decimalScale={2} prefix="$" w={130} value={cap} onChange={setCap} />
       </Table.Td>
@@ -275,8 +282,10 @@ function PostmarkCard({ data }: { data: SpendView }) {
       {'error' in pm ? (
         <Alert color="yellow" mb="sm">Could not read Postmark: {pm.error}</Alert>
       ) : (
-        <SimpleGrid cols={{ base: 2, sm: 4 }} mb="md">
+        <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }} mb="md">
           <Stat label="Sent" value={int(pm.sent)} />
+          <Stat label="Plan allowance" value={pm.includedEmails == null ? 'set below' : int(pm.includedEmails)} />
+          <Stat label="Remaining" value={pm.remainingEmails == null ? '—' : int(pm.remainingEmails)} />
           <Stat label="Bounced" value={`${int(pm.bounced)} (${pm.bounceRate.toFixed(2)}%)`} />
           <Stat label="Spam complaints" value={int(pm.spamComplaints)} />
           <Stat label="Estimated cost" value={pm.estimatedUsd == null ? 'set a plan' : usd(pm.estimatedUsd)} />
@@ -288,6 +297,43 @@ function PostmarkCard({ data }: { data: SpendView }) {
         <NumberInput label="Overage per 1,000" min={0} decimalScale={2} prefix="$" w={160} value={overage} onChange={setOverage} />
         <Button onClick={save} loading={update.isPending}>Save</Button>
       </Group>
+    </Card>
+  );
+}
+
+function SearchCard({ data }: { data: SpendView }) {
+  const s = data.search;
+  const tv = s.tavily;
+  return (
+    <Card withBorder>
+      <Title order={4} mb={4}>Web search ({s.provider})</Title>
+      <Text size="sm" c="dimmed" mb="sm">
+        Booked by us for {data.spend.month}: {usd(s.bookedUsd)} over {int(s.bookedCalls)} billed calls — already inside the
+        totals above.{s.provider === 'tavily' && ' Below, Tavily’s own count, live, for its current billing cycle.'}
+      </Text>
+      {tv == null ? null : 'error' in tv ? (
+        <Alert color="yellow">Could not read Tavily: {tv.error}</Alert>
+      ) : (
+        <>
+          <SimpleGrid cols={{ base: 2, sm: 4 }} mb="xs">
+            <Stat label="Plan" value={tv.account.plan} />
+            <Stat label="Credits used" value={`${int(tv.account.planUsage)} / ${int(tv.account.planLimit)}`} />
+            <Stat label="Credits left" value={int(tv.remainingCredits)} />
+            <Stat label="Pay-as-you-go" value={`${int(tv.account.paygoUsage)} / ${int(tv.account.paygoLimit)}`} />
+          </SimpleGrid>
+          {tv.account.planLimit > 0 && (
+            <Progress
+              value={Math.min(100, (tv.account.planUsage / tv.account.planLimit) * 100)}
+              color={tv.remainingCredits === 0 ? 'red' : tv.account.planUsage / tv.account.planLimit >= 0.8 ? 'orange' : 'teal'}
+              mb="xs"
+            />
+          )}
+          <Text size="xs" c="dimmed" data-testid="tavily-key">
+            This environment’s key: {int(tv.key.usage)} credits ({int(tv.key.searchUsage)} search · {int(tv.key.extractUsage)} extract)
+            {tv.key.limit != null && ` of a ${int(tv.key.limit)} key limit`}. The plan figures cover every key on the account.
+          </Text>
+        </>
+      )}
     </Card>
   );
 }

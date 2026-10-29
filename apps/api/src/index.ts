@@ -134,6 +134,8 @@ import {
   type UpdateSettingsInput,
   getPostmarkOutboundStats,
   estimatePostmarkUsd,
+  activeSearchProvider,
+  getTavilyUsage,
 } from '@agent-researcher/core';
 import type Stripe from 'stripe';
 import { deploymentSafetyError } from './startup-guards.js';
@@ -2436,7 +2438,14 @@ app.get(
       (stats) => ({ stats }),
       (err: Error) => ({ error: err.message }),
     );
-    const [spend, settings, apps, pm] = await Promise.all([getMonthSpend(m), getSettings(), listApps(), postmarkStats]);
+    // The search provider's own count, live — credits used and left on the plan.
+    // Same rule as Postmark: allowed to fail without taking the page down.
+    const provider = activeSearchProvider();
+    const tavily =
+      provider === 'tavily'
+        ? getTavilyUsage().then((usage) => ({ usage }), (err: Error) => ({ error: err.message }))
+        : Promise.resolve(null);
+    const [spend, settings, apps, pm, tv] = await Promise.all([getMonthSpend(m), getSettings(), listApps(), postmarkStats, tavily]);
     return {
       spend,
       settings,
@@ -2449,14 +2458,31 @@ app.get(
                 includedEmails: settings.postmarkIncludedEmails,
                 overagePer1000Usd: settings.postmarkOveragePer1000Usd,
               }),
+              // The plan's monthly allowance is the admin's figure — Postmark exposes
+              // it only to an ACCOUNT token, which this deployment does not hold.
+              includedEmails: settings.postmarkIncludedEmails,
+              remainingEmails: settings.postmarkIncludedEmails == null ? null : Math.max(0, settings.postmarkIncludedEmails - pm.stats.sent),
             }
           : { error: pm.error },
+      search: {
+        provider,
+        // What WE booked for search this month (USD, billed calls) — part of the caps' total.
+        bookedUsd: spend.searchUsd,
+        bookedCalls: spend.searchCalls,
+        tavily:
+          tv == null
+            ? null
+            : 'usage' in tv
+              ? { ...tv.usage, remainingCredits: Math.max(0, tv.usage.account.planLimit - tv.usage.account.planUsage) }
+              : { error: tv.error },
+      },
       // The backoffice sells nothing and runs no jobs of its own, so it has no
       // spend to cap; listing it would offer a cap that can never bind.
       apps: apps.filter((a) => a.role !== 'admin').map((a) => ({
         appId: a.appId,
         name: a.name,
         spentUsd: spend.apps[a.appId] ?? 0,
+        searchUsd: spend.appsSearchUsd[a.appId] ?? 0,
         monthlySpendCapUsd: a.monthlySpendCapUsd ?? null,
         monthlySpendAlertUsd: a.monthlySpendAlertUsd ?? null,
         blocked: spendBlockFor(spend, settings, a),

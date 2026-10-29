@@ -13,6 +13,7 @@ import { bookSpend, getBalance, getMonthSpend, grantCredits, listJobs, updateApp
 import { app } from '../src/index.js';
 import { auth, seedAdmin, seedApp, token } from './helpers.js';
 import { fakeLlm } from './setup.js';
+import { writableConfig } from './writable-config.js';
 
 const APP = 'fbizlab';
 const USER = 'u@x.com';
@@ -136,5 +137,47 @@ describe('request-time LLM spend is booked too', () => {
     const before = (await getMonthSpend()).apps[APP] ?? 0;
     await app.inject({ method: 'POST', url: '/research/preflight', headers: auth(userToken), payload: { template: research.template, params: research.params, freeText: 'I want laundromats in Miami' } });
     expect((await getMonthSpend()).apps[APP] ?? 0).toBeGreaterThan(before);
+  });
+});
+
+describe('provider quotas on /admin/spend', () => {
+  it('Tavily credits used and left, and Postmark emails left on the plan', async () => {
+    writableConfig.search.tavilyApiKey = 'tvly-test';
+    await updateSettings({ postmarkIncludedEmails: 100 });
+    const seen: string[] = [];
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      seen.push(String(url));
+      if (String(url).startsWith('https://api.tavily.com/usage')) {
+        return new Response(JSON.stringify({
+          key: { usage: 150, limit: null, search_usage: 100, extract_usage: 50 },
+          account: { current_plan: 'Project', plan_usage: 3100, plan_limit: 4000, paygo_usage: 0, paygo_limit: 100 },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ Sent: 130, Bounced: 0, SpamComplaints: 0, BounceRate: 0 }), { status: 200 });
+    });
+    try {
+      const body = (await app.inject({ method: 'GET', url: '/admin/spend', headers: auth(adminToken) })).json();
+      expect(seen).toContain('https://api.tavily.com/usage');
+      expect(body.search.provider).toBe('tavily');
+      expect(body.search.tavily).toMatchObject({ remainingCredits: 900, account: { plan: 'Project', planUsage: 3100, planLimit: 4000 } });
+      expect(body.search.tavily.key).toMatchObject({ usage: 150, searchUsage: 100, extractUsage: 50 });
+      // 130 sent of a 100-email plan: none left (never negative).
+      expect(body.postmark).toMatchObject({ sent: 130, includedEmails: 100, remainingEmails: 0 });
+    } finally {
+      spy.mockRestore();
+      writableConfig.search.tavilyApiKey = '';
+    }
+  });
+
+  it('no Tavily call when Tavily is not the provider', async () => {
+    writableConfig.search.tavilyApiKey = '';
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('', { status: 503 }));
+    try {
+      const body = (await app.inject({ method: 'GET', url: '/admin/spend', headers: auth(adminToken) })).json();
+      expect(body.search).toMatchObject({ provider: 'duckduckgo', tavily: null });
+      expect(spy.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('tavily'))).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

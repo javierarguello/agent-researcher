@@ -113,6 +113,8 @@ export { REPORT_MODES, modeParamSchema, resolveMode, modesOf, defaultModeOf, isM
 export type { ReportMode, ModeConfig } from './mode.js';
 export { LANGUAGE_LABELS } from './languages.js';
 export { dedupeSources, normalizeUrl } from './tools/sources.js';
+export { activeSearchProvider, getTavilyUsage } from './tools/web-search.js';
+export type { TavilyUsage } from './tools/web-search.js';
 
 // Credits / billing (shared across all models + webs)
 export {
