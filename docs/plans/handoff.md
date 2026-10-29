@@ -69,7 +69,18 @@ only tier you may use.
 
 ---
 
-## Spend limits, 2026-10-29 (on `main`, NOT yet on `deploy-prod`)
+## Spend limits, 2026-10-29 — RELEASED to prod (`deploy-prod` = `e3e804a`)
+
+Verified on the running system: API `prod-api-00016`, worker `prod-worker-00017`,
+`/admin/spend` answers 401 (route live), the prod admin bundle carries the Limits page
+and the prod API URL, buyer site `/`, `/es`, `/sample`, `/sitemap.xml`, `/plans.json` 200
+with $29/$69/$129 in the served HTML. Not yet exercised with a real signed-in admin
+session or a real job in prod.
+
+**The fbizlab prod SPA build failed 2026-10-27, -28 and on this release's first try**:
+`fetch-plans.mjs` times out on `/plans` while the prod API is cold (19s on the first
+request after this deploy). A re-run against the warm API passed. The nightly re-bake
+will keep tripping on cold starts until that timeout is raised or the fetch retries.
 
 Monthly spend caps, editable in the admin app → **Limits** (`apps/admin/src/pages/Limits.tsx`):
 global cap (default **$200**) + alert (default **$100**), per-app cap + alert (app doc
