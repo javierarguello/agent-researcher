@@ -77,6 +77,24 @@ and the prod API URL, buyer site `/`, `/es`, `/sample`, `/sitemap.xml`, `/plans.
 with $29/$69/$129 in the served HTML. Not yet exercised with a real signed-in admin
 session or a real job in prod.
 
+**Later the same day, all released and verified live (`deploy-prod` = `b7acb65`, API
+`prod-api-00019`, worker `prod-worker-00020`):** `306c527` fetch-plans waits out a cold
+API (60s × 3); `d4addcc` no public `/docs` in prod (404, dev keeps it); `32c7e24` the
+backoffice (role admin) shows no client-app limits and is not listed on Limits;
+`b7acb65` the ledger splits web search from models, and Limits reads Tavily's live
+`/usage` (plan, credits used/left) and Postmark sent vs the plan allowance the admin
+enters.
+
+**A dev comprehensive run** (`8d33a8ba…`, HVAC, as admin — `/research` needs Turnstile
+for a user token): completed in ~23 min, **$3.79** ($2.45 LLM + $1.34 search, 84 calls)
+of a ~$8.70 ceiling, 258 sources, 0 agent errors, PDF 1.8 MB. The ledger matched it to
+the cent. **Open question:** Tavily's `/usage` reported **0 credits** on the dev key
+(free "Researcher" plan, 1000 credits) after 84 calls we booked at $0.016 — either its
+counter lags, or that key is not the one billing. If dev is on the free plan our ledger
+over-states dev; check the prod key's plan on Limits before trusting $0.016 there.
+Jobs an admin starts are booked under appId `admin`: they count toward the GLOBAL cap
+but no per-app row shows them.
+
 **The fbizlab prod SPA build failed 2026-10-27, -28 and on this release's first try**:
 `fetch-plans.mjs` times out on `/plans` while the prod API is cold (19s on the first
 request after this deploy). A re-run against the warm API passed. The nightly re-bake
